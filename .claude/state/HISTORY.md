@@ -2,6 +2,17 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-24 - Root README and pre-dev condition
+
+Added root `README.md`: project vision, two mermaid diagrams (data/runtime flow,
+checkpoint/replay lifecycle), source-feasibility table, planned deployment/security
+contracts, docs map, and open pre-dev gates. All local links checked; wording keeps
+planning status explicit (no app, Compose file, image, or passing tests claimed).
+Committed as one focused docs commit. Remaining blockers unchanged: bundled approval
+brief, final execution plan plus Metis/Momus/independent review, then implementation
+on explicit instruction. True popularity, universal aliases/severity, and full
+reservation counts remain explicitly out of scope.
+
 ## 2026-10-24 - Secure startup approval and consolidated planning brief
 
 Owner approved production-safe `docker compose up -d` with explicitly selected

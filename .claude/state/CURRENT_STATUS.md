@@ -23,6 +23,7 @@ no application code. Git repository exists locally on `main`.
 - [x] Runtime records/backups ignored; targeted credential-marker scan found no matches
 - [x] Production-safe `up -d` approved; dev explicit; agent Compose startup now asks
 - [x] First-party font reuse licenses and candidate stack contracts checked, not built
+- [x] Root README added: vision, diagrams, source feasibility, deployment/security plan, docs map
 
 ## In Progress
 
@@ -51,4 +52,4 @@ no application code. Git repository exists locally on `main`.
 
 ## Last Updated
 
-2026-10-24: approved secure Compose convention recorded, candidate stack/font research consolidated into one approval brief. No app/Docker implementation started.
+2026-10-24: root README added with architecture/data-source diagrams; pre-dev gates restated. No app/Docker implementation started.
