@@ -63,9 +63,9 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Task ID | TASK-005 |
 | Status | IN PROGRESS |
 | Scope | Preserve overview/search/priority features; include approved Radar and retained-snapshot replay. Produce a distinctive design contract and reviewed implementation plan, without implementing the app. |
-| Decisions | One self-contained runtime image/container; optional Compose. Focused local milestone commits authorized. |
+| Decisions | One runtime image/container; normal Compose startup production-safe; dev explicit. Focused local milestone commits authorized. |
 | Drafts | .omo/drafts/cve-change-radar.md; .omo/drafts/cve-change-radar-design.md; .omo/drafts/cve-single-image-deployment.md |
-| Remaining Gates | Owner hosting/budget/capacity, retention, stack, visual/test-policy decisions; final approval brief, then Metis/Momus/independent review as recorded in draft. |
+| Remaining Gates | Owner bundled approval in .omo/drafts/cve-approval-brief.md, then final plan and Metis/Momus/independent review. Host-spec questions deferred by owner. |
 
 ## TASK-006 - Initialize and verify local version control
 

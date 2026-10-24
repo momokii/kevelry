@@ -2,8 +2,9 @@
 
 ## Project Phase
 
-Design-led planning in progress; Radar/replay and single-container deployment approved.
-No application code or chosen stack. Git repository exists locally on `main`.
+Awaiting consolidated planning-brief approval. Radar/replay, single-container runtime
+and production-safe Compose default approved. Stack/design/history remain proposals;
+no application code. Git repository exists locally on `main`.
 
 ## Completed
 
@@ -20,10 +21,12 @@ No application code or chosen stack. Git repository exists locally on `main`.
 - [x] Single runtime Docker image/container required; optional Compose wrapper
 - [x] Git initialized; 17 focused baseline commits independently checked, no remote/push
 - [x] Runtime records/backups ignored; targeted credential-marker scan found no matches
+- [x] Production-safe `up -d` approved; dev explicit; agent Compose startup now asks
+- [x] First-party font reuse licenses and candidate stack contracts checked, not built
 
 ## In Progress
 
-- [ ] Resolve remaining owner decisions and produce/review the final execution plan
+- [ ] Approve `.omo/drafts/cve-approval-brief.md`, then produce/review final plan
 - [ ] Resume `.omo/drafts/cve-change-radar.md`; design and deployment drafts are linked there
 
 ## Blocked
@@ -34,11 +37,9 @@ No application code or chosen stack. Git repository exists locally on `main`.
 
 ## Open Questions
 
-- Tech stack not yet chosen
-- Hosting machine/budget/capacity and replay-retention window not yet specified
-- Evidence Ledger is the recommended visual direction, not an approved rendered design
-- Approve tier-based priority lists rather than an unvalidated blended Heat score?
-- Accept exclusions: true social popularity, guaranteed aliases, full reservations/projections?
+- Approve bundled Evidence Ledger, Next/SQLite, 30-day observed replay, ranking and tests?
+- Host specifications/procurement deferred by owner; do not keep asking those questions
+- Rendered design, runtime compatibility, performance and exact asset pins remain unverified
 - Confirm source-use scope and required notices; clarify FIRST terms before monetization.
 
 ## Security Notes
@@ -50,4 +51,4 @@ No application code or chosen stack. Git repository exists locally on `main`.
 
 ## Last Updated
 
-2026-10-24: approved Radar/replay and single-container deployment recorded; local Git baseline established. No app/Docker implementation started.
+2026-10-24: approved secure Compose convention recorded, candidate stack/font research consolidated into one approval brief. No app/Docker implementation started.
