@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openai/gpt-6-luna",
+  "small_model": "openai/gpt-6-luna",
+  "agent": {
+    "general": { "model": "openai/gpt-6-luna" },
+    "build": { "model": "openai/gpt-6-luna" },
+    "plan": { "model": "openai/gpt-6-luna" },
+    "explore": { "model": "openai/gpt-6-luna" },
+    "agent-sdk-dev:agent-sdk-verifier-py": { "model": "openai/gpt-6-luna" },
+    "agent-sdk-dev:agent-sdk-verifier-ts": { "model": "openai/gpt-6-luna" },
+    "code-simplifier:code-simplifier": { "model": "openai/gpt-6-luna" },
+    "feature-dev:code-architect": { "model": "openai/gpt-6-luna" },
+    "feature-dev:code-explorer": { "model": "openai/gpt-6-luna" },
+    "feature-dev:code-reviewer": { "model": "openai/gpt-6-luna" },
+    "product-tracking-skills:tracking-watchdog": { "model": "openai/gpt-6-luna" }
+  }
+}

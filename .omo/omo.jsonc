@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
+  "agents": {
+    "build": { "models": ["openai/gpt-6-luna"] },
+    "plan": { "models": ["openai/gpt-6-luna"] },
+    "sisyphus": { "models": ["openai/gpt-6-luna"] },
+    "sisyphus-junior": { "models": ["openai/gpt-6-luna"] },
+    "atlas": { "models": ["openai/gpt-6-luna"] },
+    "hephaestus": { "models": ["openai/gpt-6-luna"] },
+    "prometheus": { "models": ["openai/gpt-6-luna"] },
+    "oracle": { "models": ["openai/gpt-6-luna"] },
+    "metis": { "models": ["openai/gpt-6-luna"] },
+    "momus": { "models": ["openai/gpt-6-luna"] },
+    "explore": { "models": ["openai/gpt-6-luna"] },
+    "librarian": { "models": ["openai/gpt-6-luna"] },
+    "multimodal-looker": { "models": ["openai/gpt-6-luna"] }
+  },
+  "categories": {
+    "visual-engineering": { "models": ["openai/gpt-6-luna"] },
+    "artistry": { "models": ["openai/gpt-6-luna"] },
+    "ultrabrain": { "models": ["openai/gpt-6-luna"] },
+    "deep-low": { "models": ["openai/gpt-6-luna"] },
+    "deep-high": { "models": ["openai/gpt-6-luna"] },
+    "quick": { "models": ["openai/gpt-6-luna"] },
+    "unspecified-low": { "models": ["openai/gpt-6-luna"] },
+    "unspecified-high": { "models": ["openai/gpt-6-luna"] },
+    "writing": { "models": ["openai/gpt-6-luna"] }
+  },
+  "[opencode]": {
+    "model_fallback": false,
+    "runtime_fallback": false
+  },
+  "_migrations": [
+    "2026-08-reasoning-unification"
+  ]
+}
