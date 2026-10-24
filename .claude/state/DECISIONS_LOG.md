@@ -5,6 +5,26 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Make normal Compose startup production-safe; development is explicitly selected.
+
+**Date:** 2026-10-24
+
+**Context:** Owner wants simple `docker compose up -d` startup and explicitly approved
+production-safe defaults instead of automatically loaded development overrides.
+
+**Rationale:** `compose.yaml` must represent the safe normal runtime. Development
+uses explicit `compose.dev.yaml`; do not ship an auto-loaded dev override. Compose
+remains a wrapper around one all-in-one runtime image/container with persistent data.
+
+**Security Implications:** No default hot reload, source mounts, debug/admin ports or
+development tools in release. Move the agent's broad Compose-up rule from allow to ask;
+preserve all deny rules and confirmation for non-development execution.
+
+**Impact:** Supersedes the automatic-dev Compose convention below. Only policy/docs
+changed: no Compose file, Dockerfile, setup script or application was implemented.
+
+---
+
 **Decision:** Include Change Radar/replay and require standalone single-container deployment.
 
 **Date:** 2026-10-24
@@ -92,6 +112,9 @@ unverified restart blocker for those handoffs. Source pipeline, stack and rankin
 ---
 
 **Decision:** Use a three-file Docker Compose layout: `compose.yaml`, `compose.override.yaml`, and `compose.prod.yaml`.
+
+**Status:** Superseded on 2026-10-24 by the owner-approved production-safe default
+and explicitly selected `compose.dev.yaml`; retained as historical rationale only.
 
 **Date:** 2026-10-22
 

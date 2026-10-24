@@ -36,24 +36,40 @@ defaults (fail closed).
 
 Use `docker compose`, not the legacy `docker-compose`.
 
-- `compose.yaml`: base definitions, environment-agnostic. Do not use the obsolete
-  top-level `version:` key.
-- `compose.override.yaml`: development overrides (hot reload, debug ports, volume
-  mounts). Loaded **automatically** by `docker compose up`.
-- `compose.prod.yaml`: production overrides (no source mounts, restart policy, resource
-  limits, no debug ports, pinned image tags). Used explicitly.
+- `compose.yaml`: production-safe default for one self-contained application image/
+  container. Debug off, no development source mounts/admin ports, least privilege,
+  durable data. Do not use the obsolete top-level `version:` key.
+- The normal configuration must explicitly set `APP_ENV=production` and the chosen
+  runtime's production mode. A copied development `.env` must not silently change
+  normal startup into development mode; only the explicit dev override does that.
+- Do not ship an automatically discovered development `compose.override.yaml` or
+  `compose.override.yml`. Plain startup must not silently enable development behavior.
+- `compose.dev.yaml`: explicitly selected development overrides when implemented;
+  hot reload/debug/source mounts belong only in that opt-in path.
+- `compose.prod.yaml`: optional explicit deployment-specific overrides if needed,
+  not a mandatory extra command or additional service for normal startup.
 
 ```bash
-# Development (override file loaded automatically)
-docker compose up
+# Normal startup (production-safe defaults)
+docker compose up -d
 
-# Production (explicit -f flags disable automatic override loading)
-docker compose -f compose.yaml -f compose.prod.yaml up -d
+# Development (explicit opt-in; no automatic dev override)
+docker compose -f compose.yaml -f compose.dev.yaml up
 ```
 
-The agent must **always ask** before any Compose command that is not clearly development.
+These are approved command contracts, not verified commands: no Compose/Dockerfile
+implementation exists yet. Plain `up -d` must handle normal first startup; document
+upgrades/rebuilds separately because it does not guarantee rebuilding an existing image.
+
+The agent must **always ask** before any Compose command that is not clearly development,
+including the normal production-safe `docker compose up -d` path.
 If the project uses different file names, document them here and follow the existing
 names.
+
+One runtime image/container must include web, ingestion/scheduling, local storage/
+search and Radar/replay. Compose is a convenience wrapper, not a prerequisite for
+standalone Docker operation. Persistent data belongs in a named/bind volume, not
+the image. No mandatory external database/cache/worker container or host cron.
 
 ## Environment Files
 
