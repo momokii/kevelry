@@ -9,17 +9,17 @@ import { writeCheckpoint } from "../src/lib/radar";
 import {
   resetDbOverride,
   setDbOverride,
-} from "../src/app/api/v1/_lib/shared";
-import { GET as getCves } from "../src/app/api/v1/cves/route";
-import { GET as getCveById } from "../src/app/api/v1/cves/[cveId]/route";
-import { GET as getSearch } from "../src/app/api/v1/search/route";
-import { GET as getPriority } from "../src/app/api/v1/priority/[listName]/route";
-import { GET as getRadar } from "../src/app/api/v1/radar/route";
-import { GET as getReplay } from "../src/app/api/v1/replay/route";
-import { GET as getCheckpoints } from "../src/app/api/v1/replay/checkpoints/route";
-import { GET as getOverview } from "../src/app/api/v1/overview/route";
-import { GET as getStatus } from "../src/app/api/v1/status/route";
-import { GET as getHealth } from "../src/app/api/v1/health/route";
+} from "../app/api/v1/_lib/shared";
+import { GET as getCves } from "../app/api/v1/cves/route";
+import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
+import { GET as getSearch } from "../app/api/v1/search/route";
+import { GET as getPriority } from "../app/api/v1/priority/[listName]/route";
+import { GET as getRadar } from "../app/api/v1/radar/route";
+import { GET as getReplay } from "../app/api/v1/replay/route";
+import { GET as getCheckpoints } from "../app/api/v1/replay/checkpoints/route";
+import { GET as getOverview } from "../app/api/v1/overview/route";
+import { GET as getStatus } from "../app/api/v1/status/route";
+import { GET as getHealth } from "../app/api/v1/health/route";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SPEC_PATH = join(ROOT, "openapi", "v1.yaml");

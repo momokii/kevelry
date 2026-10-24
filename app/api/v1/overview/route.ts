@@ -1,4 +1,4 @@
-import { getDefaultPriority } from "../../../../lib/priority";
+import { getDefaultPriority } from "../../../../src/lib/priority";
 import {
   acquireConcurrencySlot,
   ApiError,

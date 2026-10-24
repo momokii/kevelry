@@ -29,17 +29,17 @@ import {
   setMaxConcurrentRequests,
   setSearchBudgetMs,
   setDbOverride,
-} from "../src/app/api/v1/_lib/shared";
-import { GET as getCves, OPTIONS as optionsCves } from "../src/app/api/v1/cves/route";
-import { GET as getCveById } from "../src/app/api/v1/cves/[cveId]/route";
-import { GET as getSearch } from "../src/app/api/v1/search/route";
-import { GET as getPriority } from "../src/app/api/v1/priority/[listName]/route";
-import { GET as getRadar } from "../src/app/api/v1/radar/route";
-import { GET as getReplay } from "../src/app/api/v1/replay/route";
-import { GET as getCheckpoints } from "../src/app/api/v1/replay/checkpoints/route";
-import { GET as getOverview } from "../src/app/api/v1/overview/route";
-import { GET as getStatus } from "../src/app/api/v1/status/route";
-import { GET as getHealth, OPTIONS as optionsHealth } from "../src/app/api/v1/health/route";
+} from "../app/api/v1/_lib/shared";
+import { GET as getCves, OPTIONS as optionsCves } from "../app/api/v1/cves/route";
+import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
+import { GET as getSearch } from "../app/api/v1/search/route";
+import { GET as getPriority } from "../app/api/v1/priority/[listName]/route";
+import { GET as getRadar } from "../app/api/v1/radar/route";
+import { GET as getReplay } from "../app/api/v1/replay/route";
+import { GET as getCheckpoints } from "../app/api/v1/replay/checkpoints/route";
+import { GET as getOverview } from "../app/api/v1/overview/route";
+import { GET as getStatus } from "../app/api/v1/status/route";
+import { GET as getHealth, OPTIONS as optionsHealth } from "../app/api/v1/health/route";
 
 const tempDirs: string[] = [];
 const openDbs: CveDatabase[] = [];
@@ -449,7 +449,7 @@ describe("concurrency bound", () => {
 
 describe("no raw database routes", () => {
   it("exposes only GET plus preflight with no data-directory access", async () => {
-    const root = path.join(__dirname, "..", "src", "app", "api", "v1");
+    const root = path.join(__dirname, "..", "app", "api", "v1");
     const routeFiles: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -466,16 +466,16 @@ describe("no raw database routes", () => {
     }
 
     const modules = [
-      await import("../src/app/api/v1/cves/route"),
-      await import("../src/app/api/v1/cves/[cveId]/route"),
-      await import("../src/app/api/v1/search/route"),
-      await import("../src/app/api/v1/priority/[listName]/route"),
-      await import("../src/app/api/v1/radar/route"),
-      await import("../src/app/api/v1/replay/route"),
-      await import("../src/app/api/v1/replay/checkpoints/route"),
-      await import("../src/app/api/v1/overview/route"),
-      await import("../src/app/api/v1/status/route"),
-      await import("../src/app/api/v1/health/route"),
+      await import("../app/api/v1/cves/route"),
+      await import("../app/api/v1/cves/[cveId]/route"),
+      await import("../app/api/v1/search/route"),
+      await import("../app/api/v1/priority/[listName]/route"),
+      await import("../app/api/v1/radar/route"),
+      await import("../app/api/v1/replay/route"),
+      await import("../app/api/v1/replay/checkpoints/route"),
+      await import("../app/api/v1/overview/route"),
+      await import("../app/api/v1/status/route"),
+      await import("../app/api/v1/health/route"),
     ];
     for (const mod of modules) {
       expect(Object.keys(mod).sort()).toEqual(["GET", "OPTIONS", "dynamic"]);

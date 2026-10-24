@@ -2,9 +2,30 @@
 .git
 .env
 .env.*
-!./.env.example
+!.env.example
 node_modules
 .next
 coverage
 playwright-report
 test-results
+# Runtime data must live on a volume, never baked into the image.
+data
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+*.sqlite3-journal
+# Local/dev-only and agent state: not needed to build or run the image.
+.omo/evidence
+.claude
+.opencode
+tests
+playwright.config.ts
+vitest.config.ts
+# Docker/Compose sources and editor noise.
+Dockerfile*
+.dockerignore
+compose*.yaml
+*.log
+.DS_Store
+*.tsbuildinfo

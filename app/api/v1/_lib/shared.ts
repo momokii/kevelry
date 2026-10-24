@@ -9,22 +9,22 @@
 // per-source dates plus the ranking policy version, and every response
 // carries the rate-limit headers.
 
-import { loadConfig } from "../../../../lib/config";
-import { type CveDatabase, openDatabase } from "../../../../lib/db";
-import { getAcceptedEpssDate, type PriorityItem } from "../../../../lib/priority";
+import { loadConfig } from "../../../../src/lib/config";
+import { type CveDatabase, openDatabase } from "../../../../src/lib/db";
+import { getAcceptedEpssDate, type PriorityItem } from "../../../../src/lib/priority";
 import {
   diffCheckpoints,
   type RadarChangeKind,
   type RadarItemSnapshot,
   type StoredRadarCheckpoint,
-} from "../../../../lib/radar";
+} from "../../../../src/lib/radar";
 import {
   excerptDescription,
   officialCveLink,
   severityBandFor,
   DESCRIPTION_MISSING_LABEL,
-} from "../../../../lib/search";
-import { selectPrimaryCvss } from "../../../../lib/ranking";
+} from "../../../../src/lib/search";
+import { selectPrimaryCvss } from "../../../../src/lib/ranking";
 
 /** Ranking policy version pinned into every provenance envelope. */
 export const RANKING_POLICY_VERSION = "ranking-v1";

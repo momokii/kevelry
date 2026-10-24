@@ -1,4 +1,4 @@
-import { listCheckpoints, replayCheckpoint } from "../../../../lib/radar";
+import { listCheckpoints, replayCheckpoint } from "../../../../src/lib/radar";
 import {
   acquireConcurrencySlot,
   ApiError,

@@ -1,4 +1,4 @@
-import { isCheckpointExpired, listCheckpoints } from "../../../../../lib/radar";
+import { isCheckpointExpired, listCheckpoints } from "../../../../../src/lib/radar";
 import {
   acquireConcurrencySlot,
   ApiError,

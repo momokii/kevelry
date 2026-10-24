@@ -5,7 +5,7 @@ import {
   getKnownExploited,
   getNewCritical,
   getRisingForecast,
-} from "../../../../../lib/priority";
+} from "../../../../../src/lib/priority";
 import {
   acquireConcurrencySlot,
   ApiError,

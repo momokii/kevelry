@@ -1,4 +1,4 @@
-import { getAcceptedEpssDate, getDefaultPriority } from "../../../../lib/priority";
+import { getAcceptedEpssDate, getDefaultPriority } from "../../../../src/lib/priority";
 import {
   acquireConcurrencySlot,
   ApiError,

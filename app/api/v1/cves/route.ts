@@ -1,22 +1,27 @@
-import { listCheckpoints } from "../../../../lib/radar";
+import { getDefaultPriority } from "../../../../src/lib/priority";
+import { getAcceptedEpssDate } from "../../../../src/lib/priority";
 import {
   acquireConcurrencySlot,
   ApiError,
   assertRequestBounds,
   buildProvenance,
-  buildRadarEvents,
+  coverageFor,
   errorResponse,
+  filterPriorityItems,
   getDb,
+  loadFullRecords,
   okResponse,
   paginate,
   parseCursor,
-  parseCveIdParam,
+  parseDateBound,
+  parseEpss,
+  parseKev,
   parseLimit,
-  parseDay,
-  parseRadarKind,
+  parseSeverity,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
+  toCveItem,
 } from "../_lib/shared";
 
 export const dynamic = "force-dynamic";
@@ -42,23 +47,35 @@ export async function GET(request: Request): Promise<Response> {
     const params = new URL(request.url).searchParams;
     const limit = parseLimit(params.get("limit"));
     const offset = parseCursor(params.get("cursor"));
-    const sinceRaw = params.get("since");
-    const since = sinceRaw === null || sinceRaw === "" ? null : parseDay(sinceRaw, "since", true);
-    const kind = parseRadarKind(params.get("kind"));
-    const cveId = parseCveIdParam(params.get("cveId"));
-    const events = buildRadarEvents(listCheckpoints(db)).filter((event) => {
-      if (since !== null && event.checkpointDate < since) return false;
-      if (kind !== null && event.kind !== kind) return false;
-      if (cveId !== null && event.cveId !== cveId) return false;
-      return true;
+    const severity = parseSeverity(params.get("severity"));
+    const kev = parseKev(params.get("kev"));
+    const epss = parseEpss(params.get("epss"));
+    const start = parseDateBound(params.get("publishedStart"), "publishedStart");
+    const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
+    if (start !== null && end !== null && start >= end) {
+      throw new ApiError("BAD_DATE_RANGE", 400, "publishedStart must be earlier than publishedEnd.");
+    }
+    const ordered = getDefaultPriority(db);
+    const filtered = filterPriorityItems(ordered, { severity, kev, epss, start, end });
+    const { page, hasMore, nextCursor } = paginate(filtered, offset, limit);
+    const records = loadFullRecords(
+      db,
+      page.map((item) => item.id),
+    );
+    const byId = new Map(records.map((record) => [record.cveId, record]));
+    const scoreDate = getAcceptedEpssDate(db);
+    const data = page.map((item) => {
+      const record = byId.get(item.id);
+      if (record === undefined) return null;
+      return toCveItem(record, scoreDate, null);
     });
-    const { page, hasMore, nextCursor } = paginate(events, offset, limit);
     const nowIso = new Date().toISOString();
     return okResponse(
       request,
       {
-        data: page,
+        data: data.filter((row) => row !== null),
         pagination: { limit, hasMore, nextCursor },
+        coverage: coverageFor(filtered, page.length),
         provenance: buildProvenance(db, nowIso),
       },
       rate,
