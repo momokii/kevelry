@@ -2,9 +2,7 @@
 
 ## Project Phase
 
-Awaiting consolidated planning-brief approval. Radar/replay, single-container runtime
-and production-safe Compose default approved. Stack/design/history remain proposals;
-no application code. Git repository exists locally on `main`.
+Execution plan written, self-checked, gap-reviewed, and dual-approved. No application code; implementation awaits explicit instruction. Git repository exists locally on `main`.
 
 ## Completed
 
@@ -24,11 +22,12 @@ no application code. Git repository exists locally on `main`.
 - [x] Production-safe `up -d` approved; dev explicit; agent Compose startup now asks
 - [x] First-party font reuse licenses and candidate stack contracts checked, not built
 - [x] Root README added: vision, diagrams, source feasibility, deployment/security plan, docs map
+- [x] Bundled brief approved by owner (Evidence Ledger, Next/SQLite proposal, 30-day observed replay)
+- [x] Execution plan complete and dual-approved: 30 todos + F1-F4, 4 review rounds, zero open blockers
 
 ## In Progress
 
-- [ ] Approve `.omo/drafts/cve-approval-brief.md`, then produce/review final plan
-- [ ] Resume `.omo/drafts/cve-change-radar.md`; design and deployment drafts are linked there
+- [ ] Await explicit implementation instruction (e.g. `$ulw-execute cve-change-radar`); plan must not be executed without it
 
 ## Blocked
 
@@ -38,7 +37,7 @@ no application code. Git repository exists locally on `main`.
 
 ## Open Questions
 
-- Approve bundled Evidence Ledger, Next/SQLite, 30-day observed replay, ranking and tests?
+- Bundled brief approved by owner; plan built on it (Evidence Ledger, Next/SQLite proposal, 30-day observed replay, ranking, tests)
 - Host specifications/procurement deferred by owner; do not keep asking those questions
 - Rendered design, runtime compatibility, performance and exact asset pins remain unverified
 - Confirm source-use scope and required notices; clarify FIRST terms before monetization.
@@ -52,4 +51,4 @@ no application code. Git repository exists locally on `main`.
 
 ## Last Updated
 
-2026-10-24: root README added with architecture/data-source diagrams; pre-dev gates restated. No app/Docker implementation started.
+2026-10-24: execution plan complete at .omo/plans/cve-change-radar.md and dual-approved (4 review rounds, zero blockers). No app/Docker implementation started; awaiting explicit instruction.

@@ -25,6 +25,20 @@ changed: no Compose file, Dockerfile, setup script or application was implemente
 
 ---
 
+**Decision:** Approve the bundled product/design/stack/history proposal and the reviewed execution plan.
+
+**Date:** 2026-10-24
+
+**Context:** Owner approved Evidence Ledger design, debuggable self-hosted stack research, DESIGN.md plus real-browser QA, single-container runtime, 30-day observed replay, and open-source public deployment.
+
+**Rationale:** One bundled decision unblocks a single decision-complete execution plan instead of repeated partial approvals.
+
+**Security Implications:** TDD, negative tests, image/container verification, and benchmark gates are required in the plan; no audited software exists yet.
+
+**Impact:** `.omo/plans/cve-change-radar.md` is the implementation basis pending a separate explicit instruction. Implementation, commits beyond planning, pushes, and deployments remain unauthorized.
+
+---
+
 **Decision:** Include Change Radar/replay and require standalone single-container deployment.
 
 **Date:** 2026-10-24
