@@ -2,7 +2,8 @@
 
 ## Project Phase
 
-Execution plan written, self-checked, gap-reviewed, and dual-approved. No application code; implementation awaits explicit instruction. Git repository exists locally on `main`.
+Complete and verified on local `main`: all 30 build todos delivered, F1–F4 final
+gates approved with evidence. No remote, no deployment yet.
 
 ## Completed
 
@@ -24,31 +25,34 @@ Execution plan written, self-checked, gap-reviewed, and dual-approved. No applic
 - [x] Root README added: vision, diagrams, source feasibility, deployment/security plan, docs map
 - [x] Bundled brief approved by owner (Evidence Ledger, Next/SQLite proposal, 30-day observed replay)
 - [x] Execution plan complete and dual-approved: 30 todos + F1-F4, 4 review rounds, zero open blockers
+- [x] All 30 build todos delivered: app shell, design system, TDD contracts, SQLite/FTS5, V5/KEV/EPSS importers, ranking, Radar/replay, read-only API + docs + hardening + parity, six UI views, a11y pass, Dockerfile, scheduling/health, Compose files, setup.sh, backup/restore, benchmarks — evidence `.omo/evidence/task-1` through `task-30-cve-change-radar.*`
+- [x] F1 plan-compliance audit closed: 30/30 todos checked, GAP rows mapped, IS evidence paths unchanged, no Must-NOT-have in plan diff — receipt `.omo/evidence/task-31-cve-change-radar.log`
+- [x] F2 code quality review approved: lint/typecheck/test green, no suppressions, pinned deps, parameterized SQL, no secrets
+- [x] F3 browser QA approved: stock Playwright suite green with phone + desktop screenshots, keyboard/zoom/reduced-motion evidence
+- [x] F4 ideal-state fidelity approved: 10/11 rows met outright; shortfall became tracked todo 31, now done
 
 ## In Progress
 
-- [ ] Await explicit implementation instruction (e.g. `$ulw-execute cve-change-radar`); plan must not be executed without it
+None — implementation and verification are complete. Next decision is the owner's:
+push/remote, public deployment (HTTPS/binding), and any release hardening.
 
 ## Blocked
 
-- Full CVE import, coverage/search benchmarks, sync recovery and hosting costs unmeasured.
-- Browser-rendered competitor checks unavailable: Chromium missing; no installation attempted.
-- Markdown LSP not configured; JSON Biome installation previously declined.
+None. Remaining unmeasured items from the original audit (full-corpus import at
+production scale, production hosting costs) are deployment concerns, not build blockers.
 
 ## Open Questions
 
-- Bundled brief approved by owner; plan built on it (Evidence Ledger, Next/SQLite proposal, 30-day observed replay, ranking, tests)
-- Host specifications/procurement deferred by owner; do not keep asking those questions
-- Rendered design, runtime compatibility, performance and exact asset pins remain unverified
-- Confirm source-use scope and required notices; clarify FIRST terms before monetization.
+- Release decisions (owner): create a remote / push, choose public hosting with HTTPS + binding, revisit FIRST terms before any monetization.
+- Host specifications/procurement remain deferred by owner; do not keep asking.
 
 ## Security Notes
 
-- No application code exists yet. Security standards apply from the first commit.
+- Application code exists and passed the Security Gate inputs: input validation, parameterized queries, generic errors, hardened headers, no secrets in code/logs, non-root container.
 - `.env.example` contains placeholders; secret/runtime paths are ignored. Gitleaks unavailable;
   targeted baseline scans are not a comprehensive secret-scan guarantee.
 - Owner authorizes focused local commits after verified milestones, not remote pushes.
 
 ## Last Updated
 
-2026-10-24: execution plan complete at .omo/plans/cve-change-radar.md and dual-approved (4 review rounds, zero blockers). No app/Docker implementation started; awaiting explicit instruction.
+2026-10-24: all 30 todos + F1–F4 verified and merged on `main`. ORCHESTRATION COMPLETE; awaiting release decisions.

@@ -5,6 +5,26 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Accept the completed implementation and close the execution plan.
+
+**Date:** 2026-10-24
+
+**Context:** All 30 build todos plus F1–F4 verification passed with evidence;
+ Wave 5 merged to `main` on this machine only.
+
+**Rationale:** Every deliverable was independently verified (DoneClaim →
+AdversarialVerify → confirmed) before its commit; review findings were fixed,
+not waived.
+
+**Security Implications:** No change to the permission baseline; no secrets
+introduced; hardening, rate limits, and safe headers verified in place.
+
+**Impact:** The codebase on local `main` is the verified product. Release steps
+(remote, hosting, TLS, FIRST-terms clarification before monetization) need
+explicit owner decisions.
+
+---
+
 **Decision:** Make normal Compose startup production-safe; development is explicitly selected.
 
 **Date:** 2026-10-24

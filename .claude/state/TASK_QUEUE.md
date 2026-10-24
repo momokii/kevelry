@@ -65,8 +65,8 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Scope | Preserve overview/search/priority features; include approved Radar and retained-snapshot replay. Produce a distinctive design contract and reviewed implementation plan, without implementing the app. |
 | Decisions | One runtime image/container; normal Compose startup production-safe; dev explicit. Focused local milestone commits authorized. |
 | Drafts | .omo/drafts/cve-change-radar.md; .omo/drafts/cve-change-radar-design.md; .omo/drafts/cve-single-image-deployment.md |
-| Evidence | .omo/plans/cve-change-radar.md (30 todos + F1-F4); structural self-check passed; Metis gaps folded; Momus + independent review approved across 4 rounds, zero open blockers. Final digest recorded in draft frontmatter. |
-| Follow-up | Await explicit implementation instruction (e.g. `$ulw-execute cve-change-radar`); plan must not be executed without it. |
+| Evidence | .omo/plans/cve-change-radar.md (30 todos + F1-F4, all checked); structural self-check passed; Metis gaps folded; Momus + independent review approved across 4 rounds, zero open blockers. Final digest recorded in draft frontmatter. Implementation delivered: todos 1–30 checked with evidence `.omo/evidence/task-1` through `task-30-cve-change-radar.*`; F1 plan-compliance closed with receipt `.omo/evidence/task-31-cve-change-radar.log`. |
+| Follow-up | DONE — F2 code review, F3 browser QA, F4 ideal-state fidelity all approved with evidence. Release decisions (remote, hosting, monetization terms) are the owner's next call. |
 
 ## TASK-006 - Initialize and verify local version control
 
