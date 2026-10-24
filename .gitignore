@@ -37,6 +37,11 @@ Thumbs.db
 *.swo
 
 # ---------------------------------------------------------------------------
-# Stack-specific entries (dependencies, build output, caches) are added by
-# TASK-001 once the stack is chosen. Do not add framework guesses here.
+# Stack-specific entries (Next.js + tooling output).
 # ---------------------------------------------------------------------------
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo

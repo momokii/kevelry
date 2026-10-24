@@ -1,0 +1,10 @@
+# Keep secrets, local env files, VCS metadata, and build output out of the image.
+.git
+.env
+.env.*
+!./.env.example
+node_modules
+.next
+coverage
+playwright-report
+test-results
