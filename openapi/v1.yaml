@@ -1,0 +1,2215 @@
+openapi: 3.0.3
+info:
+  title: CVE Change Radar Public API
+  version: 1.0.0
+  description: |
+    Versioned read-only API for the CVE Change Radar site. Every response carries
+    per-source dates plus the ranking policy version in `provenance`, so any score
+    or ordering can be verified against the accepted local snapshots.
+
+    Anonymous by design: no authentication, no tokens, no per-user state.
+    Public writes are out of scope; this major version exposes GET routes only.
+
+    Unknown values are explicit. A missing EPSS row renders as
+    `epss: { "status": "unknown", "value": null, ... }` and is never coerced to 0.
+    A real zero remains `"status": "known", "value": 0`.
+  contact:
+    name: CVE Change Radar maintainers
+    url: https://github.com/CVEProject/cvelistV5
+  license:
+    name: Source notices apply (CVE Terms, CISA KEV CC0 1.0, FIRST services terms)
+    url: https://www.cve.org/Legal/TermsOfUse
+servers:
+  - url: https://radar.example.org
+    description: Example origin. Self-hosted deployments serve the API from their own origin.
+security: []
+tags:
+  - name: Cves
+    description: Current published CVE records and their signals.
+  - name: Health
+    description: Liveness and per-source freshness for the methodology and data-status view.
+  - name: Overview
+    description: Publication-volume aggregates behind the overview charts.
+  - name: Priority
+    description: The four named explainable orderings. Distinct signals, no composite score.
+  - name: Radar
+    description: Observed change feed with before/after evidence.
+  - name: Replay
+    description: Retained-checkpoint replay of historical site state.
+  - name: Search
+    description: Local ID and text search over accepted snapshots.
+paths:
+  /api/v1/cves:
+    get:
+      operationId: listCves
+      summary: List current published CVEs
+      description: |
+        Paginated list of current `PUBLISHED` CVE records with KEV, EPSS, and
+        primary-CNA CVSS signals. Default ordering follows the default-priority
+        contract (KEV tier, EPSS presence, raw probability, date, ID). Filters
+        match the explore site view exactly.
+      tags:
+        - Cves
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Severity'
+        - $ref: '#/components/parameters/Kev'
+        - $ref: '#/components/parameters/EpssPresence'
+        - $ref: '#/components/parameters/PublishedStart'
+        - $ref: '#/components/parameters/PublishedEnd'
+      responses:
+        '200':
+          description: Paginated CVE list with coverage and provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CveListResponse'
+              examples:
+                firstPage:
+                  $ref: '#/components/examples/CveListFirstPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/cves/{cveId}:
+    get:
+      operationId: getCveById
+      summary: Get one CVE record with signals
+      description: |
+        One current `PUBLISHED` record by validated CVE ID, with KEV membership,
+        dated EPSS forecast, primary-CNA CVSS selection, excerpt, official link,
+        and provenance. Unknown signals stay explicit; rejected IDs are not served here.
+      tags:
+        - Cves
+      parameters:
+        - $ref: '#/components/parameters/CveId'
+      responses:
+        '200':
+          description: The requested record with provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CveDetailResponse'
+              examples:
+                unknownEpss:
+                  $ref: '#/components/examples/CveDetailUnknownEpss'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/search:
+    get:
+      operationId: searchCves
+      summary: Search CVE IDs and descriptions
+      description: |
+        Local FTS-backed search over accepted snapshots only. Returns an upstream
+        excerpt (at most 320 Unicode code points plus an ellipsis), the official
+        record link, and explicit missing/language states. Same filters as the
+        explore site view. No nickname index is promised; no upstream fetch occurs.
+      tags:
+        - Search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search text or CVE ID. Minimum 2 characters, maximum 200.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+            example: openssl denial of service
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Severity'
+        - $ref: '#/components/parameters/Kev'
+        - $ref: '#/components/parameters/EpssPresence'
+        - $ref: '#/components/parameters/PublishedStart'
+        - $ref: '#/components/parameters/PublishedEnd'
+      responses:
+        '200':
+          description: Ranked matches with excerpts, coverage, and provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              examples:
+                matchPage:
+                  $ref: '#/components/examples/SearchMatchPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/priority/{listName}:
+    get:
+      operationId: getPriorityList
+      summary: Get one named priority list
+      description: |
+        One of the four explainable orderings. Each view states its exact ordering
+        inputs in `ordering`; signals stay distinct and are never multiplied into a
+        composite score. Stale snapshots keep their dated values with a stale label.
+      tags:
+        - Priority
+      parameters:
+        - name: listName
+          in: path
+          required: true
+          description: Named priority view.
+          schema:
+            $ref: '#/components/schemas/PriorityListName'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Ordered view with ordering rules, coverage, and provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriorityListResponse'
+              examples:
+                knownExploited:
+                  $ref: '#/components/examples/PriorityKnownExploited'
+                risingForecast:
+                  $ref: '#/components/examples/PriorityRisingForecast'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/radar:
+    get:
+      operationId: listRadarEvents
+      summary: List observed change events
+      description: |
+        Change feed derived from retained daily checkpoints. Source changes
+        (KEV added, CNA changed, forecast changed, corrected, rejected) are
+        distinguished from rank-only or cohort/window movement, which is labeled
+        as such and never presented as a source change.
+      tags:
+        - Radar
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Only events from checkpoints on or after this UTC date (YYYY-MM-DD).
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            example: '2026-10-17'
+        - name: kind
+          in: query
+          required: false
+          description: Filter by change kind.
+          schema:
+            $ref: '#/components/schemas/RadarKind'
+        - name: cveId
+          in: query
+          required: false
+          description: Restrict to one validated CVE ID.
+          schema:
+            type: string
+            pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+            example: CVE-2026-109618
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Change events newest first, with evidence and provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RadarResponse'
+              examples:
+                kevAdded:
+                  $ref: '#/components/examples/RadarKevAdded'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/replay:
+    get:
+      operationId: replayCheckpoint
+      summary: Replay a retained checkpoint
+      description: |
+        Re-evaluates one priority view from a retained daily checkpoint and its
+        recorded policy version, reproducing what the site showed then. The
+        response carries the replayed provenance alongside current source
+        health. Expired,
+        missing, or model-changed checkpoints return 404 REPLAY_UNAVAILABLE with
+        the reason; current data is never substituted.
+      tags:
+        - Replay
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: Retained checkpoint UTC date (YYYY-MM-DD).
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            example: '2026-10-17'
+        - name: view
+          in: query
+          required: true
+          description: Priority view to replay.
+          schema:
+            $ref: '#/components/schemas/PriorityListName'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Replayed view from pinned snapshot and policy version.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayResponse'
+              examples:
+                replayed:
+                  $ref: '#/components/examples/ReplayReplayed'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ReplayUnavailable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/replay/checkpoints:
+    get:
+      operationId: listReplayCheckpoints
+      summary: List retained replay checkpoints
+      description: |
+        Retained daily checkpoint manifests with coverage bounds. Dates outside
+        this list are unavailable for replay; history before launch was never
+        observed and is not fabricated.
+      tags:
+        - Replay
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Checkpoint manifests newest first, with provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckpointListResponse'
+              examples:
+                checkpoints:
+                  $ref: '#/components/examples/ReplayCheckpoints'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/overview:
+    get:
+      operationId: getOverview
+      summary: Get publication-volume aggregates
+      description: |
+        UTC calendar buckets over the accepted current records for the overview
+        charts, with the date basis, unknown-date bucket, correction notes, and
+        coverage stated explicitly. Corrections and rejections can move history.
+      tags:
+        - Overview
+      parameters:
+        - name: bucket
+          in: query
+          required: false
+          description: Calendar bucket size. Defaults to month.
+          schema:
+            type: string
+            enum:
+              - day
+              - month
+            default: month
+            example: month
+        - name: months
+          in: query
+          required: false
+          description: Number of trailing buckets. Minimum 1, maximum 120. Defaults to 24.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 120
+            default: 24
+            example: 24
+      responses:
+        '200':
+          description: Buckets, unknown-date count, notes, and provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+              examples:
+                monthly:
+                  $ref: '#/components/examples/OverviewMonthly'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/status:
+    get:
+      operationId: getStatus
+      summary: Get per-source freshness and policy
+      description: |
+        Backs the methodology and data-status view: per-source revisions, dates,
+        retrieval times, stale flags, eligible cohorts, join coverage, ranking
+        policy version, and required reuse notices. Its provenance envelope
+        mirrors the reported sources so clients can verify what they read.
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Source health, cohorts, policy, and notices.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              examples:
+                healthy:
+                  $ref: '#/components/examples/StatusHealthy'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      description: |
+        Minimal liveness probe for load balancers and container healthchecks.
+        Reports initializing until the first accepted snapshot of every core
+        source is published. Never exposes record data.
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Liveness with provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ready:
+                  $ref: '#/components/examples/HealthReady'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque page cursor from a previous `pagination.nextCursor`. Never constructed by hand.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+        example: W1lOVUYtMjAyNi0xMDk2MTld
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size. Defaults to 50, maximum 200. Oversized values are rejected, not clamped.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+        example: 50
+    Severity:
+      name: severity
+      in: query
+      required: false
+      description: |
+        Primary-CNA severity band. `unknown` and `legacy` are explicit buckets;
+        unscored CVEs are never silently dropped. CVSS versions are not calibrated alike.
+      schema:
+        type: string
+        enum:
+          - critical
+          - high
+          - medium
+          - low
+          - unknown
+          - legacy
+        example: critical
+    Kev:
+      name: kev
+      in: query
+      required: false
+      description: Filter by presence in the accepted KEV snapshot.
+      schema:
+        type: string
+        enum:
+          - listed
+          - not-listed
+          - any
+        default: any
+        example: listed
+    EpssPresence:
+      name: epss
+      in: query
+      required: false
+      description: Filter by EPSS row presence. Absent rows are unknown, never zero.
+      schema:
+        type: string
+        enum:
+          - scored
+          - unscored
+          - any
+        default: any
+        example: scored
+    PublishedStart:
+      name: publishedStart
+      in: query
+      required: false
+      description: Inclusive UTC lower bound (RFC 3339). Pairs with publishedEnd as [start, end).
+      schema:
+        type: string
+        format: date-time
+        example: '2026-09-24T00:00:00Z'
+    PublishedEnd:
+      name: publishedEnd
+      in: query
+      required: false
+      description: Exclusive UTC upper bound (RFC 3339).
+      schema:
+        type: string
+        format: date-time
+        example: '2026-10-24T00:00:00Z'
+    CveId:
+      name: cveId
+      in: path
+      required: true
+      description: Validated CVE ID.
+      schema:
+        type: string
+        pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+        example: CVE-2026-109618
+  headers:
+    X-RateLimit-Limit:
+      description: Requests allowed per window for this client IP.
+      schema:
+        type: integer
+        example: 600
+    X-RateLimit-Remaining:
+      description: Requests remaining in the current window.
+      schema:
+        type: integer
+        example: 599
+    X-RateLimit-Reset:
+      description: Seconds until the current window resets.
+      schema:
+        type: integer
+        example: 60
+    Retry-After:
+      description: Seconds to wait before retrying.
+      schema:
+        type: integer
+        example: 60
+  responses:
+    BadRequest:
+      description: Rejected input. Nothing was read from the corpus.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            badLimit:
+              value:
+                code: BAD_LIMIT
+                message: limit must be an integer between 1 and 200.
+                provenance:
+                  rankingPolicyVersion: ranking-v1
+                  generatedAt: '2026-10-24T04:00:00Z'
+                  sources:
+                    cve:
+                      revision: null
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    kev:
+                      catalogVersion: null
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    epss:
+                      scoreDate: null
+                      modelVersion: null
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+    NotFound:
+      description: No such resource in the accepted snapshots.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            cveNotFound:
+              value:
+                code: CVE_NOT_FOUND
+                message: No current PUBLISHED record for CVE-2099-0001.
+                provenance:
+                  rankingPolicyVersion: ranking-v1
+                  generatedAt: '2026-10-24T04:00:00Z'
+                  sources:
+                    cve:
+                      revision: abc1234
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    kev:
+                      catalogVersion: '2026.10.23'
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    epss:
+                      scoreDate: '2026-10-23'
+                      modelVersion: v2026.06.15
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+    ReplayUnavailable:
+      description: Checkpoint cannot be replayed. Current data is never substituted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            expired:
+              value:
+                code: REPLAY_UNAVAILABLE
+                message: Checkpoint 2026-08-01 is expired. Retained window starts 2026-09-24.
+                details:
+                  reason: expired
+                  retainedFrom: '2026-09-24'
+                  retainedTo: '2026-10-23'
+                provenance:
+                  rankingPolicyVersion: ranking-v1
+                  generatedAt: '2026-10-24T04:00:00Z'
+                  sources:
+                    cve:
+                      revision: abc1234
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    kev:
+                      catalogVersion: '2026.10.23'
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    epss:
+                      scoreDate: '2026-10-23'
+                      modelVersion: v2026.06.15
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+    RateLimited:
+      description: Per-IP rate limit exceeded. Back off and retry.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            limited:
+              value:
+                code: RATE_LIMITED
+                message: Rate limit exceeded. Retry after 60 seconds.
+                provenance:
+                  rankingPolicyVersion: ranking-v1
+                  generatedAt: '2026-10-24T04:00:00Z'
+                  sources:
+                    cve:
+                      revision: abc1234
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    kev:
+                      catalogVersion: '2026.10.23'
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+                    epss:
+                      scoreDate: '2026-10-23'
+                      modelVersion: v2026.06.15
+                      lastCheckedAt: '2026-10-24T03:55:00Z'
+                      lastAcceptedAt: '2026-10-24T03:10:00Z'
+                      stale: false
+                      error: null
+  schemas:
+    Provenance:
+      type: object
+      required:
+        - rankingPolicyVersion
+        - generatedAt
+        - sources
+      description: Present in every response. Pins the exact snapshots and policy behind it.
+      properties:
+        rankingPolicyVersion:
+          type: string
+          description: Policy version that produced any ordering in this response.
+          example: ranking-v1
+        generatedAt:
+          type: string
+          format: date-time
+          description: When this response was generated (UTC).
+          example: '2026-10-24T04:00:00Z'
+        sources:
+          type: object
+          required:
+            - cve
+            - kev
+            - epss
+          properties:
+            cve:
+              $ref: '#/components/schemas/CveSource'
+            kev:
+              $ref: '#/components/schemas/KevSource'
+            epss:
+              $ref: '#/components/schemas/EpssSource'
+    CveSource:
+      type: object
+      required:
+        - revision
+        - lastCheckedAt
+        - lastAcceptedAt
+        - stale
+        - error
+      properties:
+        revision:
+          type: string
+          nullable: true
+          description: Accepted CVE List V5 Git revision. Null before first acceptance.
+          example: abc1234
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-10-24T03:55:00Z'
+        lastAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-10-24T03:10:00Z'
+        stale:
+          type: boolean
+          description: True when the last successful check is more than 3 hours old.
+          example: false
+        error:
+          type: string
+          nullable: true
+          description: Last refresh error, if any. Last-known-good data is still served.
+          example: null
+    KevSource:
+      type: object
+      required:
+        - catalogVersion
+        - lastCheckedAt
+        - lastAcceptedAt
+        - stale
+        - error
+      properties:
+        catalogVersion:
+          type: string
+          nullable: true
+          description: Accepted KEV catalogVersion. Null before first acceptance.
+          example: '2026.10.23'
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-10-24T03:55:00Z'
+        lastAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-10-24T03:10:00Z'
+        stale:
+          type: boolean
+          description: True when the last successful check is more than 3 hours old.
+          example: false
+        error:
+          type: string
+          nullable: true
+          example: null
+    EpssSource:
+      type: object
+      required:
+        - scoreDate
+        - modelVersion
+        - lastCheckedAt
+        - lastAcceptedAt
+        - stale
+        - error
+      properties:
+        scoreDate:
+          type: string
+          nullable: true
+          description: Accepted EPSS score date (YYYY-MM-DD). Null before first acceptance.
+          example: '2026-10-23'
+        modelVersion:
+          type: string
+          nullable: true
+          description: Accepted EPSS model version. Null before first acceptance.
+          example: v2026.06.15
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-10-24T03:55:00Z'
+        lastAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-10-24T03:10:00Z'
+        stale:
+          type: boolean
+          description: True when the accepted score date is older than 2 UTC calendar days.
+          example: false
+        error:
+          type: string
+          nullable: true
+          example: null
+    Pagination:
+      type: object
+      required:
+        - limit
+        - hasMore
+        - nextCursor
+      properties:
+        limit:
+          type: integer
+          example: 50
+        hasMore:
+          type: boolean
+          example: true
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` for the next page. Null on the last page.
+          example: W1lOVUYtMjAyNi0xMDk2MTld
+    Coverage:
+      type: object
+      required:
+        - eligibleCohort
+        - returned
+        - unscored
+        - unknownEpss
+        - unknownDate
+      description: Join and missing-data denominators. Unknowns are counted, never hidden.
+      properties:
+        eligibleCohort:
+          type: integer
+          description: Current PUBLISHED records eligible for this response.
+          example: 312040
+        returned:
+          type: integer
+          example: 50
+        unscored:
+          type: integer
+          description: Records with no primary-CNA CVSS in this response scope.
+          example: 41210
+        unknownEpss:
+          type: integer
+          description: Records with no current EPSS row in this response scope.
+          example: 1804
+        unknownDate:
+          type: integer
+          description: Records with no publication timestamp in this response scope.
+          example: 37
+    EpssSignal:
+      type: object
+      required:
+        - status
+        - value
+        - percentile
+        - scoreDate
+        - modelVersion
+      description: |
+        Dated exploitation forecast. `status: unknown` means no current row for
+        the accepted score date/model; `value` is then null, never 0. A real zero
+        is `status: known` with `value: 0`.
+      properties:
+        status:
+          type: string
+          enum:
+            - known
+            - unknown
+          example: known
+        value:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: Exact source decimal, not display-rounded. Null when unknown.
+          example: 0.1162
+        percentile:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: Relative position among scored CVEs. Not a probability. Null when unknown.
+          example: 0.96047
+        scoreDate:
+          type: string
+          nullable: true
+          description: Accepted score date (YYYY-MM-DD). Null when unknown.
+          example: '2026-10-23'
+        modelVersion:
+          type: string
+          nullable: true
+          description: Model that produced the value. Null when unknown.
+          example: v2026.06.15
+    KevSignal:
+      type: object
+      required:
+        - listed
+        - dateAdded
+      description: Membership in the accepted KEV snapshot. Absence means not listed, not proof of no exploitation.
+      properties:
+        listed:
+          type: boolean
+          example: false
+        dateAdded:
+          type: string
+          nullable: true
+          description: Catalog-entry date (YYYY-MM-DD), not first-exploit date. Null when not listed.
+          example: null
+    CvssPrimary:
+      type: object
+      required:
+        - status
+        - source
+        - version
+        - baseScore
+        - vector
+      description: |
+        Deterministic editorial selection of one displayed metric: valid original
+        CNA metrics only, preferring v4.0 then v3.1 then v3.0 then v2.0. ADP-only
+        scores stay secondary. v2-only is legacy-scored, never critical.
+      properties:
+        status:
+          type: string
+          enum:
+            - known
+            - unknown
+            - legacy
+            - adp-only
+          description: legacy means v2-only; adp-only means no valid CNA metric exists.
+          example: known
+        source:
+          type: string
+          nullable: true
+          description: Metric provider. Null unless status is known or legacy.
+          example: cna
+        version:
+          type: string
+          nullable: true
+          description: CVSS version of the selected metric (4.0, 3.1, 3.0, or 2.0). Null unless status is known or legacy.
+          example: '4.0'
+        baseScore:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 10
+          example: 9.2
+        vector:
+          type: string
+          nullable: true
+          example: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+    CveItem:
+      type: object
+      required:
+        - cveId
+        - title
+        - state
+        - publishedAt
+        - officialUrl
+        - kev
+        - epss
+        - cvssPrimary
+      properties:
+        cveId:
+          type: string
+          example: CVE-2026-109618
+        title:
+          type: string
+          description: Supplied CNA title, otherwise the CVE ID. Never invented.
+          example: CVE-2026-109618
+        state:
+          type: string
+          enum:
+            - PUBLISHED
+          example: PUBLISHED
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Source publication timestamp. Null goes to the unknown bucket, never estimated.
+          example: '2026-10-20T14:02:00Z'
+        officialUrl:
+          type: string
+          format: uri
+          example: https://www.cve.org/CVERecord?id=CVE-2026-109618
+        excerpt:
+          type: string
+          nullable: true
+          description: Up to 320 Unicode code points plus an ellipsis. Null with excerptStatus explaining why.
+          example: A denial of service flaw was found in the packet parser ...
+        excerptTruncated:
+          type: boolean
+          example: true
+        excerptLanguage:
+          type: string
+          nullable: true
+          description: Language of the excerpt, or the fallback label when no en text exists.
+          example: en
+        excerptStatus:
+          type: string
+          enum:
+            - present
+            - fallback-language
+            - not-supplied
+          example: present
+        kev:
+          $ref: '#/components/schemas/KevSignal'
+        epss:
+          $ref: '#/components/schemas/EpssSignal'
+        cvssPrimary:
+          $ref: '#/components/schemas/CvssPrimary'
+    CveDetail:
+      allOf:
+        - $ref: '#/components/schemas/CveItem'
+        - type: object
+          required:
+            - descriptionLanguages
+            - references
+          properties:
+            descriptionLanguages:
+              type: array
+              description: Languages of supplied descriptions, in source order.
+              items:
+                type: string
+              example:
+                - en
+            references:
+              type: array
+              description: Reference URLs with container and provider provenance. Safe schemes only.
+              items:
+                $ref: '#/components/schemas/Reference'
+    Reference:
+      type: object
+      required:
+        - url
+        - container
+      properties:
+        url:
+          type: string
+          format: uri
+          example: https://example.org/advisory/42
+        container:
+          type: string
+          enum:
+            - cna
+            - adp
+          example: cna
+        provider:
+          type: string
+          nullable: true
+          example: example-provider
+    CveListResponse:
+      type: object
+      required:
+        - data
+        - pagination
+        - coverage
+        - provenance
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CveItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    CveDetailResponse:
+      type: object
+      required:
+        - data
+        - provenance
+      properties:
+        data:
+          $ref: '#/components/schemas/CveDetail'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    SearchResponse:
+      type: object
+      required:
+        - q
+        - data
+        - pagination
+        - coverage
+        - provenance
+      properties:
+        q:
+          type: string
+          description: Echo of the validated query.
+          example: openssl denial of service
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CveItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    PriorityListName:
+      type: string
+      enum:
+        - known-exploited
+        - highest-forecast
+        - new-critical
+        - rising-forecast
+      example: known-exploited
+    PriorityListResponse:
+      type: object
+      required:
+        - list
+        - ordering
+        - data
+        - pagination
+        - coverage
+        - provenance
+      properties:
+        list:
+          $ref: '#/components/schemas/PriorityListName'
+        ordering:
+          type: array
+          description: Exact ordering keys applied, in order, stopping at the first difference.
+          items:
+            type: string
+          example:
+            - kev-dateAdded-desc
+            - cveId-asc
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CveItem'
+        deltaPp:
+          type: array
+          nullable: true
+          description: Rising-forecast only. Percentage-point deltas aligned with data order. Null for other views.
+          items:
+            type: number
+            nullable: true
+          example:
+            - 8
+            - 8
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    RadarKind:
+      type: string
+      enum:
+        - kev-added
+        - kev-removed
+        - cna-changed
+        - forecast-changed
+        - corrected
+        - rejected
+        - list-entered
+        - list-exited
+        - rank-moved
+      example: kev-added
+    FieldChange:
+      type: object
+      required:
+        - field
+        - before
+        - after
+      properties:
+        field:
+          type: string
+          example: kev.listed
+        before:
+          type: string
+          nullable: true
+          description: Previous value as text, or null when previously absent.
+          example: 'false'
+        after:
+          type: string
+          nullable: true
+          description: New value as text, or null when now absent.
+          example: 'true'
+    RadarEvent:
+      type: object
+      required:
+        - eventId
+        - checkpointDate
+        - observedAt
+        - kind
+        - cveId
+        - title
+        - changes
+        - sourceRevision
+        - reason
+      properties:
+        eventId:
+          type: string
+          example: radar-2026-10-23-0001
+        checkpointDate:
+          type: string
+          description: Checkpoint that observed the change (YYYY-MM-DD).
+          example: '2026-10-23'
+        observedAt:
+          type: string
+          format: date-time
+          example: '2026-10-23T04:00:00Z'
+        kind:
+          $ref: '#/components/schemas/RadarKind'
+        cveId:
+          type: string
+          example: CVE-2026-109618
+        title:
+          type: string
+          example: CVE-2026-109618
+        changes:
+          type: array
+          description: Labeled before/after field rows. Empty for pure rank moves outside the evidence window.
+          items:
+            $ref: '#/components/schemas/FieldChange'
+        sourceRevision:
+          type: string
+          description: Source revision or version that carried the change.
+          example: kev-2026.10.23
+        reason:
+          type: string
+          description: Plain-language reason shown beside the evidence. No causal claims about EPSS internals.
+          example: Added to the accepted KEV catalog on 2026-10-23.
+    RadarResponse:
+      type: object
+      required:
+        - data
+        - pagination
+        - provenance
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RadarEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    CheckpointManifest:
+      type: object
+      required:
+        - checkpointDate
+        - rankingPolicyVersion
+        - cveRevision
+        - kevCatalogVersion
+        - epssScoreDate
+        - epssModelVersion
+        - eligibleCohort
+        - expired
+      properties:
+        checkpointDate:
+          type: string
+          example: '2026-10-23'
+        rankingPolicyVersion:
+          type: string
+          example: ranking-v1
+        cveRevision:
+          type: string
+          example: abc1234
+        kevCatalogVersion:
+          type: string
+          example: '2026.10.23'
+        epssScoreDate:
+          type: string
+          example: '2026-10-23'
+        epssModelVersion:
+          type: string
+          example: v2026.06.15
+        eligibleCohort:
+          type: integer
+          example: 311900
+        expired:
+          type: boolean
+          description: True when outside the retained window. Expired checkpoints replay as unavailable.
+          example: false
+    CheckpointListResponse:
+      type: object
+      required:
+        - retainedFrom
+        - retainedTo
+        - data
+        - pagination
+        - provenance
+      properties:
+        retainedFrom:
+          type: string
+          description: Oldest retained checkpoint date (YYYY-MM-DD).
+          example: '2026-09-24'
+        retainedTo:
+          type: string
+          description: Newest retained checkpoint date (YYYY-MM-DD).
+          example: '2026-10-23'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckpointManifest'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    ReplayResponse:
+      type: object
+      required:
+        - checkpointDate
+        - view
+        - rankingPolicyVersion
+        - data
+        - pagination
+        - coverage
+        - provenance
+      properties:
+        checkpointDate:
+          type: string
+          example: '2026-10-17'
+        view:
+          $ref: '#/components/schemas/PriorityListName'
+        rankingPolicyVersion:
+          type: string
+          description: Recorded policy version reused for this replay, not today's policy.
+          example: ranking-v1
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CveItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    OverviewBucket:
+      type: object
+      required:
+        - bucketStart
+        - count
+      properties:
+        bucketStart:
+          type: string
+          description: UTC bucket start. YYYY-MM-DD for day buckets, YYYY-MM for month buckets.
+          example: '2026-10'
+        count:
+          type: integer
+          description: Current PUBLISHED records with publication timestamps in this bucket.
+          example: 4821
+    OverviewResponse:
+      type: object
+      required:
+        - bucket
+        - dateBasis
+        - buckets
+        - unknownDateCount
+        - correctionNotes
+        - coverage
+        - provenance
+      properties:
+        bucket:
+          type: string
+          enum:
+            - day
+            - month
+          example: month
+        dateBasis:
+          type: string
+          description: Which timestamp the buckets count. Always publication time, never ID year.
+          example: publishedAt-utc
+        buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/OverviewBucket'
+        unknownDateCount:
+          type: integer
+          description: Records excluded from dated buckets, shown as their own bucket on site.
+          example: 37
+        correctionNotes:
+          type: array
+          description: Known cohorts whose history moved after an upstream correction.
+          items:
+            type: string
+          example:
+            - Cohort 2024-11 annotated per upstream date-issue note.
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    StatusResponse:
+      type: object
+      required:
+        - rankingPolicyVersion
+        - generatedAt
+        - sources
+        - cohorts
+        - joinCoverage
+        - notices
+        - provenance
+      properties:
+        rankingPolicyVersion:
+          type: string
+          example: ranking-v1
+        generatedAt:
+          type: string
+          format: date-time
+          example: '2026-10-24T04:00:00Z'
+        sources:
+          type: object
+          required:
+            - cve
+            - kev
+            - epss
+          properties:
+            cve:
+              $ref: '#/components/schemas/CveSource'
+            kev:
+              $ref: '#/components/schemas/KevSource'
+            epss:
+              $ref: '#/components/schemas/EpssSource'
+        cohorts:
+          type: object
+          required:
+            - published
+            - kevListed
+            - epssScored
+          properties:
+            published:
+              type: integer
+              example: 312040
+            kevListed:
+              type: integer
+              example: 1756
+            epssScored:
+              type: integer
+              example: 310236
+        joinCoverage:
+          type: object
+          required:
+            - unmatchedKev
+            - unmatchedEpss
+          properties:
+            unmatchedKev:
+              type: integer
+              description: KEV IDs with no current PUBLISHED record. Reported, never manufactured.
+              example: 12
+            unmatchedEpss:
+              type: integer
+              example: 5
+        notices:
+          type: array
+          description: Required reuse notices and attribution, reproduced verbatim on site.
+          items:
+            type: string
+          example:
+            - CVE content reproduced per MITRE CVE Terms of Use.
+            - KEV catalog data under CC0 1.0; third-party links and CISA/DHS marks not covered.
+            - EPSS scores by FIRST.org; attribution retained per services terms.
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - version
+        - provenance
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - initializing
+          description: initializing until the first accepted snapshot of every core source is published.
+          example: ok
+        version:
+          type: string
+          description: API major version served.
+          example: v1
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+    Error:
+      type: object
+      required:
+        - code
+        - message
+        - provenance
+      description: |
+        All errors share this shape. `code` is stable for clients; `message` is
+        human-readable and sanitized; no stack traces, paths, or secrets. Named
+        replay failures use REPLAY_UNAVAILABLE with `details.reason`.
+      properties:
+        code:
+          type: string
+          enum:
+            - BAD_REQUEST
+            - BAD_CURSOR
+            - BAD_LIMIT
+            - BAD_QUERY
+            - BAD_FILTER
+            - BAD_DATE_RANGE
+            - CVE_NOT_FOUND
+            - LIST_NOT_FOUND
+            - CHECKPOINT_UNAVAILABLE
+            - REPLAY_UNAVAILABLE
+            - RATE_LIMITED
+            - INTERNAL
+          example: BAD_LIMIT
+        message:
+          type: string
+          example: limit must be an integer between 1 and 200.
+        details:
+          type: object
+          nullable: true
+          description: Machine-readable detail, e.g. replay reason with the retained window.
+          example:
+            reason: expired
+            retainedFrom: '2026-09-24'
+            retainedTo: '2026-10-23'
+        requestId:
+          type: string
+          description: Correlation ID for server-side logs. Safe to quote when reporting.
+          example: req-01J9Z8X7Y6
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+  examples:
+    CveListFirstPage:
+      value:
+        data:
+          - cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            state: PUBLISHED
+            publishedAt: '2026-10-20T14:02:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109618
+            excerpt: A denial of service flaw was found in the packet parser ...
+            excerptTruncated: true
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: true
+              dateAdded: '2026-10-23'
+            epss:
+              status: known
+              value: 0.1162
+              percentile: 0.96047
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: known
+              source: cna
+              version: '4.0'
+              baseScore: 9.2
+              vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+          - cveId: CVE-2026-109619
+            title: CVE-2026-109619
+            state: PUBLISHED
+            publishedAt: '2026-10-19T09:30:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109619
+            excerpt: null
+            excerptTruncated: false
+            excerptLanguage: null
+            excerptStatus: not-supplied
+            kev:
+              listed: false
+              dateAdded: null
+            epss:
+              status: unknown
+              value: null
+              percentile: null
+              scoreDate: null
+              modelVersion: null
+            cvssPrimary:
+              status: unknown
+              source: null
+              version: null
+              baseScore: null
+              vector: null
+          - cveId: CVE-2026-109620
+            title: CVE-2026-109620
+            state: PUBLISHED
+            publishedAt: '2026-10-18T07:45:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109620
+            excerpt: A flaw in the archive helper allows ...
+            excerptTruncated: false
+            excerptLanguage: en
+            excerptStatus: fallback-language
+            kev:
+              listed: false
+              dateAdded: null
+            epss:
+              status: known
+              value: 0
+              percentile: 0.081
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: legacy
+              source: cna
+              version: '2.0'
+              baseScore: 10
+              vector: AV:N/AC:L/Au:N/C:C/I:C/A:C
+        pagination:
+          limit: 50
+          hasMore: true
+          nextCursor: W1lOVUYtMjAyNi0xMDk2MTld
+        coverage:
+          eligibleCohort: 312040
+          returned: 3
+          unscored: 41210
+          unknownEpss: 1804
+          unknownDate: 37
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    CveDetailUnknownEpss:
+      value:
+        data:
+          cveId: CVE-2026-109619
+          title: CVE-2026-109619
+          state: PUBLISHED
+          publishedAt: '2026-10-19T09:30:00Z'
+          officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109619
+          excerpt: null
+          excerptTruncated: false
+          excerptLanguage: null
+          excerptStatus: not-supplied
+          kev:
+            listed: false
+            dateAdded: null
+          epss:
+            status: unknown
+            value: null
+            percentile: null
+            scoreDate: null
+            modelVersion: null
+          cvssPrimary:
+            status: adp-only
+            source: null
+            version: null
+            baseScore: null
+            vector: null
+          descriptionLanguages:
+            - en
+          references:
+            - url: https://example.org/advisory/42
+              container: cna
+              provider: example-provider
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    SearchMatchPage:
+      value:
+        q: openssl denial of service
+        data:
+          - cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            state: PUBLISHED
+            publishedAt: '2026-10-20T14:02:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109618
+            excerpt: A denial of service flaw was found in the packet parser ...
+            excerptTruncated: true
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: true
+              dateAdded: '2026-10-23'
+            epss:
+              status: known
+              value: 0.1162
+              percentile: 0.96047
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: known
+              source: cna
+              version: '4.0'
+              baseScore: 9.2
+              vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+        pagination:
+          limit: 50
+          hasMore: false
+          nextCursor: null
+        coverage:
+          eligibleCohort: 312040
+          returned: 1
+          unscored: 0
+          unknownEpss: 0
+          unknownDate: 0
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    PriorityKnownExploited:
+      value:
+        list: known-exploited
+        ordering:
+          - kev-dateAdded-desc
+          - cveId-asc
+        data:
+          - cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            state: PUBLISHED
+            publishedAt: '2026-10-20T14:02:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109618
+            excerpt: A denial of service flaw was found in the packet parser ...
+            excerptTruncated: true
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: true
+              dateAdded: '2026-10-23'
+            epss:
+              status: known
+              value: 0.1162
+              percentile: 0.96047
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: known
+              source: cna
+              version: '4.0'
+              baseScore: 9.2
+              vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+        deltaPp: null
+        pagination:
+          limit: 50
+          hasMore: true
+          nextCursor: W1lOVUYtMjAyNi0xMDk2MTld
+        coverage:
+          eligibleCohort: 1756
+          returned: 1
+          unscored: 40
+          unknownEpss: 12
+          unknownDate: 0
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    PriorityRisingForecast:
+      value:
+        list: rising-forecast
+        ordering:
+          - delta-pp-desc
+          - epss-raw-desc
+          - cveId-asc
+        data:
+          - cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            state: PUBLISHED
+            publishedAt: '2026-10-20T14:02:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109618
+            excerpt: A denial of service flaw was found in the packet parser ...
+            excerptTruncated: true
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: true
+              dateAdded: '2026-10-23'
+            epss:
+              status: known
+              value: 0.18
+              percentile: 0.975
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: known
+              source: cna
+              version: '4.0'
+              baseScore: 9.2
+              vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+        deltaPp:
+          - 8
+        pagination:
+          limit: 50
+          hasMore: false
+          nextCursor: null
+        coverage:
+          eligibleCohort: 310236
+          returned: 1
+          unscored: 0
+          unknownEpss: 0
+          unknownDate: 0
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    RadarKevAdded:
+      value:
+        data:
+          - eventId: radar-2026-10-23-0001
+            checkpointDate: '2026-10-23'
+            observedAt: '2026-10-23T04:00:00Z'
+            kind: kev-added
+            cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            changes:
+              - field: kev.listed
+                before: 'false'
+                after: 'true'
+              - field: kev.dateAdded
+                before: null
+                after: '2026-10-23'
+            sourceRevision: kev-2026.10.23
+            reason: Added to the accepted KEV catalog on 2026-10-23.
+        pagination:
+          limit: 50
+          hasMore: false
+          nextCursor: null
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    ReplayCheckpoints:
+      value:
+        retainedFrom: '2026-09-24'
+        retainedTo: '2026-10-23'
+        data:
+          - checkpointDate: '2026-10-23'
+            rankingPolicyVersion: ranking-v1
+            cveRevision: abc1234
+            kevCatalogVersion: '2026.10.23'
+            epssScoreDate: '2026-10-23'
+            epssModelVersion: v2026.06.15
+            eligibleCohort: 311900
+            expired: false
+        pagination:
+          limit: 50
+          hasMore: false
+          nextCursor: null
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    ReplayReplayed:
+      value:
+        checkpointDate: '2026-10-17'
+        view: highest-forecast
+        rankingPolicyVersion: ranking-v1
+        data:
+          - cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            state: PUBLISHED
+            publishedAt: '2026-10-20T14:02:00Z'
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109618
+            excerpt: A denial of service flaw was found in the packet parser ...
+            excerptTruncated: true
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: false
+              dateAdded: null
+            epss:
+              status: known
+              value: 0.1
+              percentile: 0.95
+              scoreDate: '2026-10-17'
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: known
+              source: cna
+              version: '4.0'
+              baseScore: 9.2
+              vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+        pagination:
+          limit: 50
+          hasMore: false
+          nextCursor: null
+        coverage:
+          eligibleCohort: 310900
+          returned: 1
+          unscored: 0
+          unknownEpss: 0
+          unknownDate: 0
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    OverviewMonthly:
+      value:
+        bucket: month
+        dateBasis: publishedAt-utc
+        buckets:
+          - bucketStart: '2026-09'
+            count: 4610
+          - bucketStart: '2026-10'
+            count: 4821
+        unknownDateCount: 37
+        correctionNotes:
+          - Cohort 2024-11 annotated per upstream date-issue note.
+        coverage:
+          eligibleCohort: 312040
+          returned: 2
+          unscored: 41210
+          unknownEpss: 1804
+          unknownDate: 37
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    StatusHealthy:
+      value:
+        rankingPolicyVersion: ranking-v1
+        generatedAt: '2026-10-24T04:00:00Z'
+        sources:
+          cve:
+            revision: abc1234
+            lastCheckedAt: '2026-10-24T03:55:00Z'
+            lastAcceptedAt: '2026-10-24T03:10:00Z'
+            stale: false
+            error: null
+          kev:
+            catalogVersion: '2026.10.23'
+            lastCheckedAt: '2026-10-24T03:55:00Z'
+            lastAcceptedAt: '2026-10-24T03:10:00Z'
+            stale: false
+            error: null
+          epss:
+            scoreDate: '2026-10-23'
+            modelVersion: v2026.06.15
+            lastCheckedAt: '2026-10-24T03:55:00Z'
+            lastAcceptedAt: '2026-10-24T03:10:00Z'
+            stale: false
+            error: null
+        cohorts:
+          published: 312040
+          kevListed: 1756
+          epssScored: 310236
+        joinCoverage:
+          unmatchedKev: 12
+          unmatchedEpss: 5
+        notices:
+          - CVE content reproduced per MITRE CVE Terms of Use.
+          - KEV catalog data under CC0 1.0; third-party links and CISA/DHS marks not covered.
+          - EPSS scores by FIRST.org; attribution retained per services terms.
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+    HealthReady:
+      value:
+        status: ok
+        version: v1
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: '2026-10-24T04:00:00Z'
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            kev:
+              catalogVersion: '2026.10.23'
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
+            epss:
+              scoreDate: '2026-10-23'
+              modelVersion: v2026.06.15
+              lastCheckedAt: '2026-10-24T03:55:00Z'
+              lastAcceptedAt: '2026-10-24T03:10:00Z'
+              stale: false
+              error: null
