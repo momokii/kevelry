@@ -2,6 +2,22 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-24 - Scope approval, Docker contract and Git baseline
+
+Owner approved Radar/replay alongside original overview/search/priority requirements,
+required one self-contained Docker runtime image/container with optional Compose, and
+authorized local Git initialization and focused process commits. Updated the `.omo`
+planning/design drafts and added a deployment contract covering persistence, scheduling,
+PID1/shutdown, readiness, recovery, backup/upgrade and standalone/Compose parity tests.
+No application or Docker implementation was started and no Docker command was executed.
+
+Initialized `main`; 17 local baseline commits recorded exactly 30 reviewed files.
+Parent independently checked history, tracked paths, clean status and no remote.
+Runtime records/config backups are ignored; targeted credential-marker checks found
+no matches. Gitleaks is unavailable and no comprehensive scan is claimed. Author
+identity/config, permissions and existing hooks were not changed; nothing was pushed.
+Planning still needs operating envelope, retention, stack and visual/policy decisions.
+
 ## 2026-10-24 - Deeper pre-build audit
 
 Expanded `FEASIBILITY.md` with feature coverage and confidence/gaps; added

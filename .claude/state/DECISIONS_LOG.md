@@ -5,6 +5,41 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Include Change Radar/replay and require standalone single-container deployment.
+
+**Date:** 2026-10-24
+
+**Context:** Owner explicitly answered yes to Radar and retained-snapshot replay alongside
+the original features, then required one Docker image that runs everything, with optional Compose.
+
+**Rationale:** Keep the proposed differentiator while preserving a simple self-hosted
+runtime: web, ingestion/scheduling, local data/search and replay in one container.
+
+**Security Implications:** Mutable data belongs in a persistent mount, not the image;
+no mandatory external database/cache/worker service, host cron, privileged mode or Docker socket.
+
+**Impact:** Packaging is approved; exact stack, retained-history window, hosting capacity,
+visual direction and implementation remain pending. See `.omo/drafts/cve-single-image-deployment.md`.
+
+---
+
+**Decision:** Establish local Git history and make focused commits after verified milestones.
+
+**Date:** 2026-10-24
+
+**Context:** Owner explicitly requested a repository in this folder and proper process commits.
+
+**Rationale:** Initialize `main` and record the existing baseline with concise English
+action messages, split by concern; do not fabricate earlier history or timestamps.
+
+**Security Implications:** Ignore secret/local runtime/backup files; stage explicit paths,
+inspect patches and preserve hooks. No author/config changes, remotes, pushes or rewrites authorized.
+
+**Impact:** 17 baseline commits contain exactly 30 intended files. Subsequent coherent,
+verified milestones should receive local commits; tests stay with their implementations.
+
+---
+
 **Decision:** Pin this project's configured delegation agents and categories to GPT-6 Luna.
 
 **Date:** 2026-10-24
