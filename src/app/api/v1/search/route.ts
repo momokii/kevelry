@@ -1,7 +1,9 @@
 import { getAcceptedEpssDate } from "../../../../lib/priority";
 import { searchCves } from "../../../../lib/search";
 import {
+  acquireConcurrencySlot,
   ApiError,
+  assertRequestBounds,
   buildProvenance,
   errorResponse,
   getDb,
@@ -15,11 +17,18 @@ import {
   parseLimit,
   parseQuery,
   parseSeverity,
+  preflightResponse,
+  releaseConcurrencySlot,
   reserveRateLimit,
+  searchBudgetExceeded,
   toCveItem,
 } from "../_lib/shared";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS(request: Request): Promise<Response> {
+  return preflightResponse(request);
+}
 
 export async function GET(request: Request): Promise<Response> {
   let db = null;
@@ -30,7 +39,11 @@ export async function GET(request: Request): Promise<Response> {
   }
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
+  if (!acquireConcurrencySlot()) {
+    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+  }
   try {
+    assertRequestBounds(request);
     const params = new URL(request.url).searchParams;
     const q = parseQuery(params.get("q"));
     const limit = parseLimit(params.get("limit"));
@@ -49,7 +62,11 @@ export async function GET(request: Request): Promise<Response> {
     let epssKnown = 0;
     let unknownDate = 0;
     let serviceCursor: string | null = null;
+    const startedAtMs = Date.now();
     for (;;) {
+      if (searchBudgetExceeded(startedAtMs)) {
+        throw new ApiError("INTERNAL", 500, "Unexpected failure handling the request.");
+      }
       const result = searchCves(db, {
         q,
         dateStart: start ?? undefined,
@@ -100,5 +117,7 @@ export async function GET(request: Request): Promise<Response> {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
     return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+  } finally {
+    releaseConcurrencySlot();
   }
 }

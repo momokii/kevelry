@@ -1,16 +1,24 @@
 import { getDefaultPriority } from "../../../../lib/priority";
 import {
+  acquireConcurrencySlot,
   ApiError,
+  assertRequestBounds,
   buildProvenance,
   countRows,
   coverageFor,
   errorResponse,
   getDb,
   okResponse,
+  preflightResponse,
+  releaseConcurrencySlot,
   reserveRateLimit,
 } from "../_lib/shared";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS(request: Request): Promise<Response> {
+  return preflightResponse(request);
+}
 
 function monthKey(year: number, month: number): string {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
@@ -50,7 +58,11 @@ export async function GET(request: Request): Promise<Response> {
   }
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
+  if (!acquireConcurrencySlot()) {
+    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+  }
   try {
+    assertRequestBounds(request);
     const params = new URL(request.url).searchParams;
     const bucketRaw = params.get("bucket");
     const bucket = bucketRaw === null || bucketRaw === "" ? "month" : bucketRaw;
@@ -108,5 +120,7 @@ export async function GET(request: Request): Promise<Response> {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
     return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+  } finally {
+    releaseConcurrencySlot();
   }
 }

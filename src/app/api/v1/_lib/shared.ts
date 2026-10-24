@@ -33,6 +33,17 @@ export const RANKING_POLICY_VERSION = "ranking-v1";
 export const RATE_LIMIT_MAX = 600;
 export const RATE_LIMIT_WINDOW_SECONDS = 60;
 
+/** Request bounds: oversized request lines and param floods are rejected. */
+export const MAX_URL_CHARS = 4096;
+export const MAX_QUERY_PARAMS = 25;
+export const MAX_CURSOR_CHARS = 512;
+
+/** Concurrency bound: in-flight route executions past this get a 429. */
+export const MAX_CONCURRENT_REQUESTS = 32;
+
+/** Default wall-clock budget for the unbounded search fan-out loop. */
+export const SEARCH_TIME_BUDGET_MS = 3000;
+
 /** API page default and hard cap. Oversized values are rejected, never clamped. */
 export const API_DEFAULT_LIMIT = 50;
 export const API_MAX_LIMIT = 200;
@@ -127,6 +138,89 @@ function applyRateHeaders(
   response.headers.set("X-RateLimit-Remaining", String(limit.remaining));
   response.headers.set("X-RateLimit-Reset", String(limit.reset));
   return response;
+}
+
+let activeRequests = 0;
+let maxConcurrentRequests = MAX_CONCURRENT_REQUESTS;
+let searchBudgetMs = SEARCH_TIME_BUDGET_MS;
+let allowedOrigins: string[] = [];
+
+export function setMaxConcurrentRequests(value: number): void {
+  maxConcurrentRequests = value;
+}
+
+export function setSearchBudgetMs(value: number): void {
+  searchBudgetMs = value;
+}
+
+export function setAllowedOrigins(origins: string[]): void {
+  allowedOrigins = [...origins];
+}
+
+export function resetHardeningState(): void {
+  activeRequests = 0;
+  maxConcurrentRequests = MAX_CONCURRENT_REQUESTS;
+  searchBudgetMs = SEARCH_TIME_BUDGET_MS;
+  allowedOrigins = [];
+  rateBuckets.clear();
+}
+
+export function getSearchBudgetMs(): number {
+  return searchBudgetMs;
+}
+
+export function acquireConcurrencySlot(): boolean {
+  if (activeRequests >= maxConcurrentRequests) return false;
+  activeRequests += 1;
+  return true;
+}
+
+export function releaseConcurrencySlot(): void {
+  activeRequests = Math.max(0, activeRequests - 1);
+}
+
+export function searchBudgetExceeded(startedAtMs: number, nowMs: number = Date.now()): boolean {
+  return nowMs - startedAtMs >= searchBudgetMs;
+}
+
+function applySecurityHeaders(response: Response): Response {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+  );
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
+}
+
+function applyCorsHeaders(request: Request, response: Response): Response {
+  const origin = request.headers.get("origin");
+  if (origin === null || origin === "") return response;
+  response.headers.set("Vary", "Origin");
+  if (allowedOrigins.includes(origin)) {
+    response.headers.set("Access-Control-Allow-Origin", origin);
+    response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.headers.set("Access-Control-Max-Age", "600");
+  }
+  return response;
+}
+
+export function preflightResponse(request: Request): Response {
+  const response = new Response(null, { status: 204 });
+  applySecurityHeaders(response);
+  applyCorsHeaders(request, response);
+  return response;
+}
+
+export function assertRequestBounds(request: Request): void {
+  if (request.url.length > MAX_URL_CHARS) {
+    throw new ApiError("BAD_REQUEST", 400, "Request is too large to handle.");
+  }
+  const count = new URL(request.url).searchParams.size;
+  if (count > MAX_QUERY_PARAMS) {
+    throw new ApiError("BAD_REQUEST", 400, "Too many query parameters.");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +458,8 @@ export function errorResponse(
   const response = Response.json(body, { status });
   const rate = reservation ?? checkRateLimit(clientKeyFor(request));
   applyRateHeaders(response, rate);
+  applySecurityHeaders(response);
+  applyCorsHeaders(request, response);
   if (status === 429) {
     response.headers.set("Retry-After", String(Math.max(rate.reset, 1)));
   }
@@ -377,6 +473,8 @@ export function okResponse(
 ): Response {
   const response = Response.json(payload);
   applyRateHeaders(response, reservation ?? checkRateLimit(clientKeyFor(request)));
+  applySecurityHeaders(response);
+  applyCorsHeaders(request, response);
   return response;
 }
 
@@ -415,6 +513,9 @@ export function encodeCursor(offset: number): string {
 
 export function parseCursor(raw: string | null): number {
   if (raw === null || raw === "") return 0;
+  if (raw.length > MAX_CURSOR_CHARS) {
+    throw new ApiError("BAD_CURSOR", 400, "cursor is not a cursor returned by a previous response.");
+  }
   try {
     const text = Buffer.from(raw, "base64url").toString("utf8");
     const parsed: unknown = JSON.parse(text);
@@ -508,6 +609,17 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
+const SSRF_SHAPED_PATTERNS: readonly RegExp[] = [
+  /[a-z][a-z0-9+.-]*:\/\//,
+  /\blocalhost\b/,
+  /(^|[^0-9])0\.0\.0\.0([^0-9]|$)/,
+  /(^|[^0-9])(10|127)\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}([^0-9]|$)/,
+  /(^|[^0-9])192\.168\.[0-9]{1,3}\.[0-9]{1,3}([^0-9]|$)/,
+  /(^|[^0-9])172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}([^0-9]|$)/,
+  /(^|[^0-9])169\.254\.[0-9]{1,3}\.[0-9]{1,3}([^0-9]|$)/,
+  /\[::|::ffff|::1/,
+];
+
 /** Validate the search query; injection-shaped input is rejected, never run. */
 export function parseQuery(raw: string | null): string {
   if (raw === null) {
@@ -521,6 +633,11 @@ export function parseQuery(raw: string | null): string {
     throw new ApiError("BAD_QUERY", 400, "q contains unsupported control characters.");
   }
   const lowered = trimmed.toLowerCase();
+  for (const pattern of SSRF_SHAPED_PATTERNS) {
+    if (pattern.test(lowered)) {
+      throw new ApiError("BAD_QUERY", 400, "q looks like a network address and was rejected.");
+    }
+  }
   for (const token of HOSTILE_QUERY_TOKENS) {
     if (lowered.includes(token)) {
       throw new ApiError("BAD_QUERY", 400, "q looks like an injection attempt and was rejected.");

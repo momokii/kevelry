@@ -1,6 +1,8 @@
 import { listCheckpoints } from "../../../../lib/radar";
 import {
+  acquireConcurrencySlot,
   ApiError,
+  assertRequestBounds,
   buildProvenance,
   buildRadarEvents,
   errorResponse,
@@ -12,10 +14,16 @@ import {
   parseLimit,
   parseDay,
   parseRadarKind,
+  preflightResponse,
+  releaseConcurrencySlot,
   reserveRateLimit,
 } from "../_lib/shared";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS(request: Request): Promise<Response> {
+  return preflightResponse(request);
+}
 
 export async function GET(request: Request): Promise<Response> {
   let db = null;
@@ -26,7 +34,11 @@ export async function GET(request: Request): Promise<Response> {
   }
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
+  if (!acquireConcurrencySlot()) {
+    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+  }
   try {
+    assertRequestBounds(request);
     const params = new URL(request.url).searchParams;
     const limit = parseLimit(params.get("limit"));
     const offset = parseCursor(params.get("cursor"));
@@ -56,5 +68,7 @@ export async function GET(request: Request): Promise<Response> {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
     return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+  } finally {
+    releaseConcurrencySlot();
   }
 }
