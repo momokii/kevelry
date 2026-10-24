@@ -1,18 +1,18 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "openai/gpt-6-luna",
-  "small_model": "openai/gpt-6-luna",
+  "model": "opencode-go/muse-spark-1.3-contributor",
+  "small_model": "opencode-go/muse-spark-1.3-contributor",
   "agent": {
-    "general": { "model": "openai/gpt-6-luna" },
-    "build": { "model": "openai/gpt-6-luna" },
-    "plan": { "model": "openai/gpt-6-luna" },
-    "explore": { "model": "openai/gpt-6-luna" },
-    "agent-sdk-dev:agent-sdk-verifier-py": { "model": "openai/gpt-6-luna" },
-    "agent-sdk-dev:agent-sdk-verifier-ts": { "model": "openai/gpt-6-luna" },
-    "code-simplifier:code-simplifier": { "model": "openai/gpt-6-luna" },
-    "feature-dev:code-architect": { "model": "openai/gpt-6-luna" },
-    "feature-dev:code-explorer": { "model": "openai/gpt-6-luna" },
-    "feature-dev:code-reviewer": { "model": "openai/gpt-6-luna" },
-    "product-tracking-skills:tracking-watchdog": { "model": "openai/gpt-6-luna" }
+    "general": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "build": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "plan": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "explore": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "agent-sdk-dev:agent-sdk-verifier-py": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "agent-sdk-dev:agent-sdk-verifier-ts": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "code-simplifier:code-simplifier": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "feature-dev:code-architect": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "feature-dev:code-explorer": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "feature-dev:code-reviewer": { "model": "opencode-go/muse-spark-1.3-contributor" },
+    "product-tracking-skills:tracking-watchdog": { "model": "opencode-go/muse-spark-1.3-contributor" }
   }
 }
