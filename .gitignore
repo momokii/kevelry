@@ -29,8 +29,15 @@ data/
 # Agent execution state and local config backups (keep drafts/plans versioned)
 .omo/run-continuation/
 .omo/runtime/
+.omo/boulder.json
+.omo/ulw-execute/
 .omo/*.bak*
 .omo/*.tmp
+
+# Local verification artifacts (logs + screenshots). Keep the benchmark results
+# ledger tracked; the rest stays on disk as evidence only.
+.omo/evidence/
+!.omo/evidence/task-30-cve-change-radar.results.json
 
 # OS and editor noise
 .DS_Store
