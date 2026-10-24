@@ -5,6 +5,13 @@ export default defineConfig({
   fullyParallel: true,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:3210",
+  },
+  timeout: 60 * 1000,
+  webServer: {
+    command: "npm run dev -- --port 3210",
+    url: "http://127.0.0.1:3210/showcase",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
   },
 });

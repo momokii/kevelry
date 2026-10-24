@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import "./globals.css";
+
 export const metadata: Metadata = {
   title: "CVE Change Radar",
   description: "App shell. No app behavior yet.",
