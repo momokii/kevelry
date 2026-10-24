@@ -105,26 +105,71 @@ Evidence: `FEASIBILITY.md`, `docs/research/SOURCES.md`,
 `docs/DATA_WORKFLOW.md`. Competitor overlap (closest verified: o2CVE) is
 documented in `docs/research/COMPETITORS.md`.
 
-## Deployment (planned, not yet implemented)
+## Deployment
 
-Normal startup will be:
+One image, one container, optional Compose wrapper. `compose.yaml` is the
+production-safe default (single `app` service, `APP_ENV=production`, named
+volume `cve-data` for `/data`, loopback-bound web port, restart policy,
+resource limits, no source mounts, no debug ports). `compose.dev.yaml` is an
+explicit opt-in for hot reload, source bind mounts, and the Node inspector
+debug port — it is never auto-loaded (no `compose.override.yaml` exists).
+
+### First launch
 
 ```bash
-docker compose up -d
+docker compose build   # build cve-change-radar:local from the Dockerfile
+docker compose up -d   # start the single container on 127.0.0.1:3000
+docker compose logs -f app
 ```
 
-- Production-safe by default: debug off, no source bind mounts, no admin ports,
-  non-root runtime, durable volume. Development explicitly selects
-  `compose.dev.yaml`; no auto-loaded dev override.
-- `setup.sh` exists only if genuine prerequisite checks need it — never a hidden
-  installer (no silent packages, sudo, remote downloads, or firewall changes).
-- Standalone `docker run` with the same image, volume, and config contract must
-  also work; Compose is a wrapper, not a requirement.
-- First launch shows an honest initializing state until valid required feeds are
-  accepted; restarts resume from checkpoints; backups are database-consistent.
+First launch shows an honest initializing state until valid required feeds are
+accepted; restarts resume from checkpoints; backups are database-consistent.
+The published port binds to loopback (`127.0.0.1`) by default — the site is
+reachable at `http://127.0.0.1:3000` (override the host side with `PORT=...`).
 
-No Dockerfile, Compose file, or image exists yet. See
-`.omo/drafts/cve-single-image-deployment.md` for the full acceptance contract.
+### Update vs rebuild
+
+Plain `docker compose up -d` starts the existing image and **never rebuilds a
+stale image** — after source edits you must rebuild explicitly:
+
+```bash
+docker compose up -d                # start/restart only; does NOT rebuild
+docker compose build && docker compose up -d   # rebuild after source edits
+docker compose pull && docker compose up -d    # update once versioned release images exist
+docker compose down                 # stop and remove the container (volume data is kept)
+```
+
+### Development mode (explicit opt-in)
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml up
+```
+
+### Public exposure
+
+Plain Compose never creates trusted TLS. Public exposure requires explicit
+steps outside Compose: bind a public address/port, terminate HTTPS with a
+real hostname and certificate (reverse proxy or platform TLS), and keep
+`APP_ENV=production`. A second application container for TLS is out of scope;
+document the chosen termination when the deployment target is known.
+
+### Standalone Docker (no Compose)
+
+```bash
+docker build -t cve-change-radar:local .
+docker volume create cve-change-radar-data
+docker run -d --name cve-change-radar --init --restart unless-stopped \
+  -e APP_ENV=production -e NODE_ENV=production -e DATA_DIR=/data \
+  -p 127.0.0.1:3000:3000 -v cve-change-radar-data:/data \
+  cve-change-radar:local
+```
+
+- `setup.sh` does not exist yet (todo 28) — prerequisite checks only, never a
+  hidden installer (no silent packages, sudo, remote downloads, or firewall
+  changes).
+- Backup/restore/upgrade procedures are todo 29, not yet implemented.
+- See `.omo/drafts/cve-single-image-deployment.md` for the full acceptance
+  contract (parity tests 7 and 10 cover this Compose setup).
 
 ## Security (planned controls, not yet audited software)
 

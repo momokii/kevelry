@@ -1,0 +1,46 @@
+# cve-change-radar — production-safe Compose default (todo 27).
+#
+# Normal launch: `docker compose up -d`
+# One image, one container, one named volume. Debug off, no source bind
+# mounts, no admin/debug ports. The published web port binds to loopback only;
+# public exposure needs explicit binding + HTTPS setup (see README).
+#
+# Image contract: built from the repo Dockerfile as `cve-change-radar:local`.
+# Plain `up -d` never rebuilds a stale image — see README for the exact
+# update (`pull` for releases / `build`) vs rebuild commands.
+#
+# No `compose.override.yaml` is shipped on purpose: plain startup must never
+# silently enable development behavior. Dev mode is an explicit opt-in:
+# `docker compose -f compose.yaml -f compose.dev.yaml up`.
+
+name: cve-change-radar
+
+services:
+  app:
+    image: cve-change-radar:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      NODE_ENV: production
+      PORT: "3000"
+      DATA_DIR: /data
+      SCHEDULE_ENABLED: ${SCHEDULE_ENABLED:-false}
+    ports:
+      # Loopback-bound by default. Host side honors $PORT (default 3000);
+      # the container always listens on 3000 (see Dockerfile PORT/HOSTNAME).
+      - "127.0.0.1:${PORT:-3000}:3000"
+    volumes:
+      - cve-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+volumes:
+  cve-data:
+    name: cve-change-radar-data

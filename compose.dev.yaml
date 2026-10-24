@@ -1,0 +1,38 @@
+# cve-change-radar — explicit development opt-in (todo 27).
+#
+# Development only, never auto-loaded:
+#   docker compose -f compose.yaml -f compose.dev.yaml up
+#
+# There is intentionally no `compose.override.yaml`: plain
+# `docker compose up -d` must stay production-safe. Everything
+# development-only lives here: builder-stage build for `npm run dev`
+# (the runner image ships without npm), live source bind mounts for hot
+# reload, and the Node inspector debug port (loopback-bound).
+#
+# Data still lives in the same named volume (`cve-data`) so dev and normal
+# runs share accepted snapshots and checkpoints.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # The `builder` stage keeps npm + full source so `next dev` can run;
+      # the default `runner` target (compose.yaml) has no dev tooling.
+      target: builder
+    environment:
+      APP_ENV: development
+      NODE_ENV: development
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+    ports:
+      # Node inspector, loopback only. Not present in the default file.
+      - "127.0.0.1:9229:9229"
+    volumes:
+      # Live source for hot reload (appended to the cve-data:/data mount
+      # from compose.yaml). Anonymous volumes keep container-installed
+      # modules/build cache instead of the host's directories.
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    stdin_open: true
+    tty: true
