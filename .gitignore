@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------------------
+# Secrets and environment files
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Local Claude Code files (personal, never shared)
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/worktrees/
+
+# Logs and local runtime artifacts
+*.log
+*.pid
+tmp/
+.cache/
+
+# Agent execution state and local config backups (keep drafts/plans versioned)
+.omo/run-continuation/
+.omo/runtime/
+.omo/*.bak*
+.omo/*.tmp
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# ---------------------------------------------------------------------------
+# Stack-specific entries (dependencies, build output, caches) are added by
+# TASK-001 once the stack is chosen. Do not add framework guesses here.
+# ---------------------------------------------------------------------------
