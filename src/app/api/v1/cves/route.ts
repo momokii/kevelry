@@ -1,0 +1,77 @@
+import { getDefaultPriority } from "../../../../lib/priority";
+import { getAcceptedEpssDate } from "../../../../lib/priority";
+import {
+  ApiError,
+  buildProvenance,
+  coverageFor,
+  errorResponse,
+  filterPriorityItems,
+  getDb,
+  loadFullRecords,
+  okResponse,
+  paginate,
+  parseCursor,
+  parseDateBound,
+  parseEpss,
+  parseKev,
+  parseLimit,
+  parseSeverity,
+  reserveRateLimit,
+  toCveItem,
+} from "../_lib/shared";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request): Promise<Response> {
+  let db = null;
+  try {
+    db = getDb();
+  } catch {
+    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", null);
+  }
+  const rate = reserveRateLimit(request, db);
+  if (rate instanceof Response) return rate;
+  try {
+    const params = new URL(request.url).searchParams;
+    const limit = parseLimit(params.get("limit"));
+    const offset = parseCursor(params.get("cursor"));
+    const severity = parseSeverity(params.get("severity"));
+    const kev = parseKev(params.get("kev"));
+    const epss = parseEpss(params.get("epss"));
+    const start = parseDateBound(params.get("publishedStart"), "publishedStart");
+    const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
+    if (start !== null && end !== null && start >= end) {
+      throw new ApiError("BAD_DATE_RANGE", 400, "publishedStart must be earlier than publishedEnd.");
+    }
+    const ordered = getDefaultPriority(db);
+    const filtered = filterPriorityItems(ordered, { severity, kev, epss, start, end });
+    const { page, hasMore, nextCursor } = paginate(filtered, offset, limit);
+    const records = loadFullRecords(
+      db,
+      page.map((item) => item.id),
+    );
+    const byId = new Map(records.map((record) => [record.cveId, record]));
+    const scoreDate = getAcceptedEpssDate(db);
+    const data = page.map((item) => {
+      const record = byId.get(item.id);
+      if (record === undefined) return null;
+      return toCveItem(record, scoreDate, null);
+    });
+    const nowIso = new Date().toISOString();
+    return okResponse(
+      request,
+      {
+        data: data.filter((row) => row !== null),
+        pagination: { limit, hasMore, nextCursor },
+        coverage: coverageFor(filtered, page.length),
+        provenance: buildProvenance(db, nowIso),
+      },
+      rate,
+    );
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return errorResponse(request, error.code, error.message, db, error.details, rate);
+    }
+    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+  }
+}
