@@ -2,6 +2,22 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-24 - Secure startup approval and consolidated planning brief
+
+Owner approved production-safe `docker compose up -d` with explicitly selected
+development. Updated environment guidance, superseded the old auto-dev convention,
+and moved the agent's Compose-up permission from allow to ask; deny rules are unchanged.
+No Docker, app, dependency, setup script or production command was executed.
+
+Read-only stack/font research and parent first-party checks informed a consolidated
+approval brief under `.omo/drafts/`. Proposed Next/Node plus a separately supervised
+Node ingestion process in the same container, embedded SQLite/FTS5, Evidence Ledger,
+30-day observed daily replay, existing ranking policy and test/security gates.
+Registry versions are dated candidates, not an installed/tested/approved combination.
+Three font licenses are OFL-1.1; exact assets and visual QA remain pending.
+Host questions are deferred. Next action is one bundled owner approval, then creation
+and review of the final execution plan. No application implementation is authorized.
+
 ## 2026-10-24 - Scope approval, Docker contract and Git baseline
 
 Owner approved Radar/replay alongside original overview/search/priority requirements,
