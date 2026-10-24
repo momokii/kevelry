@@ -244,6 +244,15 @@ delay data, animated charts that conceal exact values.
   change is not compared`, `Not listed in this KEV snapshot`, quiet state with a
   date, last-known-good content with a visible source-specific warning.
 
+### 8.1 Accessibility debt (todo-24 hardening, 2026-10-24)
+
+| Item | Status | Owner / exit |
+|---|---|---|
+| Showcase-only `OrderingExplanation` keeps `tabIndex={0}` plus `aria-label` on a static `div` | Open, low | Product UI owner; remove both when the showcase primitive is next touched (Wave-4 pages already dropped the pattern). Exit: `rg "tabIndex" src/components/ledger` prints nothing. |
+| Showcase-only `SnapshotSelector` note uses `role="status"` for static text | Open, low | Same as above. Exit: status/alert roles appear only on dynamic results, errors, and the radar filter count. |
+| Inline sentence links (e.g. the methodology body link) are exempt from the 44px rule per WCAG 2.5.8 | Accepted, not debt | Recorded so a future audit does not "fix" readable prose. Exit: none; `tests/e2e/a11y-audit.ts` encodes the inline exception. |
+| Automated checks are Playwright assertions, not axe-core | Accepted | axe-core was not warranted: every route is server-rendered with a small primitive set, and the audit covers headings, names, scopes, live regions, focus, touch, zoom, and reduced motion. Exit: adopt axe-core only if a client-heavy route lands. |
+
 ## 9. Token-to-Code Map
 
 | Token group | Defined in | Consumed by |

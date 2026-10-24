@@ -12,6 +12,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { openDatabase } from "../../src/lib/db";
+import {
+  A11Y_EVIDENCE_DIR,
+  auditReducedMotion,
+  auditRoute,
+  auditZoomReflow,
+  ensureA11yEvidenceDir,
+} from "./a11y-audit";
 
 test.describe.configure({ mode: "serial" });
 
@@ -234,4 +241,25 @@ test("failed KEV feed renders the documented stale warning with last-known-good 
     path: `${EVIDENCE_DIR}/methodology-failed-feed-1280.png`,
     fullPage: true,
   });
+});
+
+test("methodology passes the task-24 accessibility audit", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  await auditRoute(page, { route: "/methodology", name: "methodology", maxLiveRegions: 1 });
+
+  const healthSymbols = await page
+    .locator('[data-testid="methodology-health"] .ledger-evidence-symbol')
+    .count();
+  expect(healthSymbols, "health states carry text symbols, not color alone").toBeGreaterThanOrEqual(3);
+
+  await page.locator(".ledger-skip-link").focus();
+  await expect(page.locator(".ledger-skip-link")).toBeFocused();
+  await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/methodology-focus-1280.png`, fullPage: true });
+
+  await auditZoomReflow(page, "methodology", `${A11Y_EVIDENCE_DIR}/methodology-zoom-200.png`);
+  await auditReducedMotion(
+    page,
+    "methodology",
+    `${A11Y_EVIDENCE_DIR}/methodology-reduced-motion.png`,
+  );
 });

@@ -101,7 +101,7 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
 
   return (
     <section aria-label="Results" data-testid="explore-results">
-      <div className="ledger-ordering" data-testid="explore-ordering" tabIndex={0}>
+      <div className="ledger-ordering" data-testid="explore-ordering">
         <strong>Search ordering: text queries rank by the local index, then CVE ID.</strong>
         <span className="ledger-meta">
           Empty queries sort publication date descending with unknown dates last, then CVE ID.

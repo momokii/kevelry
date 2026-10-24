@@ -39,7 +39,11 @@ export function PrioritySummaries({ summaries, empty }: PrioritySummariesProps) 
             </div>
           )}
           <p>
-            <a href={summary.href} data-testid={`overview-priority-${summary.key}-more`}>
+            <a
+              className="ledger-more-link"
+              href={summary.href}
+              data-testid={`overview-priority-${summary.key}-more`}
+            >
               Full {summary.title.toLowerCase()} list
             </a>
           </p>

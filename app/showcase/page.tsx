@@ -26,7 +26,7 @@ function StateCard({ id, label, children }: { id: string; label: string; childre
 
 export default function ShowcasePage() {
   return (
-    <main className="ledger-page" data-testid="showcase-root">
+    <main className="ledger-page" data-testid="showcase-root" id="main-content">
       <h1>Evidence Ledger primitive showcase</h1>
       <p className="ledger-meta">
         Every Section-6 primitive in each required state. Tokens: DESIGN.md sections 2-4. Copy guardrails: DESIGN.md

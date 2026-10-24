@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  A11Y_EVIDENCE_DIR,
+  auditReducedMotion,
+  auditRoute,
+  auditZoomReflow,
+  ensureA11yEvidenceDir,
+} from "./a11y-audit";
+
 const EVIDENCE_DIR =
   "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-19-cve-change-radar";
 
@@ -187,4 +195,21 @@ test("explore survives long vendor-style labels and unbroken strings", async ({ 
   expect(over1280, "horizontal overflow with long labels at 1280px").toBeLessThanOrEqual(1);
 
   await page.screenshot({ path: `${EVIDENCE_DIR}/explore-stress-360.png`, fullPage: true });
+});
+
+test("explore passes the task-24 accessibility audit", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  await auditRoute(page, { route: "/explore", name: "explore", maxLiveRegions: 2 });
+
+  await expect(page.getByTestId("explore-filters")).toBeVisible();
+  await page.getByTestId("explore-query").focus();
+  await page.keyboard.press("Tab");
+  const afterSearch = await page.evaluate(
+    () => (document.activeElement instanceof HTMLElement ? (document.activeElement.getAttribute("data-testid") ?? "") : ""),
+  );
+  expect(afterSearch, "tab order leaves the search box").not.toBe("explore-query");
+  await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/explore-focus-1280.png`, fullPage: true });
+
+  await auditZoomReflow(page, "explore", `${A11Y_EVIDENCE_DIR}/explore-zoom-200.png`);
+  await auditReducedMotion(page, "explore", `${A11Y_EVIDENCE_DIR}/explore-reduced-motion.png`);
 });

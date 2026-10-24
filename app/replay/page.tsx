@@ -88,7 +88,7 @@ export default async function ReplayPage({
   }));
   if (loaded === null) {
     return (
-      <main className="ledger-page" data-testid="replay-root">
+      <main className="ledger-page" data-testid="replay-root" id="main-content">
         <h1>Snapshot replay</h1>
         <ReplayMasthead bannerText={bannerFor("", "store-missing", null)} />
         <ReplayUnavailable reason="Snapshot unavailable: the retained history store could not be opened on this server." />
@@ -100,7 +100,7 @@ export default async function ReplayPage({
   const launch = loaded.launch;
   if (checkpoints.length === 0 || launch === null) {
     return (
-      <main className="ledger-page" data-testid="replay-root">
+      <main className="ledger-page" data-testid="replay-root" id="main-content">
         <h1>Snapshot replay</h1>
         <ReplayMasthead bannerText={bannerFor("", "empty", null)} />
         <ReplayUnavailable reason="no checkpoints retained; missing days are ineligible, never interpolated" />
@@ -111,7 +111,7 @@ export default async function ReplayPage({
   const newest = checkpoints[checkpoints.length - 1];
   if (newest === undefined) {
     return (
-      <main className="ledger-page" data-testid="replay-root">
+      <main className="ledger-page" data-testid="replay-root" id="main-content">
         <h1>Snapshot replay</h1>
         <ReplayMasthead bannerText={bannerFor("", "empty", null)} />
         <ReplayUnavailable reason="no checkpoints retained; missing days are ineligible, never interpolated" />
@@ -144,7 +144,7 @@ export default async function ReplayPage({
   );
   if (result === null) {
     return (
-      <main className="ledger-page" data-testid="replay-root">
+      <main className="ledger-page" data-testid="replay-root" id="main-content">
         <h1>Snapshot replay</h1>
         <ReplayMasthead bannerText={bannerFor("", "store-missing", null)} />
         <ReplayUnavailable reason="Snapshot unavailable: the retained history store could not be read on this server." />
@@ -154,7 +154,7 @@ export default async function ReplayPage({
   if (result.status === "unavailable") {
     const kind = mapReplayReason(result.reason);
     return (
-      <main className="ledger-page" data-testid="replay-root">
+      <main className="ledger-page" data-testid="replay-root" id="main-content">
         <h1>Snapshot replay</h1>
         <ReplayMasthead bannerText={bannerFor(selectedDate, kind, null)} />
         <ReplaySelector selection={selector} />
@@ -168,7 +168,7 @@ export default async function ReplayPage({
   }
 
   return (
-    <main className="ledger-page" data-testid="replay-root">
+    <main className="ledger-page" data-testid="replay-root" id="main-content">
       <h1>Snapshot replay</h1>
       <ReplayMasthead
         bannerText={bannerFor(selectedDate, "available", result.manifest.policyVersion)}

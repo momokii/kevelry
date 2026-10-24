@@ -1,7 +1,14 @@
-const NAV_ITEMS = ["Overview", "Search", "Priority", "Radar", "Method"] as const;
+const NAV_ITEMS = [
+  { label: "Overview", href: "/" },
+  { label: "Search", href: "/explore" },
+  { label: "Priority", href: "/priority" },
+  { label: "Radar", href: "/radar" },
+  { label: "Replay", href: "/replay" },
+  { label: "Method", href: "/methodology" },
+] as const;
 
 type MastheadProps = {
-  current?: (typeof NAV_ITEMS)[number];
+  current?: (typeof NAV_ITEMS)[number]["label"];
   historical?: boolean;
   menuOpen?: boolean;
   testId: string;
@@ -13,13 +20,13 @@ export function Masthead({ current = "Overview", historical = false, menuOpen = 
       <span className="ledger-brand">Evidence Ledger</span>
       <nav className="ledger-nav" aria-label="Primary">
         {NAV_ITEMS.map((item) =>
-          item === current ? (
-            <span key={item} className="ledger-nav-link ledger-nav-link-current" aria-current="page">
-              {item} (current)
+          item.label === current ? (
+            <span key={item.label} className="ledger-nav-link ledger-nav-link-current" aria-current="page">
+              {item.label} (current)
             </span>
           ) : (
-            <a key={item} className="ledger-nav-link" href="#section-masthead">
-              {item}
+            <a key={item.label} className="ledger-nav-link" href={item.href}>
+              {item.label}
             </a>
           ),
         )}

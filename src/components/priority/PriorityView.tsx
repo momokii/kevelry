@@ -85,12 +85,7 @@ export function PriorityOrdering({ mode, body }: { mode: PriorityMode; body: str
       "Rising forecast: same-model EPSS observations on exactly d and d-7 with a positive delta. Order delta percentage-points descending, current raw probability descending, then CVE ID ASCII ascending.",
   };
   return (
-    <div
-      className="ledger-ordering"
-      data-testid={`priority-ordering-${mode}`}
-      tabIndex={0}
-      aria-label={`Ordering policy: ${headings[mode]}`}
-    >
+    <div className="ledger-ordering" data-testid={`priority-ordering-${mode}`}>
       <strong>{headings[mode]}</strong>
       <span className="ledger-meta">{body}</span>
     </div>

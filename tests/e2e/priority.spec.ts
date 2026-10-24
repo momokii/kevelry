@@ -15,6 +15,13 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
 import {
+  A11Y_EVIDENCE_DIR,
+  auditReducedMotion,
+  auditRoute,
+  auditZoomReflow,
+  ensureA11yEvidenceDir,
+} from "./a11y-audit";
+import {
   getHighestForecast,
   getKnownExploited,
   getNewCritical,
@@ -319,5 +326,29 @@ test.describe.serial("priority list views", () => {
     } finally {
       restore.close();
     }
+  });
+
+  test("priority passes the task-24 accessibility audit", async ({ page }) => {
+    ensureA11yEvidenceDir();
+    await auditRoute(page, {
+      route: "/priority?view=highest-forecast",
+      name: "priority",
+      maxLiveRegions: 1,
+    });
+
+    await page.getByTestId("priority-tab-known-exploited").focus();
+    await expect(page.getByTestId("priority-tab-known-exploited")).toBeFocused();
+    const tabOutline = await page
+      .getByTestId("priority-tab-known-exploited")
+      .evaluate((el) => getComputedStyle(el).outlineWidth);
+    expect(tabOutline, "priority tab focus outline").not.toBe("0px");
+    const tabHeight = await page
+      .getByTestId("priority-tab-known-exploited")
+      .evaluate((el) => el.getBoundingClientRect().height);
+    expect(tabHeight, "priority tab touch height").toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/priority-focus-1280.png`, fullPage: true });
+
+    await auditZoomReflow(page, "priority", `${A11Y_EVIDENCE_DIR}/priority-zoom-200.png`);
+    await auditReducedMotion(page, "priority", `${A11Y_EVIDENCE_DIR}/priority-reduced-motion.png`);
   });
 });

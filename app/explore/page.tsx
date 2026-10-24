@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { ExploreFilters } from "@/components/explore/ExploreFilters";
 import { ExploreResults, type ExploreOutcome } from "@/components/explore/ExploreResults";
+import { Masthead } from "@/components/ledger/Masthead";
 import {
   EXPLORE_DEFAULT_LIMIT,
   ExploreInitial,
@@ -180,21 +181,8 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
   }
 
   return (
-    <main className="ledger-page" data-testid="explore-root">
-      <nav className="ledger-masthead" aria-label="Primary">
-        <span className="ledger-brand">Evidence Ledger</span>
-        <div className="ledger-nav">
-          <a className="ledger-nav-link" href="/">
-            Overview
-          </a>
-          <span className="ledger-nav-link ledger-nav-link-current" aria-current="page">
-            Search (current)
-          </span>
-          <a className="ledger-nav-link" href="/showcase">
-            Showcase
-          </a>
-        </div>
-      </nav>
+    <main className="ledger-page" data-testid="explore-root" id="main-content">
+      <Masthead current="Search" testId="explore-masthead" />
 
       <h1 data-testid="explore-title">Explore CVE records</h1>
       <p className="ledger-meta" data-testid="explore-lede">

@@ -4,6 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
+import {
+  A11Y_EVIDENCE_DIR,
+  auditReducedMotion,
+  auditRoute,
+  auditZoomReflow,
+  ensureA11yEvidenceDir,
+} from "./a11y-audit";
 
 test.describe.configure({ mode: "serial" });
 
@@ -315,4 +322,21 @@ test("overview empty corpus shows honest empty states", async ({ page }) => {
   expect(overflow, "horizontal overflow on empty state").toBeLessThanOrEqual(1);
 
   await page.screenshot({ path: `${EVIDENCE_DIR}/overview-empty-1280.png`, fullPage: true });
+});
+
+test("overview passes the task-24 accessibility audit", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  deployDbFile(buildSeededDbFile());
+  await auditRoute(page, { route: "/", name: "overview", maxLiveRegions: 1 });
+
+  await page.getByTestId("overview-search-input").focus();
+  await expect(page.getByTestId("overview-search-input")).toBeFocused();
+  await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/overview-focus-1280.png`, fullPage: true });
+
+  await auditZoomReflow(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-zoom-200.png`);
+  await auditReducedMotion(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-reduced-motion.png`);
+
+  await expect(page.getByTestId("overview-chart-table").locator("th[scope]").first()).toBeVisible();
+  const uncertainCopy = await page.getByTestId("overview-chart-count-unknown").textContent();
+  expect(uncertainCopy ?? "").toMatch(/explicit unknown bucket/);
 });

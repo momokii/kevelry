@@ -44,11 +44,24 @@ function signalText(item: RadarItemSnapshot, pins: StoredRadarCheckpoint["source
   return parts.join(" ");
 }
 
+const REPLAY_NAV = [
+  { label: "Overview", href: "/" },
+  { label: "Search", href: "/explore" },
+  { label: "Priority", href: "/priority" },
+  { label: "Radar", href: "/radar" },
+  { label: "Method", href: "/methodology" },
+] as const;
+
 export function ReplayMasthead({ bannerText }: { bannerText: string }) {
   return (
     <header className="ledger-masthead" data-testid="replay-masthead">
       <span className="ledger-brand">Evidence Ledger</span>
       <nav className="ledger-nav" aria-label="Primary">
+        {REPLAY_NAV.map((item) => (
+          <a key={item.label} className="ledger-nav-link" href={item.href}>
+            {item.label}
+          </a>
+        ))}
         <span className="ledger-nav-link ledger-nav-link-current" aria-current="page">
           Replay (current)
         </span>
@@ -106,7 +119,7 @@ export function ReplaySelector({ selection }: { selection: ReplaySelection }) {
           Show retained snapshot
         </button>
       </form>
-      <p className="ledger-snapshot-note" role="status" data-testid="replay-selector-note">
+      <p className="ledger-snapshot-note" data-testid="replay-selector-note">
         {`Retained checkpoints ${selection.retainedFrom} to ${selection.retainedTo}. History begins ${selection.launchDay}. Missing days are ineligible, never interpolated.`}
       </p>
     </section>
@@ -230,7 +243,7 @@ export function ReplayOrdering({ manifest }: { manifest: StoredRadarCheckpoint }
       data-testid="replay-ordering"
     >
       <h2 id="replay-ordering-heading">Ordering policy in this replay</h2>
-      <div className="ledger-ordering" tabIndex={0}>
+      <div className="ledger-ordering">
         <strong>{`Ranking policy ${manifest.policyVersion}. Ties fall back to publication date, then CVE ID ASCII.`}</strong>
         <span className="ledger-meta">
           {`Unknown EPSS sorts after every known value, including zero. Coverage: ${manifest.cohortCount} retained PUBLISHED records in checkpoint ${manifest.checkpointDate}. ${unscored} unscored, ${unknownEpss} without EPSS, ${unknownDate} without a publication date. Join gaps are reported, never silently dropped.`}

@@ -141,7 +141,7 @@ export default function MethodologyPage() {
   ];
 
   return (
-    <main className="ledger-page" data-testid="methodology-root">
+    <main className="ledger-page" data-testid="methodology-root" id="main-content">
       <Masthead current="Method" testId="methodology-masthead" />
       <h1>Methodology and data status</h1>
       <p className="ledger-meta" data-testid="methodology-lede">

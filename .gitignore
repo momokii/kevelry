@@ -23,6 +23,9 @@ CLAUDE.local.md
 tmp/
 .cache/
 
+# Local dev database and retained-snapshot volume contents (never commit)
+data/
+
 # Agent execution state and local config backups (keep drafts/plans versioned)
 .omo/run-continuation/
 .omo/runtime/

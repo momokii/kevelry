@@ -11,6 +11,13 @@ import {
   type RadarViews,
   writeCheckpoint,
 } from "../../src/lib/radar";
+import {
+  A11Y_EVIDENCE_DIR,
+  auditReducedMotion,
+  auditRoute,
+  auditZoomReflow,
+  ensureA11yEvidenceDir,
+} from "./a11y-audit";
 
 test.describe.configure({ mode: "serial" });
 
@@ -347,4 +354,18 @@ test("model-changed renders unavailable with reason", async ({ page }) => {
   await expect(page.getByTestId("replay-model-changed-reason")).toContainText("model-changed");
   await expect(page.getByTestId(`replay-item-${ID_KEV}`)).toHaveCount(0);
   await expect(page.getByTestId(`replay-item-${ID_CURRENT_ONLY}`)).toHaveCount(0);
+});
+
+test("replay passes the task-24 accessibility audit", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  await auditRoute(page, { route: `/replay?date=${DATE_B}`, name: "replay", maxLiveRegions: 1 });
+
+  await expect(page.getByTestId("replay-selector-select")).toBeVisible();
+  await page.getByTestId("replay-selector-submit").focus();
+  await expect(page.getByTestId("replay-selector-submit")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/replay-focus-1280.png`, fullPage: true });
+
+  await auditZoomReflow(page, "replay", `${A11Y_EVIDENCE_DIR}/replay-zoom-200.png`);
+  await auditReducedMotion(page, "replay", `${A11Y_EVIDENCE_DIR}/replay-reduced-motion.png`);
 });

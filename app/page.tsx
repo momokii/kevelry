@@ -17,7 +17,7 @@ export default function OverviewPage() {
   const data = loadOverviewData(resolveDataDir(), new Date().toISOString());
   if (data === null) {
     return (
-      <main className="ledger-page" data-testid="overview-root">
+      <main className="ledger-page" data-testid="overview-root" id="main-content">
         <OverviewMasthead />
         <h1>Overview</h1>
         <div className="ledger-section" data-testid="overview-unavailable">
@@ -31,7 +31,7 @@ export default function OverviewPage() {
     );
   }
   return (
-    <main className="ledger-page" data-testid="overview-root">
+    <main className="ledger-page" data-testid="overview-root" id="main-content">
       <OverviewMasthead />
       <h1>Overview</h1>
       <p className="ledger-meta" data-testid="overview-lede">

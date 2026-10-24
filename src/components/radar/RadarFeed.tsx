@@ -41,28 +41,30 @@ function EventRow({
 }) {
   const meta = KIND_META[event.kind];
   return (
-    <button
-      type="button"
-      className="ledger-row"
-      data-testid={`radar-event-${event.cveId}-${event.kind}`}
-      aria-pressed={selected}
-      onClick={onSelect}
-      style={{ width: "100%", textAlign: "left", cursor: "pointer", font: "inherit" }}
-    >
-      <span className="ledger-row-id">{event.cveId}</span>
-      <p className="ledger-row-title">
-        <span className="ledger-compare-change" data-testid={`radar-kind-${event.eventId}`}>
-          {meta.symbol} {meta.label}
+    <li className="ledger-row-item">
+      <button
+        type="button"
+        className="ledger-row ledger-row-button"
+        data-testid={`radar-event-${event.cveId}-${event.kind}`}
+        aria-pressed={selected}
+        aria-label={`${meta.label}: ${event.cveId}. ${event.detail}`}
+        onClick={onSelect}
+      >
+        <span className="ledger-row-id">{event.cveId}</span>
+        <span className="ledger-row-title" data-testid={`radar-kind-${event.eventId}`}>
+          <span className="ledger-compare-change">
+            {meta.symbol} {meta.label}
+          </span>
         </span>
-      </p>
-      <p className="ledger-row-signals" data-testid={`radar-detail-${event.eventId}`}>
-        {event.detail}
-      </p>
-      <span className="ledger-row-signals">
-        Observed {event.sourceRevision}; rank {rankText(event.beforeRank)} to{" "}
-        {rankText(event.afterRank)}.
-      </span>
-    </button>
+        <span className="ledger-row-signals ledger-row-block" data-testid={`radar-detail-${event.eventId}`}>
+          {event.detail}
+        </span>
+        <span className="ledger-row-signals ledger-row-block">
+          Observed {event.sourceRevision}; rank {rankText(event.beforeRank)} to{" "}
+          {rankText(event.afterRank)}.
+        </span>
+      </button>
+    </li>
   );
 }
 
@@ -169,11 +171,21 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
     return day.events[0] ?? null;
   }, [day, selectedId]);
 
+  // If filtering unmounted the focused event button, focus falls back to
+  // <body>; recover to the feed heading so keyboard users keep a visible target.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (document.activeElement === document.body) {
+      document.getElementById("radar-feed-heading")?.focus({ preventScroll: true });
+    }
+  }, [kindFilter, dayIndex]);
+
   if (day === undefined || days.length === 0) {
     return (
       <main
         className="ledger-page"
         data-testid="radar-root"
+        id="main-content"
         data-hydrated={hydrated ? "true" : "false"}
       >
         <Masthead current="Radar" testId="radar-masthead" />
@@ -191,6 +203,7 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
     <main
       className="ledger-page"
       data-testid="radar-root"
+      id="main-content"
       data-hydrated={hydrated ? "true" : "false"}
     >
       <Masthead current="Radar" testId="radar-masthead" />
@@ -287,10 +300,14 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
           </section>
 
           <section className="ledger-section" aria-labelledby="radar-feed-heading">
-            <h2 id="radar-feed-heading">
+            <h2 id="radar-feed-heading" tabIndex={-1}>
               Change feed: {day.afterDate} vs {day.beforeDate} ({String(visibleEvents.length)}{" "}
               {visibleEvents.length === 1 ? "entry" : "entries"})
             </h2>
+            <p className="ledger-meta" role="status" data-testid="radar-filter-status">
+              Showing {visibleEvents.length} of {day.events.length} entries
+              {kindFilter === null ? "" : ` for ${KIND_META[kindFilter].label}`}.
+            </p>
             <div data-testid="radar-feed">
               {visibleEvents.length === 0 ? (
                 <p data-testid="radar-filter-empty">
@@ -298,14 +315,16 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
                   feed.
                 </p>
               ) : (
-                visibleEvents.map((event) => (
-                  <EventRow
-                    key={event.eventId}
-                    event={event}
-                    selected={selected?.eventId === event.eventId}
-                    onSelect={() => setSelectedId(event.eventId)}
-                  />
-                ))
+                <ul className="ledger-feed-list">
+                  {visibleEvents.map((event) => (
+                    <EventRow
+                      key={event.eventId}
+                      event={event}
+                      selected={selected?.eventId === event.eventId}
+                      onSelect={() => setSelectedId(event.eventId)}
+                    />
+                  ))}
+                </ul>
               )}
             </div>
           </section>

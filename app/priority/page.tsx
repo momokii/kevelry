@@ -243,7 +243,7 @@ export default async function PriorityPage({
   }
 
   return (
-    <main className="ledger-page" data-testid="priority-root">
+    <main className="ledger-page" data-testid="priority-root" id="main-content">
       <Masthead current="Priority" testId="priority-masthead" />
       <h1>Priority lists</h1>
       <p className="ledger-meta" data-testid="priority-intro">

@@ -271,7 +271,10 @@ a {
 }
 
 .ledger-filter-chip {
+  display: inline-flex;
+  align-items: center;
   min-height: 44px;
+  min-width: 44px;
   font-size: 14px;
   font-family: var(--ledger-font-body);
   color: var(--ledger-ink);
@@ -298,6 +301,29 @@ a {
   background: var(--ledger-canvas);
 }
 
+/* ---------- skip link ---------- */
+
+.ledger-skip-link {
+  position: absolute;
+  left: var(--ledger-space-4);
+  top: -100px;
+  z-index: 100;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--ledger-space-4);
+  background: var(--ledger-surface);
+  color: var(--ledger-ink);
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ledger-skip-link:focus-visible {
+  top: var(--ledger-space-2);
+}
+
 /* ---------- CVE result row ---------- */
 
 .ledger-row {
@@ -311,6 +337,28 @@ a {
 
 .ledger-row + .ledger-row {
   margin-top: var(--ledger-space-2);
+}
+
+.ledger-feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ledger-row-item + .ledger-row-item {
+  margin-top: var(--ledger-space-2);
+}
+
+.ledger-row-button {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ledger-row-block {
+  display: block;
+  margin-top: var(--ledger-space-1);
 }
 
 .ledger-row-id {
@@ -337,6 +385,12 @@ a {
   font-size: 14px;
   min-height: 44px;
   line-height: 44px;
+}
+
+.ledger-more-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 /* ---------- evidence strip ---------- */

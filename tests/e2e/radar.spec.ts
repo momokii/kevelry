@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
 
+import {
+  A11Y_EVIDENCE_DIR,
+  auditReducedMotion,
+  auditRoute,
+  auditZoomReflow,
+  ensureA11yEvidenceDir,
+} from "./a11y-audit";
+
 const EVIDENCE_DIR =
   "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-21-cve-change-radar";
 
@@ -77,3 +85,36 @@ for (const width of [360, 768, 1280]) {
     await page.screenshot({ path: `${EVIDENCE_DIR}/radar-quiet-${width}.png`, fullPage: true });
   });
 }
+
+test("radar passes the task-24 accessibility audit", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  await auditRoute(page, { route: "/radar", name: "radar", maxLiveRegions: 1 });
+
+  await expect(page.getByTestId("radar-root")).toHaveAttribute("data-hydrated", "true", {
+    timeout: 60000,
+  });
+
+  const nestedParagraphs = await page.evaluate(
+    () => document.querySelectorAll("button p, a p").length,
+  );
+  expect(nestedParagraphs, "no paragraph nested inside a button or link").toBe(0);
+  const feedListCount = await page.locator('[data-testid="radar-feed"] ul li').count();
+  expect(feedListCount, "feed renders list items").toBe(9);
+
+  await page.getByTestId("radar-event-CVE-2099-0006-rank-moved").focus();
+  await expect(page.getByTestId("radar-event-CVE-2099-0006-rank-moved")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("radar-inspector-title")).toContainText("Rank-only move");
+
+  await page.getByTestId("radar-filter-forecast-changed").focus();
+  await page.getByTestId("radar-filter-forecast-changed").click();
+  await expect(page.getByTestId("radar-filter-status")).toContainText("Showing 1 of 9 entries");
+  const focusedAfterFilter = await page.evaluate(
+    () => (document.activeElement instanceof HTMLElement ? document.activeElement.tagName : ""),
+  );
+  expect(focusedAfterFilter, "focus survives the feed filter change").not.toBe("BODY");
+  await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/radar-focus-1280.png`, fullPage: true });
+
+  await auditZoomReflow(page, "radar", `${A11Y_EVIDENCE_DIR}/radar-zoom-200.png`);
+  await auditReducedMotion(page, "radar", `${A11Y_EVIDENCE_DIR}/radar-reduced-motion.png`);
+});
