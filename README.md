@@ -164,10 +164,8 @@ docker run -d --name cve-change-radar --init --restart unless-stopped \
   cve-change-radar:local
 ```
 
-- `setup.sh` does not exist yet (todo 28) — prerequisite checks only, never a
-  hidden installer (no silent packages, sudo, remote downloads, or firewall
-  changes).
-- Backup/restore/upgrade procedures are todo 29, not yet implemented.
+- `setup.sh` is implemented as a check-only prerequisite script (Docker, daemon, compose, port, volume — actionable failures, changes nothing; run `./setup.sh` before first launch).
+- Backup/restore/upgrade procedures are implemented and tested per `docs/backup-runbook.md` (round-trip verified, incompatible restores refused with guidance).
 - See `.omo/drafts/cve-single-image-deployment.md` for the full acceptance
   contract (parity tests 7 and 10 cover this Compose setup).
 
