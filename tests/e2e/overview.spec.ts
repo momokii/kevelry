@@ -1,0 +1,318 @@
+import { expect, test } from "@playwright/test";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { openDatabase, type CveDatabase } from "../../src/lib/db";
+
+test.describe.configure({ mode: "serial" });
+
+const PROJECT_ROOT = process.cwd();
+const SERVER_DATA_DIR = path.resolve(PROJECT_ROOT, process.env.DATA_DIR ?? "./data");
+const EVIDENCE_DIR =
+  "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-18-cve-change-radar";
+
+const STAMP = "2026-10-24T00:00:00.000Z";
+const LONG_TITLE = "Overflow in the demonstration parser ".repeat(6).slice(0, 200);
+
+const tempDirs: string[] = [];
+let hadServerDb = false;
+let serverDbBackup = "";
+
+function dayAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+function isoDayAgo(days: number, time = "12:00:00.000Z"): string {
+  return `${dayAgo(days)}T${time}`;
+}
+
+interface MetricFixture {
+  origin: string;
+  version: string;
+  baseScore: string;
+}
+
+interface RecordFixture {
+  cveId: string;
+  title: string | null;
+  description: string;
+  lang: string | null;
+  published: string | null;
+  metrics: MetricFixture[];
+  kevDateAdded: string | null;
+  kevCatalogDate: string | null;
+  epss: Array<{ scoreDate: string; model: string; value: string; percentile: string }>;
+}
+
+function seedRecord(db: CveDatabase, fixture: RecordFixture): void {
+  db.handle
+    .prepare(
+      "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, " +
+        "title, description, description_lang, source_revision, created_at, updated_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(
+      fixture.cveId,
+      "5.1",
+      "PUBLISHED",
+      fixture.published,
+      fixture.published,
+      fixture.title,
+      fixture.description,
+      fixture.lang,
+      "rev-fixture-2099",
+      STAMP,
+      STAMP,
+    );
+  for (const [index, metric] of fixture.metrics.entries()) {
+    db.handle
+      .prepare(
+        "INSERT INTO cvss_metrics (cve_id, origin, version, base_score, vector, source_order) " +
+          "VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(fixture.cveId, metric.origin, metric.version, metric.baseScore, "CVSS:3.1/AV:N", index);
+  }
+  if (fixture.kevDateAdded !== null) {
+    db.handle
+      .prepare(
+        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
+      )
+      .run(fixture.cveId, fixture.kevDateAdded, fixture.kevCatalogDate, STAMP);
+  }
+  for (const row of fixture.epss) {
+    db.handle
+      .prepare(
+        "INSERT INTO epss_daily (cve_id, score_date, model_version, epss, percentile) " +
+          "VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(fixture.cveId, row.scoreDate, row.model, row.value, row.percentile);
+  }
+}
+
+function seedSyncRun(
+  db: CveDatabase,
+  source: string,
+  status: string,
+  startedAt: string,
+  revision: string | null,
+  error: string | null,
+): void {
+  db.handle
+    .prepare(
+      "INSERT INTO sync_runs (source, started_at, finished_at, status, revision, content_hash, error) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(source, startedAt, startedAt, status, revision, null, error);
+}
+
+/** Builds a validated CVE-2099 fixture corpus in a temp DATA_DIR and returns its db file. */
+function buildSeededDbFile(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "cve-overview-seed-"));
+  tempDirs.push(dir);
+  const db = openDatabase({ dataDir: dir });
+  const epssCurrent = dayAgo(10);
+  const epssPrevious = dayAgo(17);
+  db.runBoundedWrite(() => {
+    seedRecord(db, {
+      cveId: "CVE-2099-0001",
+      title: "Heap overflow in the parser allows remote code execution",
+      description: "A heap overflow in the parser allows remote code execution",
+      lang: "en",
+      published: isoDayAgo(5),
+      metrics: [{ origin: "CNA", version: "3.1", baseScore: "9.8" }],
+      kevDateAdded: isoDayAgo(6, "00:00:00.000Z"),
+      kevCatalogDate: dayAgo(9),
+      epss: [
+        { scoreDate: epssPrevious, model: "v4", value: "0.7000", percentile: "0.9500" },
+        { scoreDate: epssCurrent, model: "v4", value: "0.7200", percentile: "0.9600" },
+      ],
+    });
+    seedRecord(db, {
+      cveId: "CVE-2099-0002",
+      title: LONG_TITLE,
+      description: "A critical service bug with a very long supplied title",
+      lang: "en",
+      published: isoDayAgo(3),
+      metrics: [{ origin: "CNA", version: "3.1", baseScore: "9.1" }],
+      kevDateAdded: null,
+      kevCatalogDate: null,
+      epss: [
+        { scoreDate: epssPrevious, model: "v4", value: "0.1000", percentile: "0.4000" },
+        { scoreDate: epssCurrent, model: "v4", value: "0.3500", percentile: "0.7100" },
+      ],
+    });
+    seedRecord(db, {
+      cveId: "CVE-2099-0003",
+      title: null,
+      description: "",
+      lang: null,
+      published: null,
+      metrics: [],
+      kevDateAdded: null,
+      kevCatalogDate: null,
+      epss: [],
+    });
+    seedRecord(db, {
+      cveId: "CVE-2099-0004",
+      title: "Mid-severity service bug",
+      description: "A mid-severity bug in the demonstration service",
+      lang: "en",
+      published: isoDayAgo(12, "08:00:00.000Z"),
+      metrics: [{ origin: "CNA", version: "3.1", baseScore: "5.4" }],
+      kevDateAdded: null,
+      kevCatalogDate: null,
+      epss: [],
+    });
+    db.handle
+      .prepare(
+        "INSERT INTO cve_tombstones (cve_id, last_state, removed_in_revision, reason, recorded_at) " +
+          "VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("CVE-2099-0099", "PUBLISHED", "rev-fixture-2098", "rejected", STAMP);
+    seedSyncRun(db, "cve", "succeeded", isoDayAgo(10, "08:00:00.000Z"), "rev-fixture-2099", null);
+    seedSyncRun(db, "kev", "succeeded", isoDayAgo(11, "08:00:00.000Z"), dayAgo(11), null);
+    seedSyncRun(
+      db,
+      "kev",
+      "failed",
+      isoDayAgo(9, "09:12:00.000Z"),
+      null,
+      "catalog fetch failed: HTTP 503",
+    );
+    seedSyncRun(db, "epss", "succeeded", isoDayAgo(10, "08:30:00.000Z"), `${epssCurrent}@v4`, null);
+  });
+  db.checkpointStatus();
+  db.close();
+  return path.join(dir, "cve.db");
+}
+
+function clearServerDb(): void {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
+  }
+}
+
+function deployDbFile(sourceFile: string): void {
+  mkdirSync(SERVER_DATA_DIR, { recursive: true });
+  clearServerDb();
+  copyFileSync(sourceFile, path.join(SERVER_DATA_DIR, "cve.db"));
+}
+
+test.beforeAll(() => {
+  expect(LONG_TITLE.length).toBe(200);
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  const current = path.join(SERVER_DATA_DIR, "cve.db");
+  hadServerDb = existsSync(current);
+  if (hadServerDb) {
+    const backupDir = mkdtempSync(path.join(tmpdir(), "cve-overview-backup-"));
+    tempDirs.push(backupDir);
+    serverDbBackup = path.join(backupDir, "cve.db");
+    copyFileSync(current, serverDbBackup);
+  }
+  deployDbFile(buildSeededDbFile());
+});
+
+test.afterAll(() => {
+  clearServerDb();
+  if (hadServerDb && serverDbBackup !== "") {
+    copyFileSync(serverDbBackup, path.join(SERVER_DATA_DIR, "cve.db"));
+  }
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop() as string;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const width of [360, 768, 1280]) {
+  test(`overview seeded journey renders data at ${width}px without overflow`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+
+    await expect(page.getByTestId("overview-root")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+
+    const masthead = page.getByTestId("overview-masthead");
+    await expect(masthead.getByText("Overview (current)")).toHaveAttribute("aria-current", "page");
+    await expect(masthead.getByRole("link", { name: "Search" })).toHaveAttribute(
+      "href",
+      "/explore",
+    );
+    await expect(masthead.getByRole("link", { name: "Priority" })).toHaveAttribute(
+      "href",
+      "/priority",
+    );
+    await expect(masthead.getByRole("link", { name: "Radar" })).toHaveAttribute("href", "/radar");
+    await expect(masthead.getByRole("link", { name: "Replay" })).toHaveAttribute("href", "/replay");
+    await expect(masthead.getByRole("link", { name: "Method" })).toHaveAttribute("href", "/method");
+
+    const searchForm = page.locator('form[action="/explore"]');
+    await expect(searchForm).toBeVisible();
+    await expect(page.getByTestId("overview-search-input")).toBeVisible();
+    await expect(page.getByTestId("overview-search-action")).toContainText("Search");
+
+    await expect(page.getByTestId("overview-chart-table")).toBeVisible();
+    await expect(page.getByTestId("overview-chart-count-unknown")).toContainText(
+      "explicit unknown bucket",
+    );
+    await expect(page.getByTestId(`overview-chart-count-${dayAgo(5)}`)).toContainText(
+      "1 published",
+    );
+    await expect(page.getByTestId("overview-chart-correction")).toContainText("tombstones");
+
+    await expect(page.getByTestId("overview-freshness-cve")).toContainText("Stale");
+    await expect(page.getByTestId("overview-freshness-kev")).toContainText("Source failed");
+    await expect(page.getByTestId("overview-freshness-kev-detail")).toContainText("HTTP 503");
+    await expect(page.getByTestId("overview-freshness-epss")).toContainText("Stale");
+
+    const priority = page.getByTestId("overview-priority");
+    await expect(priority.getByTestId("overview-priority-known-exploited-list")).toContainText(
+      "CVE-2099-0001",
+    );
+    await expect(priority.getByTestId("overview-priority-highest-forecast-list")).toContainText(
+      "0.7200",
+    );
+    await expect(priority.getByTestId("overview-priority-new-critical-list")).toContainText(
+      "CVE-2099-0002",
+    );
+    await expect(priority.getByTestId("overview-priority-rising-forecast-list")).toContainText(
+      "same model",
+    );
+    await expect(priority.getByText(LONG_TITLE).first()).toBeVisible();
+    await expect(priority.getByText(LONG_TITLE)).toHaveCount(3);
+    for (const key of ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"]) {
+      await expect(priority.getByTestId(`overview-priority-${key}-more`)).toHaveAttribute(
+        "href",
+        "/priority",
+      );
+    }
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
+
+    await page.screenshot({ path: `${EVIDENCE_DIR}/overview-${width}.png`, fullPage: true });
+  });
+}
+
+test("overview empty corpus shows honest empty states", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  clearServerDb();
+  await page.goto("/");
+
+  await expect(page.getByTestId("overview-root")).toBeVisible();
+  await expect(page.getByTestId("overview-chart-empty")).toContainText("honest empty state");
+  await expect(page.getByTestId("overview-priority-empty")).toContainText("every list is empty");
+  for (const key of ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"]) {
+    await expect(page.getByTestId(`overview-priority-${key}-empty`)).toBeVisible();
+  }
+  await expect(page.getByTestId("overview-freshness-kev")).toContainText("Missing");
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow, "horizontal overflow on empty state").toBeLessThanOrEqual(1);
+
+  await page.screenshot({ path: `${EVIDENCE_DIR}/overview-empty-1280.png`, fullPage: true });
+});
