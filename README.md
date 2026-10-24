@@ -6,12 +6,12 @@ replayable history. One self-contained Docker image, one container, optional
 Compose wrapper, and a versioned read-only API so other platforms (or your own
 self-hosted copy) can consume the same data.
 
-> **Status: planning — no application code exists yet.** This README describes the
-> approved direction and the evidence behind it. Anything labeled *proposed* still
-> needs owner approval in the approval brief before implementation.
-> Live project state: `.claude/state/CURRENT_STATUS.md`.
+> **Status: implemented and verified — all 30 build todos plus F1–F4 gates approved.**
+> The single-container app, versioned read-only API, Compose setup, and backup
+> procedures exist in this tree with evidence under `.omo/evidence/`. Local `main`
+> only: no remote, no deployment. See `.claude/state/CURRENT_STATUS.md`.
 
-## What this will be
+## What it does
 
 - **Overview** — published-CVE volume charts with explicit date basis and source freshness.
 - **Search** — CVE ID and description search with filters, excerpts, and official CVE links.
@@ -169,10 +169,10 @@ docker run -d --name cve-change-radar --init --restart unless-stopped \
 - See `.omo/drafts/cve-single-image-deployment.md` for the full acceptance
   contract (parity tests 7 and 10 cover this Compose setup).
 
-## Security (planned controls, not yet audited software)
+## Security (implemented and reviewed)
 
-There is no running app to audit; these are requirements the implementation must
-meet, per `.claude/SECURITY_STANDARDS.md`:
+Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review
+approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
 
 - Upstream descriptions, references, and archives are **untrusted**: encode output,
   constrain links, strict CSP, no PoC execution, archive traversal/decompression guards.
@@ -193,21 +193,27 @@ meet, per `.claude/SECURITY_STANDARDS.md`:
 | [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md) | Proposed ingestion, ranking, history, freshness, and acceptance contracts |
 | [`docs/research/SOURCES.md`](docs/research/SOURCES.md) | First-party terms, endpoints, fields, live validations, limits |
 | [`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md) | Verified competitor overlap and check limits |
-| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md) | **Awaiting approval**: bundled design/stack/history/ranking/testing proposal |
+| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md) | Approved bundle: design, stack, history, ranking, testing basis |
 | [`.omo/drafts/cve-change-radar.md`](.omo/drafts/cve-change-radar.md) | Planning record: users, gaps, decisions, open questions |
 | [`.omo/drafts/cve-change-radar-design.md`](.omo/drafts/cve-change-radar-design.md) | Candidate Evidence Ledger visual direction |
 | [`.omo/drafts/cve-single-image-deployment.md`](.omo/drafts/cve-single-image-deployment.md) | Single-image runtime, persistence, lifecycle, parity tests |
 | [`.omo/drafts/cve-stack-contract-audit.md`](.omo/drafts/cve-stack-contract-audit.md) | Proposed stack compatibility evidence (not a selected stack) |
 | [`.claude/`](.claude/) | Agent rules, security standards, environment guide, task queue, history |
 
-## Pre-dev gates (still open)
+## Build gates (all done)
 
-1. Approve the bundled brief (design, stack shape, 30-day observed replay,
-   ranking policy, tests) — approval authorizes writing the final plan, not code.
-2. Create the single execution plan, run its gap analysis, then Momus plus
-   independent review against the exact artifact.
-3. Only on a later explicit instruction: implement, with TDD, component/browser QA,
-   image/container verification, import and search benchmarks.
+1. Bundled brief approval — done. Design, stack shape, 30-day observed replay,
+   ranking policy, and tests were approved before the plan was written.
+2. Single execution plan with gap analysis plus Momus and independent review —
+   done. `.omo/plans/cve-change-radar.md` (30 todos + F1–F4), 4 review rounds,
+   zero open blockers at plan time.
+3. Implementation with TDD, component/browser QA, image/container verification,
+   and import/search benchmarks — done. Todos 1–30 delivered with evidence
+   under `.omo/evidence/`.
+4. Final verification — all approved: F1 plan compliance, F2 code quality,
+   F3 browser QA (stock suite green, phone/desktop/keyboard/zoom/reduced-motion
+   evidence), F4 ideal-state fidelity (10/11 outright; the shortfall became
+   tracked todo 31, now complete).
 
 Host questions are deferred by owner decision; capacity claims require measured
 benchmarks, not guesses. Focused local commits continue after verified milestones;
