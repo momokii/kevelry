@@ -42,7 +42,7 @@ curl "https://radar.example.org/api/v1/radar?since=2026-10-17&kind=kev-added&lim
       "reason": "Added to the accepted KEV catalog on 2026-10-23."
     }
   ],
-  "pagination": { "limit": 50, "hasMore": false, "nextCursor": null },
+  "pagination": { "limit": 2, "hasMore": false, "nextCursor": null },
   "provenance": {
     "rankingPolicyVersion": "ranking-v1",
     "generatedAt": "2026-10-24T04:00:00Z",

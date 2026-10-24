@@ -53,7 +53,7 @@ curl "https://radar.example.org/api/v1/search?q=openssl%20denial%20of%20service&
       }
     }
   ],
-  "pagination": { "limit": 50, "hasMore": false, "nextCursor": null },
+  "pagination": { "limit": 2, "hasMore": false, "nextCursor": null },
   "coverage": {
     "eligibleCohort": 312040,
     "returned": 1,

@@ -37,7 +37,7 @@ curl "https://radar.example.org/api/v1/replay?date=2026-10-17&view=highest-forec
       "cveId": "CVE-2026-109618",
       "title": "CVE-2026-109618",
       "state": "PUBLISHED",
-      "publishedAt": "2026-10-20T14:02:00Z",
+      "publishedAt": "2026-10-10T14:02:00Z",
       "officialUrl": "https://www.cve.org/CVERecord?id=CVE-2026-109618",
       "excerpt": "A denial of service flaw was found in the packet parser ...",
       "excerptTruncated": true,
@@ -60,7 +60,7 @@ curl "https://radar.example.org/api/v1/replay?date=2026-10-17&view=highest-forec
       }
     }
   ],
-  "pagination": { "limit": 50, "hasMore": false, "nextCursor": null },
+  "pagination": { "limit": 2, "hasMore": false, "nextCursor": null },
   "coverage": {
     "eligibleCohort": 310900,
     "returned": 1,

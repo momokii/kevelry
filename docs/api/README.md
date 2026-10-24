@@ -14,6 +14,16 @@ Per-view pages:
 - [overview.md](overview.md) — publication-volume aggregates behind the charts
 - [status.md](status.md) — freshness, cohorts, notices, liveness
 
+## Verified against the running handlers
+
+Every curl example in these pages replays in-process against the real route
+handlers with fixture snapshots (see `tests/api-contract.test.ts`, docs replay
+suite). The requests return the documented top-level shapes (`data`,
+`pagination`, `coverage`, `provenance`), explicit unknown EPSS nulls, and the
+documented error codes. Illustrative IDs and counts stay human readable; the
+test pins the structure with fixture IDs. Evidence:
+`.omo/evidence/task-15-cve-change-radar.log`.
+
 ## Auth: none, by design
 
 Public reads are anonymous. No tokens, no accounts, no per-user state. Imports,

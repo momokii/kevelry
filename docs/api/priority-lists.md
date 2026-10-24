@@ -67,7 +67,7 @@ curl "https://radar.example.org/api/v1/priority/rising-forecast?limit=2"
     }
   ],
   "deltaPp": null,
-  "pagination": { "limit": 50, "hasMore": true, "nextCursor": "W1lOVUYtMjAyNi0xMDk2MTld" },
+  "pagination": { "limit": 2, "hasMore": true, "nextCursor": "W1lOVUYtMjAyNi0xMDk2MTld" },
   "coverage": {
     "eligibleCohort": 1756,
     "returned": 1,

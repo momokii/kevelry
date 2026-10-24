@@ -55,7 +55,7 @@ curl "https://radar.example.org/api/v1/cves/CVE-2026-109618"
       }
     }
   ],
-  "pagination": { "limit": 50, "hasMore": true, "nextCursor": "W1lOVUYtMjAyNi0xMDk2MTld" },
+  "pagination": { "limit": 2, "hasMore": true, "nextCursor": "W1lOVUYtMjAyNi0xMDk2MTld" },
   "coverage": {
     "eligibleCohort": 312040,
     "returned": 1,
