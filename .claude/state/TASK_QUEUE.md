@@ -56,6 +56,27 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Limits | No website, full CVE import, search benchmark, continuous sync recovery, hosting estimate, legal approval or browser-rendered competitor verification. |
 | Follow-up | Owner approval of bounded scope, use purpose/notices, ranking/CVSS policy, stack and deployment. Approve benchmark targets before measuring operational feasibility. |
 
+## TASK-005 - Finalize design-led website execution plan
+
+| Field | Value |
+|---|---|
+| Task ID | TASK-005 |
+| Status | IN PROGRESS |
+| Scope | Preserve overview/search/priority features; include approved Radar and retained-snapshot replay. Produce a distinctive design contract and reviewed implementation plan, without implementing the app. |
+| Decisions | One self-contained runtime image/container; optional Compose. Focused local milestone commits authorized. |
+| Drafts | .omo/drafts/cve-change-radar.md; .omo/drafts/cve-change-radar-design.md; .omo/drafts/cve-single-image-deployment.md |
+| Remaining Gates | Owner hosting/budget/capacity, retention, stack, visual/test-policy decisions; final approval brief, then Metis/Momus/independent review as recorded in draft. |
+
+## TASK-006 - Initialize and verify local version control
+
+| Field | Value |
+|---|---|
+| Task ID | TASK-006 |
+| Status | DONE |
+| Scope | Initialize Git on main, exclude runtime/config backups, record existing baseline as focused commits, and verify tracked contents. |
+| Evidence | 17 baseline commits cover exactly 30 reviewed files; no remote/push; ignore checks and targeted credential-marker checks passed. |
+| Limits | Gitleaks unavailable; no application build/test baseline exists. No prior dates/history fabricated. |
+
 ## Task Template
 
 ```markdown
