@@ -3,12 +3,12 @@
     "allow": [
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(docker compose up *)",
       "Bash(docker compose build *)",
       "Bash(docker compose ps *)",
       "Bash(docker compose logs *)"
     ],
     "ask": [
+      "Bash(docker compose up *)",
       "Bash(git push *)",
       "Bash(git reset --hard *)",
       "Bash(git clean *)",

@@ -4,10 +4,10 @@ Orientation for humans and agents working in this repository.
 
 ## What This Repository Is
 
-A blank project being bootstrapped for iterative, AI-assisted development. The purpose,
-stack, and deployment targets are not defined yet. This `.claude/` directory is the
-project's operating system: it tells every new session what the rules are, where the
-work stands, and how to verify a change before calling it done.
+A public CVE overview/search/priority website with approved Radar/replay scope is
+being planned. No application exists and the stack is not selected yet. Deployment
+must support one runtime image/container and production-safe plain Compose startup.
+This `.claude/` directory records the rules, current state and verification gates.
 
 ## How Context Loads
 
@@ -61,10 +61,11 @@ always beats allow. These rules are guardrails, not a security boundary.
 - Bash rules match command text as written and are **not** a security boundary.
   `Bash(curl *)` does not match `/usr/bin/curl` or `sh -c 'curl ...'`, and
   `Bash(git push *)` does not match `git -C . push`.
-- Plain `docker compose up *` matches default (development) invocations. The documented
-  production form places `-f` before the subcommand (`docker compose -f compose.yaml -f
-  compose.prod.yaml up`), so it does not match the allow rule and therefore prompts.
-  Other flag placements can match, which is another reason Bash rules are not a boundary.
+- Plain `docker compose up *` is now production-safe by owner decision and is in
+  `ask`, not `allow`. Development requires the explicit `compose.dev.yaml` path.
+  Other command forms/flag placement still require agent judgment; Bash patterns
+  are guardrails, not an enforcement boundary. Non-development Compose execution
+  still needs confirmation, independent of this startup convenience for the human.
 - Stack-specific commands (test runner, linter, package manager) are **not**
   pre-allowed. When the stack is chosen, propose an allow-list to the user and add it
   only with confirmation. Never add broad wildcards such as `Bash(*)`.
