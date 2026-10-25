@@ -10,7 +10,6 @@ import path from "node:path";
 
 import { Masthead } from "@/components/ledger/Masthead";
 import {
-  PRIORITY_MODES,
   PRIORITY_MODE_LABELS,
   PriorityEvidence,
   PriorityList,
@@ -22,7 +21,6 @@ import {
 import { openDatabase, type CveDatabase } from "@/lib/db";
 import {
   getAcceptedEpssDate,
-  getDefaultPriority,
   getHighestForecast,
   getKnownExploited,
   getNewCritical,
@@ -33,13 +31,30 @@ import { displayProbabilityPercent } from "@/lib/ranking";
 import { excerptDescription, officialCveLink } from "@/lib/search";
 import {
   buildProvenance,
-  coverageFor,
   loadFullRecords,
   RANKING_POLICY_VERSION,
   type FullRecord,
+  unfilteredCohortCoverage,
 } from "@/app/api/v1/_lib/shared";
 
 export const dynamic = "force-dynamic";
+
+// Display cap for every priority list on this page. The ranking services can
+// materialize the full ~395k-row corpus when called without a limit (which
+// aborted the Next server via better-sqlite3), so every getter below receives
+// this bound and the SQL-backed getters only hydrate the top rows. Ordering
+// semantics are untouched: each bounded call returns the same prefix as
+// full-order-then-slice. Overridable via PRIORITY_PAGE_LIMIT for QA; invalid
+// values fall back to the default.
+export const PRIORITY_PAGE_LIMIT = 100;
+
+export function resolvePriorityPageLimit(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.PRIORITY_PAGE_LIMIT;
+  if (raw === undefined || raw.trim() === "") return PRIORITY_PAGE_LIMIT;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > 1000) return PRIORITY_PAGE_LIMIT;
+  return value;
+}
 
 export const metadata = {
   title: "Priority lists - CVE Change Radar",
@@ -117,14 +132,22 @@ interface PrioritySnapshot {
   epssStale: boolean;
   publishedCount: number;
   cutoffT: string;
-  rowsByMode: Record<PriorityMode, PriorityRowData[]>;
-  coverageByMode: Record<PriorityMode, { eligibleCohort: number; returned: number }>;
+  displayLimit: number;
+  mode: PriorityMode;
+  rows: PriorityRowData[];
+  eligibleCohort: number;
+  returned: number;
   corpusUnscored: number;
   corpusUnknownEpss: number;
   corpusUnknownDate: number;
 }
 
-function loadSnapshot(db: CveDatabase, nowIso: string): PrioritySnapshot {
+export function loadSnapshot(
+  db: CveDatabase,
+  nowIso: string,
+  mode: PriorityMode,
+  limit: number = resolvePriorityPageLimit(),
+): PrioritySnapshot {
   const scoreDate = getAcceptedEpssDate(db);
   const scoreModel =
     scoreDate === null
@@ -140,12 +163,22 @@ function loadSnapshot(db: CveDatabase, nowIso: string): PrioritySnapshot {
     .prepare("SELECT COUNT(*) AS n FROM cve_records WHERE state = ?")
     .get("PUBLISHED") as { n: number };
 
-  const knownExploited = getKnownExploited(db);
-  const highestForecast = getHighestForecast(db);
-  const newCritical = getNewCritical(db, nowIso);
-  const rising = getRisingForecast(db);
-  const corpus = getDefaultPriority(db);
-  const corpusCoverage = coverageFor(corpus, corpus.length);
+  // Only the requested mode is computed: every getter is display-limited
+  // (unbounded calls materialize one object per corpus row per list and abort
+  // the server), and modes the response never renders are never loaded.
+  // Bounded calls return the full-order-then-slice prefix, so ranking is
+  // untouched. The default-priority corpus is not materialized at all: its
+  // only page use was gap counts, which come from indexed COUNT queries.
+  const rising = mode === "rising-forecast" ? getRisingForecast(db, undefined, limit) : [];
+  const items: PriorityItem[] =
+    mode === "known-exploited"
+      ? getKnownExploited(db, limit)
+      : mode === "highest-forecast"
+        ? getHighestForecast(db, limit)
+        : mode === "new-critical"
+          ? getNewCritical(db, nowIso, limit)
+          : rising.map((row) => row.item);
+  const corpusCoverage = unfilteredCohortCoverage(db, Math.min(limit, items.length));
 
   const previousDate = scoreDate === null ? null : minus7Days(scoreDate);
   const deltaById = new Map<string, { deltaPp: string; previousDate: string }>();
@@ -155,36 +188,12 @@ function loadSnapshot(db: CveDatabase, nowIso: string): PrioritySnapshot {
     }
   }
 
-  const byModeItems: Record<PriorityMode, PriorityItem[]> = {
-    "known-exploited": knownExploited,
-    "highest-forecast": highestForecast,
-    "new-critical": newCritical,
-    "rising-forecast": rising.map((row) => row.item),
-  };
-  const ids = [...new Set((Object.values(byModeItems) as PriorityItem[][]).flat().map((item) => item.id))];
+  const ids = [...new Set(items.map((item) => item.id))];
   const records = new Map(loadFullRecords(db, ids).map((record) => [record.cveId, record]));
 
-  const rowsByMode = {
-    "known-exploited": knownExploited
-      .map((item) => toRow(item, records, scoreDate, deltaById))
-      .filter((row): row is PriorityRowData => row !== null),
-    "highest-forecast": highestForecast
-      .map((item) => toRow(item, records, scoreDate, deltaById))
-      .filter((row): row is PriorityRowData => row !== null),
-    "new-critical": newCritical
-      .map((item) => toRow(item, records, scoreDate, deltaById))
-      .filter((row): row is PriorityRowData => row !== null),
-    "rising-forecast": rising
-      .map((row) => toRow(row.item, records, scoreDate, deltaById))
-      .filter((row): row is PriorityRowData => row !== null),
-  } satisfies Record<PriorityMode, PriorityRowData[]>;
-
-  const coverageByMode = {
-    "known-exploited": { eligibleCohort: knownExploited.length, returned: rowsByMode["known-exploited"].length },
-    "highest-forecast": { eligibleCohort: highestForecast.length, returned: rowsByMode["highest-forecast"].length },
-    "new-critical": { eligibleCohort: newCritical.length, returned: rowsByMode["new-critical"].length },
-    "rising-forecast": { eligibleCohort: rising.length, returned: rowsByMode["rising-forecast"].length },
-  } satisfies Record<PriorityMode, { eligibleCohort: number; returned: number }>;
+  const rows = items
+    .map((item) => toRow(item, records, scoreDate, deltaById))
+    .filter((row): row is PriorityRowData => row !== null);
 
   return {
     scoreDate,
@@ -192,8 +201,11 @@ function loadSnapshot(db: CveDatabase, nowIso: string): PrioritySnapshot {
     epssStale: provenance.sources.epss.stale,
     publishedCount: publishedRow.n,
     cutoffT: nowIso,
-    rowsByMode,
-    coverageByMode,
+    displayLimit: limit,
+    mode,
+    rows,
+    eligibleCohort: items.length,
+    returned: rows.length,
     corpusUnscored: corpusCoverage.unscored,
     corpusUnknownEpss: corpusCoverage.unknownEpss,
     corpusUnknownDate: corpusCoverage.unknownDate,
@@ -205,8 +217,7 @@ function orderingBody(mode: PriorityMode, snapshot: PrioritySnapshot): string {
     snapshot.scoreDate !== null
       ? `EPSS score date ${snapshot.scoreDate}${snapshot.scoreModel !== null ? `, model ${snapshot.scoreModel}` : ""}.`
       : "No accepted EPSS score date in this snapshot.";
-  const coverage = snapshot.coverageByMode[mode];
-  const denominator = `Coverage: ${coverage.eligibleCohort} listed of ${snapshot.publishedCount} published records in the retained cohort. Corpus gaps: ${snapshot.corpusUnscored} unscored, ${snapshot.corpusUnknownEpss} unknown EPSS, ${snapshot.corpusUnknownDate} unknown publication date.`;
+  const denominator = `Coverage: ${snapshot.eligibleCohort} listed of ${snapshot.publishedCount} published records in the retained cohort. Corpus gaps: ${snapshot.corpusUnscored} unscored, ${snapshot.corpusUnknownEpss} unknown EPSS, ${snapshot.corpusUnknownDate} unknown publication date.`;
   const extras: Record<PriorityMode, string> = {
     "known-exploited":
       "Catalog dates mark catalog addition, not proven first exploitation or current attack volume. EPSS is not a sort key here.",
@@ -234,7 +245,7 @@ export default async function PriorityPage({
   try {
     const db = openDatabase({ dataDir: resolveDataDir() });
     try {
-      snapshot = loadSnapshot(db, new Date().toISOString());
+      snapshot = loadSnapshot(db, new Date().toISOString(), mode);
     } finally {
       db.close();
     }
@@ -263,38 +274,39 @@ export default async function PriorityPage({
       ) : (
         <>
           <PriorityModeNav current={mode} />
-          {PRIORITY_MODES.filter((candidate) => candidate === mode).map((active) => (
-            <section
-              key={active}
-              className="ledger-section"
-              aria-labelledby="priority-mode-heading"
-              data-testid={`priority-section-${active}`}
-            >
-              <h2 id="priority-mode-heading" data-testid="priority-mode-heading">
-                {PRIORITY_MODE_LABELS[active]}
-              </h2>
-              <PriorityOrdering mode={active} body={orderingBody(active, snapshot)} />
-              <PriorityEvidence
-                stale={snapshot.epssStale}
-                testId={`priority-evidence-${active}`}
-                detail={
-                  snapshot.epssStale
-                    ? `EPSS score date ${snapshot.scoreDate ?? "unknown"} is older than 2 UTC calendar days. Dated values are retained with this label; they are never relabeled as current-day forecasts.`
-                    : snapshot.scoreDate !== null
-                      ? `CVE List V5 and KEV per retained manifest, observed at request time. EPSS model ${snapshot.scoreModel ?? "unknown"} dated ${snapshot.scoreDate}. KEV catalog dates mark catalog addition.`
-                      : "No accepted EPSS score date in this snapshot. EPSS values render as unavailable, never zero."
-                }
-              />
-              <p className="ledger-meta" data-testid={`priority-coverage-${active}`}>
-                Coverage denominator: {snapshot.coverageByMode[active].eligibleCohort} eligible of{" "}
-                {snapshot.publishedCount} published records.
-              </p>
-              <p className="ledger-meta" data-testid={`priority-methodology-${active}`}>
-                <a href="/methodology">Methodology, sources, and reuse notices</a>
-              </p>
-              <PriorityList rows={snapshot.rowsByMode[active]} mode={active} />
-            </section>
-          ))}
+          <section
+            className="ledger-section"
+            aria-labelledby="priority-mode-heading"
+            data-testid={`priority-section-${mode}`}
+          >
+            <h2 id="priority-mode-heading" data-testid="priority-mode-heading">
+              {PRIORITY_MODE_LABELS[mode]}
+            </h2>
+            <PriorityOrdering mode={mode} body={orderingBody(mode, snapshot)} />
+            <PriorityEvidence
+              stale={snapshot.epssStale}
+              testId={`priority-evidence-${mode}`}
+              detail={
+                snapshot.epssStale
+                  ? `EPSS score date ${snapshot.scoreDate ?? "unknown"} is older than 2 UTC calendar days. Dated values are retained with this label; they are never relabeled as current-day forecasts.`
+                  : snapshot.scoreDate !== null
+                    ? `CVE List V5 and KEV per retained manifest, observed at request time. EPSS model ${snapshot.scoreModel ?? "unknown"} dated ${snapshot.scoreDate}. KEV catalog dates mark catalog addition.`
+                    : "No accepted EPSS score date in this snapshot. EPSS values render as unavailable, never zero."
+              }
+            />
+            <p className="ledger-meta" data-testid={`priority-coverage-${mode}`}>
+              Coverage denominator: {snapshot.eligibleCohort} eligible of {snapshot.publishedCount}{" "}
+              published records.
+            </p>
+            <p className="ledger-meta" data-testid={`priority-display-limit-${mode}`}>
+              Showing top {snapshot.displayLimit} of the cohort for this view. Ordering and
+              eligibility are unchanged; only the display is truncated.
+            </p>
+            <p className="ledger-meta" data-testid={`priority-methodology-${mode}`}>
+              <a href="/methodology">Methodology, sources, and reuse notices</a>
+            </p>
+            <PriorityList rows={snapshot.rows} mode={mode} />
+          </section>
         </>
       )}
     </main>
