@@ -89,6 +89,13 @@ export class SearchValidationError extends Error {
 interface CandidateRow {
   cve_id: string;
   date_published: string | null;
+  kev_member: number;
+  epss_known: number;
+}
+
+interface DisplayRow {
+  cve_id: string;
+  date_published: string | null;
   date_updated: string | null;
   title: string | null;
   description: string;
@@ -333,27 +340,30 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     where.push("NOT EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id)");
   }
 
-  const selectList =
+  const narrowSelect =
     "r.cve_id AS cve_id, r.date_published AS date_published, " +
-    "r.date_updated AS date_updated, r.title AS title, r.description AS description, " +
-    "r.description_lang AS description_lang, " +
     "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_member, " +
     "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known";
 
   let sql: string;
   if (ftsMatch !== null) {
     sql =
-      `SELECT ${selectList}, bm25(cve_fts) AS fts_rank FROM cve_records r ` +
+      `SELECT ${narrowSelect} FROM cve_records r ` +
       `JOIN cve_fts ON cve_fts.cve_id = r.cve_id ` +
       `WHERE cve_fts MATCH ? AND ${where.join(" AND ")} ` +
-      `ORDER BY fts_rank ASC, r.cve_id ASC`;
+      `ORDER BY bm25(cve_fts) ASC, r.cve_id ASC`;
     params.unshift(ftsMatch);
   } else {
     sql =
-      `SELECT ${selectList} FROM cve_records r WHERE ${where.join(" AND ")} ` +
+      `SELECT ${narrowSelect} FROM cve_records r WHERE ${where.join(" AND ")} ` +
       `ORDER BY (r.date_published IS NULL) ASC, r.date_published DESC, r.cve_id ASC`;
   }
 
+  // Bounded listing: the candidate scan carries narrow columns only (no
+  // descriptions), so an empty query over 395k rows no longer hauls ~400 MB
+  // of text into JS. Display fields for the rendered page are fetched by PK
+  // afterwards; coverage is accumulated from the narrow rows plus a primary
+  // map, with exactly the same values as the unbounded path.
   let candidates: CandidateRow[];
   try {
     candidates = db.handle.prepare(sql).all(...params) as CandidateRow[];
@@ -361,17 +371,35 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     return emptyResponse(limit);
   }
 
-  const metricsById = loadPrimaryById(
-    db,
-    candidates.map((row) => row.cve_id),
-  );
+  const metricsById = loadPrimaryMap(db, candidates.map((row) => row.cve_id));
 
-  const items: SearchResultItem[] = [];
+  const pageIds: string[] = [];
   const coverage = emptyCoverage();
+  let eligible = 0;
   for (const row of candidates) {
     const primary = metricsById.get(row.cve_id) ?? null;
     const band = severityBandFor(primary);
     if (severityFilter !== null && !severityFilter.has(band)) continue;
+    if (eligible >= offset && pageIds.length < limit) {
+      pageIds.push(row.cve_id);
+    }
+    eligible += 1;
+    coverage.total += 1;
+    coverage.bySeverity[band] += 1;
+    if (row.date_published === null) coverage.unknownDate += 1;
+    if (band === "unknown") coverage.unknownSeverity += 1;
+    if (band === "legacy") coverage.legacySeverity += 1;
+    if (row.kev_member === 1) coverage.kevMembers += 1;
+    if (row.epss_known === 1) coverage.epssKnown += 1;
+  }
+
+  const displayById = loadDisplayRows(db, pageIds);
+  const items: SearchResultItem[] = [];
+  for (const cveId of pageIds) {
+    const row = displayById.get(cveId);
+    if (row === undefined) continue;
+    const primary = metricsById.get(cveId) ?? null;
+    const band = severityBandFor(primary);
     const excerpt = excerptDescription(row.description, row.description_lang);
     items.push({
       cveId: row.cve_id,
@@ -387,18 +415,81 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
       primary,
       severityBand: band,
     });
-    coverage.total += 1;
-    coverage.bySeverity[band] += 1;
-    if (row.date_published === null) coverage.unknownDate += 1;
-    if (band === "unknown") coverage.unknownSeverity += 1;
-    if (band === "legacy") coverage.legacySeverity += 1;
-    if (row.kev_member === 1) coverage.kevMembers += 1;
-    if (row.epss_known === 1) coverage.epssKnown += 1;
   }
 
-  const page = items.slice(offset, offset + limit);
-  const nextCursor = offset + limit < items.length ? encodeOffset(offset + limit) : null;
-  return { items: page, total: coverage.total, coverage, nextCursor, limit, offset };
+  const nextCursor = offset + limit < eligible ? encodeOffset(offset + limit) : null;
+  return { items, total: coverage.total, coverage, nextCursor, limit, offset };
+}
+
+function loadPrimaryMap(
+  db: CveDatabase,
+  cveIds: readonly string[],
+): Map<string, PrimaryCvss | null> {
+  // Small cohorts use chunked PK lookups; a full-corpus listing scans the
+  // metrics table once instead of ~790 chunked round-trips. Both paths feed
+  // the same selectPrimaryCvss, so bands and coverage are identical.
+  if (cveIds.length <= 2000) {
+    return loadPrimaryById(db, cveIds);
+  }
+  const rows = db.handle
+    .prepare(
+      "SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics " +
+        "ORDER BY cve_id ASC, source_order ASC",
+    )
+    .all() as MetricRow[];
+  const result = new Map<string, PrimaryCvss | null>();
+  for (const cveId of cveIds) result.set(cveId, null);
+  let current: string | null = null;
+  let group: Array<{
+    origin: string;
+    version: string;
+    baseScore: string;
+    vector: string;
+    sourceOrder: number;
+  }> = [];
+  const flush = (): void => {
+    if (current !== null) {
+      result.set(
+        current,
+        selectPrimaryCvss(group),
+      );
+    }
+  };
+  for (const row of rows) {
+    if (row.cve_id !== current) {
+      flush();
+      current = row.cve_id;
+      group = [];
+    }
+    group.push({
+      origin: row.origin,
+      version: row.version,
+      baseScore: row.base_score,
+      vector: row.vector,
+      sourceOrder: Number.isInteger(row.source_order) ? row.source_order : group.length,
+    });
+  }
+  flush();
+  return result;
+}
+
+function loadDisplayRows(db: CveDatabase, cveIds: readonly string[]): Map<string, DisplayRow> {
+  const result = new Map<string, DisplayRow>();
+  if (cveIds.length === 0) return result;
+  for (let index = 0; index < cveIds.length; index += 500) {
+    const group = cveIds.slice(index, index + 500);
+    const placeholders = group.map(() => "?").join(", ");
+    const rows = db.handle
+      .prepare(
+        "SELECT cve_id, date_published, date_updated, title, description, description_lang, " +
+          "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_member, " +
+          "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known " +
+          `FROM cve_records r WHERE cve_id IN (${placeholders})`,
+      )
+      .all(...group) as DisplayRow[];
+    for (const row of rows) result.set(row.cve_id, row);
+  }
+  return result;
 }
 
 function loadPrimaryById(

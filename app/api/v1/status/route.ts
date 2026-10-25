@@ -1,4 +1,4 @@
-import { getAcceptedEpssDate, getDefaultPriority } from "../../../../src/lib/priority";
+import { getAcceptedEpssDate } from "../../../../src/lib/priority";
 import {
   acquireConcurrencySlot,
   ApiError,
@@ -35,7 +35,13 @@ export async function GET(request: Request): Promise<Response> {
   try {
     assertRequestBounds(request);
     const nowIso = new Date().toISOString();
-    const items = getDefaultPriority(db);
+    // Bounded cohorts: the published count is exactly getDefaultPriority(db)
+    // .length (every default-priority item is a PUBLISHED record and vice
+    // versa), but materializing and sorting the full 395k corpus costs ~20s.
+    // Indexed COUNT queries return the same numbers in ~1.5s warm.
+    const published = countRows(db, "SELECT COUNT(*) AS n FROM cve_records WHERE state = ?", [
+      "PUBLISHED",
+    ]);
     const acceptedDate = getAcceptedEpssDate(db);
     const kevListed = countRows(db, "SELECT COUNT(*) AS n FROM kev_entries");
     const epssScored =
@@ -62,7 +68,7 @@ export async function GET(request: Request): Promise<Response> {
         rankingPolicyVersion: provenance.rankingPolicyVersion,
         generatedAt: provenance.generatedAt,
         sources: provenance.sources,
-        cohorts: { published: items.length, kevListed, epssScored },
+        cohorts: { published, kevListed, epssScored },
         joinCoverage: { unmatchedKev, unmatchedEpss },
         notices: [...REUSE_NOTICES],
         provenance,
