@@ -114,6 +114,25 @@ resource limits, no source mounts, no debug ports). `compose.dev.yaml` is an
 explicit opt-in for hot reload, source bind mounts, and the Node inspector
 debug port — it is never auto-loaded (no `compose.override.yaml` exists).
 
+### Run it (Docker Compose)
+
+```bash
+./setup.sh                    # check-only prerequisites (Docker, daemon, compose, port, volume)
+docker compose up -d --build  # build + start the single container on 127.0.0.1:3000
+docker compose logs -f app    # watch first-boot ingestion progress
+```
+
+First boot: KEV/EPSS land in seconds-to-minutes; the CVE List V5 clone is
+large (gigabytes, many minutes) — the site shows an honest initializing state
+until the first snapshots are accepted. Health/readiness:
+`GET /api/v1/health` (liveness) and `GET /api/v1/status` (per-source
+freshness). Expose over Tailscale with `BIND_ADDR=100.x.y.z PORT=3100` —
+default stays loopback; `0.0.0.0` exposes every interface, use only behind
+explicit firewall/TLS. If outbound fetches stall on IPv6-only DNS, the worker
+already prefers IPv4 (`ipv4first`); optional override:
+`NODE_OPTIONS=--dns-result-order=ipv4first`. Backups: see
+`docs/backup-runbook.md`.
+
 ### First launch
 
 ```bash
@@ -122,10 +141,34 @@ docker compose up -d   # start the single container on 127.0.0.1:3000
 docker compose logs -f app
 ```
 
-First launch shows an honest initializing state until valid required feeds are
-accepted; restarts resume from checkpoints; backups are database-consistent.
+The container boots a web server plus an ingestion worker under one
+supervisor (`node entrypoint.mjs`). The worker runs ONE full import
+immediately on first start — KEV and EPSS land in seconds-to-minutes, the CVE
+List V5 clone is large (gigabytes; expect several minutes on a first clone,
+faster afterwards) — then keeps refreshing on the scheduler intervals while
+`SCHEDULE_ENABLED=true` (the Compose default). With `SCHEDULE_ENABLED=false`
+the worker still runs that single initial import, then idles.
+
+The first CVE clone downloads a large repository: budget several minutes to
+tens of minutes on first boot depending on link speed. Tune with
+`CVE_GIT_TIMEOUT_MS` (clone timeout in ms, default `3600000`) and
+`CVE_CLONE_DEPTH` (default `1` = shallow `--depth 1`; `0` = full history).
+Per-record size is capped at `CVE_MAX_RECORD_BYTES` bytes (default `16777216`,
+16 MiB); a quarantined set at or below max(50, 0.1% of scanned records) is
+tolerated with the quarantine stored and logged, and the import fails closed
+above that ceiling.
+A shallow checkout that cannot diff against the previously imported SHA falls
+back to full reconciliation and logs the path taken.
+
+An empty corpus in the first seconds is expected: the site shows an honest
+initializing state until the first valid snapshots are accepted. Watch
+progress in the logs — the worker emits one structured JSON line per source
+per cycle (`{"event":"ingest-cycle","source":"kev",...}` plus
+`worker-start` / `worker-scheduled` / `worker-idle` markers).
 The published port binds to loopback (`127.0.0.1`) by default — the site is
-reachable at `http://127.0.0.1:3000` (override the host side with `PORT=...`).
+reachable at `http://127.0.0.1:3000` (override the host side with
+`BIND_ADDR=... PORT=...`; Tailscale example `BIND_ADDR=100.x.y.z PORT=3100`,
+warning: `0.0.0.0` exposes every interface).
 
 ### Update vs rebuild
 
