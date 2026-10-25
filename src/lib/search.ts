@@ -93,6 +93,11 @@ interface CandidateRow {
   epss_known: number;
 }
 
+const narrowSelectForFacets =
+  "r.cve_id AS cve_id, r.date_published AS date_published, " +
+  "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_member, " +
+  "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known";
+
 interface DisplayRow {
   cve_id: string;
   date_published: string | null;
@@ -278,12 +283,23 @@ function buildSafeFtsMatch(query: string): string | null {
 }
 
 /**
- * FTS5-backed ID/text search over PUBLISHED records with UTC date-range,
- * primary-CNA severity-band, KEV-membership, and EPSS-presence filters.
- * Results carry 320-code-point excerpts, coverage counts with unknown
- * buckets, and an opaque cursor for the next page.
+ * Shared cohort predicate for searchCves and searchFacets below: identical
+ * validation and identical WHERE/FTS semantics, so facets always describe
+ * the same filtered cohort the listing paginates. Pagination fields are
+ * validated but only consumed by the listing path.
  */
-export function searchCves(db: CveDatabase, filters: SearchFilters): SearchResponse {
+interface CohortPredicate {
+  severityFilter: ReadonlySet<SeverityBand> | null;
+  limit: number;
+  offset: number;
+  ftsMatch: string | null;
+  unsearchable: boolean;
+  fromSql: string;
+  whereSql: string;
+  params: unknown[];
+}
+
+function prepareCohortPredicate(filters: SearchFilters): CohortPredicate {
   const normalized = filters ?? {};
   const q = normalizeQuery(normalized.q);
   const dateStart = normalizeDateBound(normalized.dateStart, "dateStart");
@@ -307,7 +323,6 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
   let ftsMatch: string | null = null;
   if (q !== "" && idPrefix === null) {
     ftsMatch = buildSafeFtsMatch(q);
-    if (ftsMatch === null) return emptyResponse(limit);
   }
 
   const where: string[] = ["r.state = ?"];
@@ -340,22 +355,43 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     where.push("NOT EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id)");
   }
 
-  const narrowSelect =
-    "r.cve_id AS cve_id, r.date_published AS date_published, " +
-    "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_member, " +
-    "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known";
+  const fromSql =
+    ftsMatch !== null ? "cve_records r JOIN cve_fts ON cve_fts.cve_id = r.cve_id" : "cve_records r";
+  const whereSql =
+    ftsMatch !== null ? `cve_fts MATCH ? AND ${where.join(" AND ")}` : where.join(" AND ");
+  const fullParams = ftsMatch !== null ? [ftsMatch, ...params] : [...params];
+  return {
+    severityFilter,
+    limit,
+    offset,
+    ftsMatch,
+    unsearchable: q !== "" && idPrefix === null && ftsMatch === null,
+    fromSql,
+    whereSql,
+    params: fullParams,
+  };
+}
+
+/**
+ * FTS5-backed ID/text search over PUBLISHED records with UTC date-range,
+ * primary-CNA severity-band, KEV-membership, and EPSS-presence filters.
+ * Results carry 320-code-point excerpts, coverage counts with unknown
+ * buckets, and an opaque cursor for the next page.
+ */
+export function searchCves(db: CveDatabase, filters: SearchFilters): SearchResponse {
+  const predicate = prepareCohortPredicate(filters);
+  const { severityFilter, limit, offset, ftsMatch, fromSql, whereSql, params } = predicate;
+  if (predicate.unsearchable) return emptyResponse(limit);
 
   let sql: string;
   if (ftsMatch !== null) {
     sql =
-      `SELECT ${narrowSelect} FROM cve_records r ` +
-      `JOIN cve_fts ON cve_fts.cve_id = r.cve_id ` +
-      `WHERE cve_fts MATCH ? AND ${where.join(" AND ")} ` +
+      `SELECT ${narrowSelectForFacets} FROM ${fromSql} ` +
+      `WHERE ${whereSql} ` +
       `ORDER BY bm25(cve_fts) ASC, r.cve_id ASC`;
-    params.unshift(ftsMatch);
   } else {
     sql =
-      `SELECT ${narrowSelect} FROM cve_records r WHERE ${where.join(" AND ")} ` +
+      `SELECT ${narrowSelectForFacets} FROM ${fromSql} WHERE ${whereSql} ` +
       `ORDER BY (r.date_published IS NULL) ASC, r.date_published DESC, r.cve_id ASC`;
   }
 
@@ -371,7 +407,10 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     return emptyResponse(limit);
   }
 
-  const metricsById = loadPrimaryMap(db, candidates.map((row) => row.cve_id));
+  const metricsById = loadPrimaryMap(
+    db,
+    candidates.map((row) => row.cve_id),
+  );
 
   const pageIds: string[] = [];
   const coverage = emptyCoverage();
@@ -421,6 +460,149 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
   return { items, total: coverage.total, coverage, nextCursor, limit, offset };
 }
 
+export interface FacetMonth {
+  month: string;
+  count: number;
+}
+
+export interface CohortFacets {
+  total: number;
+  bySeverity: Record<SeverityBand, number>;
+  kevMembers: number;
+  epssKnown: number;
+  unknownDate: number;
+  byMonth: FacetMonth[];
+}
+
+function emptyFacets(): CohortFacets {
+  return {
+    total: 0,
+    bySeverity: { critical: 0, high: 0, medium: 0, low: 0, none: 0, legacy: 0, unknown: 0 },
+    kevMembers: 0,
+    epssKnown: 0,
+    unknownDate: 0,
+    byMonth: [],
+  };
+}
+
+interface MonthRow {
+  month: string;
+  n: number;
+}
+
+function toCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+const MONTH_KEY_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+function toFacetMonths(rows: MonthRow[]): FacetMonth[] {
+  const months: FacetMonth[] = [];
+  for (const row of rows) {
+    if (typeof row.month !== "string" || !MONTH_KEY_PATTERN.test(row.month)) continue;
+    months.push({ month: row.month, count: toCount(row.n) });
+  }
+  months.sort((a, b) => (a.month < b.month ? -1 : 1));
+  return months.slice(-24);
+}
+
+/**
+ * Cohort facets over the same WHERE/FTS predicate as searchCves: the
+ * monthly histogram groups UTC publication months with bounded SQL GROUP BY
+ * passes over the full filtered cohort (never the returned page), while
+ * totals, KEV/EPSS/unknown-date counts, and the severity composition reuse
+ * the listing's narrow scan plus the shared primary-CNA band mapping, so
+ * every figure matches SearchResponse.coverage exactly. Null-safe: an empty
+ * cohort yields zeros, never a throw.
+ */
+export function searchFacets(
+  db: CveDatabase,
+  filters: SearchFilters,
+  knownCoverage?: SearchCoverage,
+): CohortFacets {
+  const predicate = prepareCohortPredicate(filters);
+  if (predicate.unsearchable) return emptyFacets();
+  const { severityFilter, fromSql, whereSql, params } = predicate;
+  if (knownCoverage !== undefined && severityFilter === null) {
+    try {
+      const monthRows = db.handle
+        .prepare(
+          `SELECT substr(r.date_published, 1, 7) AS month, COUNT(*) AS n ` +
+            `FROM ${fromSql} WHERE ${whereSql} AND r.date_published IS NOT NULL ` +
+            `GROUP BY month ORDER BY month DESC LIMIT 24`,
+        )
+        .all(...params) as MonthRow[];
+      const facets = emptyFacets();
+      facets.total = knownCoverage.total;
+      facets.bySeverity = { ...knownCoverage.bySeverity };
+      facets.kevMembers = knownCoverage.kevMembers;
+      facets.epssKnown = knownCoverage.epssKnown;
+      facets.unknownDate = knownCoverage.unknownDate;
+      facets.byMonth = toFacetMonths(monthRows);
+      return facets;
+    } catch {
+      return emptyFacets();
+    }
+  }
+  try {
+    const narrowRows = db.handle
+      .prepare(`SELECT ${narrowSelectForFacets} FROM ${fromSql} WHERE ${whereSql}`)
+      .all(...params) as CandidateRow[];
+    const metricsById = loadPrimaryMap(
+      db,
+      narrowRows.map((row) => row.cve_id),
+    );
+
+    const facets = emptyFacets();
+    const passingIds: string[] = [];
+    for (const row of narrowRows) {
+      const band = severityBandFor(metricsById.get(row.cve_id) ?? null);
+      if (severityFilter !== null && !severityFilter.has(band)) continue;
+      passingIds.push(row.cve_id);
+      facets.total += 1;
+      facets.bySeverity[band] += 1;
+      if (row.date_published === null) facets.unknownDate += 1;
+      if (row.kev_member === 1) facets.kevMembers += 1;
+      if (row.epss_known === 1) facets.epssKnown += 1;
+    }
+
+    if (severityFilter === null) {
+      const monthRows = db.handle
+        .prepare(
+          `SELECT substr(r.date_published, 1, 7) AS month, COUNT(*) AS n ` +
+            `FROM ${fromSql} WHERE ${whereSql} AND r.date_published IS NOT NULL ` +
+            `GROUP BY month ORDER BY month DESC LIMIT 24`,
+        )
+        .all(...params) as MonthRow[];
+      facets.byMonth = toFacetMonths(monthRows);
+    } else {
+      const merged = new Map<string, number>();
+      for (let index = 0; index < passingIds.length; index += 500) {
+        const group = passingIds.slice(index, index + 500);
+        const placeholders = group.map(() => "?").join(", ");
+        const monthRows = db.handle
+          .prepare(
+            `SELECT substr(r.date_published, 1, 7) AS month, COUNT(*) AS n ` +
+              `FROM ${fromSql} WHERE ${whereSql} AND r.date_published IS NOT NULL ` +
+              `AND r.cve_id IN (${placeholders}) GROUP BY month`,
+          )
+          .all(...params, ...group) as MonthRow[];
+        for (const row of monthRows) {
+          if (typeof row.month !== "string" || !MONTH_KEY_PATTERN.test(row.month)) continue;
+          merged.set(row.month, (merged.get(row.month) ?? 0) + toCount(row.n));
+        }
+      }
+      facets.byMonth = [...merged.entries()]
+        .map(([month, count]) => ({ month, count }))
+        .sort((a, b) => (a.month < b.month ? -1 : 1))
+        .slice(-24);
+    }
+    return facets;
+  } catch {
+    return emptyFacets();
+  }
+}
+
 function loadPrimaryMap(
   db: CveDatabase,
   cveIds: readonly string[],
@@ -449,10 +631,7 @@ function loadPrimaryMap(
   }> = [];
   const flush = (): void => {
     if (current !== null) {
-      result.set(
-        current,
-        selectPrimaryCvss(group),
-      );
+      result.set(current, selectPrimaryCvss(group));
     }
   };
   for (const row of rows) {

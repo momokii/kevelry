@@ -14,6 +14,8 @@ import {
   MAX_SEARCH_LIMIT,
   SearchValidationError,
   searchCves,
+  searchFacets,
+  type CohortFacets,
   type EpssFilter,
   type KevFilter,
   type SearchResponse,
@@ -95,10 +97,14 @@ function hrefWith(params: URLSearchParams): string {
 // Param-keyed result cache (60s, same staleness as the page revalidate):
 // the unfiltered explore scan materializes the full corpus per render, so
 // repeats with identical filters serve the retained snapshot instead of
-// rescanning. Only fulfilled results are cached; validation and I/O
-// failures propagate uncached every time.
+// rescanning. The listing page plus the full-cohort facets resolve together
+// so chart repeats stay cheap. Only fulfilled results are cached; validation
+// and I/O failures propagate uncached every time.
 const cachedExploreSearch = unstable_cache(
-  async (dataDir: string, key: string): Promise<SearchResponse> => {
+  async (
+    dataDir: string,
+    key: string,
+  ): Promise<{ response: SearchResponse; facets: CohortFacets }> => {
     const args = JSON.parse(key) as {
       q: string;
       dateStart: string;
@@ -111,7 +117,7 @@ const cachedExploreSearch = unstable_cache(
       dbSignature: string;
     };
     const db = openReadDatabase(dataDir);
-    return searchCves(db, {
+    const shared = {
       q: args.q === "" ? undefined : args.q,
       dateStart: args.dateStart === "" ? undefined : args.dateStart,
       dateEnd: args.dateEnd === "" ? undefined : args.dateEnd,
@@ -119,10 +125,12 @@ const cachedExploreSearch = unstable_cache(
       kev: args.kev,
       epss: args.epss,
       limit: args.limit,
-      cursor: args.cursor ?? undefined,
-    });
+    };
+    const response = searchCves(db, { ...shared, cursor: args.cursor ?? undefined });
+    const facets = searchFacets(db, shared, response.coverage);
+    return { response, facets };
   },
-  ["explore-search-v1"],
+  ["explore-search-v2"],
   { revalidate: 60 },
 );
 
@@ -162,10 +170,10 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
     initial.epss = epss;
     initial.limit = limit;
 
-    let response: SearchResponse | null = null;
+    let cached: { response: SearchResponse; facets: CohortFacets } | null = null;
     try {
       const dataDir = resolveDataDir();
-      response = await cachedExploreSearch(
+      cached = await cachedExploreSearch(
         dataDir,
         JSON.stringify({
           q,
@@ -184,9 +192,10 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
         throw error;
       }
     }
-    if (response === null) {
+    if (cached === null) {
       outcome = { kind: "unavailable" };
     } else {
+      const { response, facets } = cached;
       const filtered =
         q !== "" ||
         dateStart !== "" ||
@@ -207,7 +216,15 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
           ? null
           : hrefWith(new URLSearchParams([...kept.entries(), ["cursor", response.nextCursor]]));
       const firstHref = response.offset > 0 ? hrefWith(kept) : null;
-      outcome = { kind: "results", response, filtered, nextHref, firstHref };
+      outcome = {
+        kind: "results",
+        response,
+        facets,
+        linkParams: { q, dateStart, dateEnd, severity, kev, epss, limit },
+        filtered,
+        nextHref,
+        firstHref,
+      };
     }
   } catch (error) {
     if (error instanceof SearchValidationError) {

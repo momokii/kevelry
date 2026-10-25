@@ -1,27 +1,68 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+import { HelpTip } from "../ledger/HelpTip";
 import {
   EXPLORE_LIMIT_OPTIONS,
-  ExploreInitial,
+  type ExploreInitial,
   SEVERITY_LABELS,
   SEVERITY_ORDER,
 } from "./filter-meta";
+
+const AUTO_SUBMIT_DELAY_MS = 150;
 
 type ExploreFiltersProps = {
   initial: ExploreInitial;
 };
 
 /**
- * Native GET filter form: no client script, every control keyboard-operable
- * by construction. Submits to /explore; the server re-renders with the typed
- * values kept, including after an invalid-filter error.
+ * Native GET filter form with progressive auto-submit: checkbox, radio, and
+ * select changes resubmit after a short debounce; the text query only submits
+ * on Enter or Apply so typing never navigates. The Apply button and Clear
+ * link keep the form fully usable with keyboard or without script.
  */
 export function ExploreFilters({ initial }: ExploreFiltersProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const timerRef = useRef<number | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const maybeAutoSubmit = (target: EventTarget | null): void => {
+    if (!(target instanceof HTMLElement)) return;
+    const kind = (target as HTMLInputElement).type;
+    const auto = kind === "checkbox" || kind === "radio" || target.tagName === "SELECT";
+    if (!auto) return;
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      formRef.current?.requestSubmit();
+    }, AUTO_SUBMIT_DELAY_MS);
+  };
+
   return (
     <form
+      ref={formRef}
       method="get"
       action="/explore"
       aria-label="CVE search filters"
       data-testid="explore-filters"
+      data-hydrated={hydrated ? "true" : "false"}
       className="ledger-explore-form"
+      onChange={(event) => maybeAutoSubmit(event.target)}
     >
       <div className="ledger-search">
         <input
@@ -41,7 +82,12 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <fieldset className="ledger-explore-fieldset">
         <legend className="ledger-meta">
-          Published date range, UTC, start inclusive, end exclusive
+          Published date range, UTC, start inclusive, end exclusive{" "}
+          <HelpTip term="date range filter" testId="explore-help-date">
+            Compares the stored publication timestamp in UTC. The start binds inclusively, the end
+            exclusively. Records with an unknown publication date are excluded as soon as either
+            bound is set; they never match a bounded range.
+          </HelpTip>
         </legend>
         <div className="ledger-explore-dates">
           <label className="ledger-explore-label" htmlFor="explore-date-start">
@@ -71,7 +117,11 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <fieldset className="ledger-explore-fieldset">
         <legend className="ledger-meta">
-          Severity bands, primary CNA metric with version labels
+          Severity bands, primary CNA metric with version labels{" "}
+          <HelpTip term="severity filter" testId="explore-help-severity">
+            Bands come from the primary CNA CVSS only. ADP-only and metric-less records land in
+            Unscored. CVSS v2-only records are Legacy and are never compared with v3/v4 scores.
+          </HelpTip>
         </legend>
         <div className="ledger-filter-group" role="group" aria-label="Severity bands">
           {SEVERITY_ORDER.map((band) => (
@@ -90,7 +140,13 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
       </fieldset>
 
       <fieldset className="ledger-explore-fieldset">
-        <legend className="ledger-meta">Known-exploited membership</legend>
+        <legend className="ledger-meta">
+          Known-exploited membership{" "}
+          <HelpTip term="KEV filter" testId="explore-help-kev">
+            Membership in the accepted CISA snapshot. Absence is not proof of no exploitation. The
+            date added is the catalog date, not the date of first exploitation.
+          </HelpTip>
+        </legend>
         <div
           className="ledger-filter-group"
           role="radiogroup"
@@ -130,7 +186,13 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
       </fieldset>
 
       <fieldset className="ledger-explore-fieldset">
-        <legend className="ledger-meta">Forecast presence, same snapshot, same model</legend>
+        <legend className="ledger-meta">
+          Forecast presence, same snapshot, same model{" "}
+          <HelpTip term="EPSS filter" testId="explore-help-epss">
+            Dated forecast presence for this snapshot&apos;s model and score date — not severity,
+            not popularity. Absent means no current row, never zero.
+          </HelpTip>
+        </legend>
         <div className="ledger-filter-group" role="radiogroup" aria-label="Forecast presence">
           <label className="ledger-filter-chip ledger-explore-chip">
             <input
@@ -167,7 +229,10 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <div className="ledger-explore-actions">
         <label className="ledger-explore-label" htmlFor="explore-limit">
-          Results per page
+          Results per page{" "}
+          <HelpTip term="page size" testId="explore-help-limit">
+            Bounded page size. Totals and cohort coverage may exceed the returned page.
+          </HelpTip>
           <select
             id="explore-limit"
             name="limit"

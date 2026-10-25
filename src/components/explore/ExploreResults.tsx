@@ -1,6 +1,12 @@
-import type { SearchResponse } from "@/lib/search";
+import type { CohortFacets, SearchResponse } from "@/lib/search";
 
-import { SEVERITY_LABELS, SEVERITY_ORDER, severitySignal } from "./filter-meta";
+import {
+  EXPLORE_DEFAULT_LIMIT,
+  SEVERITY_LABELS,
+  SEVERITY_ORDER,
+  severitySignal,
+} from "./filter-meta";
+import { CohortVisualization, type CohortLinkParams } from "./CohortVisualization";
 
 export type ExploreOutcome =
   | { kind: "unavailable" }
@@ -8,6 +14,8 @@ export type ExploreOutcome =
   | {
       kind: "results";
       response: SearchResponse;
+      facets: CohortFacets;
+      linkParams: CohortLinkParams;
       filtered: boolean;
       nextHref: string | null;
       firstHref: string | null;
@@ -92,7 +100,7 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
     );
   }
 
-  const { response, filtered, nextHref, firstHref } = outcome;
+  const { response, facets, linkParams, filtered, nextHref, firstHref } = outcome;
   const from = response.total === 0 ? 0 : response.offset + 1;
   const to = response.offset + response.items.length;
   const bands = SEVERITY_ORDER.map(
@@ -109,6 +117,12 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
           capped at 320 code points with the language labeled.
         </span>
       </div>
+
+      <CohortVisualization
+        facets={facets}
+        params={linkParams}
+        defaultLimit={EXPLORE_DEFAULT_LIMIT}
+      />
 
       <p className="ledger-meta" role="status" data-testid="explore-coverage">
         Matching cohort: {response.total} published records. Unknown publication date:{" "}
