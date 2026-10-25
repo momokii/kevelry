@@ -11,16 +11,16 @@ Use locally imported CVE List V5, CISA KEV and FIRST EPSS. Visitor-facing search
 lists read local data, not upstream APIs. No paid model or generated summary is needed.
 Default search and all ranked views include only current `PUBLISHED` CVE records.
 
-| Feature | Proposed input and treatment |
-|---|---|
-| ID/text search | Validated ID, supplied title, descriptions and supplied product/vendor labels; local text index, no guaranteed nickname matching |
-| Description excerpt | Prefer first `en`/`en-*` CNA description in source order; otherwise first supplied description with language label; missing text says "Description not supplied" |
-| Title | Supplied CNA title, otherwise CVE ID; do not invent an advisory name |
-| Official link | Build `https://www.cve.org/CVERecord?id=<CVE-ID>` from validated ID; no dedicated local detail page required |
-| Published-volume chart | Publication timestamp and current state, not year encoded in ID; UTC calendar buckets |
-| KEV and EPSS views | Exact-ID joins, with source dates, model and join coverage shown |
-| Severity filters | Primary CNA metric policy below; unknown/legacy explicitly separate |
-| Rising forecast | Two dated EPSS probabilities from the same model; not social attention |
+| Feature                | Proposed input and treatment                                                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ID/text search         | Validated ID, supplied title, descriptions and supplied product/vendor labels; local text index, no guaranteed nickname matching                                 |
+| Description excerpt    | Prefer first `en`/`en-*` CNA description in source order; otherwise first supplied description with language label; missing text says "Description not supplied" |
+| Title                  | Supplied CNA title, otherwise CVE ID; do not invent an advisory name                                                                                             |
+| Official link          | Build `https://www.cve.org/CVERecord?id=<CVE-ID>` from validated ID; no dedicated local detail page required                                                     |
+| Published-volume chart | Publication timestamp and current state, not year encoded in ID; UTC calendar buckets                                                                            |
+| KEV and EPSS views     | Exact-ID joins, with source dates, model and join coverage shown                                                                                                 |
+| Severity filters       | Primary CNA metric policy below; unknown/legacy explicitly separate                                                                                              |
+| Rising forecast        | Two dated EPSS probabilities from the same model; not social attention                                                                                           |
 
 Descriptions remain original upstream text. A display excerpt is at most 320 Unicode
 code points plus an ellipsis if shortened; preserve full text locally and render as
@@ -45,6 +45,10 @@ unscored CVE is not low severity. Do not imply different CVSS versions are calib
 1. Pin a Git revision of CVE List V5. Read CVE record files in the full `cves/`
    tree at that revision; exclude repository metadata/delta manifests from the
    record-file enumeration. Save upstream repository identity and revision.
+   The runtime image bundles `git` plus CA certificates so this clone/fetch
+   refreshes in-container over HTTPS; the first refresh clones a large
+   repository (gigabytes, minutes), and the worker logs a `source-start` line per source before its
+   job runs plus runs at a lower OS priority so web requests win contention.
 2. For incremental imports, fetch upstream and pin the next revision. Compare it
    with the last successfully imported revision; enumerate added, changed and deleted
    paths, reading candidate files from the new revision rather than a moving branch.
@@ -97,12 +101,23 @@ are stored in `sync_runs` and logged as a structured warning. Above that ceiling
 the import fails closed: last-known-good data is preserved and the import
 checkpoint does not advance. Record anomalies and coverage without inventing values.
 
-Each source refresh is independent. Build an immutable local publication manifest
-that references accepted CVE/KEV/EPSS versions. Advance valid sources atomically while
+Each source refresh is independent. Build an immutable local publication manifest that
+references accepted CVE/KEV/EPSS versions. Advance valid sources atomically while
 retaining any failed source's last-known-good snapshot, with a visible stale/error
 flag. One failed source must not freeze unrelated successful source updates. Initial
 publication requires an accepted snapshot of each core source; no missing feed is
 substituted with fabricated zeros or empty memberships.
+
+Daily observed checkpoints retain bounded observed lists, not complete
+enumerations: each materialized view holds at most `CHECKPOINT_TOP_N` entries
+(default 500, env-overridable and validated) built through the limit-aware
+ranking getters, with per-record snapshots kept only for retained IDs. The
+manifest records the applied bound as `boundedTopN` alongside the full
+eligible cohort count and cohort identity; replay responses surface
+`boundedTopN` with an explicit bounded-list notice so a replay never implies
+completeness. Bounding keeps the daily write to seconds and the payload to
+kilobytes on a full-size corpus instead of pinning the worker and starving
+request handling.
 
 Retain source URI, revision/version/date, retrieval time, content hash, validation
 status, last attempt, last successful check, last accepted import and error status.
@@ -140,6 +155,7 @@ Probability/delta comparisons use exact source-decimal arithmetic: binary floati
 point subtraction must not break a mathematically equal-delta tie. Round for display only.
 
 **Default priority** compares these keys in order, stopping at the first difference:
+
 1. KEV member before not listed in accepted KEV snapshot.
 2. Within that tier, EPSS present before unknown.
 3. Within scored records, EPSS probability descending (actual zero remains scored).
@@ -176,27 +192,27 @@ editorial spotlighting must be labeled and separate from this automated ordering
 Synthetic IDs/values below are invented, not claims about real vulnerabilities.
 Assume publication timestamps equal/known except where stated.
 
-| Case | Inputs | Required outcome |
-|---|---|---|
-| Evidence tier dominates | `CVE-2099-0001`: KEV, EPSS unknown; `CVE-2099-0002`: not listed, EPSS .99 | 0001 first despite missing score |
-| Probability within a tier | Two nonmembers, p .80 vs .20; the .20 record is newer | .80 first; publication recency does not override p |
-| Zero vs unknown | 0003 not listed, EPSS 0; 0004 not listed, unknown | 0003 first; do not coerce unknown to 0 |
-| Display rounding | 0005 EPSS .12344; 0006 .12341; both display 12.34% | 0005 first using raw probability |
-| Complete numeric/date tie | 0007 and 0008 share tier, p and publication timestamp | 0007 first by ASCII ID |
-| Known vs missing date | 0010 dated, 0011 undated; same tier/p | 0010 first |
-| Timestamp tie-break | Same tier/p, publication 23 Oct vs 22 Oct | 23 Oct first |
-| KEV-specific ordering | Listed dates 23 Oct vs 22 Oct; the older entry has greater EPSS | 23 Oct first in known-exploited view; EPSS is not its sort key |
-| Forecast-specific ordering | A nonmember p .90 vs KEV member p .10 | .90 first in highest-forecast view; KEV is not its sort key |
-| CNA source policy | ADP v4 10.0 exists but no valid CNA metric | Primary unknown; secondary retained; new-critical ineligible |
-| Version preference | CNA v4 8.5 and CNA v3.1 9.8 | Primary v4 8.5, new-critical ineligible under this policy |
-| Scenario and vector ties | Same preferred version: 9.2 vs 8.5; equal 9.2 vectors B vs A | Choose 9.2, then vector A; final equal-vector tie uses source order |
-| Legacy-only metric | CNA v2 10.0 only | Legacy-scored, not critical |
-| Rising calculation | Model A on both dates, p .10 then .18 | +8 percentage points, not +80 percentage points |
-| Rising ties | Same model: .10 to .18 and .20 to .28 | Equal +8-point delta; .28 current p first, then ID if current p also ties |
-| Model boundary | Model A p .10, model B p .80 | Ineligible for rising; no +70-point spike claim |
-| Missing history | Current p known, no exact d-7 row | Ineligible; do not substitute nearest day or 0 |
-| Date boundary | CVSS 9.8 modern; published at T-30d vs exactly T | First included, second excluded |
-| New-critical order | Two eligible records, different publication times | Newer first; equal timestamp uses ID, not CVSS magnitude |
+| Case                       | Inputs                                                                    | Required outcome                                                          |
+| -------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Evidence tier dominates    | `CVE-2099-0001`: KEV, EPSS unknown; `CVE-2099-0002`: not listed, EPSS .99 | 0001 first despite missing score                                          |
+| Probability within a tier  | Two nonmembers, p .80 vs .20; the .20 record is newer                     | .80 first; publication recency does not override p                        |
+| Zero vs unknown            | 0003 not listed, EPSS 0; 0004 not listed, unknown                         | 0003 first; do not coerce unknown to 0                                    |
+| Display rounding           | 0005 EPSS .12344; 0006 .12341; both display 12.34%                        | 0005 first using raw probability                                          |
+| Complete numeric/date tie  | 0007 and 0008 share tier, p and publication timestamp                     | 0007 first by ASCII ID                                                    |
+| Known vs missing date      | 0010 dated, 0011 undated; same tier/p                                     | 0010 first                                                                |
+| Timestamp tie-break        | Same tier/p, publication 23 Oct vs 22 Oct                                 | 23 Oct first                                                              |
+| KEV-specific ordering      | Listed dates 23 Oct vs 22 Oct; the older entry has greater EPSS           | 23 Oct first in known-exploited view; EPSS is not its sort key            |
+| Forecast-specific ordering | A nonmember p .90 vs KEV member p .10                                     | .90 first in highest-forecast view; KEV is not its sort key               |
+| CNA source policy          | ADP v4 10.0 exists but no valid CNA metric                                | Primary unknown; secondary retained; new-critical ineligible              |
+| Version preference         | CNA v4 8.5 and CNA v3.1 9.8                                               | Primary v4 8.5, new-critical ineligible under this policy                 |
+| Scenario and vector ties   | Same preferred version: 9.2 vs 8.5; equal 9.2 vectors B vs A              | Choose 9.2, then vector A; final equal-vector tie uses source order       |
+| Legacy-only metric         | CNA v2 10.0 only                                                          | Legacy-scored, not critical                                               |
+| Rising calculation         | Model A on both dates, p .10 then .18                                     | +8 percentage points, not +80 percentage points                           |
+| Rising ties                | Same model: .10 to .18 and .20 to .28                                     | Equal +8-point delta; .28 current p first, then ID if current p also ties |
+| Model boundary             | Model A p .10, model B p .80                                              | Ineligible for rising; no +70-point spike claim                           |
+| Missing history            | Current p known, no exact d-7 row                                         | Ineligible; do not substitute nearest day or 0                            |
+| Date boundary              | CVSS 9.8 modern; published at T-30d vs exactly T                          | First included, second excluded                                           |
+| New-critical order         | Two eligible records, different publication times                         | Newer first; equal timestamp uses ID, not CVSS magnitude                  |
 
 ## Freshness Proposal
 
@@ -217,6 +233,7 @@ ratio; reject traversal, symlinks and decompression bombs. Hash/log metadata, no
 
 Before website implementation, owner approval is required for scope, source-use
 purpose, these ranking/missing-data policies, stack and hosting. Before launch:
+
 - Test imports: same revision twice, add/change/delete/reject, history gap, day
   rollover, missed EPSS day, model transition, unmatched joins and failed source.
 - Verify failed refreshes preserve last-known-good data and do not freeze valid feeds.

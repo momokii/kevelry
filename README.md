@@ -83,11 +83,11 @@ flowchart TB
 All three core feeds are free to access today (checked 2026-10-24; recheck terms
 before launch and before any monetization):
 
-| Source | What we take | Reuse basis |
-|---|---|---|
-| [CVE List V5](https://github.com/CVEProject/cvelistV5) | Records, descriptions, dates, references, available CNA/ADP metrics | CVE Terms: no-charge reproduction, derivatives, display, distribution — reproduce MITRE copyright designation and license |
-| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited membership, date added, catalog metadata | CC0 1.0 for catalog data; third-party links and CISA/DHS marks not covered |
-| [FIRST EPSS](https://www.first.org/epss/data) | Daily exploitation probability, percentile, score date, model version | Free, no registration; FAQ asks attribution; services terms permit specified preventative-security uses with notices retained |
+| Source                                                                   | What we take                                                          | Reuse basis                                                                                                                   |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [CVE List V5](https://github.com/CVEProject/cvelistV5)                   | Records, descriptions, dates, references, available CNA/ADP metrics   | CVE Terms: no-charge reproduction, derivatives, display, distribution — reproduce MITRE copyright designation and license     |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited membership, date added, catalog metadata              | CC0 1.0 for catalog data; third-party links and CISA/DHS marks not covered                                                    |
+| [FIRST EPSS](https://www.first.org/epss/data)                            | Daily exploitation probability, percentile, score date, model version | Free, no registration; FAQ asks attribution; services terms permit specified preventative-security uses with notices retained |
 
 Why no paid feed is needed: the site's value is **transparent ordering and
 evidence**, not proprietary telemetry. KEV is confirmed-exploitation evidence,
@@ -148,6 +148,14 @@ List V5 clone is large (gigabytes; expect several minutes on a first clone,
 faster afterwards) — then keeps refreshing on the scheduler intervals while
 `SCHEDULE_ENABLED=true` (the Compose default). With `SCHEDULE_ENABLED=false`
 the worker still runs that single initial import, then idles.
+`INGEST_ON_START=false` skips even the initial cycle (the worker logs
+`worker-idle` and parks): use it on a seeded named volume so the deployment
+serves immediately with zero import contention. Change Radar checkpoints
+retain bounded observed top-N lists per view (`CHECKPOINT_TOP_N`, default
+500); replay responses carry `boundedTopN` plus a notice so a replay never
+implies a complete enumeration. Compose grants the container up to 4 CPUs /
+4 GB (host-dependent: production host has 12 CPUs / 22 GB); retune the
+`deploy.resources.limits` for smaller hosts.
 
 The first CVE clone downloads a large repository: budget several minutes to
 tens of minutes on first boot depending on link speed. Tune with
@@ -162,9 +170,16 @@ back to full reconciliation and logs the path taken.
 
 An empty corpus in the first seconds is expected: the site shows an honest
 initializing state until the first valid snapshots are accepted. Watch
-progress in the logs — the worker emits one structured JSON line per source
-per cycle (`{"event":"ingest-cycle","source":"kev",...}` plus
-`worker-start` / `worker-scheduled` / `worker-idle` markers).
+progress in the logs — the worker emits a `source-start` line per source
+before its job runs (`{"event":"source-start","source":"cve"}` etc., so a
+long first CVE clone is visibly in progress) plus one structured JSON
+completion line per source per cycle
+(`{"event":"ingest-cycle","source":"kev",...}` plus `worker-start` /
+`worker-scheduled` / `worker-idle` markers). The runtime image bundles
+`git` plus CA certificates so the CVE List V5 clone/fetch refreshes
+in-container over HTTPS, and the
+worker runs at a lower OS priority (`os.setPriority(0, 10)`, best effort)
+so web requests win under contention.
 The published port binds to loopback (`127.0.0.1`) by default — the site is
 reachable at `http://127.0.0.1:3000` (override the host side with
 `BIND_ADDR=... PORT=...`; Tailscale example `BIND_ADDR=100.x.y.z PORT=3100`,
@@ -230,18 +245,18 @@ approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
 
 ## Docs map
 
-| Document | Purpose |
-|---|---|
-| [`FEASIBILITY.md`](FEASIBILITY.md) | Coverage verdict: what sources support, explicit gaps, readiness gates |
-| [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md) | Proposed ingestion, ranking, history, freshness, and acceptance contracts |
-| [`docs/research/SOURCES.md`](docs/research/SOURCES.md) | First-party terms, endpoints, fields, live validations, limits |
-| [`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md) | Verified competitor overlap and check limits |
-| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md) | Approved bundle: design, stack, history, ranking, testing basis |
-| [`.omo/drafts/cve-change-radar.md`](.omo/drafts/cve-change-radar.md) | Planning record: users, gaps, decisions, open questions |
-| [`.omo/drafts/cve-change-radar-design.md`](.omo/drafts/cve-change-radar-design.md) | Candidate Evidence Ledger visual direction |
-| [`.omo/drafts/cve-single-image-deployment.md`](.omo/drafts/cve-single-image-deployment.md) | Single-image runtime, persistence, lifecycle, parity tests |
-| [`.omo/drafts/cve-stack-contract-audit.md`](.omo/drafts/cve-stack-contract-audit.md) | Proposed stack compatibility evidence (not a selected stack) |
-| [`.claude/`](.claude/) | Agent rules, security standards, environment guide, task queue, history |
+| Document                                                                                   | Purpose                                                                   |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| [`FEASIBILITY.md`](FEASIBILITY.md)                                                         | Coverage verdict: what sources support, explicit gaps, readiness gates    |
+| [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md)                                           | Proposed ingestion, ranking, history, freshness, and acceptance contracts |
+| [`docs/research/SOURCES.md`](docs/research/SOURCES.md)                                     | First-party terms, endpoints, fields, live validations, limits            |
+| [`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md)                             | Verified competitor overlap and check limits                              |
+| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md)                   | Approved bundle: design, stack, history, ranking, testing basis           |
+| [`.omo/drafts/cve-change-radar.md`](.omo/drafts/cve-change-radar.md)                       | Planning record: users, gaps, decisions, open questions                   |
+| [`.omo/drafts/cve-change-radar-design.md`](.omo/drafts/cve-change-radar-design.md)         | Candidate Evidence Ledger visual direction                                |
+| [`.omo/drafts/cve-single-image-deployment.md`](.omo/drafts/cve-single-image-deployment.md) | Single-image runtime, persistence, lifecycle, parity tests                |
+| [`.omo/drafts/cve-stack-contract-audit.md`](.omo/drafts/cve-stack-contract-audit.md)       | Proposed stack compatibility evidence (not a selected stack)              |
+| [`.claude/`](.claude/)                                                                     | Agent rules, security standards, environment guide, task queue, history   |
 
 ## Build gates (all done)
 
