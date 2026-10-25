@@ -1,0 +1,266 @@
+/* Methodology diagrams. Tokens only from :root ledger variables; no raw
+   colors. Vertical single column below 900px, horizontal lanes at desktop
+   widths. Decorative arrows are CSS content (never read by AT); the order
+   lives in the ordered-list DOM and every connector carries a visible text
+   label. Print keeps figures inside the page. */
+
+.diagram {
+  margin: 0 0 var(--ledger-space-4) 0;
+  max-width: 100%;
+}
+
+.diagramCaption {
+  font-size: 14px;
+  color: var(--ledger-ink-secondary);
+  margin-bottom: var(--ledger-space-3);
+  max-width: 72ch;
+}
+
+.flowList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  max-width: 100%;
+}
+
+.flowStep {
+  min-width: 0;
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  background: var(--ledger-surface);
+  padding: var(--ledger-space-3);
+  overflow-wrap: break-word;
+}
+
+.flowConnector {
+  display: flex;
+  align-items: center;
+  gap: var(--ledger-space-2);
+  padding: var(--ledger-space-2) var(--ledger-space-1);
+  font-size: 14px;
+  color: var(--ledger-ink-secondary);
+  min-height: 44px;
+}
+
+/* Decorative arrow: the label text that follows is the information. */
+.flowConnector::before {
+  content: "\2193";
+  font-weight: 700;
+  color: var(--ledger-ink);
+}
+
+@media (min-width: 900px) {
+  .flowListHorizontal {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    align-items: stretch;
+  }
+
+  .flowStep {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .flowConnectorHorizontal {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .flowConnectorHorizontal::before {
+    content: "\2192";
+  }
+}
+
+/* Ordering decision flow: single column at every width; numbers carry order. */
+.decisionList {
+  list-style: none;
+  counter-reset: decision-step;
+  margin: 0 0 var(--ledger-space-4) 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ledger-space-2);
+}
+
+.decisionStep {
+  counter-increment: decision-step;
+  display: flex;
+  gap: var(--ledger-space-3);
+  align-items: flex-start;
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  background: var(--ledger-surface);
+  padding: var(--ledger-space-3);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.decisionStep::before {
+  content: counter(decision-step);
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ledger-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ledger-ink);
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+}
+
+.decisionBody {
+  min-width: 0;
+}
+
+/* Modes table wrapper scrolls horizontally on narrow screens; the table
+   itself never forces page overflow. */
+.tableScroll {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  margin-bottom: var(--ledger-space-4);
+}
+
+.modesTable {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 560px;
+  font-size: 14px;
+}
+
+.modesTable caption {
+  text-align: left;
+  padding: var(--ledger-space-3);
+  color: var(--ledger-ink-secondary);
+  font-size: 14px;
+}
+
+.modesTable th,
+.modesTable td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--ledger-space-2) var(--ledger-space-3);
+  border-top: 1px solid var(--ledger-rule);
+  overflow-wrap: break-word;
+}
+
+.modesTable thead th {
+  border-top: 0;
+  font-family: var(--ledger-font-mono);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ledger-ink-secondary);
+  font-weight: 700;
+}
+
+/* Signal lanes: three stacked lanes, side by side on desktop. */
+.laneList {
+  list-style: none;
+  margin: 0 0 var(--ledger-space-3) 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ledger-space-3);
+}
+
+@media (min-width: 900px) {
+  .laneList {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.lane {
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  background: var(--ledger-surface);
+  padding: var(--ledger-space-3);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.laneName {
+  display: block;
+  margin-bottom: var(--ledger-space-2);
+}
+
+.convergence {
+  border: 1px solid var(--ledger-ink);
+  border-radius: 2px;
+  background: var(--ledger-surface);
+  padding: var(--ledger-space-3);
+  overflow-wrap: break-word;
+  max-width: 72ch;
+}
+
+.failureBranch {
+  margin-top: var(--ledger-space-3);
+  border: 1px dashed var(--ledger-ink-secondary);
+  border-radius: 2px;
+  padding: var(--ledger-space-3);
+  overflow-wrap: break-word;
+  max-width: 72ch;
+}
+
+.anchorNav {
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  background: var(--ledger-surface);
+  padding: var(--ledger-space-3) var(--ledger-space-4);
+  margin-bottom: var(--ledger-space-6);
+  max-width: 100%;
+}
+
+.anchorNavList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ledger-space-1) var(--ledger-space-3);
+}
+
+.anchorNavList a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 14px;
+}
+
+@media print {
+  .diagram,
+  .tableScroll,
+  .convergence,
+  .failureBranch,
+  .anchorNav {
+    break-inside: avoid;
+    max-width: 100%;
+  }
+
+  .tableScroll {
+    overflow-x: visible;
+  }
+
+  .modesTable {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flowStep,
+  .decisionStep,
+  .lane,
+  .convergence,
+  .failureBranch {
+    transition: none;
+  }
+}

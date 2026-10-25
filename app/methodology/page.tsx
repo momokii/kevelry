@@ -9,6 +9,12 @@ import path from "node:path";
 
 import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/shared";
 import { Masthead } from "@/components/ledger/Masthead";
+import { HelpTip } from "@/components/ledger/HelpTip";
+import { TimeText } from "@/components/ledger/TimeText";
+import { OrderingDiagram } from "@/components/methodology/OrderingDiagram";
+import { PipelineDiagram } from "@/components/methodology/PipelineDiagram";
+import { SignalDiagram } from "@/components/methodology/SignalDiagram";
+import styles from "@/components/methodology/MethodologyDiagrams.module.css";
 import { getAggregates } from "@/lib/aggregates";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 
@@ -154,8 +160,45 @@ export default function MethodologyPage() {
         source is healthy. Checked 2026-10-24; recheck terms before launch and before any
         monetization. These are dated findings, not legal advice.
       </p>
+      <p className="ledger-meta" data-testid="methodology-generated">
+        Page generated <TimeText value={nowIso} testId="methodology-generated-time" />.
+      </p>
 
-      <section className="ledger-section" aria-labelledby="methodology-signals-heading">
+      <nav
+        aria-label="Methodology sections"
+        data-testid="methodology-anchor-nav"
+        className={styles.anchorNav}
+      >
+        <ul className={styles.anchorNavList}>
+          <li>
+            <a href="#methodology-section-signals">Signals</a>
+          </li>
+          <li>
+            <a href="#methodology-section-pipeline">Pipeline</a>
+          </li>
+          <li>
+            <a href="#methodology-section-ordering">Ordering</a>
+          </li>
+          <li>
+            <a href="#methodology-section-sources">Sources</a>
+          </li>
+          <li>
+            <a href="#methodology-section-notices">Notices</a>
+          </li>
+          <li>
+            <a href="#methodology-section-gaps">Gaps</a>
+          </li>
+          <li>
+            <a href="#methodology-section-status">Status</a>
+          </li>
+        </ul>
+      </nav>
+
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-signals-heading"
+        id="methodology-section-signals"
+      >
         <h2 id="methodology-signals-heading">What each signal means</h2>
         <div data-testid="methodology-signals">
           <h3>CVSS: supplied severity</h3>
@@ -189,10 +232,35 @@ export default function MethodologyPage() {
             The three signals stay distinct. Multiplying CVSS by EPSS or mixing them with weights
             does not create a calibrated probability or risk score, so this site never computes one.
           </p>
+          <h3>
+            How the signals relate{" "}
+            <HelpTip term="signal lanes" testId="methodology-signals-helptip">
+              Each lane states what one signal is and what it is not; the lanes never merge.
+            </HelpTip>
+          </h3>
+          <SignalDiagram />
         </div>
       </section>
 
-      <section className="ledger-section" aria-labelledby="methodology-ordering-heading">
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-pipeline-heading"
+        id="methodology-section-pipeline"
+      >
+        <h2 id="methodology-pipeline-heading">
+          Ingestion-to-publication pipeline{" "}
+          <HelpTip term="pipeline" testId="methodology-pipeline-helptip">
+            The worker fetches; pages and the API read accepted local snapshots only.
+          </HelpTip>
+        </h2>
+        <PipelineDiagram />
+      </section>
+
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-ordering-heading"
+        id="methodology-section-ordering"
+      >
         <h2 id="methodology-ordering-heading">
           Exact ordering rules (ranking policy {RANKING_POLICY_VERSION})
         </h2>
@@ -249,9 +317,20 @@ export default function MethodologyPage() {
             popularity or observed exploitation telemetry.
           </p>
         </div>
+        <h3>
+          Default priority as a decision flow{" "}
+          <HelpTip term="default priority flow" testId="methodology-ordering-flow-helptip">
+            Six keys compared top to bottom; the first difference decides.
+          </HelpTip>
+        </h3>
+        <OrderingDiagram />
       </section>
 
-      <section className="ledger-section" aria-labelledby="methodology-sources-heading">
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-sources-heading"
+        id="methodology-section-sources"
+      >
         <h2 id="methodology-sources-heading">Sources, dates, and versions</h2>
         <div data-testid="methodology-sources">
           <p>
@@ -284,7 +363,11 @@ export default function MethodologyPage() {
         </div>
       </section>
 
-      <section className="ledger-section" aria-labelledby="methodology-notices-heading">
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-notices-heading"
+        id="methodology-section-notices"
+      >
         <h2 id="methodology-notices-heading">Reuse and attribution notices</h2>
         <p className="ledger-meta">
           Required notices, kept verbatim. A bare source link is not a substitute for reproducing
@@ -356,7 +439,11 @@ export default function MethodologyPage() {
         </div>
       </section>
 
-      <section className="ledger-section" aria-labelledby="methodology-gaps-heading">
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-gaps-heading"
+        id="methodology-section-gaps"
+      >
         <h2 id="methodology-gaps-heading">Coverage gaps</h2>
         <div data-testid="methodology-gaps">
           <p>
@@ -385,7 +472,11 @@ export default function MethodologyPage() {
         </div>
       </section>
 
-      <section className="ledger-section" aria-labelledby="methodology-health-heading">
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-health-heading"
+        id="methodology-section-status"
+      >
         <h2 id="methodology-health-heading">Per-source data status</h2>
         <p className="ledger-meta" data-testid="methodology-health-note">
           Health comes from the sync_runs table: the latest run per source for check time, the
