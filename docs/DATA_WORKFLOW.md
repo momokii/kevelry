@@ -54,7 +54,10 @@ unscored CVE is not low severity. Do not imply different CVSS versions are calib
    cannot be established, reconcile the complete pinned tree. Do not publish a
    partial changed-file result as a full corpus.
 5. Validate and stage the resulting complete local dataset before publishing its
-   revision. A successful import is the only event that advances the import checkpoint.
+   revision. Parse and stage the corpus in bounded batches (session-scoped
+   staging tables, one bounded transaction per batch), then merge into the live
+   tables in a single final transaction so partial state is never visible.
+   A successful import is the only event that advances the import checkpoint.
 
 **Alternative: release assets.** Seed a dated full baseline and track its identity.
 Hourly assets are cumulative since that baseline, not independent prior-hour events.
@@ -84,8 +87,15 @@ Do not mix unrelated baselines or require an expired rolling delta log for recov
 Validate records with the matching declared `dataVersion` schema. Accept known
 supported valid versions; an unsupported version is an explicit failed/quarantined
 import, not silently discarded content. Preserve all raw containers/provider fields.
-Malformed present timestamps, IDs, structures or numbers fail validation; absent
-optional values remain unknown. Record anomalies and coverage without inventing values.
+Malformed present IDs, structures or numbers fail validation; absent optional
+values remain unknown. ISO-8601 datetimes without a timezone suffix are accepted
+and interpreted as UTC; other malformed timestamps fail validation. Record files
+larger than the per-record cap (default 16 MiB, `CVE_MAX_RECORD_BYTES`) are
+quarantined. A quarantined set at or below max(50, 0.1% of scanned records) is
+tolerated: the good records publish, and the quarantine list, count, and reasons
+are stored in `sync_runs` and logged as a structured warning. Above that ceiling
+the import fails closed: last-known-good data is preserved and the import
+checkpoint does not advance. Record anomalies and coverage without inventing values.
 
 Each source refresh is independent. Build an immutable local publication manifest
 that references accepted CVE/KEV/EPSS versions. Advance valid sources atomically while

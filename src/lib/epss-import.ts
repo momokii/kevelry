@@ -25,6 +25,10 @@ export const EPSS_SOURCE_NAME = "epss" as const;
 const CVE_ID_PATTERN = /^CVE-(19|20)\d{2}-\d{4,}$/;
 const SCORE_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const PLAIN_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+const SCIENTIFIC_DECIMAL_PATTERN = /^(\d+(?:\.\d+)?)[eE]([+-]?\d+)$/;
+// Hard cap on exponent-driven digit expansion so a hostile `1e-1000000`
+// cannot force a megabyte string; real EPSS values are tiny decimals.
+const MAX_EXPONENT_MAGNITUDE = 10_000;
 const REQUIRED_HEADER = "cve,epss,percentile";
 const GZIP_MAGIC_0 = 0x1f;
 const GZIP_MAGIC_1 = 0x8b;
@@ -105,14 +109,93 @@ function parseCommentMetadata(commentLines: string[]): { modelVersion: string; s
   return { modelVersion, scoreDate: normalizeScoreDay(scoreDateRaw) };
 }
 
-function validateDecimalText(field: string, value: string, cveId: string): void {
-  if (!PLAIN_DECIMAL_PATTERN.test(value)) {
+function canonicalizeScientificDecimal(value: string): string {
+  const match = SCIENTIFIC_DECIMAL_PATTERN.exec(value);
+  if (match === null) {
+    fail(`invalid EPSS decimal "${value}": expected a plain decimal or exponent notation`);
+  }
+  const mantissa = match[1] as string;
+  const exponentRaw = match[2] as string;
+  const exponent = Number(exponentRaw);
+  if (!Number.isInteger(exponent) || Math.abs(exponent) > MAX_EXPONENT_MAGNITUDE) {
+    fail(`invalid EPSS decimal "${value}": exponent out of range`);
+  }
+  const dot = mantissa.indexOf(".");
+  const intPart = dot < 0 ? mantissa : mantissa.slice(0, dot);
+  const fracPart = dot < 0 ? "" : mantissa.slice(dot + 1);
+  const fracLen = fracPart.length;
+  const combined = `${intPart}${fracPart}`.replace(/^0+(?=\d)/, "");
+  const stripped = combined === "" ? "0" : combined;
+  let digits: bigint;
+  try {
+    digits = BigInt(stripped);
+  } catch {
+    fail(`invalid EPSS decimal "${value}": malformed mantissa`);
+  }
+  if (digits === 0n) {
+    return "0";
+  }
+  const shift = exponent - fracLen;
+  if (shift >= 0) {
+    const scaled = digits * 10n ** BigInt(shift);
+    if (scaled > 1n) {
+      fail(`invalid EPSS decimal "${value}": expected a finite value in [0,1]`);
+    }
+    return scaled.toString();
+  }
+  const scale = -shift;
+  const denominator = 10n ** BigInt(scale);
+  const whole = digits / denominator;
+  const rest = digits % denominator;
+  if (whole > 1n) {
+    fail(`invalid EPSS decimal "${value}": expected a finite value in [0,1]`);
+  }
+  if (whole === 1n && rest !== 0n) {
+    fail(`invalid EPSS decimal "${value}": expected a finite value in [0,1]`);
+  }
+  if (rest === 0n) {
+    return whole.toString();
+  }
+  const frac = rest.toString().padStart(scale, "0").replace(/0+$/, "");
+  return `${whole.toString()}.${frac}`;
+}
+
+function canonicalizeDecimalText(field: string, value: string, cveId: string): string {
+  if (value === "") {
     fail(`invalid EPSS ${field} "${value}" for ${cveId}: expected a plain decimal`);
   }
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1) {
-    fail(`invalid EPSS ${field} "${value}" for ${cveId}: expected a finite value in [0,1]`);
+  if (PLAIN_DECIMAL_PATTERN.test(value)) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1) {
+      fail(`invalid EPSS ${field} "${value}" for ${cveId}: expected a finite value in [0,1]`);
+    }
+    return value;
   }
+  if (/[eE]/.test(value)) {
+    try {
+      const canonical = canonicalizeScientificDecimal(value);
+      const numeric = Number(canonical);
+      if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1) {
+        fail(`invalid EPSS ${field} "${value}" for ${cveId}: expected a finite value in [0,1]`);
+      }
+      return canonical;
+    } catch (error) {
+      if (error instanceof EpssImportError) {
+        const detail = error.message.replace(
+          /^invalid EPSS decimal /,
+          `invalid EPSS ${field} `,
+        );
+        const withId = detail.includes(" for ") ? detail : `${detail} for ${cveId}`;
+        fail(withId);
+      }
+      throw error;
+    }
+  }
+  fail(`invalid EPSS ${field} "${value}" for ${cveId}: expected a plain decimal`);
+}
+
+function validateDecimalText(field: string, value: string, cveId: string): string {
+  return canonicalizeDecimalText(field, value, cveId);
 }
 
 export function parseEpssCsv(csvText: string): EpssCsvDocument {
@@ -156,10 +239,10 @@ export function parseEpssCsv(csvText: string): EpssCsvDocument {
     if (seen.has(cveId)) {
       fail(`duplicate EPSS ID "${cveId}"`);
     }
-    validateDecimalText("epss", epssText, cveId);
-    validateDecimalText("percentile", percentileText, cveId);
+    const canonicalEpss = validateDecimalText("epss", epssText, cveId);
+    const canonicalPercentile = validateDecimalText("percentile", percentileText, cveId);
     seen.add(cveId);
-    rows.push({ cveId, epssText, percentileText });
+    rows.push({ cveId, epssText: canonicalEpss, percentileText: canonicalPercentile });
   }
 
   if (!headerSeen || header === null) {

@@ -95,6 +95,11 @@ describe("EPSS daily CSV parsing", () => {
       ["epss above one", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,1.5,0.8"])],
       ["negative percentile", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,0.1,-0.2"])],
       ["non-numeric epss", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,NaN,0.8"])],
+      ["exponent above one", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,0.5e1,0.8"])],
+      ["huge exponent", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,1e400,0.8"])],
+      ["negative exponent mantissa", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,-7e-05,0.8"])],
+      ["infinity epss", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,Infinity,0.8"])],
+      ["malformed exponent", csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,1e,0.8"])],
       [
         "header only, no rows",
         `#model_version:${MODEL},score_date:${DAY_ONE}\ncve,epss,percentile`,
@@ -102,6 +107,38 @@ describe("EPSS daily CSV parsing", () => {
     ];
     for (const [name, input] of cases) {
       expect(() => parseEpssCsv(input), name).toThrowError(EpssImportError);
+    }
+  });
+
+  it("accepts exponent notation with exact canonical plain decimals", () => {
+    const document = parseEpssCsv(
+      csvFor(DAY_ONE, MODEL, ["CVE-2099-0001,7e-05,1E-3", "CVE-2099-0002,2.5E-4,0.5"]),
+    );
+    expect(document.rows[0]).toEqual({
+      cveId: "CVE-2099-0001",
+      epssText: "0.00007",
+      percentileText: "0.001",
+    });
+    expect(document.rows[1]?.epssText).toBe("0.00025");
+  });
+
+  it("imports a live-shaped CSV row that previously failed on scientific notation", () => {
+    const db = makeDatabase();
+    try {
+      const liveShaped = [
+        "#model_version:v2025.03.14,score_date:2026-10-24T00:00:00Z",
+        "cve,epss,percentile",
+        "CVE-2099-0001,0.00042,7e-05",
+        "CVE-2099-0002,1E-3,0.5",
+      ].join("\n");
+      const result = importEpssCsv(db, liveShaped);
+      expect(result.rowCount).toBe(2);
+      const stored = db.handle
+        .prepare("SELECT epss, percentile FROM epss_daily WHERE cve_id = ?")
+        .get("CVE-2099-0001") as { epss: string; percentile: string };
+      expect(stored).toEqual({ epss: "0.00042", percentile: "0.00007" });
+    } finally {
+      db.close();
     }
   });
 });

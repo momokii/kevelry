@@ -7,7 +7,10 @@
 
 export type CveRecordState = "PUBLISHED" | "REJECTED";
 
-export const SUPPORTED_CVE_DATA_VERSIONS: readonly string[] = ["5.0", "5.1"];
+// 5.2 is a documented non-breaking change (adds PURL support +
+// additionalProperties=false on affected items): contract alignment, not
+// weakening. Unknown versions (e.g. "6.0", "5.3") still fail closed.
+export const SUPPORTED_CVE_DATA_VERSIONS: readonly string[] = ["5.0", "5.1", "5.2"];
 
 export interface StubCveRecord {
   cveId: string;
