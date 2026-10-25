@@ -5,6 +5,24 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Deploy serve-only on the Tailscale interface; refresh stays deliberate.
+
+**Date:** 2026-10-25
+
+**Context:** First live import of 395k records saturated CPU/IO and made requests
+time out, and each refresh re-cloned a multi-GB repository.
+
+**Rationale:** Bind `BIND_ADDR=100.124.184.116 PORT=3100` for tailnet access while
+keeping `INGEST_ON_START=false` and `SCHEDULE_ENABLED=false`, so the site serves
+the verified snapshot at full speed. Refreshes reuse `/data/cve-repo` once enabled.
+
+**Security Implications:** Listener is limited to the Tailscale address, not
+0.0.0.0; no TLS termination was added; no secrets in compose or image.
+
+**Impact:** Data is a verified snapshot (2026-10-24/25) and will not update until
+the owner enables ingestion. Radar history and rising forecasts stay empty until
+daily checkpoints/EPSS dates accumulate.
+
 **Decision:** Accept the completed implementation and close the execution plan.
 
 **Date:** 2026-10-24

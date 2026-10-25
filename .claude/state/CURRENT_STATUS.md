@@ -2,8 +2,9 @@
 
 ## Project Phase
 
-Complete and verified on local `main`: all 30 build todos delivered, F1–F4 final
-gates approved with evidence. No remote, no deployment yet.
+Deployed and serving on this host: single container at
+http://100.124.184.116:3100 (Tailscale). All 30 build todos delivered, F1–F4
+approved, plus post-deployment hardening. Local `main` only: no remote.
 
 ## Completed
 
@@ -30,21 +31,27 @@ gates approved with evidence. No remote, no deployment yet.
 - [x] F2 code quality review approved: lint/typecheck/test green, no suppressions, pinned deps, parameterized SQL, no secrets
 - [x] F3 browser QA approved: stock Playwright suite green with phone + desktop screenshots, keyboard/zoom/reduced-motion evidence
 - [x] F4 ideal-state fidelity approved: 10/11 rows met outright; shortfall became tracked todo 31, now done
+- [x] Live ingestion verified from upstreams: 395,286 CVEs, 1,756 KEV, 395,249 EPSS, 285,877 CVSS metric rows
+- [x] Post-deployment scale fixes: bounded checkpoints/API queries, persistent CVE checkout cache, CVSS backfill
+- [x] Deployed on Tailscale 100.124.184.116:3100; all pages and APIs respond <5s, 0 restarts
 
 ## In Progress
 
-None — implementation and verification are complete. Next decision is the owner's:
-push/remote, public deployment (HTTPS/binding), and any release hardening.
+None. The stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`)
+so data refreshes are deliberate, not automatic.
 
 ## Blocked
 
-None. Remaining unmeasured items from the original audit (full-corpus import at
-production scale, production hosting costs) are deployment concerns, not build blockers.
+- Container image rebuild is pending: host DNS cannot resolve
+  `registry-1.docker.io` / `auth.docker.io`. The running image already includes the
+  query/cache fixes; the CVSS importer change ships with the next successful build.
+  Live data is complete because the backfill script has already run.
 
 ## Open Questions
 
-- Release decisions (owner): create a remote / push, choose public hosting with HTTPS + binding, revisit FIRST terms before any monetization.
-- Host specifications/procurement remain deferred by owner; do not keep asking.
+- Enable automatic refresh? Set `INGEST_ON_START=true` and `SCHEDULE_ENABLED=true`, then restart. First cycle re-clones (~1h); later cycles reuse the cache.
+- Public HTTPS and a remote repository remain owner decisions. Revisit FIRST terms before monetization.
+- Change Radar history accumulates only while the scheduler runs; today checkpoints = 0 and EPSS has one score date.
 
 ## Security Notes
 
@@ -55,4 +62,4 @@ production scale, production hosting costs) are deployment concerns, not build b
 
 ## Last Updated
 
-2026-10-24: all 30 todos + F1–F4 verified and merged on `main`. ORCHESTRATION COMPLETE; awaiting release decisions.
+2026-10-25: deployed on Tailscale 100.124.184.116:3100 with live data; all endpoints <5s. Image rebuild pending host DNS recovery.

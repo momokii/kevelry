@@ -2,6 +2,23 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-25 - Deployed on Tailscale with live data
+
+Built and deployed the single container on this host, bound to the Tailscale
+address `100.124.184.116:3100`, using a verified live database (395,286 CVEs,
+1,756 KEV, 395,249 EPSS, 285,877 CVSS metric rows; 4.33 GB, integrity ok).
+Post-deployment testing exposed and fixed real scale defects that unit tests
+missed: a 395k-variable SQL query that crashed the server, unbounded API and
+page materialization (status 23s, cves 47s, priority page aborted),
+a re-clone of the whole repository on every refresh (now a persistent
+`/data/cve-repo` cache), a missing `cvss_metrics` write path (backfilled from
+stored records), and missing `git`/CA certificates in the runtime image.
+Final state: every page and API answers 200 in under 5s with restarts 0.
+The stack is intentionally serve-only right now; enabling
+`INGEST_ON_START`/`SCHEDULE_ENABLED` resumes refresh (first cycle re-clones).
+One follow-up remains: the image rebuild that carries the CVSS importer change
+is blocked by a transient host DNS outage; data is already complete.
+
 ## 2026-10-24 - Implementation complete, all gates approved
 
 Executed `.omo/plans/cve-change-radar.md` Waves 1–5 plus F1–F4 on task-owned
