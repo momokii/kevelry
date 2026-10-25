@@ -1,30 +1,28 @@
 # cve-injector
 
 Public CVE overview with explainable prioritization, searchable descriptions,
-official-record links — plus **Change Radar**: what changed, why it matters, and
-replayable history. One self-contained Docker image, one container, optional
-Compose wrapper, and a versioned read-only API so other platforms (or your own
-self-hosted copy) can consume the same data.
+official-record links, plus **Change Radar**: what changed, why it matters, and
+replayable history. One self-contained Docker image, one container, and a
+versioned read-only API so other platforms (or your own self-hosted copy) can
+consume the same data.
 
-> **Status: implemented and verified — all 30 build todos plus F1–F4 gates approved.**
+> **Status: implemented and verified, all 30 build todos plus F1-F4 gates approved.**
 > The single-container app, versioned read-only API, Compose setup, and backup
-> procedures exist in this tree with evidence under `.omo/evidence/`. Local `main`
-> only: no remote, no deployment. See `.claude/state/CURRENT_STATUS.md`.
+> procedures exist in this tree with evidence under `.omo/evidence/`.
 
 ## What it does
 
-- **Overview** — published-CVE volume charts with explicit date basis and source freshness.
-- **Search** — CVE ID and description search with filters, excerpts, and official CVE links.
-- **Priority lists** — known-exploited, highest forecast, new critical, rising forecast.
+- **Overview:** published-CVE volume charts with explicit date basis and source freshness.
+- **Search:** CVE ID and description search with filters, excerpts, and official CVE links.
+- **Priority lists:** known-exploited, highest forecast, new critical, rising forecast.
   Separate signals, deterministic ordering, no invented popularity score.
-- **Change Radar** — before/after evidence when a record, KEV membership, forecast, or
+- **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
-- **Snapshot replay** — restore a retained daily checkpoint and policy version to see
-  what the site showed and why (bounded observed history, no fabricated past).
-- **Public read-only API + docs** — the same local snapshots the website reads,
-  versioned routes, OpenAPI plus human docs, for external platforms and API-only
-  self-hosting. Public writes stay out of scope.
-- **Methodology & data status** — sources, notices, ordering rules, coverage gaps, and
+- **Snapshot replay:** a retained daily checkpoint plus policy version shows
+  what the site displayed and why (bounded observed history, no fabricated past).
+- **Public read-only API + docs:** the same local snapshots the website reads,
+  versioned routes, OpenAPI plus human docs. Public writes stay out of scope.
+- **Methodology and data status:** sources, notices, ordering rules, coverage gaps, and
   per-source stale/warning states, always visible.
 
 ## How it works
@@ -71,177 +69,206 @@ flowchart TB
 ```
 
 - Visitor and API requests **never call upstream directly**; they read accepted
-  local snapshots. Only the ingestion worker fetches upstream.
-- Each publication pins exact source revisions/dates, observation times, ranking
-  policy version, and eligible cohort — replay reuses those, never today's
-  corrected records.
-- A missing feed keeps serving last-known-good data with a visible per-source
-  warning; one failed feed never freezes the others.
+  local snapshots, while only the ingestion worker fetches upstream.
+- Each publication pins source revisions/dates, observation times, ranking policy
+  version, and eligible cohort; replay reuses those, never today's corrected records.
+- A missing feed keeps serving last-known-good data with a visible per-source warning;
+  one failed feed never freezes the others.
 
 ## Data sources and why this is feasible
 
-All three core feeds are free to access today (checked 2026-10-24; recheck terms
-before launch and before any monetization):
+All three feeds are free to access today (checked 2026-10-24; recheck terms before launch or monetization):
 
 | Source                                                                   | What we take                                                          | Reuse basis                                                                                                                   |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [CVE List V5](https://github.com/CVEProject/cvelistV5)                   | Records, descriptions, dates, references, available CNA/ADP metrics   | CVE Terms: no-charge reproduction, derivatives, display, distribution — reproduce MITRE copyright designation and license     |
+| [CVE List V5](https://github.com/CVEProject/cvelistV5)                   | Records, descriptions, dates, references, available CNA/ADP metrics   | CVE Terms: no-charge reproduction, derivatives, display, distribution, reproduce MITRE copyright designation and license     |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited membership, date added, catalog metadata              | CC0 1.0 for catalog data; third-party links and CISA/DHS marks not covered                                                    |
 | [FIRST EPSS](https://www.first.org/epss/data)                            | Daily exploitation probability, percentile, score date, model version | Free, no registration; FAQ asks attribution; services terms permit specified preventative-security uses with notices retained |
 
 Why no paid feed is needed: the site's value is **transparent ordering and
 evidence**, not proprietary telemetry. KEV is confirmed-exploitation evidence,
-EPSS is a dated forecast, CVSS is supplied severity — three distinct signals,
-never multiplied into a fake composite score. Full daily EPSS structurally
-validated here: 394,803 unique rows, zero invalid rows under the stated checks;
-KEV declared/actual/unique counts matched at 1,756. Those are structural checks,
-not model validation or app benchmarks.
+EPSS is a dated forecast, CVSS is supplied severity. Full daily EPSS
+structurally validated here: 394,803 unique rows, zero invalid rows under the
+stated checks; KEV counts matched at 1,756. Structural checks only, not model
+validation or app benchmarks.
 
-Explicitly **not** promised: social popularity, guaranteed nickname search
-(e.g. "PHP2Shell"), severity for every CVE, complete unpublished-reservation
-counts, or exact parity with any other tracker's projections.
+Explicitly **not** promised: social popularity, nickname search (e.g. "PHP2Shell"),
+severity for every CVE, unpublished-reservation counts, or parity with other trackers.
 
-Evidence: `FEASIBILITY.md`, `docs/research/SOURCES.md`,
-`docs/DATA_WORKFLOW.md`. Competitor overlap (closest verified: o2CVE) is
-documented in `docs/research/COMPETITORS.md`.
+Evidence: `FEASIBILITY.md`, `docs/research/SOURCES.md`, `docs/DATA_WORKFLOW.md`.
+Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md`.
 
-## Deployment
+## Quick start
 
-One image, one container, optional Compose wrapper. `compose.yaml` is the
-production-safe default (single `app` service, `APP_ENV=production`, named
-volume `cve-data` for `/data`, loopback-bound web port, restart policy,
-resource limits, no source mounts, no debug ports). `compose.dev.yaml` is an
-explicit opt-in for hot reload, source bind mounts, and the Node inspector
-debug port — it is never auto-loaded (no `compose.override.yaml` exists).
-
-### Run it (Docker Compose)
+Prerequisites: Docker with Compose v2, about 12 GB free disk at peak (image
+~0.4 GB, CVE clone scratch ~5 GB during import, database ~4.3 GB plus WAL),
+and optionally Tailscale for remote access.
 
 ```bash
 ./setup.sh                    # check-only prerequisites (Docker, daemon, compose, port, volume)
-docker compose up -d --build  # build + start the single container on 127.0.0.1:3000
+docker compose up -d --build  # build cve-change-radar:local and start the single container
 docker compose logs -f app    # watch first-boot ingestion progress
 ```
 
-First boot: KEV/EPSS land in seconds-to-minutes; the CVE List V5 clone is
-large (gigabytes, many minutes) — the site shows an honest initializing state
-until the first snapshots are accepted. Health/readiness:
-`GET /api/v1/health` (liveness) and `GET /api/v1/status` (per-source
-freshness). Expose over Tailscale with `BIND_ADDR=100.x.y.z PORT=3100` —
-default stays loopback; `0.0.0.0` exposes every interface, use only behind
-explicit firewall/TLS. If outbound fetches stall on IPv6-only DNS, the worker
-already prefers IPv4 (`ipv4first`); optional override:
-`NODE_OPTIONS=--dns-result-order=ipv4first`. Backups: see
-`docs/backup-runbook.md`.
+Ready means: `GET /api/v1/health` returns 200 and `GET /api/v1/status`
+shows the first snapshots accepted. KEV/EPSS land in seconds-to-minutes; the
+gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
+initializing state until then. Live scale here: 395,286 CVEs, 1,756 KEV, 395,249 EPSS.
 
-### First launch
+## Configuration
 
-```bash
-docker compose build   # build cve-change-radar:local from the Dockerfile
-docker compose up -d   # start the single container on 127.0.0.1:3000
-docker compose logs -f app
-```
+`.env` is gitignored; `.env.example` is the committed template. Every variable
+the app reads is listed there.
 
-The container boots a web server plus an ingestion worker under one
-supervisor (`node entrypoint.mjs`). The worker runs ONE full import
-immediately on first start — KEV and EPSS land in seconds-to-minutes, the CVE
-List V5 clone is large (gigabytes; expect several minutes on a first clone,
-faster afterwards) — then keeps refreshing on the scheduler intervals while
-`SCHEDULE_ENABLED=true` (the Compose default). With `SCHEDULE_ENABLED=false`
-the worker still runs that single initial import, then idles.
-`INGEST_ON_START=false` skips even the initial cycle (the worker logs
-`worker-idle` and parks): use it on a seeded named volume so the deployment
-serves immediately with zero import contention. Change Radar checkpoints
-retain bounded observed top-N lists per view (`CHECKPOINT_TOP_N`, default
-500); replay responses carry `boundedTopN` plus a notice so a replay never
-implies a complete enumeration. Compose grants the container up to 4 CPUs /
-4 GB (host-dependent: production host has 12 CPUs / 22 GB); retune the
-`deploy.resources.limits` for smaller hosts.
+| Variable | Default | Meaning |
+| -------- | ------- | ------- |
+| `APP_ENV` | `production` | Runtime profile: `development`, `staging`, `production` |
+| `NODE_ENV` | `production` | Node profile, kept in step with `APP_ENV` |
+| `DATA_DIR` | `/data` | Database and snapshot directory inside the container |
+| `SCHEDULE_ENABLED` | `true` | `true` imports on boot then refreshes on schedule; `false` imports once, then idles |
+| `INGEST_ON_START` | `true` | `false` skips even the first import cycle (worker logs `worker-idle` and parks) |
+| `BIND_ADDR` | `127.0.0.1` | Host address the web port binds to |
+| `PORT` | `3000` | Host-side web port (container always listens on 3000) |
+| `CVE_GIT_TIMEOUT_MS` | `3600000` | CVE List V5 clone timeout in ms (1 hour) |
+| `CVE_CLONE_DEPTH` | `1` | `1` is shallow `--depth 1`; `0` means full history |
+| `CVE_MAX_RECORD_BYTES` | `16777216` | Per-record size cap in bytes (16 MiB); oversize records are quarantined |
+| `CHECKPOINT_TOP_N` | `500` | Entries kept per view in each daily Change Radar checkpoint |
 
-The first CVE clone downloads a large repository: budget several minutes to
-tens of minutes on first boot depending on link speed. Tune with
-`CVE_GIT_TIMEOUT_MS` (clone timeout in ms, default `3600000`) and
-`CVE_CLONE_DEPTH` (default `1` = shallow `--depth 1`; `0` = full history).
-Per-record size is capped at `CVE_MAX_RECORD_BYTES` bytes (default `16777216`,
-16 MiB); a quarantined set at or below max(50, 0.1% of scanned records) is
-tolerated with the quarantine stored and logged, and the import fails closed
-above that ceiling.
-A shallow checkout that cannot diff against the previously imported SHA falls
-back to full reconciliation and logs the path taken.
+Compose notes: `compose.yaml` is the production-safe default (single `app`
+service, `APP_ENV`/`NODE_ENV=production`, named volume
+`cve-change-radar-data` on `/data`, `init: true`,
+`restart: unless-stopped`, caps of 4 CPUs / 4 GB). `compose.dev.yaml` is an
+explicit opt-in and never auto-loads; no `compose.override.yaml` exists.
 
-An empty corpus in the first seconds is expected: the site shows an honest
-initializing state until the first valid snapshots are accepted. Watch
-progress in the logs — the worker emits a `source-start` line per source
-before its job runs (`{"event":"source-start","source":"cve"}` etc., so a
-long first CVE clone is visibly in progress) plus one structured JSON
-completion line per source per cycle
-(`{"event":"ingest-cycle","source":"kev",...}` plus `worker-start` /
-`worker-scheduled` / `worker-idle` markers). The runtime image bundles
-`git` plus CA certificates so the CVE List V5 clone/fetch refreshes
-in-container over HTTPS, and the
-worker runs at a lower OS priority (`os.setPriority(0, 10)`, best effort)
-so web requests win under contention.
-The published port binds to loopback (`127.0.0.1`) by default — the site is
-reachable at `http://127.0.0.1:3000` (override the host side with
-`BIND_ADDR=... PORT=...`; Tailscale example `BIND_ADDR=100.x.y.z PORT=3100`,
-warning: `0.0.0.0` exposes every interface).
+## Access
 
-### Update vs rebuild
+### Local
 
-Plain `docker compose up -d` starts the existing image and **never rebuilds a
-stale image** — after source edits you must rebuild explicitly:
+Default binding stays on loopback: `http://127.0.0.1:3000`, health at
+`/api/v1/health`.
+
+### Tailscale
+
+This host's Tailscale IP is `100.124.184.116`. To serve the Mac on the tailnet,
+put these lines in `.env` (replace the IP if `tailscale ip -4` reports a new one):
 
 ```bash
-docker compose up -d                # start/restart only; does NOT rebuild
-docker compose build && docker compose up -d   # rebuild after source edits
-docker compose pull && docker compose up -d    # update once versioned release images exist
-docker compose down                 # stop and remove the container (volume data is kept)
+BIND_ADDR=100.124.184.116
+PORT=3100
 ```
 
-### Development mode (explicit opt-in)
+Then restart and check from the Mac:
+
+```bash
+docker compose up -d
+curl http://100.124.184.116:3100/api/v1/health
+```
+
+Open `http://100.124.184.116:3100` in the browser.
+
+### Public HTTPS
+
+Compose does not provide TLS. Public serving needs a reverse proxy or
+platform TLS with a real hostname and certificate, keeping
+`APP_ENV=production`. Never bind `0.0.0.0` casually; it exposes every
+interface.
+
+## Verify it works
+
+Run these against your base URL (`http://127.0.0.1:3000` locally,
+`http://100.124.184.116:3100` over Tailscale):
+
+```bash
+curl -s http://127.0.0.1:3000/api/v1/health | head -c 300; echo
+curl -s http://127.0.0.1:3000/api/v1/overview | head -c 300; echo
+curl -s "http://127.0.0.1:3000/api/v1/priority/known-exploited?limit=2" | head -c 300; echo
+curl -s "http://127.0.0.1:3000/api/v1/search?q=openssl&limit=2" | head -c 300; echo
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
+```
+
+Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a
+date basis; known-exploited returns KEV entries; search returns matches with excerpts;
+`/` returns 200 (about 4.6 s first load here; API medians run 0.5-3.7 s).
+
+## Operations
+
+Logs: `docker compose logs -f app` shows web plus worker output
+(`worker-start` at boot, `source-start` per source per cycle, one
+`ingest-cycle` completion line per source, `worker-idle`/`worker-scheduled`
+when it parks).
+
+Update vs rebuild: plain `docker compose up -d` starts the existing image
+and **never rebuilds**. After source edits, run `docker compose build &&
+docker compose up -d`.
+
+Stop and down: `docker compose stop` halts the container; `docker compose down` removes it. Both keep the named volume, so data survives.
+
+Backup: follow `docs/backup-runbook.md` for backup, restore, and upgrade (round-trip verified; incompatible restores are refused with guidance).
+
+Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` volume with all 4+ GB of snapshots. Destructive and irreversible; back up first if the data matters.
+
+## Troubleshooting
+
+- **Port already in use.** Set a free `PORT` in `.env` and rerun
+  `docker compose up -d`. `./setup.sh` flags the clash first.
+- **Empty site on first boot.** Normal while the CVE clone runs. Find
+  `{"event":"source-start","source":"cve"}` in the logs, then wait for its `ingest-cycle` line.
+- **Slow first import.** The clone is gigabytes; budget minutes to tens of minutes.
+  Raise `CVE_GIT_TIMEOUT_MS` on slow links; keep `CVE_CLONE_DEPTH=1` for fastest boot.
+- **Outbound fetches stall (IPv6).** The worker already prefers IPv4. If DNS still
+  hangs, set `NODE_OPTIONS=--dns-result-order=ipv4first` and restart.
+- **Disk pressure.** Keep ~6 GB free for image, clone, and ~4.3 GB database.
+  A full disk fails imports first, so check `df -h` early.
+- **Unhealthy container but `/api/v1/health` answers 200.** The web side is fine;
+  the worker is likely contending on import. Read its log lines before restarting.
+
+## Development
+
+Dev mode is an explicit second Compose file (hot reload, source bind mounts, Node inspector on loopback):
 
 ```bash
 docker compose -f compose.yaml -f compose.dev.yaml up
 ```
 
-### Public exposure
-
-Plain Compose never creates trusted TLS. Public exposure requires explicit
-steps outside Compose: bind a public address/port, terminate HTTPS with a
-real hostname and certificate (reverse proxy or platform TLS), and keep
-`APP_ENV=production`. A second application container for TLS is out of scope;
-document the chosen termination when the deployment target is known.
-
-### Standalone Docker (no Compose)
+Native commands:
 
 ```bash
-docker build -t cve-change-radar:local .
-docker volume create cve-change-radar-data
-docker run -d --name cve-change-radar --init --restart unless-stopped \
-  -e APP_ENV=production -e NODE_ENV=production -e DATA_DIR=/data \
-  -p 127.0.0.1:3000:3000 -v cve-change-radar-data:/data \
-  cve-change-radar:local
+npm ci                  # install dependencies
+npm run dev             # local dev server
+npm run lint            # eslint
+npm run typecheck       # tsc --noEmit
+npm test                # vitest suite
+npx playwright test     # end-to-end browser tests (tests/e2e)
 ```
 
-- `setup.sh` is implemented as a check-only prerequisite script (Docker, daemon, compose, port, volume — actionable failures, changes nothing; run `./setup.sh` before first launch).
-- Backup/restore/upgrade procedures are implemented and tested per `docs/backup-runbook.md` (round-trip verified, incompatible restores refused with guidance).
-- See `.omo/drafts/cve-single-image-deployment.md` for the full acceptance
-  contract (parity tests 7 and 10 cover this Compose setup).
+## API
 
-## Security (implemented and reviewed)
+Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/`.
 
-Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review
-approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
+| Method + path | Purpose |
+| ------------- | ------- |
+| `GET /api/v1/health` | Liveness plus readiness state |
+| `GET /api/v1/status` | Per-source freshness and warnings |
+| `GET /api/v1/overview` | Published-CVE volume buckets with date basis |
+| `GET /api/v1/cves` | Paginated CVE records |
+| `GET /api/v1/cves/{cveId}` | One CVE record with references |
+| `GET /api/v1/search?q=...` | CVE ID and description search |
+| `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast` |
+| `GET /api/v1/radar` | Change feed with before/after evidence |
+| `GET /api/v1/replay` | Replay a retained checkpoint plus policy version |
+| `GET /api/v1/replay/checkpoints` | List available checkpoints |
 
-- Upstream descriptions, references, and archives are **untrusted**: encode output,
-  constrain links, strict CSP, no PoC execution, archive traversal/decompression guards.
-- Parameterized local queries, validated filters, bounded pages/time/concurrency,
-  rate-limited public reads; SSRF allow-lists for the fixed upstream endpoints.
-- Public reads are anonymous by design; imports, migrations, and maintenance stay
-  private CLI/internal operations — no "skip auth" writes.
-- No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release;
-  pinned dependencies, minimal non-root image, no Docker socket.
-- Public deployment needs explicit HTTPS/certificate/binding setup — Compose alone
-  does not create trusted TLS.
+GET only, no auth, rate limited. Unknown EPSS renders as explicit `null`, never zero. `GET /api/v1/status` reports per-source stale and warning states.
+
+## Security
+
+Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
+
+- Upstream descriptions, references, and archives are **untrusted**: encoded output, constrained links, strict CSP, no PoC execution, archive guards.
+- Parameterized queries, validated filters, bounded pages/time/concurrency, rate-limited reads; SSRF allow-lists for the fixed upstream endpoints.
+- Public reads are anonymous by design; imports, migrations, and maintenance stay private CLI/internal operations.
+- No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release; pinned dependencies, minimal non-root image, no Docker socket.
+- Public serving needs explicit HTTPS/certificate/binding setup. Compose alone does not create trusted TLS.
 
 ## Docs map
 
@@ -260,19 +287,7 @@ approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
 
 ## Build gates (all done)
 
-1. Bundled brief approval — done. Design, stack shape, 30-day observed replay,
-   ranking policy, and tests were approved before the plan was written.
-2. Single execution plan with gap analysis plus Momus and independent review —
-   done. `.omo/plans/cve-change-radar.md` (30 todos + F1–F4), 4 review rounds,
-   zero open blockers at plan time.
-3. Implementation with TDD, component/browser QA, image/container verification,
-   and import/search benchmarks — done. Todos 1–30 delivered with evidence
-   under `.omo/evidence/`.
-4. Final verification — all approved: F1 plan compliance, F2 code quality,
-   F3 browser QA (stock suite green, phone/desktop/keyboard/zoom/reduced-motion
-   evidence), F4 ideal-state fidelity (10/11 outright; the shortfall became
-   tracked todo 31, now complete).
-
-Host questions are deferred by owner decision; capacity claims require measured
-benchmarks, not guesses. Focused local commits continue after verified milestones;
-nothing is pushed remotely without a separate request.
+1. Bundled brief approval, done (design, stack shape, 30-day observed replay, ranking policy, tests).
+2. Single execution plan with gap analysis plus independent review, done (30 todos + F1-F4, 4 review rounds, zero open blockers).
+3. Implementation with TDD, component/browser QA, image/container verification, and import/search benchmarks, done (todos 1-30, evidence under `.omo/evidence/`).
+4. Final verification, all approved: F1 plan compliance, F2 code quality, F3 browser QA (green, with phone/desktop/keyboard/zoom/reduced-motion evidence), F4 ideal-state fidelity (10/11 outright; the shortfall became tracked todo 31, now complete).
