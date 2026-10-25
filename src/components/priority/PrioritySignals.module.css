@@ -1,0 +1,125 @@
+/* Priority signal blocks (plan task 49). Layout only: every color, font, and
+   spacing value reuses the ledger tokens from `app/globals.css`. No color
+   literals here; severity is carried by bordered text badges, never color. */
+
+.signalGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ledger-space-3);
+  margin: var(--ledger-space-2) 0;
+}
+
+@media (min-width: 700px) {
+  .signalGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.signal {
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  padding: var(--ledger-space-2) var(--ledger-space-3);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.signal p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.signalHead {
+  display: flex;
+  align-items: center;
+  gap: var(--ledger-space-2);
+  margin-bottom: var(--ledger-space-1);
+}
+
+.barTrack {
+  height: 6px;
+  border: 1px solid var(--ledger-rule);
+  margin-top: var(--ledger-space-2);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--ledger-ink);
+}
+
+.band {
+  display: inline-block;
+  border: 1px solid var(--ledger-ink);
+  border-radius: 2px;
+  padding: 0 var(--ledger-space-2);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.defList {
+  display: grid;
+  gap: var(--ledger-space-2);
+  margin: var(--ledger-space-2) 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+.defList > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--ledger-space-1) var(--ledger-space-2);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.defList dt {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.defList dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ledger-space-2) var(--ledger-space-4);
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  padding: var(--ledger-space-2) var(--ledger-space-3);
+  margin: 0 0 var(--ledger-space-3) 0;
+  font-size: 14px;
+}
+
+.summary > div {
+  display: flex;
+  gap: var(--ledger-space-2);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.summary dt {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.summary dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -9,12 +9,14 @@
 import path from "node:path";
 
 import { Masthead } from "@/components/ledger/Masthead";
+import { TimeText } from "@/components/ledger/TimeText";
 import {
   PRIORITY_MODE_LABELS,
   PriorityEvidence,
   PriorityList,
   PriorityModeNav,
   PriorityOrdering,
+  PrioritySummary,
   type PriorityMode,
   type PriorityRowData,
 } from "@/components/priority/PriorityView";
@@ -112,7 +114,9 @@ function toRow(
     kevDateAdded: record.kevDateAdded,
     epssKnown: record.epssText !== null,
     epssPercent:
-      record.epssText !== null ? (displayProbabilityPercent(record.epssText) ?? record.epssText) : null,
+      record.epssText !== null
+        ? (displayProbabilityPercent(record.epssText) ?? record.epssText)
+        : null,
     epssModel: record.epssModel,
     epssDate: scoreDate,
     primaryKnown: primary !== null && primary.version !== "2.0",
@@ -154,7 +158,9 @@ export function loadSnapshot(
       ? null
       : (() => {
           const row = db.handle
-            .prepare("SELECT model_version FROM epss_daily WHERE score_date = ? ORDER BY model_version DESC LIMIT 1")
+            .prepare(
+              "SELECT model_version FROM epss_daily WHERE score_date = ? ORDER BY model_version DESC LIMIT 1",
+            )
             .get(scoreDate) as { model_version: string } | undefined;
           return row?.model_version ?? null;
         })();
@@ -212,24 +218,20 @@ export function loadSnapshot(
   };
 }
 
-function orderingBody(mode: PriorityMode, snapshot: PrioritySnapshot): string {
-  const score =
-    snapshot.scoreDate !== null
-      ? `EPSS score date ${snapshot.scoreDate}${snapshot.scoreModel !== null ? `, model ${snapshot.scoreModel}` : ""}.`
-      : "No accepted EPSS score date in this snapshot.";
-  const denominator = `Coverage: ${snapshot.eligibleCohort} listed of ${snapshot.publishedCount} published records in the retained cohort. Corpus gaps: ${snapshot.corpusUnscored} unscored, ${snapshot.corpusUnknownEpss} unknown EPSS, ${snapshot.corpusUnknownDate} unknown publication date.`;
-  const extras: Record<PriorityMode, string> = {
-    "known-exploited":
-      "Catalog dates mark catalog addition, not proven first exploitation or current attack volume. EPSS is not a sort key here.",
-    "highest-forecast":
-      "Display shows rounded percentages; ordering uses raw source decimals. KEV membership is not a sort key here. Records with unknown EPSS are ineligible for this view, never zero.",
-    "new-critical":
-      `Window cutoff T is ${snapshot.cutoffT}. Unknown, legacy-only (v2), and ADP-only primary cases are ineligible, not low severity. No mixed-version numeric severity ordering is implied.`,
-    "rising-forecast":
-      "Missing dates and model transitions are ineligible, never interpolated or zeroed. This is a forecast movement list, not social popularity or observed exploitation telemetry.",
-  };
-  return `${score} ${denominator} ${extras[mode]}`;
+function orderingCoverage(snapshot: PrioritySnapshot): string {
+  return `Coverage: ${snapshot.eligibleCohort} listed of ${snapshot.publishedCount} published records in the retained cohort. Corpus gaps: ${snapshot.corpusUnscored} unscored, ${snapshot.corpusUnknownEpss} unknown EPSS, ${snapshot.corpusUnknownDate} unknown publication date.`;
 }
+
+const ORDERING_EXTRAS: Record<PriorityMode, string> = {
+  "known-exploited":
+    "Catalog dates mark catalog addition, not proven first exploitation or current attack volume. EPSS is not a sort key here.",
+  "highest-forecast":
+    "Display shows rounded percentages; ordering uses raw source decimals. KEV membership is not a sort key here. Records with unknown EPSS are ineligible for this view, never zero.",
+  "new-critical":
+    "Unknown, legacy-only (v2), and ADP-only primary cases are ineligible, not low severity. No mixed-version numeric severity ordering is implied.",
+  "rising-forecast":
+    "Missing dates and model transitions are ineligible, never interpolated or zeroed. This is a forecast movement list, not social popularity or observed exploitation telemetry.",
+};
 
 export default async function PriorityPage({
   searchParams,
@@ -254,17 +256,18 @@ export default async function PriorityPage({
       <Masthead current="Priority" testId="priority-masthead" />
       <h1>Priority lists</h1>
       <p className="ledger-meta" data-testid="priority-intro">
-        Four named views over the retained PUBLISHED cohort. Signals stay distinct: KEV is confirmed-exploitation
-        evidence, EPSS is a dated forecast, CVSS is supplied severity. No composite score is computed and no
-        popularity signal exists. Ranking policy {RANKING_POLICY_VERSION}.
+        Four named views over the retained PUBLISHED cohort. Signals stay distinct: KEV is
+        confirmed-exploitation evidence, EPSS is a dated forecast, CVSS is supplied severity. No
+        composite score is computed and no popularity signal exists. Ranking policy{" "}
+        {RANKING_POLICY_VERSION}.
       </p>
 
       {loadError !== null || snapshot === null ? (
         <section className="ledger-section" data-testid="priority-load-error">
           <h2>Priority data unavailable</h2>
           <p className="ledger-meta">
-            The retained snapshot could not be read: {loadError ?? "unknown error"}. Nothing is interpolated;
-            try again once ingestion has published a snapshot.
+            The retained snapshot could not be read: {loadError ?? "unknown error"}. Nothing is
+            interpolated; try again once ingestion has published a snapshot.
           </p>
         </section>
       ) : (
@@ -278,16 +281,44 @@ export default async function PriorityPage({
             <h2 id="priority-mode-heading" data-testid="priority-mode-heading">
               {PRIORITY_MODE_LABELS[mode]}
             </h2>
-            <PriorityOrdering mode={mode} body={orderingBody(mode, snapshot)} />
+            <PrioritySummary
+              mode={mode}
+              scoreDate={snapshot.scoreDate}
+              scoreModel={snapshot.scoreModel}
+              displayed={Math.min(snapshot.displayLimit, snapshot.returned)}
+              eligible={snapshot.eligibleCohort}
+              publishedTotal={snapshot.publishedCount}
+              stale={snapshot.epssStale}
+            />
+            <PriorityOrdering
+              mode={mode}
+              coverage={orderingCoverage(snapshot)}
+              extra={ORDERING_EXTRAS[mode]}
+              scoreDate={snapshot.scoreDate}
+              scoreModel={snapshot.scoreModel}
+              cutoffT={mode === "new-critical" ? snapshot.cutoffT : null}
+            />
             <PriorityEvidence
               stale={snapshot.epssStale}
               testId={`priority-evidence-${mode}`}
               detail={
-                snapshot.epssStale
-                  ? `EPSS score date ${snapshot.scoreDate ?? "unknown"} is older than 2 UTC calendar days. Dated values are retained with this label; they are never relabeled as current-day forecasts.`
-                  : snapshot.scoreDate !== null
-                    ? `CVE List V5 and KEV per retained manifest, observed at request time. EPSS model ${snapshot.scoreModel ?? "unknown"} dated ${snapshot.scoreDate}. KEV catalog dates mark catalog addition.`
-                    : "No accepted EPSS score date in this snapshot. EPSS values render as unavailable, never zero."
+                snapshot.epssStale ? (
+                  <>
+                    EPSS score date{" "}
+                    <TimeText value={snapshot.scoreDate} testId="priority-evidence-score-date" /> is
+                    older than 2 UTC calendar days. Dated values are retained with this label; they
+                    are never relabeled as current-day forecasts.
+                  </>
+                ) : snapshot.scoreDate !== null ? (
+                  <>
+                    CVE List V5 and KEV per retained manifest, observed at request time. EPSS model{" "}
+                    {snapshot.scoreModel ?? "unknown"} dated{" "}
+                    <TimeText value={snapshot.scoreDate} testId="priority-evidence-score-date" />.
+                    KEV catalog dates mark catalog addition.
+                  </>
+                ) : (
+                  "No accepted EPSS score date in this snapshot. EPSS values render as unavailable, never zero."
+                )
               }
             />
             <p className="ledger-meta" data-testid={`priority-coverage-${mode}`}>
