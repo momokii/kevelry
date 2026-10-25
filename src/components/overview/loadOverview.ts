@@ -1,5 +1,5 @@
 import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
-import { getAggregates, type AggregateSnapshot } from "../../lib/aggregates";
+import { getAggregates, severityBandsSql, type AggregateSnapshot } from "../../lib/aggregates";
 import { openReadDatabase, type CveDatabase } from "../../lib/db";
 import {
   getAcceptedEpssDate,
@@ -13,6 +13,8 @@ import { selectPrimaryCvss, type CvssMetricInput } from "../../lib/ranking";
 import { officialCveLink } from "../../lib/search";
 
 export const OVERVIEW_CHART_DAYS = 14;
+export const OVERVIEW_VOLUME_DAYS = 30;
+export const OVERVIEW_KEV_MONTHS = 12;
 export const OVERVIEW_SUMMARY_LIMIT = 3;
 
 export interface DayBucket {
@@ -36,12 +38,36 @@ export interface PrioritySummary {
   emptyNote: string;
 }
 
+export interface KevMonthBucket {
+  month: string;
+  count: number;
+}
+
+export interface CorpusStats {
+  published: number;
+  kev: number;
+  epssScored: number;
+  unscored: number;
+  unknownDate: number;
+  tombstones: number;
+  computedAt: string | null;
+  sourceRevision: string | null;
+  epssScoreDate: string | null;
+}
+
 export interface OverviewData {
   generatedAt: string;
   empty: boolean;
   publishedTotal: number;
   anchorDay: string | null;
   buckets: DayBucket[];
+  volume30: DayBucket[];
+  volumeTotal30: number;
+  severityBands: Record<string, number>;
+  epssHistogram: number[];
+  epssScoreDate: string | null;
+  kevByMonth: KevMonthBucket[];
+  corpus: CorpusStats;
   unknownDateCount: number;
   correctionNotes: string[];
   provenance: Provenance;
@@ -100,6 +126,85 @@ function tombstoneNotes(tombstones: number): string[] {
   return [
     `${tombstones} removed or rejected record(s) retained as tombstones; history reflects the accepted corpus.`,
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Chart series: prefer the cached aggregate snapshot (single point lookup);
+// fall back to equivalent live GROUP BY queries so a seeded volume renders
+// before the first cache refresh. Both paths read the same accepted tables.
+// ---------------------------------------------------------------------------
+
+const LIVE_VALID_EPSS_SQL = [
+  "c.epss GLOB '[0-9]*'",
+  "c.epss NOT GLOB '*[^0-9.]*'",
+  "c.epss NOT GLOB '*.*.*'",
+  "c.epss NOT GLOB '*.'",
+  "LENGTH(c.epss) <= 64",
+  "CAST(c.epss AS REAL) >= 0",
+  "CAST(c.epss AS REAL) <= 1",
+].join(" AND ");
+
+function liveEpssHistogram(db: CveDatabase, scoreDate: string | null): number[] {
+  const buckets = new Array<number>(10).fill(0);
+  if (scoreDate === null) return buckets;
+  const rows = db.handle
+    .prepare(
+      "SELECT CASE WHEN CAST(c.epss AS REAL) >= 1 THEN 9 " +
+        "ELSE CAST(CAST(c.epss AS REAL) * 10 AS INTEGER) END AS b, COUNT(*) AS n " +
+        "FROM (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) cm " +
+        "JOIN epss_daily c ON c.cve_id = cm.cve_id AND c.score_date = ? AND c.model_version = cm.m " +
+        `WHERE ${LIVE_VALID_EPSS_SQL} GROUP BY b`,
+    )
+    .all(scoreDate, scoreDate) as Array<{ b: number; n: number }>;
+  for (const row of rows) {
+    if (Number.isInteger(row.b) && row.b >= 0 && row.b < 10) buckets[row.b] = row.n;
+  }
+  return buckets;
+}
+
+function liveKevByMonth(db: CveDatabase, months: number): KevMonthBucket[] {
+  const rows = db.handle
+    .prepare(
+      "SELECT substr(date_added, 1, 7) AS month, COUNT(*) AS n FROM kev_entries " +
+        "WHERE date_added GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*' " +
+        "GROUP BY month ORDER BY month DESC LIMIT ?",
+    )
+    .all(months) as Array<{ month: string; n: number }>;
+  return rows
+    .slice()
+    .reverse()
+    .map((row) => ({ month: row.month, count: row.n }));
+}
+
+function liveScalar(db: CveDatabase, sql: string, params: unknown[] = []): number {
+  const row = db.handle.prepare(sql).get(...params) as Record<string, unknown> | undefined;
+  if (row === undefined) return 0;
+  const value = Object.values(row)[0];
+  return typeof value === "number" ? value : 0;
+}
+
+function liveText(db: CveDatabase, sql: string, params: unknown[] = []): string | null {
+  const row = db.handle.prepare(sql).get(...params) as Record<string, unknown> | undefined;
+  if (row === undefined) return null;
+  const value = Object.values(row)[0];
+  return typeof value === "string" ? value : null;
+}
+
+function liveCorpusTotals(db: CveDatabase, epssDate: string | null, bands: Record<string, number>) {
+  return {
+    kev: liveScalar(db, "SELECT COUNT(*) AS n FROM kev_entries"),
+    epssScored:
+      epssDate === null
+        ? 0
+        : liveScalar(
+            db,
+            "SELECT COUNT(DISTINCT cve_id) AS n FROM epss_daily WHERE score_date = ?",
+            [epssDate],
+          ),
+    unscored: bands.unknown ?? 0,
+    tombstones: liveScalar(db, "SELECT COUNT(*) AS n FROM cve_tombstones"),
+    sourceRevision: liveText(db, "SELECT MAX(source_revision) AS r FROM cve_records"),
+  };
 }
 
 function signalFor(item: PriorityItem, list: string, epssDate: string | null): string {
@@ -252,7 +357,11 @@ function buildSummaries(
   // live: both are already sub-second bounded queries.
   const useCache = cached !== null && cached.epssScoreDate === epssDate;
   const highestForecast = useCache
-    ? hydrateTopIds(db, epssDate, (cached as AggregateSnapshot).topHighest.slice(0, OVERVIEW_SUMMARY_LIMIT))
+    ? hydrateTopIds(
+        db,
+        epssDate,
+        (cached as AggregateSnapshot).topHighest.slice(0, OVERVIEW_SUMMARY_LIMIT),
+      )
     : getHighestForecast(db, OVERVIEW_SUMMARY_LIMIT);
   const rising = useCache
     ? (cached as AggregateSnapshot).topRising
@@ -345,15 +454,62 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             bucketStart,
             count: counts.get(bucketStart) ?? 0,
           }));
+    const volume30: DayBucket[] =
+      anchorDay === null
+        ? []
+        : trailingDays(anchorDay, OVERVIEW_VOLUME_DAYS).map((bucketStart) => ({
+            bucketStart,
+            count: counts.get(bucketStart) ?? 0,
+          }));
     const epssDate = getAcceptedEpssDate(db);
     const correctionNotes =
       cached === null ? readCorrectionNotes(db) : tombstoneNotes(cached.tombstones);
+    const severityBands = cached === null ? severityBandsSql(db) : { ...cached.severityBands };
+    const epssHistogram =
+      cached === null ? liveEpssHistogram(db, epssDate) : [...cached.epssHistogram];
+    const epssScoreDate = cached === null ? epssDate : cached.epssScoreDate;
+    const kevByMonth =
+      cached === null
+        ? liveKevByMonth(db, OVERVIEW_KEV_MONTHS)
+        : cached.kevByMonth.map((entry) => ({ month: entry.month, count: entry.count }));
+    const liveTotals = cached === null ? liveCorpusTotals(db, epssDate, severityBands) : null;
+    const corpus: CorpusStats =
+      cached === null
+        ? {
+            published: publishedTotal,
+            kev: liveTotals?.kev ?? 0,
+            epssScored: liveTotals?.epssScored ?? 0,
+            unscored: liveTotals?.unscored ?? 0,
+            unknownDate: unknownDateCount,
+            tombstones: liveTotals?.tombstones ?? 0,
+            computedAt: null,
+            sourceRevision: liveTotals?.sourceRevision ?? null,
+            epssScoreDate,
+          }
+        : {
+            published: cached.publishedTotal,
+            kev: cached.totals.kev,
+            epssScored: cached.totals.epssScored,
+            unscored: cached.totals.unscored,
+            unknownDate: cached.unknownDateCount,
+            tombstones: cached.tombstones,
+            computedAt: cached.computedAt,
+            sourceRevision: cached.sourceRevision,
+            epssScoreDate: cached.epssScoreDate,
+          };
     return {
       generatedAt: nowIso,
       empty: publishedTotal === 0,
       publishedTotal,
       anchorDay,
       buckets,
+      volume30,
+      volumeTotal30: volume30.reduce((sum, bucket) => sum + bucket.count, 0),
+      severityBands,
+      epssHistogram,
+      epssScoreDate,
+      kevByMonth,
+      corpus,
       unknownDateCount,
       correctionNotes,
       provenance: buildProvenance(db, nowIso),

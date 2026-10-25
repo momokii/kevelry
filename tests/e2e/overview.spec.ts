@@ -251,7 +251,10 @@ for (const width of [360, 768, 1280]) {
     );
     await expect(masthead.getByRole("link", { name: "Radar" })).toHaveAttribute("href", "/radar");
     await expect(masthead.getByRole("link", { name: "Replay" })).toHaveAttribute("href", "/replay");
-    await expect(masthead.getByRole("link", { name: "Method" })).toHaveAttribute("href", "/method");
+    await expect(masthead.getByRole("link", { name: "Method" })).toHaveAttribute(
+      "href",
+      "/methodology",
+    );
 
     const searchForm = page.locator('form[action="/explore"]');
     await expect(searchForm).toBeVisible();
@@ -339,4 +342,62 @@ test("overview passes the task-24 accessibility audit", async ({ page }) => {
   await expect(page.getByTestId("overview-chart-table").locator("th[scope]").first()).toBeVisible();
   const uncertainCopy = await page.getByTestId("overview-chart-count-unknown").textContent();
   expect(uncertainCopy ?? "").toMatch(/explicit unknown bucket/);
+});
+
+test("overview charts expose exact tooltips on hover and keyboard focus", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+
+  const bar = page.getByTestId(/^overview-chart-volume-bar-/).first();
+  await bar.hover();
+  const tooltip = page.getByTestId("overview-chart-volume-tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText("UTC calendar day");
+  await expect(tooltip).toContainText("%");
+
+  await bar.focus();
+  await expect(tooltip).toContainText("UTC calendar day");
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toContainText("Hover or Tab to a bar");
+});
+
+test("overview charts link to the exact filtered views", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+
+  await expect(page.getByTestId(/^overview-chart-volume-bar-/).first()).toHaveAttribute(
+    "href",
+    /\/explore\?dateStart=\d{4}-\d{2}-\d{2}&dateEnd=\d{4}-\d{2}-\d{2}/,
+  );
+  await expect(page.getByTestId("overview-severity-bar-critical")).toHaveAttribute(
+    "href",
+    "/explore?severity=critical",
+  );
+  await expect(page.getByTestId(/^overview-kev-months-bar-/).first()).toHaveAttribute(
+    "href",
+    "/priority?view=known-exploited",
+  );
+  await expect(page.getByTestId("overview-forecast-epss-bar-epss-9")).toHaveAttribute(
+    "href",
+    "/priority?view=highest-forecast",
+  );
+});
+
+test("freshness panel explains each state and hides raw timestamps behind detail", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+
+  await expect(page.getByTestId("overview-freshness-verdict")).toBeVisible();
+  await expect(page.getByTestId("overview-freshness-legend")).toContainText("3 hours");
+  for (const key of ["cve", "kev", "epss"]) {
+    const card = page.getByTestId(`overview-freshness-${key}`);
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId(`overview-freshness-${key}-plain`)).toBeVisible();
+    await card.getByText("Technical detail").click();
+    await expect(card.getByTestId(`overview-freshness-${key}-technical`)).toContainText(
+      "Exact check time",
+    );
+  }
 });
