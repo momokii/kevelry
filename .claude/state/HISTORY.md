@@ -2,6 +2,31 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-26 - Interactive UI, global timezone, and read-path speed
+
+Reviewed the deployed site against the owner's feedback and rebuilt the weak
+screen. The overview now carries five real visuals (24-month/30-day volume,
+severity mix, EPSS distribution, KEV additions, corpus totals) with hover and
+keyboard tooltips, denominator-labeled shares, and click-through to the exact
+filtered view; source freshness leads with a plain-language verdict, per-source
+meaning, relative/absolute times, and technical detail behind a disclosure.
+Methodology gained pipeline, ordering, and signal-relationship diagrams with
+every legal notice preserved. Explore gained filter HelpTips, debounced
+auto-submit, and a matching-cohort panel (severity composition plus a monthly
+histogram) that follows the applied filters. Priority rows now separate KEV,
+EPSS, CVSS, and delta into explained blocks with real bars and timezone-aware
+dates. The timezone selector moved into the shared masthead (default
+Asia/Jakarta) and radar/replay observation times adopted TimeText. `/api-docs`
+renders the OpenAPI spec in-app.
+
+Performance work added migration 002 covering indexes and an aggregate cache,
+process-wide read-only handles that reopen when the database file changes,
+ETag/304 responses, and a coverage-reusing facet path. Live measurements:
+`/` 0.39s, `/priority` 0.24s, `/methodology` 0.03s, `/explore` 2.34s cold then
+0.018s warm, 0 restarts. Fixed a chart bar-height bug found by visual QA, a
+tooltip Escape re-open bug, and 21px mobile overflow in the monthly list.
+Verification: 364 unit tests pass (3 skipped), 67 Playwright tests pass
+(1 skipped), lint/typecheck/build green, screenshots at 360/768/1280.
 ## 2026-10-25 - Deployed on Tailscale with live data
 
 Built and deployed the single container on this host, bound to the Tailscale

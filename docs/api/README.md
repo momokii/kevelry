@@ -4,6 +4,9 @@ Versioned read-only API for the CVE Change Radar site. The machine contract is
 `openapi/v1.yaml`; these pages explain it. If this text and the spec disagree,
 the spec wins and the docs-vs-spec test fails until they agree again.
 
+A browsable version is rendered from the spec at `/api-docs` on the site, with
+parameters, response highlights, and one copy-paste curl example per endpoint.
+
 Per-view pages:
 
 - [cves.md](cves.md) — current published records and one-record lookup

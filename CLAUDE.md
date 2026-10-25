@@ -2,9 +2,9 @@
 
 ## Project Snapshot
 
-**Purpose:** Public CVE overview, explainable prioritization, and searchable descriptions with official-record links.
-**Stack:** Not yet defined. The repository is stack-agnostic until the first task.
-**Phase:** Pre-build source, competitor, workflow and ranking audit documented. Policies remain proposals; no product code yet.
+**Purpose:** Public CVE overview, explainable prioritization, searchable descriptions, Change Radar, and a versioned read-only API.
+**Stack:** Next.js 16 App Router, React 19, TypeScript, SQLite/FTS5, one Docker image and container.
+**Phase:** Implemented, verified, and deployed serve-only at `http://100.124.184.116:3100` (Tailscale). Interactive UI round shipped; 364 unit and 67 Playwright tests pass.
 **Environments:** `development`, `staging`, `production`, selected by `APP_ENV`.
 
 ## Always-Loaded Context
@@ -33,21 +33,19 @@ If a file above is missing or did not load, read it manually before doing any wo
 
 ## Commands
 
-Every command is "not yet defined" until the stack is chosen. Update this table in the
-same session the stack is established.
-
 | Purpose | Command | Status |
 |---|---|---|
-| Install dependencies | — | Not yet defined |
-| Run (development) | — | Not yet defined |
-| Run (production-like) | — | Not yet defined |
-| Test | — | Not yet defined |
-| Lint | — | Not yet defined |
-| Format | — | Not yet defined |
-| Type check | — | Not yet defined |
-| Build | — | Not yet defined |
-| Health check | — | Not yet defined |
-| View logs | — | Not yet defined |
+| Install dependencies | `npm ci` | Ready |
+| Run (development) | `npm run dev` | Ready |
+| Run (production-like) | `docker compose up -d --build` | Ready (never rebuilds without `build`) |
+| Test | `npm test` | Ready (Vitest) |
+| Browser tests | `npx playwright test` | Ready |
+| Lint | `npm run lint` | Ready |
+| Format | `npx prettier --write .` / `npm run format:check` | Ready |
+| Type check | `npm run typecheck` | Ready |
+| Build | `npm run build` | Ready |
+| Health check | `curl -fsS http://127.0.0.1:3000/api/v1/health` | Ready |
+| View logs | `docker compose logs -f app` | Ready |
 
 ## On-Demand References
 

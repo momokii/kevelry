@@ -5,6 +5,54 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Make the display timezone global in the shared masthead, default Asia/Jakarta, display-only.
+
+**Date:** 2026-10-26
+
+**Context:** Timestamps were a mix of raw ISO strings and page-local formatting, so the owner could not read the site in one timezone.
+
+**Rationale:** One selector in `Masthead` follows every page, persists in localStorage plus a cookie so SSR matches, and re-renders `TimeText` without reload. Radar and replay observation instants were converted too. UTC day/month buckets keep their UTC label because converting the bucket would change the meaning of the count.
+
+**Alternatives Rejected:** Per-page selectors (drift and duplicates); converting chart buckets to local days (misstates the source date basis); a client-only preference (SSR flash and lost state).
+
+**Security Implications:** Preference only; no data, identity, or authorization effect. Cookie is SameSite=Lax and contains one of six supported zone names.
+
+**Impact:** New timestamps should render through `TimeText`; raw ISO strings in visible product copy are a defect.
+
+---
+
+**Decision:** Hand-build interactive charts and reuse the aggregate cache; no chart library.
+
+**Date:** 2026-10-26
+
+**Context:** The first overview had static bars with no hover, no keyboard path, and no link to the data, while every render recomputed aggregates over 395k rows.
+
+**Rationale:** Bars are semantic links so hover, focus, click-through, and screen-reader names share one implementation. Shares always name a denominator. Data tables sit in `<details>`. Migration 002 adds covering indexes and an `aggregate_cache` refreshed on boot/import; ETags return 304 on repeats. The explore facet path reuses listing coverage and computes only months in SQL, cutting cold explore from 4.3s to 2.3s.
+
+**Alternatives Rejected:** A charting dependency (weight, canvas accessibility gaps, new supply-chain surface); canvas-only rendering (values hidden from AT); client-side corpus aggregation (payload and consistency risk).
+
+**Security Implications:** Adds no third-party runtime code. Cache responses are public, carry no user data, and set SWR bounds; errors are never cached.
+
+**Impact:** Charts must keep 44px targets and the tooltip/denominator contract in DESIGN.md 6.13; new aggregate fields require a cache version bump.
+
+---
+
+**Decision:** Auto-apply explore filters while keeping the native GET form.
+
+**Date:** 2026-10-26
+
+**Context:** The owner wanted the visualization to change with filter choices, but the page is a server component and the filters must stay script-free-safe.
+
+**Rationale:** Checkbox, radio, and select changes submit the existing GET form after a 150ms debounce; the text query and Apply button still submit explicitly. The URL remains the state, back/forward work, and no-JS behavior is unchanged. A `data-hydrated` flag lets tests wait for interactivity.
+
+**Alternatives Rejected:** Client-side fetch/cache layer (duplicate state and stale-data handling); submit-only filters (the chart would lag the choice); auto-submitting on every keystroke (navigation noise).
+
+**Security Implications:** No new input surface; query parameters remain validated by `searchCves`/`searchFacets`.
+
+**Impact:** Filter controls must preserve typed values across reloads; tests must wait for hydration before asserting auto-submit.
+
+---
+
 **Decision:** Deploy serve-only on the Tailscale interface; refresh stays deliberate.
 
 **Date:** 2026-10-25

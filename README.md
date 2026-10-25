@@ -6,24 +6,33 @@ replayable history. One self-contained Docker image, one container, and a
 versioned read-only API so other platforms (or your own self-hosted copy) can
 consume the same data.
 
-> **Status: implemented and verified, all 30 build todos plus F1-F4 gates approved.**
-> The single-container app, versioned read-only API, Compose setup, and backup
-> procedures exist in this tree with evidence under `.omo/evidence/`.
+> **Status: implemented, verified, and deployed, all 30 build todos plus F1-F4 gates approved.**
+> The interactive UI round (charts, filter tooltips, global timezone, methodology
+> diagrams, in-app API docs) shipped on 2026-10-26. Evidence lives under `.omo/evidence/`.
 
 ## What it does
 
-- **Overview:** published-CVE volume charts with explicit date basis and source freshness.
-- **Search:** CVE ID and description search with filters, excerpts, and official CVE links.
+- **Overview:** interactive 24-month/30-day publication volume, severity mix, EPSS
+  distribution, KEV additions, and corpus totals. Every bar opens the matching
+  filtered view; a plain-language freshness panel explains what each source state
+  means for the numbers on the page.
+- **Search:** CVE ID and description search with explained filters, auto-applied
+  changes, a matching-cohort panel (severity composition plus monthly histogram),
+  excerpts, and official CVE links.
 - **Priority lists:** known-exploited, highest forecast, new critical, rising forecast.
-  Separate signals, deterministic ordering, no invented popularity score.
+  KEV, EPSS, and CVSS render as separate explained blocks with a real probability
+  bar and timezone-aware dates. Deterministic ordering, no invented popularity score.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
 - **Snapshot replay:** a retained daily checkpoint plus policy version shows
   what the site displayed and why (bounded observed history, no fabricated past).
 - **Public read-only API + docs:** the same local snapshots the website reads,
   versioned routes, OpenAPI plus human docs. Public writes stay out of scope.
-- **Methodology and data status:** sources, notices, ordering rules, coverage gaps, and
-  per-source stale/warning states, always visible.
+- **Methodology and data status:** pipeline, signal-relationship, and ordering
+  diagrams; sources, notices, ordering rules, coverage gaps, and per-source
+  stale/warning states, always visible.
+- **Global display timezone:** a masthead selector (default Asia/Jakarta) re-renders
+  every instant on the page; UTC day/month buckets stay explicitly labeled UTC.
 
 ## How it works
 
@@ -189,8 +198,11 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 ```
 
 Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a
-date basis; known-exploited returns KEV entries; search returns matches with excerpts;
-`/` returns 200 (about 4.6 s first load here; API medians run 0.5-3.7 s).
+date basis; known-exploited returns KEV entries; search returns matches with excerpts.
+Measured on the live 395k volume (2026-10-26): `/` about 0.4 s, `/explore` about
+2.3 s on the first uncached filter combination and about 0.02 s when repeated,
+`/priority` about 0.24 s, `/methodology` about 0.03 s, and
+`/api/v1/cves?limit=2` about 1.3 s.
 
 Read-path performance: overview/status/health serve the precomputed aggregate cache
 (migration 002), refreshed automatically after every successful import cycle and on
@@ -257,6 +269,10 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
   unfiltered lists report exact cohort counts.
 - Snapshot checkpoints retain the top `CHECKPOINT_TOP_N` entries per view
   (default 500) and label them as bounded; they are not a full enumeration.
+- The first unfiltered Explore query on a 395k-row volume performs the full cohort
+  scan (about 2.3 s here); identical filter combinations are cached for 60 s.
+- The display timezone changes rendering only. Publication buckets stay UTC days or
+  months, and every chart says so; it is not a timezone conversion of the data.
 
 ## Development
 

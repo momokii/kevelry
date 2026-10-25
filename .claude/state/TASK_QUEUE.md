@@ -10,13 +10,13 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Task ID | TASK-001 |
 | Name | Establish project foundation |
 | Priority | High |
-| Status | TODO |
+| Status | DONE |
 | Complexity | M |
 | Depends On | User confirmation of stack, ranking policy and deployment target; see FEASIBILITY.md |
 | Scope | Confirm purpose and stack with the user. Extend `.gitignore` for the stack. Set up formatter, linter, type check, and test tooling. Set up the Compose dev/prod pattern if the project is containerized. Update `CODING_STANDARDS.md`, `SECURITY_STANDARDS.md`, `ENVIRONMENT_GUIDE.md`, `HOW_TO_RESUME.md` commands, and the `CLAUDE.md` Commands table; propose a stack-specific `settings.json` allow-list. |
 | Acceptance Criteria | One command each to run, test, lint, and health-check. All `.claude/` files reflect the real stack. The baseline test suite passes. Commands are recorded in `CLAUDE.md`. |
 | Security Concerns | Stack choices affect the attack surface. Verify, pin, and audit new dependencies. No secrets in configuration. Container images run non-root with pinned tags. Do not loosen permissions without approval. |
-| Notes | Perform this as part of, or immediately before, the user's first real task. |
+| Notes | Completed. Stack is Next.js 16 + SQLite/FTS5 + one Docker image; commands are in CLAUDE.md and README.md. |
 
 ## TASK-002 — Add automated security guardrails
 

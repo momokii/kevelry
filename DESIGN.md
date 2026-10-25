@@ -203,7 +203,8 @@ States: default, stale, failed (error), missing (empty), loading.
 
 ### 6.6 Chart and accessible data view
 
-Every chart ships a data-table equivalent. Loading is a skeleton with a status
+Every chart ships a data-table equivalent, kept in a `<details>` disclosure so
+the visual leads without hiding access. Loading is a skeleton with a status
 announcement, not a spinning decoration hiding axes. Empty interval, unknown
 bucket, and correction-note variants are explicit rows, not zero bars.
 
@@ -269,6 +270,38 @@ styled with `ledger-*` tokens under reduced-motion rules. Panel text is always
 supplementary: the surrounding prose stands alone without it.
 
 States: closed, open (pinned), hover, focus-visible, escaped-closed.
+
+### 6.13 Interactive chart
+
+Charts are hand-built from semantic links and CSS tokens; no chart library and
+no canvas that hides values from assistive technology. Every bar, segment, or
+month row is a real `<a>` with an accessible name stating its label, count, and
+share of a named denominator ("13,606 of 395,286 published (3.44%)"). Hover and
+keyboard focus show the same visible tooltip; Escape clears it. Activation opens
+the exact filtered view (`/explore?dateStart=…&dateEnd=…` or `severity=…`).
+Touch targets stay at least 44px in both dimensions even when the drawn bar is
+shorter; the drawn height encodes the value, the target stays usable. ``>= 8%``
+segments may label themselves; smaller segments rely on the counted legend.
+No color-only encoding, no smoothing, no animation that changes values. Charts
+declare their date basis (UTC day or UTC month) in the visible tooltip and
+caption. A toggle may switch intervals (24 months / 30 days) but never changes
+the underlying filter state.
+
+States: default, hover, focus-visible, selected interval, empty interval,
+unknown bucket, scroll region at narrow widths, data table open.
+
+### 6.14 Signal block (priority rows)
+
+Each row separates KEV, EPSS, CVSS, and optional forecast movement into labeled
+blocks: mono uppercase signal name, bold key value, normal explanation, italic
+caveat. EPSS carries a real 0–100% bar with a screen-reader text equivalent;
+CVSS carries the version and a bordered band word. Unknown values render
+"Unavailable" or "Unscored", never 0. A HelpTip beside each signal name explains
+the definition; the block remains understandable without opening it. Ordering
+rules stay adjacent as a definition list, and no composite risk score is shown.
+
+States: listed/not listed, forecast present/absent, modern/legacy/unscored,
+ADP-only, rising delta, stale score date, focus-visible, help open.
 
 ## 7. Motion
 

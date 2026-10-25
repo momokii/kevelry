@@ -4,7 +4,8 @@
 
 Deployed and serving on this host: single container at
 http://100.124.184.116:3100 (Tailscale). All 30 build todos delivered, F1–F4
-approved, plus post-deployment hardening. Local `main` only: no remote.
+approved, post-deployment hardening complete, and the interactive UI/UX round
+shipped. Local `main` only: no remote.
 
 ## Completed
 
@@ -34,6 +35,11 @@ approved, plus post-deployment hardening. Local `main` only: no remote.
 - [x] Live ingestion verified from upstreams: 395,286 CVEs, 1,756 KEV, 395,249 EPSS, 285,877 CVSS metric rows
 - [x] Post-deployment scale fixes: bounded checkpoints/API queries, persistent CVE checkout cache, CVSS backfill
 - [x] Deployed on Tailscale 100.124.184.116:3100; all pages and APIs respond <5s, 0 restarts
+- [x] Interactive UI round: overview dashboard (24-month/30-day volume, severity mix, EPSS distribution, KEV additions, corpus totals) with hover/focus tooltips and click-through; plain-language source freshness; methodology pipeline/ordering/signal diagrams; filter-explained explore with an auto-updating cohort visualization; structured priority signal blocks
+- [x] Global display timezone selector in the shared masthead (default Asia/Jakarta), applied to overview, priority, methodology, radar, and replay instants; UTC day/month buckets stay labeled UTC
+- [x] In-app `/api-docs` rendered from `openapi/v1.yaml` with curl examples and a masthead entry
+- [x] Read-path performance: aggregate cache (migration 002), covering indexes, ETag/304, 60s explore/facets cache; live `/` 0.4s, `/priority` 0.24s, `/explore` 2.3s cold then 0.02s warm, `/methodology` 0.03s, 0 restarts
+- [x] Verification after the UI round: 364 unit tests pass (3 skipped), 67 Playwright tests pass (1 skipped), lint/typecheck/build green; 360/768/1280 screenshots with zero horizontal overflow and clean consoles
 
 ## In Progress
 
@@ -60,4 +66,4 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 
 ## Last Updated
 
-2026-10-25: deployed on Tailscale 100.124.184.116:3100 with live data; image rebuilt with all fixes; endpoints 0.02-5.7s, 0 restarts.
+2026-10-26: interactive UI/UX round shipped and deployed; 364 unit + 67 Playwright tests green; warm pages 0.02-0.4s, explore 2.3s cold then 0.02s warm; 0 restarts.
