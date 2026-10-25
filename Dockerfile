@@ -65,7 +65,13 @@ ENV NODE_ENV=production \
   DATA_DIR=/data \
   SCHEDULE_ENABLED=true
 WORKDIR /app
-RUN groupadd --system --gid 1001 nodejs \
+# git + CA certificates supply the in-container CVE List V5 clone/fetch
+# over HTTPS (git alone fails with "CAfile: none").
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && git --version \
+  && groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs \
   && mkdir -p /data /tmp \
   && chown nextjs:nodejs /data \
