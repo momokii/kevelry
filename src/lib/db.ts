@@ -329,9 +329,25 @@ export function openDatabase(options: OpenDatabaseOptions): CveDatabase {
 // ---------------------------------------------------------------------------
 
 const readHandles = new Map<string, CveDatabase>();
+const readSignatures = new Map<string, string>();
 
 function resolveReadKey(dataDir: string, filename: string): string {
   return `${dataDir}::${filename}`;
+}
+
+/**
+ * Identity of the database file a read handle is bound to. Test suites and
+ * restore flows replace the file in place; a cached handle would otherwise
+ * keep reading the old inode. Size plus mtime is enough to notice a rewrite
+ * without reopening on every read.
+ */
+export function readDatabaseSignature(dataDir: string, filename: string = DB_FILENAME): string {
+  try {
+    const stats = statSync(path.join(dataDir, filename));
+    return `${stats.size}:${stats.mtimeMs}`;
+  } catch {
+    return "missing";
+  }
 }
 
 /** Reuse one read-only connection per data directory (never migrates, never writes). */
@@ -346,8 +362,27 @@ export function openReadDatabase(
     );
   }
   const key = resolveReadKey(dataDir, filename);
+  let signature = readDatabaseSignature(dataDir, filename);
+  if (signature === "missing") {
+    try {
+      const bootstrap = CveDatabase.open({ dataDir, filename, busyTimeoutMs });
+      bootstrap.close();
+    } catch {
+      // A concurrent creator may win the race; the read open below reports the real failure.
+    }
+    signature = readDatabaseSignature(dataDir, filename);
+  }
   const cached = readHandles.get(key);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined && readSignatures.get(key) === signature) return cached;
+  if (cached !== undefined) {
+    try {
+      cached.close();
+    } catch {
+      // A replaced file can leave the old handle unusable; the fresh open below is authoritative.
+    }
+    readHandles.delete(key);
+    readSignatures.delete(key);
+  }
   const db = CveDatabase.open({ dataDir, filename, busyTimeoutMs, readOnly: true });
   // Read-path tuning for the 395k-row volume, applied once per process:
   // a roomy page cache plus mmap keeps the hot covering indexes and probe
@@ -360,6 +395,7 @@ export function openReadDatabase(
     // Tuning is best-effort; a platform that rejects a pragma still serves.
   }
   readHandles.set(key, db);
+  readSignatures.set(key, signature);
   return db;
 }
 
@@ -373,4 +409,5 @@ export function resetReadDatabaseCache(): void {
     }
   }
   readHandles.clear();
+  readSignatures.clear();
 }

@@ -9,7 +9,7 @@ import {
   ExploreInitial,
   isSeverityBand,
 } from "@/components/explore/filter-meta";
-import { openReadDatabase } from "@/lib/db";
+import { openReadDatabase, readDatabaseSignature } from "@/lib/db";
 import {
   MAX_SEARCH_LIMIT,
   SearchValidationError,
@@ -108,6 +108,7 @@ const cachedExploreSearch = unstable_cache(
       epss: EpssFilter;
       limit: number;
       cursor: string | null;
+      dbSignature: string;
     };
     const db = openReadDatabase(dataDir);
     return searchCves(db, {
@@ -163,8 +164,9 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
 
     let response: SearchResponse | null = null;
     try {
+      const dataDir = resolveDataDir();
       response = await cachedExploreSearch(
-        resolveDataDir(),
+        dataDir,
         JSON.stringify({
           q,
           dateStart,
@@ -174,6 +176,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
           epss,
           limit,
           cursor: cursor ?? null,
+          dbSignature: readDatabaseSignature(dataDir),
         }),
       );
     } catch (error) {

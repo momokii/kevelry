@@ -11,7 +11,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CveDatabase, DbBusyError, DbConfigError, openDatabase } from "../src/lib/db";
+import {
+  CveDatabase,
+  DbBusyError,
+  DbConfigError,
+  openDatabase,
+  openReadDatabase,
+  resetReadDatabaseCache,
+} from "../src/lib/db";
 
 const tempDirs: string[] = [];
 
@@ -287,5 +294,28 @@ describe("sqlite storage (todo 7)", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("read handle cache", () => {
+  it("reopens after the database file is replaced or removed", () => {
+    const dir = makeTempDir("cve-read-cache-");
+    const writer = openDatabase({ dataDir: dir });
+    writer.close();
+
+    const first = openReadDatabase(dir);
+    expect(
+      first.handle.prepare("SELECT COUNT(*) AS n FROM cve_records").get() as { n: number },
+    ).toEqual({ n: 0 });
+
+    rmSync(path.join(dir, "cve.db"), { force: true });
+    resetReadDatabaseCache();
+
+    const second = openReadDatabase(dir);
+    expect(
+      second.handle.prepare("SELECT COUNT(*) AS n FROM cve_records").get() as { n: number },
+    ).toEqual({ n: 0 });
+    expect(second.appliedVersions().length).toBeGreaterThan(0);
+    resetReadDatabaseCache();
   });
 });
