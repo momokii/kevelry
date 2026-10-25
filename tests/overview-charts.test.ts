@@ -9,6 +9,8 @@ import {
   formatCount,
   monthLabel,
   nextDayString,
+  monthExploreHref,
+  monthlyVolume,
   percentOf,
   publishedShare,
   severityExploreHref,
@@ -150,5 +152,33 @@ describe("monthLabel", () => {
     expect(monthLabel("2026-09")).toBe("Sep 2026");
     expect(monthLabel("2026-13")).toBeNull();
     expect(monthLabel("September")).toBeNull();
+  });
+});
+
+describe("monthly volume", () => {
+  it("groups daily counts into the trailing months ending at the anchor", () => {
+    const counts = new Map([
+      ["2026-08-01", 4],
+      ["2026-08-31", 6],
+      ["2026-09-15", 5],
+      ["2026-10-02", 7],
+      ["2025-01-01", 99],
+    ]);
+    expect(monthlyVolume(counts, "2026-10-21", 3)).toEqual([
+      { bucketStart: "2026-08", count: 10 },
+      { bucketStart: "2026-09", count: 5 },
+      { bucketStart: "2026-10", count: 7 },
+    ]);
+  });
+
+  it("returns an empty series without a valid anchor", () => {
+    expect(monthlyVolume(new Map(), null, 3)).toEqual([]);
+    expect(monthlyVolume(new Map(), "not-a-day", 3)).toEqual([]);
+  });
+
+  it("builds month ranges that roll over the year", () => {
+    expect(monthExploreHref("2026-10")).toBe("/explore?dateStart=2026-10-01&dateEnd=2026-11-01");
+    expect(monthExploreHref("2026-12")).toBe("/explore?dateStart=2026-12-01&dateEnd=2027-01-01");
+    expect(monthExploreHref("2026-13")).toBeNull();
   });
 });

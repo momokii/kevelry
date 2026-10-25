@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CSSProperties } from "react";
 
 import { formatCount, publishedShare } from "./chartData";
 import styles from "./charts.module.css";
@@ -92,7 +93,7 @@ export function ChartBars({
                 peakKeys.has(item.key) ? styles.barLinkPeak : "",
                 item.count === 0 ? styles.barLinkZero : "",
               ].join(" ")}
-              style={{ height: `${barHeight(item.count, peak)}px` }}
+              style={{ "--bar-height": `${barHeight(item.count, peak)}px` } as CSSProperties}
               aria-label={`${item.label}: ${publishedShare(item.count, denominator, denominatorNoun)}. ${basis} ${actionLabel}.`}
               data-testid={`${testId}-bar-${item.key}`}
               onMouseEnter={() => setActiveKey(item.key)}

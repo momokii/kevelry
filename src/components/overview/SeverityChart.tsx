@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   SEVERITY_PRIMARY_BANDS,
+  SEVERITY_SHORT_LABELS,
   severityExploreHref,
   publishedShare,
   type SeverityRow,
@@ -92,7 +93,7 @@ export function SeverityChart({ rows, publishedTotal }: SeverityChartProps) {
               }
             }}
           >
-            {row.count > 0 ? row.label : null}
+            {row.count > 0 && row.count / total >= 0.08 ? SEVERITY_SHORT_LABELS[row.band] : null}
           </a>
         ))}
       </div>

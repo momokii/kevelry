@@ -60,6 +60,8 @@ export default function OverviewPage() {
           <PublicationChart
             days={[]}
             total30={0}
+            months={[]}
+            totalMonths={0}
             publishedTotal={0}
             anchorDay={null}
             unknownDateCount={0}
@@ -69,6 +71,8 @@ export default function OverviewPage() {
           <PublicationChart
             days={data.volume30}
             total30={data.volumeTotal30}
+            months={data.volumeMonths}
+            totalMonths={data.volumeTotalMonths}
             publishedTotal={data.publishedTotal}
             anchorDay={data.anchorDay}
             unknownDateCount={data.unknownDateCount}

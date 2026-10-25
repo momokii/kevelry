@@ -261,6 +261,10 @@ for (const width of [360, 768, 1280]) {
     await expect(page.getByTestId("overview-search-input")).toBeVisible();
     await expect(page.getByTestId("overview-search-action")).toContainText("Search");
 
+    await page
+      .getByTestId("overview-chart-table-details")
+      .getByText("View the 30-day data table")
+      .click();
     await expect(page.getByTestId("overview-chart-table")).toBeVisible();
     await expect(page.getByTestId("overview-chart-count-unknown")).toContainText(
       "explicit unknown bucket",
@@ -339,6 +343,10 @@ test("overview passes the task-24 accessibility audit", async ({ page }) => {
   await auditZoomReflow(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-zoom-200.png`);
   await auditReducedMotion(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-reduced-motion.png`);
 
+  await page
+    .getByTestId("overview-chart-table-details")
+    .getByText("View the 30-day data table")
+    .click();
   await expect(page.getByTestId("overview-chart-table").locator("th[scope]").first()).toBeVisible();
   const uncertainCopy = await page.getByTestId("overview-chart-count-unknown").textContent();
   expect(uncertainCopy ?? "").toMatch(/explicit unknown bucket/);
@@ -352,11 +360,11 @@ test("overview charts expose exact tooltips on hover and keyboard focus", async 
   await bar.hover();
   const tooltip = page.getByTestId("overview-chart-volume-tooltip");
   await expect(tooltip).toBeVisible();
-  await expect(tooltip).toContainText("UTC calendar day");
+  await expect(tooltip).toContainText(/UTC calendar (day|month)/);
   await expect(tooltip).toContainText("%");
 
   await bar.focus();
-  await expect(tooltip).toContainText("UTC calendar day");
+  await expect(tooltip).toContainText(/UTC calendar (day|month)/);
   await page.keyboard.press("Escape");
   await expect(tooltip).toContainText("Hover or Tab to a bar");
 });
@@ -400,4 +408,21 @@ test("freshness panel explains each state and hides raw timestamps behind detail
       "Exact check time",
     );
   }
+});
+
+test("volume chart switches between 24 months and 30 days", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+
+  const months = page.getByTestId("overview-chart-view-months");
+  const days = page.getByTestId("overview-chart-view-days");
+  await expect(months).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId(/^overview-chart-volume-bar-\d{4}-\d{2}$/).first()).toBeVisible();
+
+  await days.click();
+  await expect(days).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByTestId(/^overview-chart-volume-bar-\d{4}-\d{2}-\d{2}$/).first(),
+  ).toBeVisible();
+  await expect(page.getByTestId("overview-chart-view-days")).toHaveText("30 days");
 });

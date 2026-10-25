@@ -1,4 +1,7 @@
-import type { DayBucket } from "./loadOverview";
+export interface DayBucket {
+  bucketStart: string;
+  count: number;
+}
 
 export const DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 export const MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
@@ -78,6 +81,17 @@ export function shareText(count: number, total: number): string {
   return publishedShare(count, total);
 }
 
+export function monthExploreHref(month: string): string | null {
+  if (monthLabel(month) === null) return null;
+  const start = `${month}-01`;
+  const [yearText, monthText] = month.split("-");
+  const year = Number(yearText);
+  const rawMonth = Number(monthText);
+  if (yearText === undefined || monthText === undefined) return null;
+  const next = new Date(Date.UTC(year, rawMonth, 1)).toISOString().slice(0, 10);
+  return `/explore?dateStart=${start}&dateEnd=${next}`;
+}
+
 export function dayExploreHref(day: string): string {
   const next = nextDayString(day);
   if (next === null) return "/explore";
@@ -122,6 +136,16 @@ export const SEVERITY_ORDER = [
 
 export type SeverityBandKey = (typeof SEVERITY_ORDER)[number];
 
+export const SEVERITY_SHORT_LABELS: Record<SeverityBandKey, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  none: "None",
+  legacy: "Legacy",
+  unknown: "Unscored",
+};
+
 export const SEVERITY_LABELS: Record<SeverityBandKey, string> = {
   critical: "Critical",
   high: "High",
@@ -160,4 +184,36 @@ export function monthLabel(month: string): string | null {
   const monthIndex = Number(match[2]);
   if (monthIndex < 1 || monthIndex > 12) return null;
   return `${MONTH_NAMES[monthIndex - 1]} ${match[1]}`;
+}
+
+export function monthlyVolume(
+  counts: Map<string, number>,
+  anchorDay: string | null,
+  months: number,
+): DayBucket[] {
+  if (anchorDay === null || months <= 0) return [];
+  const anchorMonth = anchorDay.slice(0, 7);
+  const [yearText, monthText] = anchorMonth.split("-");
+  const anchorYear = Number(yearText);
+  const anchorMonthNumber = Number(monthText);
+  if (
+    yearText === undefined ||
+    monthText === undefined ||
+    !Number.isInteger(anchorYear) ||
+    !Number.isInteger(anchorMonthNumber)
+  ) {
+    return [];
+  }
+  const monthTotals = new Map<string, number>();
+  for (const [day, count] of counts) {
+    const key = day.slice(0, 7);
+    monthTotals.set(key, (monthTotals.get(key) ?? 0) + count);
+  }
+  const series: DayBucket[] = [];
+  for (let index = months - 1; index >= 0; index -= 1) {
+    const cursor = new Date(Date.UTC(anchorYear, anchorMonthNumber - 1 - index, 1));
+    const key = cursor.toISOString().slice(0, 7);
+    series.push({ bucketStart: key, count: monthTotals.get(key) ?? 0 });
+  }
+  return series;
 }

@@ -1,5 +1,8 @@
 import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
 import { getAggregates, severityBandsSql, type AggregateSnapshot } from "../../lib/aggregates";
+import { monthlyVolume, type DayBucket } from "./chartData";
+
+export type { DayBucket } from "./chartData";
 import { openReadDatabase, type CveDatabase } from "../../lib/db";
 import {
   getAcceptedEpssDate,
@@ -14,13 +17,9 @@ import { officialCveLink } from "../../lib/search";
 
 export const OVERVIEW_CHART_DAYS = 14;
 export const OVERVIEW_VOLUME_DAYS = 30;
+export const OVERVIEW_VOLUME_MONTHS = 24;
 export const OVERVIEW_KEV_MONTHS = 12;
 export const OVERVIEW_SUMMARY_LIMIT = 3;
-
-export interface DayBucket {
-  bucketStart: string;
-  count: number;
-}
 
 export interface PrioritySummaryItem {
   cveId: string;
@@ -63,6 +62,8 @@ export interface OverviewData {
   buckets: DayBucket[];
   volume30: DayBucket[];
   volumeTotal30: number;
+  volumeMonths: DayBucket[];
+  volumeTotalMonths: number;
   severityBands: Record<string, number>;
   epssHistogram: number[];
   epssScoreDate: string | null;
@@ -461,6 +462,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             bucketStart,
             count: counts.get(bucketStart) ?? 0,
           }));
+    const volumeMonths = monthlyVolume(counts, anchorDay, OVERVIEW_VOLUME_MONTHS);
     const epssDate = getAcceptedEpssDate(db);
     const correctionNotes =
       cached === null ? readCorrectionNotes(db) : tombstoneNotes(cached.tombstones);
@@ -479,7 +481,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             published: publishedTotal,
             kev: liveTotals?.kev ?? 0,
             epssScored: liveTotals?.epssScored ?? 0,
-            unscored: liveTotals?.unscored ?? 0,
+            unscored: severityBands.unknown ?? 0,
             unknownDate: unknownDateCount,
             tombstones: liveTotals?.tombstones ?? 0,
             computedAt: null,
@@ -490,7 +492,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             published: cached.publishedTotal,
             kev: cached.totals.kev,
             epssScored: cached.totals.epssScored,
-            unscored: cached.totals.unscored,
+            unscored: cached.severityBands.unknown ?? cached.totals.unscored,
             unknownDate: cached.unknownDateCount,
             tombstones: cached.tombstones,
             computedAt: cached.computedAt,
@@ -505,6 +507,8 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       buckets,
       volume30,
       volumeTotal30: volume30.reduce((sum, bucket) => sum + bucket.count, 0),
+      volumeMonths,
+      volumeTotalMonths: volumeMonths.reduce((sum, bucket) => sum + bucket.count, 0),
       severityBands,
       epssHistogram,
       epssScoreDate,
