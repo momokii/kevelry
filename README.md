@@ -101,8 +101,8 @@ Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md
 ## Quick start
 
 Prerequisites: Docker with Compose v2, about 12 GB free disk at peak (image
-~0.4 GB, CVE clone scratch ~5 GB during import, database ~4.3 GB plus WAL),
-and optionally Tailscale for remote access.
+~0.4 GB, persistent CVE checkout cache ~5-6 GB at `<DATA_DIR>/cve-repo`,
+database ~4.3 GB plus WAL), and optionally Tailscale for remote access.
 
 ```bash
 ./setup.sh                    # check-only prerequisites (Docker, daemon, compose, port, volume)
@@ -131,6 +131,8 @@ the app reads is listed there.
 | `PORT` | `3000` | Host-side web port (container always listens on 3000) |
 | `CVE_GIT_TIMEOUT_MS` | `3600000` | CVE List V5 clone timeout in ms (1 hour) |
 | `CVE_CLONE_DEPTH` | `1` | `1` is shallow `--depth 1`; `0` means full history |
+| `CVE_REPO_DIR` | `<DATA_DIR>/cve-repo` | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
+| `CVE_REPO_CACHE_RESET` | `false` | `true` wipes the cache and re-clones clean on the next cycle |
 | `CVE_MAX_RECORD_BYTES` | `16777216` | Per-record size cap in bytes (16 MiB); oversize records are quarantined |
 | `CHECKPOINT_TOP_N` | `500` | Entries kept per view in each daily Change Radar checkpoint |
 
