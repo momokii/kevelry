@@ -51,6 +51,7 @@ Thumbs.db
 # ---------------------------------------------------------------------------
 node_modules/
 .next/
+dist/
 next-env.d.ts
 coverage/
 playwright-report/

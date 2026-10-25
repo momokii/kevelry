@@ -28,11 +28,16 @@ services:
       NODE_ENV: production
       PORT: "3000"
       DATA_DIR: /data
-      SCHEDULE_ENABLED: ${SCHEDULE_ENABLED:-false}
+      # Ingestion schedule: true (default) runs the worker's initial import
+      # immediately on boot and keeps refreshing on the scheduler intervals.
+      # false still runs ONE initial import on boot, then idles (no refresh).
+      # Normal `docker compose up` therefore always populates data.
+      SCHEDULE_ENABLED: ${SCHEDULE_ENABLED:-true}
     ports:
-      # Loopback-bound by default. Host side honors $PORT (default 3000);
-      # the container always listens on 3000 (see Dockerfile PORT/HOSTNAME).
-      - "127.0.0.1:${PORT:-3000}:3000"
+      # Loopback-bound by default. Host side honors $BIND_ADDR (default
+      # 127.0.0.1) and $PORT (default 3000); the container always listens
+      # on 3000 (see Dockerfile PORT/HOSTNAME).
+      - "${BIND_ADDR:-127.0.0.1}:${PORT:-3000}:3000"
     volumes:
       - cve-data:/data
     deploy:

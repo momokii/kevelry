@@ -63,7 +63,7 @@ ENV NODE_ENV=production \
   PORT=3000 \
   HOSTNAME=0.0.0.0 \
   DATA_DIR=/data \
-  SCHEDULE_ENABLED=false
+  SCHEDULE_ENABLED=true
 WORKDIR /app
 RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs \
@@ -75,6 +75,13 @@ RUN groupadd --system --gid 1001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Ingestion worker bundle (built by `npm run build:worker` in the builder
+# stage) plus the plain-JS supervisor. No extra runtime deps required.
+# The migrations/ directory ships next to worker.mjs because the bundled
+# migration runner resolves its SQL files relative to its own location.
+COPY --from=builder --chown=nextjs:nodejs /app/dist/worker.mjs ./worker.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/dist/migrations ./migrations
+COPY --from=builder --chown=nextjs:nodejs /app/docker/entrypoint.mjs ./entrypoint.mjs
 USER nextjs
 EXPOSE 3000
 VOLUME /data
@@ -82,4 +89,4 @@ VOLUME /data
 # reported by the JSON body at the same endpoint for the todo-26 supervisor.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||'3000')+'/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
-CMD ["node", "server.js"]
+CMD ["node", "entrypoint.mjs"]
