@@ -3,10 +3,13 @@
 // The checkpoint writer freezes one daily observed manifest per UTC date: the
 // caller-supplied source pins (owned by the importers), the observed
 // PUBLISHED cohort, the ranking policy version, the new-critical time cutoff,
-// and the materialized public list results plus a per-record source snapshot
-// read from the accepted tables. The change detector compares two retained
-// manifests and labels source changes (KEV added/removed, CNA metric changed,
-// forecast changed, corrected, rejected, added, removed) apart from
+// and the BOUNDED observed top-N materialized public list results plus a
+// per-record source snapshot for the retained IDs only. Each view holds at
+// most CHECKPOINT_TOP_N entries (default 500, env-overridable); the manifest
+// records the bound as `boundedTopN` and replay surfaces it, so a replay
+// never implies a complete enumeration. The change detector compares two
+// retained manifests and labels source changes (KEV added/removed, CNA metric
+// changed, forecast changed, corrected, rejected, added, removed) apart from
 // rank-only/cohort/window/policy movement. Detail strings state observed
 // before/after values only; no claim about EPSS internals or first
 // exploitation is ever made here. The replay evaluator returns the retained
@@ -35,6 +38,50 @@ export const RADAR_POLICY_VERSION = "v1";
 
 /** Retained daily checkpoints cover the preceding 30 UTC calendar days. */
 export const RADAR_RETENTION_DAYS = 30;
+
+/**
+ * Default per-view cap for materialized checkpoint lists. A full-corpus
+ * checkpoint on ~395k rows pins the worker at 100% CPU for minutes and
+ * produces an unbounded multi-hundred-megabyte payload; bounding each view
+ * keeps the daily write to seconds and the payload to kilobytes.
+ */
+export const CHECKPOINT_TOP_N_DEFAULT = 500;
+
+/** Hard ceiling for CHECKPOINT_TOP_N; larger values are rejected, never clamped. */
+export const CHECKPOINT_TOP_N_MAX = 10000;
+
+/**
+ * Resolve the per-view checkpoint bound: explicit caller value wins, else
+ * CHECKPOINT_TOP_N env, else the default. Malformed or out-of-range values
+ * throw (fail closed) so a checkpoint never silently covers less than asked.
+ */
+export function resolveCheckpointTopN(
+  env: Record<string, string | undefined> = process.env,
+  override?: number,
+): number {
+  if (override !== undefined) {
+    if (!Number.isInteger(override) || override < 1 || override > CHECKPOINT_TOP_N_MAX) {
+      throw new Error(
+        `Refusing to write radar checkpoint: topN must be an integer in [1, ${CHECKPOINT_TOP_N_MAX}].`,
+      );
+    }
+    return override;
+  }
+  const raw = env.CHECKPOINT_TOP_N;
+  if (raw === undefined || raw === "") return CHECKPOINT_TOP_N_DEFAULT;
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new Error(
+      `Refusing to write radar checkpoint: CHECKPOINT_TOP_N ${JSON.stringify(raw)} is not a positive integer.`,
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > CHECKPOINT_TOP_N_MAX) {
+    throw new Error(
+      `Refusing to write radar checkpoint: CHECKPOINT_TOP_N must be an integer in [1, ${CHECKPOINT_TOP_N_MAX}].`,
+    );
+  }
+  return value;
+}
 
 export interface RadarSourcePins {
   cveRevision: string;
@@ -73,6 +120,8 @@ export interface StoredRadarCheckpoint {
   cohortCount: number;
   policyVersion: string;
   cutoffT: string;
+  /** Per-view entry cap actually applied; views/items never imply completeness. */
+  boundedTopN: number;
   views: RadarViews;
   items: Record<string, RadarItemSnapshot>;
   manifestHash: string;
@@ -84,6 +133,8 @@ export interface WriteCheckpointInput {
   sourcePins: RadarSourcePins;
   policyVersion?: string;
   cutoffT?: string;
+  /** Per-view entry cap; defaults to CHECKPOINT_TOP_N env/default. */
+  topN?: number;
 }
 
 export type ReplayResult =
@@ -174,26 +225,73 @@ interface CorpusRow {
   description: string;
 }
 
-function readCorpus(db: CveDatabase): CorpusRow[] {
-  return db.handle
-    .prepare(
-      "SELECT cve_id, state, date_published, date_updated, description FROM cve_records ORDER BY cve_id ASC",
-    )
-    .all() as CorpusRow[];
+/** Lightweight published-ID list for cohort identity; never loads descriptions. */
+function readPublishedIds(db: CveDatabase): string[] {
+  const rows = db.handle
+    .prepare("SELECT cve_id FROM cve_records WHERE state = ? ORDER BY cve_id ASC")
+    .all("PUBLISHED") as Array<{ cve_id: string }>;
+  return rows.map((row) => row.cve_id);
 }
 
-function readKevDates(db: CveDatabase): Map<string, string> {
-  const rows = db.handle.prepare("SELECT cve_id, date_added FROM kev_entries").all() as Array<{
-    cve_id: string;
-    date_added: string;
-  }>;
+function readCorpusRows(db: CveDatabase, cveIds: readonly string[]): CorpusRow[] {
+  const out: CorpusRow[] = [];
+  for (let index = 0; index < cveIds.length; index += 500) {
+    const group = cveIds.slice(index, index + 500);
+    const placeholders = group.map(() => "?").join(", ");
+    const rows = db.handle
+      .prepare(
+        `SELECT cve_id, state, date_published, date_updated, description FROM cve_records WHERE cve_id IN (${placeholders})`,
+      )
+      .all(...group) as CorpusRow[];
+    for (const row of rows) out.push(row);
+  }
+  return out;
+}
+
+function readKevDates(db: CveDatabase, cveIds?: readonly string[]): Map<string, string> {
+  let rows: Array<{ cve_id: string; date_added: string }>;
+  if (cveIds === undefined) {
+    rows = db.handle.prepare("SELECT cve_id, date_added FROM kev_entries").all() as Array<{
+      cve_id: string;
+      date_added: string;
+    }>;
+  } else {
+    rows = [];
+    for (let index = 0; index < cveIds.length; index += 500) {
+      const group = cveIds.slice(index, index + 500);
+      const placeholders = group.map(() => "?").join(", ");
+      const page = db.handle
+        .prepare(`SELECT cve_id, date_added FROM kev_entries WHERE cve_id IN (${placeholders})`)
+        .all(...group) as Array<{ cve_id: string; date_added: string }>;
+      for (const row of page) rows.push(row);
+    }
+  }
   return new Map(rows.map((row) => [row.cve_id, row.date_added]));
 }
 
-function readEpssForDate(db: CveDatabase, scoreDate: string): Map<string, { epss: string; model: string }> {
-  const rows = db.handle
-    .prepare("SELECT cve_id, epss, model_version FROM epss_daily WHERE score_date = ?")
-    .all(scoreDate) as Array<{ cve_id: string; epss: string; model_version: string }>;
+function readEpssForDate(
+  db: CveDatabase,
+  scoreDate: string,
+  cveIds?: readonly string[],
+): Map<string, { epss: string; model: string }> {
+  let rows: Array<{ cve_id: string; epss: string; model_version: string }>;
+  if (cveIds === undefined) {
+    rows = db.handle
+      .prepare("SELECT cve_id, epss, model_version FROM epss_daily WHERE score_date = ?")
+      .all(scoreDate) as Array<{ cve_id: string; epss: string; model_version: string }>;
+  } else {
+    rows = [];
+    for (let index = 0; index < cveIds.length; index += 500) {
+      const group = cveIds.slice(index, index + 500);
+      const placeholders = group.map(() => "?").join(", ");
+      const page = db.handle
+        .prepare(
+          `SELECT cve_id, epss, model_version FROM epss_daily WHERE score_date = ? AND cve_id IN (${placeholders})`,
+        )
+        .all(scoreDate, ...group) as Array<{ cve_id: string; epss: string; model_version: string }>;
+      for (const row of page) rows.push(row);
+    }
+  }
   const best = new Map<string, { epss: string; model: string }>();
   for (const row of rows) {
     const prior = best.get(row.cve_id);
@@ -206,12 +304,9 @@ function readEpssForDate(db: CveDatabase, scoreDate: string): Map<string, { epss
 
 function readPrimaries(
   db: CveDatabase,
+  cveIds?: readonly string[],
 ): Map<string, { version: string; baseScore: string; vector: string }> {
-  const rows = db.handle
-    .prepare(
-      "SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics",
-    )
-    .all() as Array<{
+  let rows: Array<{
     cve_id: string;
     origin: string;
     version: string;
@@ -219,6 +314,37 @@ function readPrimaries(
     vector: string;
     source_order: number;
   }>;
+  if (cveIds === undefined) {
+    rows = db.handle
+      .prepare("SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics")
+      .all() as Array<{
+      cve_id: string;
+      origin: string;
+      version: string;
+      base_score: string;
+      vector: string;
+      source_order: number;
+    }>;
+  } else {
+    rows = [];
+    for (let index = 0; index < cveIds.length; index += 500) {
+      const group = cveIds.slice(index, index + 500);
+      const placeholders = group.map(() => "?").join(", ");
+      const page = db.handle
+        .prepare(
+          `SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics WHERE cve_id IN (${placeholders})`,
+        )
+        .all(...group) as Array<{
+        cve_id: string;
+        origin: string;
+        version: string;
+        base_score: string;
+        vector: string;
+        source_order: number;
+      }>;
+      for (const row of page) rows.push(row);
+    }
+  }
   const grouped = new Map<string, CvssMetricInput[]>();
   for (const row of rows) {
     const list = grouped.get(row.cve_id) ?? [];
@@ -245,11 +371,15 @@ function readPrimaries(
   return out;
 }
 
-function buildItems(db: CveDatabase, epssScoreDate: string): Record<string, RadarItemSnapshot> {
-  const corpus = readCorpus(db);
-  const kevDates = readKevDates(db);
-  const epss = epssScoreDate === "" ? new Map() : readEpssForDate(db, epssScoreDate);
-  const primaries = readPrimaries(db);
+function buildItems(
+  db: CveDatabase,
+  epssScoreDate: string,
+  cveIds: readonly string[],
+): Record<string, RadarItemSnapshot> {
+  const corpus = readCorpusRows(db, cveIds);
+  const kevDates = readKevDates(db, cveIds);
+  const epss = epssScoreDate === "" ? new Map() : readEpssForDate(db, epssScoreDate, cveIds);
+  const primaries = readPrimaries(db, cveIds);
   const items: Record<string, RadarItemSnapshot> = {};
   for (const row of corpus) {
     const entry = epss.get(row.cve_id);
@@ -271,13 +401,13 @@ function buildItems(db: CveDatabase, epssScoreDate: string): Record<string, Rada
   return items;
 }
 
-function buildViews(db: CveDatabase, cutoffT: string): RadarViews {
+function buildViews(db: CveDatabase, cutoffT: string, topN: number): RadarViews {
   return {
-    defaultPriority: getDefaultPriority(db).map((row) => row.id),
-    knownExploited: getKnownExploited(db).map((row) => row.id),
-    highestForecast: getHighestForecast(db).map((row) => row.id),
-    newCritical: getNewCritical(db, cutoffT).map((row) => row.id),
-    risingForecast: getRisingForecast(db).map((row) => row.item.id),
+    defaultPriority: getDefaultPriority(db, topN).map((row) => row.id),
+    knownExploited: getKnownExploited(db, topN).map((row) => row.id),
+    highestForecast: getHighestForecast(db, topN).map((row) => row.id),
+    newCritical: getNewCritical(db, cutoffT, topN).map((row) => row.id),
+    risingForecast: getRisingForecast(db, undefined, topN).map((row) => row.item.id),
   };
 }
 
@@ -295,6 +425,7 @@ function canonicalManifestJson(manifest: Omit<StoredRadarCheckpoint, "manifestHa
     cohortCount: manifest.cohortCount,
     policyVersion: manifest.policyVersion,
     cutoffT: manifest.cutoffT,
+    boundedTopN: manifest.boundedTopN,
     views: manifest.views,
     items: sortedItems,
   });
@@ -338,9 +469,7 @@ function validateInput(input: WriteCheckpointInput): {
   }
   const cutoffT = input.cutoffT ?? input.observedAt;
   if (observedDay(cutoffT) === null) {
-    throw new Error(
-      "Refusing to write radar checkpoint: cutoffT is not a parseable timestamp.",
-    );
+    throw new Error("Refusing to write radar checkpoint: cutoffT is not a parseable timestamp.");
   }
   return { policyVersion, cutoffT };
 }
@@ -351,14 +480,29 @@ function validateInput(input: WriteCheckpointInput): {
  * fails instead of overwriting history. Records a reference-counted baseline
  * hold on the pinned CVE revision.
  */
-export function writeCheckpoint(db: CveDatabase, input: WriteCheckpointInput): StoredRadarCheckpoint {
+export function writeCheckpoint(
+  db: CveDatabase,
+  input: WriteCheckpointInput,
+): StoredRadarCheckpoint {
   const { policyVersion, cutoffT } = validateInput(input);
-  const items = buildItems(db, input.sourcePins.epssScoreDate);
-  const publishedIds = Object.keys(items)
-    .filter((cveId) => items[cveId]?.state === "PUBLISHED")
-    .sort();
+  const topN = resolveCheckpointTopN(process.env, input.topN);
+  const views = buildViews(db, cutoffT, topN);
+  const viewIds = [...new Set(Object.values(views).flat())];
+  // Retained item snapshots cover the bounded view IDs plus every REJECTED
+  // record: rejections are the small explanation set that keeps the change
+  // detector labeling a PUBLISHED→REJECTED transition as "rejected" instead
+  // of "removed". Published records outside the bounded views are the only
+  // IDs without snapshots, so the payload stays bounded.
+  const rejectedIds = (
+    db.handle
+      .prepare("SELECT cve_id FROM cve_records WHERE state = ? ORDER BY cve_id ASC")
+      .all("REJECTED") as Array<{ cve_id: string }>
+  ).map((row) => row.cve_id);
+  const items = buildItems(db, input.sourcePins.epssScoreDate, [
+    ...new Set([...viewIds, ...rejectedIds]),
+  ]);
+  const publishedIds = readPublishedIds(db);
   const cohortId = `published-sha256:${sha256Hex(publishedIds.join("\n"))}`;
-  const views = buildViews(db, cutoffT);
   const core = {
     checkpointDate: input.checkpointDate,
     observedAt: input.observedAt,
@@ -367,6 +511,7 @@ export function writeCheckpoint(db: CveDatabase, input: WriteCheckpointInput): S
     cohortCount: publishedIds.length,
     policyVersion,
     cutoffT,
+    boundedTopN: topN,
     views,
     items,
   };
@@ -435,6 +580,7 @@ function parseStoredRow(row: CheckpointRow): StoredRadarCheckpoint {
   }
   const body = (parsed ?? {}) as {
     cutoffT?: unknown;
+    boundedTopN?: unknown;
     views?: unknown;
     items?: unknown;
   };
@@ -444,13 +590,26 @@ function parseStoredRow(row: CheckpointRow): StoredRadarCheckpoint {
     );
   }
   const views = body.views as RadarViews;
-  for (const key of ["defaultPriority", "knownExploited", "highestForecast", "newCritical", "risingForecast"] as const) {
+  for (const key of [
+    "defaultPriority",
+    "knownExploited",
+    "highestForecast",
+    "newCritical",
+    "risingForecast",
+  ] as const) {
     if (!Array.isArray(views[key])) {
       throw new Error(
         `Radar checkpoint for ${row.checkpoint_date} has a corrupt materialized payload; refusing to replay it.`,
       );
     }
   }
+  const viewLengths = Object.values(views).map((list) => list.length);
+  const boundedTopN =
+    typeof body.boundedTopN === "number" &&
+    Number.isInteger(body.boundedTopN) &&
+    body.boundedTopN > 0
+      ? body.boundedTopN
+      : Math.max(0, ...viewLengths);
   const items = (body.items ?? {}) as Record<string, RadarItemSnapshot>;
   return {
     checkpointDate: row.checkpoint_date,
@@ -465,6 +624,7 @@ function parseStoredRow(row: CheckpointRow): StoredRadarCheckpoint {
     cohortCount: row.cohort_count,
     policyVersion: row.policy_version,
     cutoffT: body.cutoffT,
+    boundedTopN,
     views: {
       defaultPriority: [...views.defaultPriority],
       knownExploited: [...views.knownExploited],
@@ -478,7 +638,10 @@ function parseStoredRow(row: CheckpointRow): StoredRadarCheckpoint {
 }
 
 /** Reads one retained checkpoint, or undefined when no checkpoint exists for the date. */
-export function readCheckpoint(db: CveDatabase, checkpointDate: string): StoredRadarCheckpoint | undefined {
+export function readCheckpoint(
+  db: CveDatabase,
+  checkpointDate: string,
+): StoredRadarCheckpoint | undefined {
   const row = db.handle
     .prepare("SELECT * FROM checkpoints WHERE checkpoint_date = ?")
     .get(checkpointDate) as CheckpointRow | undefined;
@@ -546,21 +709,28 @@ export function pruneExpiredCheckpoints(
     .map((row) => row.checkpointDate);
   for (const checkpointDate of expired) {
     db.runBoundedWrite(() => {
-      db.handle
-        .prepare("DELETE FROM checkpoints WHERE checkpoint_date = ?")
-        .run(checkpointDate);
+      db.handle.prepare("DELETE FROM checkpoints WHERE checkpoint_date = ?").run(checkpointDate);
     });
   }
   return expired;
 }
 
 function manifestValidationError(manifest: StoredRadarCheckpoint): string | null {
-  const published = Object.values(manifest.items).filter((item) => item.state === "PUBLISHED");
-  if (published.length !== manifest.cohortCount) {
-    return (
-      `stored manifest fails validation: cohort count ${manifest.cohortCount} disagrees ` +
-      `with ${published.length} retained PUBLISHED items`
-    );
+  for (const [viewName, ids] of Object.entries(manifest.views)) {
+    if (ids.length > manifest.boundedTopN) {
+      return (
+        `stored manifest fails validation: view ${viewName} holds ${ids.length} entries ` +
+        `above the retained bound of ${manifest.boundedTopN}`
+      );
+    }
+    for (const cveId of ids) {
+      if (manifest.items[cveId] === undefined) {
+        return (
+          `stored manifest fails validation: view ${viewName} references ${cveId} ` +
+          `with no retained item snapshot`
+        );
+      }
+    }
   }
   const { manifestHash: _ignored, ...core } = manifest;
   void _ignored;
@@ -712,7 +882,9 @@ export function diffCheckpoints(
       previous.primaryVector !== current.primaryVector
     ) {
       kinds.push("cna-changed");
-      notes.push(`primary CNA metric moved from ${primaryText(previous)} to ${primaryText(current)}`);
+      notes.push(
+        `primary CNA metric moved from ${primaryText(previous)} to ${primaryText(current)}`,
+      );
     }
     if (
       previous.epssModel !== null &&
@@ -739,7 +911,12 @@ export function diffCheckpoints(
       kinds.push("corrected");
       notes.push("record corrected (description or dates changed); severity and signals unchanged");
     }
-    if (kinds.length === 0 && beforeRank !== null && afterRank !== null && beforeRank !== afterRank) {
+    if (
+      kinds.length === 0 &&
+      beforeRank !== null &&
+      afterRank !== null &&
+      beforeRank !== afterRank
+    ) {
       kinds.push("rank-only-move");
       notes.push(`rank moved from ${beforeRank} to ${afterRank} with unchanged source signals`);
     }
@@ -748,7 +925,9 @@ export function diffCheckpoints(
     }
   }
 
-  const sourceChanges = itemChanges.filter((row) => row.kinds.some((kind) => SOURCE_KINDS.has(kind)));
+  const sourceChanges = itemChanges.filter((row) =>
+    row.kinds.some((kind) => SOURCE_KINDS.has(kind)),
+  );
   return {
     beforeDate: before.checkpointDate,
     afterDate: after.checkpointDate,

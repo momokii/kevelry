@@ -225,6 +225,14 @@ function makeCheckpoint(args: {
     cohortCount: args.cohortCount,
     policyVersion: "v1",
     cutoffT: args.cutoffT,
+    boundedTopN: Math.max(
+      0,
+      args.views.defaultPriority.length,
+      args.views.knownExploited.length,
+      args.views.highestForecast.length,
+      args.views.newCritical.length,
+      args.views.risingForecast.length,
+    ),
     views: {
       defaultPriority: [...args.views.defaultPriority],
       knownExploited: [...args.views.knownExploited],

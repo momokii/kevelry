@@ -40,11 +40,7 @@ import {
   writeCheckpoint,
   type StoredRadarCheckpoint,
 } from "../src/lib/radar";
-import {
-  DESCRIPTION_MISSING_LABEL,
-  excerptDescription,
-  searchCves,
-} from "../src/lib/search";
+import { DESCRIPTION_MISSING_LABEL, excerptDescription, searchCves } from "../src/lib/search";
 import {
   buildProvenance,
   buildRadarEvents,
@@ -199,8 +195,24 @@ function seedSyncRuns(db: CveDatabase, finishedDay: string, epssScoreDate: strin
     const insert = db.handle.prepare(
       "INSERT INTO sync_runs (source, started_at, finished_at, status, revision, content_hash, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
     );
-    insert.run("cve", `${finishedDay}T03:50:00.000Z`, finishedAt, "succeeded", "rev-test-aaa", "hash-cve", null);
-    insert.run("kev", `${finishedDay}T03:50:00.000Z`, finishedAt, "succeeded", KEV_CATALOG, "hash-kev", null);
+    insert.run(
+      "cve",
+      `${finishedDay}T03:50:00.000Z`,
+      finishedAt,
+      "succeeded",
+      "rev-test-aaa",
+      "hash-cve",
+      null,
+    );
+    insert.run(
+      "kev",
+      `${finishedDay}T03:50:00.000Z`,
+      finishedAt,
+      "succeeded",
+      KEV_CATALOG,
+      "hash-kev",
+      null,
+    );
     insert.run(
       "epss",
       `${finishedDay}T03:50:00.000Z`,
@@ -243,7 +255,9 @@ function seedCorpus(db: CveDatabase): { scoreDate: string; prevDate: string } {
   });
   seedRecord(db, "CVE-2099-0003", {
     published: stamp(utcDay(-6)),
-    metrics: [{ origin: "CNA", version: "2.0", baseScore: "10.0", vector: "AV:N/AC:L/Au:N/C:C/I:C/A:C" }],
+    metrics: [
+      { origin: "CNA", version: "2.0", baseScore: "10.0", vector: "AV:N/AC:L/Au:N/C:C/I:C/A:C" },
+    ],
     epss: [{ date: scoreDate, value: "0", percentile: "0.08100" }],
   });
   seedRecord(db, "CVE-2099-0004", { state: "REJECTED" });
@@ -377,7 +391,11 @@ describe("overview parity (site buckets vs /api/v1/overview)", () => {
     const api = await bodyOf(response);
 
     const siteItems = getDefaultPriority(db);
-    expectParity(siteItems.length, (api.coverage as { eligibleCohort: number }).eligibleCohort, "coverage.eligibleCohort");
+    expectParity(
+      siteItems.length,
+      (api.coverage as { eligibleCohort: number }).eligibleCohort,
+      "coverage.eligibleCohort",
+    );
 
     let siteUnknown = 0;
     const siteMonths = new Map<string, number>();
@@ -421,8 +439,16 @@ describe("explore/search parity (searchCves vs /api/v1/search)", () => {
     expectRateHeaders(response);
     const api = await bodyOf(response);
     const data = api.data as Array<Record<string, unknown>>;
-    expectParity(siteIds, data.map((row) => row.cveId), "data[].cveId");
-    expectParity(site.total, (api.coverage as { eligibleCohort: number }).eligibleCohort, "coverage.eligibleCohort");
+    expectParity(
+      siteIds,
+      data.map((row) => row.cveId),
+      "data[].cveId",
+    );
+    expectParity(
+      site.total,
+      (api.coverage as { eligibleCohort: number }).eligibleCohort,
+      "coverage.eligibleCohort",
+    );
 
     const records = loadFullRecords(db, siteIds);
     const byId = new Map(records.map((record) => [record.cveId, record]));
@@ -433,8 +459,16 @@ describe("explore/search parity (searchCves vs /api/v1/search)", () => {
       if (record === undefined) continue;
       const shaped = toCveItem(record, scoreDate, null);
       expectParity(shaped.excerpt, row.excerpt, `data[${row.cveId as string}].excerpt`);
-      expectParity(shaped.excerptTruncated, row.excerptTruncated, `data[${row.cveId as string}].excerptTruncated`);
-      expectParity(shaped.excerptStatus, row.excerptStatus, `data[${row.cveId as string}].excerptStatus`);
+      expectParity(
+        shaped.excerptTruncated,
+        row.excerptTruncated,
+        `data[${row.cveId as string}].excerptTruncated`,
+      );
+      expectParity(
+        shaped.excerptStatus,
+        row.excerptStatus,
+        `data[${row.cveId as string}].excerptStatus`,
+      );
       expectParity(shaped.officialUrl, row.officialUrl, `data[${row.cveId as string}].officialUrl`);
     }
     expectParity(siteProvenanceCore(db), provenanceCore(api), "provenance");
@@ -542,7 +576,11 @@ describe("cve list and detail parity (priority service vs /api/v1/cves)", () => 
     expect(second.status).toBe(200);
     const secondData = (await bodyOf(second)).data as Array<Record<string, unknown>>;
     const firstData = firstBody.data as Array<Record<string, unknown>>;
-    expectParity(siteIds, [...firstData, ...secondData].map((row) => row.cveId), "data[].cveId");
+    expectParity(
+      siteIds,
+      [...firstData, ...secondData].map((row) => row.cveId),
+      "data[].cveId",
+    );
     expectParity(
       siteIds.length,
       (firstBody.coverage as { eligibleCohort: number }).eligibleCohort,
@@ -576,7 +614,11 @@ describe("cve list and detail parity (priority service vs /api/v1/cves)", () => 
     expect(record).toBeDefined();
     if (record === undefined) throw new Error("seed failed");
     const siteExtras = detailExtras(record.rawJson, record.descriptionLang);
-    expectParity(siteExtras.descriptionLanguages, data.descriptionLanguages, "descriptionLanguages");
+    expectParity(
+      siteExtras.descriptionLanguages,
+      data.descriptionLanguages,
+      "descriptionLanguages",
+    );
     expectParity(siteExtras.references, data.references, "references");
     expect(data.excerptTruncated).toBe(true);
 
@@ -664,14 +706,24 @@ describe("replay parity (replay service vs /api/v1/replay)", () => {
       const siteIds = replayed.manifest.views[viewKeys[view]] ?? [];
 
       const response = await getReplay(
-        new Request(`https://radar.test/api/v1/replay?date=${checkpointDate}&view=${view}&limit=100`),
+        new Request(
+          `https://radar.test/api/v1/replay?date=${checkpointDate}&view=${view}&limit=100`,
+        ),
       );
       expect(response.status, view).toBe(200);
       expectRateHeaders(response);
       const api = await bodyOf(response);
       const data = api.data as Array<Record<string, unknown>>;
-      expectParity(siteIds, data.map((row) => row.cveId), `replay[${view}].data[].cveId`);
-      expectParity(replayed.manifest.policyVersion, api.rankingPolicyVersion, "rankingPolicyVersion");
+      expectParity(
+        siteIds,
+        data.map((row) => row.cveId),
+        `replay[${view}].data[].cveId`,
+      );
+      expectParity(
+        replayed.manifest.policyVersion,
+        api.rankingPolicyVersion,
+        "rankingPolicyVersion",
+      );
 
       const siteItems = siteIds.map((cveId) => {
         const snapshot = replayed.manifest.items[cveId];
@@ -709,7 +761,11 @@ describe("replay parity (replay service vs /api/v1/replay)", () => {
       expect(response.status, date).toBe(404);
       const api = await bodyOf(response);
       expect(api.code).toBe("REPLAY_UNAVAILABLE");
-      expectParity((api.details as { reason: string }).reason, reason, `replay[${date}].details.reason`);
+      expectParity(
+        (api.details as { reason: string }).reason,
+        reason,
+        `replay[${date}].details.reason`,
+      );
     }
   });
 
@@ -731,14 +787,15 @@ describe("replay parity (replay service vs /api/v1/replay)", () => {
       epssScoreDate: manifest.sourcePins.epssScoreDate,
       epssModelVersion: manifest.sourcePins.epssModelVersion,
       eligibleCohort: manifest.cohortCount,
+      boundedTopN: manifest.boundedTopN,
       expired: isCheckpointExpired(manifest.checkpointDate, today),
     }));
     expectParity([...site].reverse(), api.data, "checkpoints.data");
     expect(api.retainedFrom).toBe(site[0]?.checkpointDate ?? null);
     expect(api.retainedTo).toBe(site[site.length - 1]?.checkpointDate ?? null);
-    expect((api.data as Array<{ checkpointDate: string }>).map((row) => row.checkpointDate)).toContain(
-      checkpointDate,
-    );
+    expect(
+      (api.data as Array<{ checkpointDate: string }>).map((row) => row.checkpointDate),
+    ).toContain(checkpointDate);
   });
 });
 
@@ -782,7 +839,7 @@ describe("health/status parity (same snapshots, same freshness labels)", () => {
 
     const health = await getHealth(new Request("https://radar.test/api/v1/health"));
     expect(health.status).toBe(200);
-    expect(((await bodyOf(health)).status as string)).toBe("initializing");
+    expect((await bodyOf(health)).status as string).toBe("initializing");
     expect(getDefaultPriority(db)).toEqual([]);
     expect(getAcceptedEpssDate(db)).toBeNull();
   });
@@ -826,15 +883,18 @@ describe("stale and missing data parity (adversarial)", () => {
       ["health", await getHealth(new Request("https://radar.test/api/v1/health"))],
       [
         "overview",
-        await getOverview(new Request("https://radar.test/api/v1/overview?bucket=month&months=120")),
+        await getOverview(
+          new Request("https://radar.test/api/v1/overview?bucket=month&months=120"),
+        ),
       ],
     ] as const) {
       expect(response.status, name).toBe(200);
       expectParity(siteCore, provenanceCore(await bodyOf(response)), `provenance[${name}]`);
     }
 
-    const cvesData = ((await bodyOf(await getCves(new Request("https://radar.test/api/v1/cves?limit=100")))).data ??
-      []) as Array<Record<string, unknown>>;
+    const cvesData = ((
+      await bodyOf(await getCves(new Request("https://radar.test/api/v1/cves?limit=100")))
+    ).data ?? []) as Array<Record<string, unknown>>;
     const missing = cvesData.find((row) => row.cveId === "CVE-2099-0002");
     expect(missing?.excerptStatus).toBe("not-supplied");
     expect(missing?.excerpt).toBeNull();
@@ -865,8 +925,7 @@ describe("api-only self-host proof (no UI routes, no server)", () => {
     const pageImports = self
       .split("\n")
       .filter(
-        (line) =>
-          line.trimStart().startsWith("import") && /from\s+["'][^"']*\/page["']/.test(line),
+        (line) => line.trimStart().startsWith("import") && /from\s+["'][^"']*\/page["']/.test(line),
       );
     expect(pageImports, "no Next page component may be involved").toEqual([]);
   });
@@ -949,7 +1008,9 @@ describe("policy-version sensitivity (older pin trips the detector)", () => {
       { rankingPolicyVersion: RANKING_POLICY_VERSION, order: siteOrder },
       "replay",
     );
-    expect(divergences, "detector names the stale policy pin").toContain("replay.rankingPolicyVersion");
+    expect(divergences, "detector names the stale policy pin").toContain(
+      "replay.rankingPolicyVersion",
+    );
     expect(
       divergences.some((field) => field.startsWith("replay.order")),
       `detector names the ordering difference: ${divergences.join(", ")}`,

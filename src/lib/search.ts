@@ -21,14 +21,7 @@ export const MAX_FTS_TERMS = 10;
 export const EXCERPT_MAX_CODE_POINTS = 320;
 export const DESCRIPTION_MISSING_LABEL = "Description not supplied";
 
-export type SeverityBand =
-  | "critical"
-  | "high"
-  | "medium"
-  | "low"
-  | "none"
-  | "legacy"
-  | "unknown";
+export type SeverityBand = "critical" | "high" | "medium" | "low" | "none" | "legacy" | "unknown";
 
 const SEVERITY_BANDS: ReadonlySet<string> = new Set([
   "critical",
@@ -368,7 +361,10 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     return emptyResponse(limit);
   }
 
-  const metricsById = loadPrimaryById(db, candidates.map((row) => row.cve_id));
+  const metricsById = loadPrimaryById(
+    db,
+    candidates.map((row) => row.cve_id),
+  );
 
   const items: SearchResultItem[] = [];
   const coverage = emptyCoverage();
@@ -379,8 +375,7 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     const excerpt = excerptDescription(row.description, row.description_lang);
     items.push({
       cveId: row.cve_id,
-      title:
-        typeof row.title === "string" && row.title.trim() !== "" ? row.title : row.cve_id,
+      title: typeof row.title === "string" && row.title.trim() !== "" ? row.title : row.cve_id,
       excerpt: excerpt.excerpt,
       excerptTruncated: excerpt.truncated,
       langLabel: excerpt.langLabel,
@@ -413,13 +408,22 @@ function loadPrimaryById(
   const result = new Map<string, PrimaryCvss | null>();
   for (const cveId of cveIds) result.set(cveId, null);
   if (cveIds.length === 0) return result;
-  const placeholders = cveIds.map(() => "?").join(", ");
-  const rows = db.handle
-    .prepare(
-      `SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics ` +
-        `WHERE cve_id IN (${placeholders}) ORDER BY cve_id ASC, source_order ASC`,
-    )
-    .all(...cveIds) as MetricRow[];
+  // Chunked IN queries: a common term (e.g. "php" ~40k matches) exceeds the
+  // SQLite variable limit as one IN (...) clause (SqliteError -> API 500).
+  // Same 500-chunk pattern as title hydration; ordering per chunk matches the
+  // unchunked query (cve_id ASC, source_order ASC) so selection is identical.
+  const rows: MetricRow[] = [];
+  for (let index = 0; index < cveIds.length; index += 500) {
+    const group = cveIds.slice(index, index + 500);
+    const placeholders = group.map(() => "?").join(", ");
+    const page = db.handle
+      .prepare(
+        `SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics ` +
+          `WHERE cve_id IN (${placeholders}) ORDER BY cve_id ASC, source_order ASC`,
+      )
+      .all(...group) as MetricRow[];
+    for (const row of page) rows.push(row);
+  }
   const grouped = new Map<string, MetricRow[]>();
   for (const row of rows) {
     const list = grouped.get(row.cve_id);
@@ -435,8 +439,9 @@ function loadPrimaryById(
           version: metric.version,
           baseScore: metric.base_score,
           vector: metric.vector,
-          sourceOrder:
-            Number.isInteger(metric.source_order) ? (metric.source_order as number) : index,
+          sourceOrder: Number.isInteger(metric.source_order)
+            ? (metric.source_order as number)
+            : index,
         })),
       ),
     );

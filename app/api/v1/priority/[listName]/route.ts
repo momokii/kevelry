@@ -12,16 +12,17 @@ import {
   assertRequestBounds,
   buildProvenance,
   coverageFor,
+  encodeCursor,
   errorResponse,
   getDb,
   loadFullRecords,
   okResponse,
-  paginate,
   parseCursor,
   parseLimit,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
+  paginateCapped,
   toCveItem,
 } from "../../_lib/shared";
 
@@ -54,7 +55,14 @@ export async function GET(
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
   if (!acquireConcurrencySlot()) {
-    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "RATE_LIMITED",
+      "Server is busy. Retry after 60 seconds.",
+      db,
+      undefined,
+      rate,
+    );
   }
   try {
     assertRequestBounds(request);
@@ -69,10 +77,14 @@ export async function GET(
     const offset = parseCursor(params.get("cursor"));
     const nowIso = new Date().toISOString();
     const scoreDate = getAcceptedEpssDate(db);
+    // Bounded fetch: one extra row probes whether a next page exists, so the
+    // getters never materialize the full corpus. Coverage is computed over
+    // the bounded fetch, not a full scan (same keys, bounded cohort).
+    const cap = offset + limit + 1;
 
     if (list === "rising-forecast") {
-      const view = getRisingForecast(db);
-      const { page, hasMore, nextCursor } = paginate(view, offset, limit);
+      const view = getRisingForecast(db, undefined, cap);
+      const { page, hasMore, nextCursor } = paginateCapped(view, offset, limit);
       const records = loadFullRecords(
         db,
         page.map((row) => row.item.id),
@@ -103,13 +115,13 @@ export async function GET(
 
     const items =
       list === "known-exploited"
-        ? getKnownExploited(db)
+        ? getKnownExploited(db, cap)
         : list === "highest-forecast"
-          ? getHighestForecast(db)
+          ? getHighestForecast(db, cap)
           : list === "new-critical"
-            ? getNewCritical(db, nowIso)
-            : getDefaultPriority(db);
-    const { page, hasMore, nextCursor } = paginate(items, offset, limit);
+            ? getNewCritical(db, nowIso, cap)
+            : getDefaultPriority(db, cap);
+    const { page, hasMore, nextCursor } = paginateCapped(items, offset, limit);
     const records = loadFullRecords(
       db,
       page.map((item) => item.id),
@@ -137,7 +149,14 @@ export async function GET(
     if (error instanceof ApiError) {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "INTERNAL",
+      "Unexpected failure handling the request.",
+      db,
+      undefined,
+      rate,
+    );
   } finally {
     releaseConcurrencySlot();
   }

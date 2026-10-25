@@ -1,17 +1,16 @@
-import { getDefaultPriority } from "../../../../src/lib/priority";
 import {
   acquireConcurrencySlot,
   ApiError,
   assertRequestBounds,
   buildProvenance,
   countRows,
-  coverageFor,
   errorResponse,
   getDb,
   okResponse,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
+  unfilteredCohortCoverage,
 } from "../_lib/shared";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +58,14 @@ export async function GET(request: Request): Promise<Response> {
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
   if (!acquireConcurrencySlot()) {
-    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "RATE_LIMITED",
+      "Server is busy. Retry after 60 seconds.",
+      db,
+      undefined,
+      rate,
+    );
   }
   try {
     assertRequestBounds(request);
@@ -81,20 +87,31 @@ export async function GET(request: Request): Promise<Response> {
       }
     }
     const nowIso = new Date().toISOString();
-    const items = getDefaultPriority(db);
+    // Bounded aggregation: bucket counts, unknown-date counts, and coverage
+    // all come from indexed COUNT/GROUP BY queries over the accepted tables.
+    // No priority list is materialized, so this route never holds 395k items.
+    const prefixLen = bucket === "month" ? 7 : 10;
+    const dayRows = db.handle
+      .prepare(
+        "SELECT substr(date_published, 1, ?) AS day, COUNT(*) AS n FROM cve_records " +
+          "WHERE state = ? AND date_published IS NOT NULL GROUP BY day",
+      )
+      .all(prefixLen, "PUBLISHED") as Array<{ day: string; n: number }>;
     const counts = new Map<string, number>();
-    let unknownDateCount = 0;
-    for (const item of items) {
-      if (item.publishedAt === null) {
-        unknownDateCount += 1;
-        continue;
-      }
-      const key = bucket === "month" ? item.publishedAt.slice(0, 7) : item.publishedAt.slice(0, 10);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
+    for (const row of dayRows) counts.set(row.day, row.n);
+    const totals = db.handle
+      .prepare(
+        "SELECT COUNT(*) AS n, SUM(CASE WHEN date_published IS NULL THEN 1 ELSE 0 END) AS u " +
+          "FROM cve_records WHERE state = ?",
+      )
+      .get("PUBLISHED") as { n: number; u: number };
+    const unknownDateCount = totals.u ?? 0;
     const anchor = bucket === "month" ? nowIso.slice(0, 7) : nowIso.slice(0, 10);
     const keys = bucket === "month" ? trailingMonths(anchor, months) : trailingDays(anchor, months);
-    const buckets = keys.map((bucketStart) => ({ bucketStart, count: counts.get(bucketStart) ?? 0 }));
+    const buckets = keys.map((bucketStart) => ({
+      bucketStart,
+      count: counts.get(bucketStart) ?? 0,
+    }));
     const tombstones = countRows(db, "SELECT COUNT(*) AS n FROM cve_tombstones");
     const correctionNotes =
       tombstones > 0
@@ -102,6 +119,7 @@ export async function GET(request: Request): Promise<Response> {
             `${tombstones} removed or rejected record(s) retained as tombstones; history reflects the accepted corpus.`,
           ]
         : [];
+    const coverage = unfilteredCohortCoverage(db, buckets.length);
     return okResponse(
       request,
       {
@@ -110,7 +128,7 @@ export async function GET(request: Request): Promise<Response> {
         buckets,
         unknownDateCount,
         correctionNotes,
-        coverage: coverageFor(items, buckets.length),
+        coverage,
         provenance: buildProvenance(db, nowIso),
       },
       rate,
@@ -119,7 +137,14 @@ export async function GET(request: Request): Promise<Response> {
     if (error instanceof ApiError) {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "INTERNAL",
+      "Unexpected failure handling the request.",
+      db,
+      undefined,
+      rate,
+    );
   } finally {
     releaseConcurrencySlot();
   }

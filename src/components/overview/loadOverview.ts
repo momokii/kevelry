@@ -1,5 +1,5 @@
-import { buildProvenance, type Provenance } from "@/app/api/v1/_lib/shared";
-import { openDatabase, type CveDatabase } from "@/lib/db";
+import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
+import { openDatabase, type CveDatabase } from "../../lib/db";
 import {
   getAcceptedEpssDate,
   getHighestForecast,
@@ -7,8 +7,8 @@ import {
   getNewCritical,
   getRisingForecast,
   type PriorityItem,
-} from "@/lib/priority";
-import { officialCveLink } from "@/lib/search";
+} from "../../lib/priority";
+import { officialCveLink } from "../../lib/search";
 
 export const OVERVIEW_CHART_DAYS = 14;
 export const OVERVIEW_SUMMARY_LIMIT = 3;
@@ -61,32 +61,31 @@ function readDayCounts(db: CveDatabase): {
   unknownDateCount: number;
   publishedTotal: number;
 } {
+  // One full scan serves buckets, anchor, unknown dates, and the total: the
+  // dated GROUP BY plus a NULL-date rollup row. Separate COUNT queries would
+  // rescan the 395k-row table for the same pages.
   const rows = db.handle
     .prepare(
       "SELECT substr(date_published, 1, 10) AS day, COUNT(*) AS n FROM cve_records " +
-        "WHERE state = ? AND date_published IS NOT NULL GROUP BY day ORDER BY day ASC",
+        "WHERE state = ? AND date_published IS NOT NULL GROUP BY day " +
+        "UNION ALL SELECT NULL AS day, COUNT(*) AS n FROM cve_records " +
+        "WHERE state = ? AND date_published IS NULL",
     )
-    .all("PUBLISHED") as Array<{ day: string; n: number }>;
+    .all("PUBLISHED", "PUBLISHED") as Array<{ day: string | null; n: number }>;
   const counts = new Map<string, number>();
-  for (const row of rows) counts.set(row.day, row.n);
-  const anchorRow = db.handle
-    .prepare(
-      "SELECT substr(MAX(date_published), 1, 10) AS anchorDay FROM cve_records " +
-        "WHERE state = ? AND date_published IS NOT NULL",
-    )
-    .get("PUBLISHED") as { anchorDay: string | null };
-  const unknownRow = db.handle
-    .prepare("SELECT COUNT(*) AS n FROM cve_records WHERE state = ? AND date_published IS NULL")
-    .get("PUBLISHED") as { n: number };
-  const totalRow = db.handle
-    .prepare("SELECT COUNT(*) AS n FROM cve_records WHERE state = ?")
-    .get("PUBLISHED") as { n: number };
-  return {
-    counts,
-    anchorDay: anchorRow.anchorDay,
-    unknownDateCount: unknownRow.n,
-    publishedTotal: totalRow.n,
-  };
+  let unknownDateCount = 0;
+  let anchorDay: string | null = null;
+  for (const row of rows) {
+    if (row.day === null) {
+      unknownDateCount = row.n;
+      continue;
+    }
+    counts.set(row.day, row.n);
+    if (anchorDay === null || row.day > anchorDay) anchorDay = row.day;
+  }
+  let publishedTotal = unknownDateCount;
+  for (const n of counts.values()) publishedTotal += n;
+  return { counts, anchorDay, unknownDateCount, publishedTotal };
 }
 
 function readCorrectionNotes(db: CveDatabase): string[] {
@@ -124,11 +123,12 @@ function toSummaryItems(
   list: string,
   epssDate: string | null,
 ): PrioritySummaryItem[] {
+  const top = items.slice(0, OVERVIEW_SUMMARY_LIMIT);
   const titles = readTitles(
     db,
-    items.map((item) => item.id),
+    top.map((item) => item.id),
   );
-  return items.slice(0, OVERVIEW_SUMMARY_LIMIT).map((item) => ({
+  return top.map((item) => ({
     cveId: item.id,
     title: titles.get(item.id) ?? item.id,
     signal: signalFor(item, list, epssDate),
@@ -136,17 +136,23 @@ function toSummaryItems(
   }));
 }
 
-function readTitles(db: CveDatabase, cveIds: readonly string[]): Map<string, string> {
+export const TITLE_LOOKUP_CHUNK_SIZE = 500;
+
+export function readTitles(db: CveDatabase, cveIds: readonly string[]): Map<string, string> {
   const titles = new Map<string, string>();
   for (const cveId of cveIds) titles.set(cveId, cveId);
   if (cveIds.length === 0) return titles;
-  const placeholders = cveIds.map(() => "?").join(", ");
-  const rows = db.handle
-    .prepare(`SELECT cve_id, title FROM cve_records WHERE cve_id IN (${placeholders})`)
-    .all(...cveIds) as Array<{ cve_id: string; title: string | null }>;
-  for (const row of rows) {
-    if (typeof row.title === "string" && row.title.trim() !== "") {
-      titles.set(row.cve_id, row.title);
+  const unique = [...new Set(cveIds)];
+  for (let index = 0; index < unique.length; index += TITLE_LOOKUP_CHUNK_SIZE) {
+    const group = unique.slice(index, index + TITLE_LOOKUP_CHUNK_SIZE);
+    const placeholders = group.map(() => "?").join(", ");
+    const rows = db.handle
+      .prepare(`SELECT cve_id, title FROM cve_records WHERE cve_id IN (${placeholders})`)
+      .all(...group) as Array<{ cve_id: string; title: string | null }>;
+    for (const row of rows) {
+      if (typeof row.title === "string" && row.title.trim() !== "") {
+        titles.set(row.cve_id, row.title);
+      }
     }
   }
   return titles;
@@ -157,13 +163,13 @@ function buildSummaries(
   nowIso: string,
   epssDate: string | null,
 ): PrioritySummary[] {
-  const knownExploited = getKnownExploited(db);
-  const highestForecast = getHighestForecast(db);
-  const newCritical = getNewCritical(db, nowIso);
-  const rising = getRisingForecast(db);
+  const knownExploited = getKnownExploited(db, OVERVIEW_SUMMARY_LIMIT);
+  const highestForecast = getHighestForecast(db, OVERVIEW_SUMMARY_LIMIT);
+  const newCritical = getNewCritical(db, nowIso, OVERVIEW_SUMMARY_LIMIT);
+  const rising = getRisingForecast(db, undefined, OVERVIEW_SUMMARY_LIMIT);
   const risingTitles = readTitles(
     db,
-    rising.map(({ item }) => item.id),
+    rising.slice(0, OVERVIEW_SUMMARY_LIMIT).map(({ item }) => item.id),
   );
   return [
     {

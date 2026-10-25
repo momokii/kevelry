@@ -120,7 +120,11 @@ export function checkRateLimit(
     return { allowed: true, remaining: RATE_LIMIT_MAX - 1, reset: RATE_LIMIT_WINDOW_SECONDS };
   }
   if (entry.count >= RATE_LIMIT_MAX) {
-    return { allowed: false, remaining: 0, reset: Math.max(0, Math.ceil((entry.resetAt - nowMs) / 1000)) };
+    return {
+      allowed: false,
+      remaining: 0,
+      reset: Math.max(0, Math.ceil((entry.resetAt - nowMs) / 1000)),
+    };
   }
   entry.count += 1;
   return {
@@ -258,7 +262,9 @@ interface SyncRun {
 
 function latestRun(db: CveDatabase, source: string): SyncRun | undefined {
   return db.handle
-    .prepare("SELECT started_at, finished_at, status, revision, error FROM sync_runs WHERE source = ? ORDER BY id DESC LIMIT 1")
+    .prepare(
+      "SELECT started_at, finished_at, status, revision, error FROM sync_runs WHERE source = ? ORDER BY id DESC LIMIT 1",
+    )
     .get(source) as SyncRun | undefined;
 }
 
@@ -277,13 +283,17 @@ function singleText(db: CveDatabase, sql: string, params: unknown[] = []): strin
   return typeof value === "string" ? value : null;
 }
 
-function parseEpssRevision(revision: string | null): { scoreDate: string | null; modelVersion: string | null } {
+function parseEpssRevision(revision: string | null): {
+  scoreDate: string | null;
+  modelVersion: string | null;
+} {
   if (revision === null) return { scoreDate: null, modelVersion: null };
   const at = revision.indexOf("@");
   if (at <= 0) return { scoreDate: null, modelVersion: null };
   const scoreDate = revision.slice(0, at);
   const modelVersion = revision.slice(at + 1);
-  if (!DAY_RE.test(scoreDate) || modelVersion === "") return { scoreDate: null, modelVersion: null };
+  if (!DAY_RE.test(scoreDate) || modelVersion === "")
+    return { scoreDate: null, modelVersion: null };
   return { scoreDate, modelVersion };
 }
 
@@ -298,7 +308,8 @@ function epssStale(scoreDate: string | null, nowIso: string): boolean {
   if (scoreDate === null || !DAY_RE.test(scoreDate)) return false;
   const today = nowIso.slice(0, 10);
   if (!DAY_RE.test(today)) return false;
-  const ageDays = (Date.parse(`${today}T00:00:00.000Z`) - Date.parse(`${scoreDate}T00:00:00.000Z`)) / 86_400_000;
+  const ageDays =
+    (Date.parse(`${today}T00:00:00.000Z`) - Date.parse(`${scoreDate}T00:00:00.000Z`)) / 86_400_000;
   return ageDays > 2;
 }
 
@@ -334,8 +345,10 @@ export function buildProvenance(db: CveDatabase | null, nowIso: string): Provena
   const epssRun = latestRun(db, "epss");
   const epssOk = latestSucceeded(db, "epss");
 
-  const cveRevision = cveOk?.revision ?? singleText(db, "SELECT MAX(source_revision) FROM cve_records") ?? null;
-  const kevCatalog = kevOk?.revision ?? singleText(db, "SELECT MAX(catalog_date) FROM kev_entries") ?? null;
+  const cveRevision =
+    cveOk?.revision ?? singleText(db, "SELECT MAX(source_revision) FROM cve_records") ?? null;
+  const kevCatalog =
+    kevOk?.revision ?? singleText(db, "SELECT MAX(catalog_date) FROM kev_entries") ?? null;
   const parsed = parseEpssRevision(epssOk?.revision ?? null);
   const acceptedDate = parsed.scoreDate ?? getAcceptedEpssDate(db);
   const acceptedModel =
@@ -483,10 +496,20 @@ export function okResponse(
  * thread the reservation through every ok/error response so each request is
  * counted exactly once. Returns null when the budget is spent.
  */
-export function reserveRateLimit(request: Request, db: CveDatabase | null): RateReservation | Response {
+export function reserveRateLimit(
+  request: Request,
+  db: CveDatabase | null,
+): RateReservation | Response {
   const rate = checkRateLimit(clientKeyFor(request));
   if (!rate.allowed) {
-    return errorResponse(request, "RATE_LIMITED", "Rate limit exceeded. Retry after 60 seconds.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "RATE_LIMITED",
+      "Rate limit exceeded. Retry after 60 seconds.",
+      db,
+      undefined,
+      rate,
+    );
   }
   return rate;
 }
@@ -514,25 +537,58 @@ export function encodeCursor(offset: number): string {
 export function parseCursor(raw: string | null): number {
   if (raw === null || raw === "") return 0;
   if (raw.length > MAX_CURSOR_CHARS) {
-    throw new ApiError("BAD_CURSOR", 400, "cursor is not a cursor returned by a previous response.");
+    throw new ApiError(
+      "BAD_CURSOR",
+      400,
+      "cursor is not a cursor returned by a previous response.",
+    );
   }
   try {
     const text = Buffer.from(raw, "base64url").toString("utf8");
     const parsed: unknown = JSON.parse(text);
     const offset = (parsed as { offset?: unknown }).offset;
     if (!Number.isInteger(offset) || (offset as number) < 0) {
-      throw new ApiError("BAD_CURSOR", 400, "cursor is not a cursor returned by a previous response.");
+      throw new ApiError(
+        "BAD_CURSOR",
+        400,
+        "cursor is not a cursor returned by a previous response.",
+      );
     }
     return offset as number;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError("BAD_CURSOR", 400, "cursor is not a cursor returned by a previous response.");
+    throw new ApiError(
+      "BAD_CURSOR",
+      400,
+      "cursor is not a cursor returned by a previous response.",
+    );
   }
 }
 
-export function paginate<T>(items: readonly T[], offset: number, limit: number): { page: T[]; hasMore: boolean; nextCursor: string | null } {
+export function paginate<T>(
+  items: readonly T[],
+  offset: number,
+  limit: number,
+): { page: T[]; hasMore: boolean; nextCursor: string | null } {
   const page = items.slice(offset, offset + limit);
   const hasMore = offset + limit < items.length;
+  return { page, hasMore, nextCursor: hasMore ? encodeCursor(offset + limit) : null };
+}
+
+/**
+ * Pagination over a bounded fetch of `offset + limit + 1` rows (one-row
+ * probe). The extra row proves a next page exists without materializing the
+ * full corpus; callers fetch the cap via the limit-aware priority getters.
+ * Edge: when the total is exactly offset+limit+1 the probe reports one more
+ * page that returns empty — a bounded-fetch artifact, never wrong data.
+ */
+export function paginateCapped<T>(
+  items: readonly T[],
+  offset: number,
+  limit: number,
+): { page: T[]; hasMore: boolean; nextCursor: string | null } {
+  const page = items.slice(offset, offset + limit);
+  const hasMore = items.length > offset + limit;
   return { page, hasMore, nextCursor: hasMore ? encodeCursor(offset + limit) : null };
 }
 
@@ -731,7 +787,9 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
     for (const row of kevRows) kevDates.set(row.cve_id, row.date_added);
     if (acceptedDate !== null) {
       const epssRows = db.handle
-        .prepare(`SELECT cve_id, epss, percentile, model_version FROM epss_daily WHERE score_date = ? AND cve_id IN (${placeholders})`)
+        .prepare(
+          `SELECT cve_id, epss, percentile, model_version FROM epss_daily WHERE score_date = ? AND cve_id IN (${placeholders})`,
+        )
         .all(acceptedDate, ...group) as EpssRow[];
       for (const row of epssRows) {
         const prior = epssById.get(row.cve_id);
@@ -822,7 +880,12 @@ function excerptFields(record: FullRecord): {
 } {
   const shaped = excerptDescription(record.description, record.descriptionLang);
   if (shaped.excerpt === DESCRIPTION_MISSING_LABEL) {
-    return { excerpt: null, excerptTruncated: false, excerptLanguage: null, excerptStatus: "not-supplied" };
+    return {
+      excerpt: null,
+      excerptTruncated: false,
+      excerptLanguage: null,
+      excerptStatus: "not-supplied",
+    };
   }
   if (shaped.langLabel === "en") {
     return {
@@ -846,7 +909,8 @@ export function toCveItem(
   epssModel: string | null,
 ): Record<string, unknown> {
   const excerpt = excerptFields(record);
-  const title = typeof record.title === "string" && record.title.trim() !== "" ? record.title : record.cveId;
+  const title =
+    typeof record.title === "string" && record.title.trim() !== "" ? record.title : record.cveId;
   const epss =
     record.epssText === null
       ? { status: "unknown", value: null, percentile: null, scoreDate: null, modelVersion: null }
@@ -905,7 +969,10 @@ function asString(value: unknown): string | null {
 export function detailExtras(
   rawJson: string | null,
   descriptionLang: string | null,
-): { descriptionLanguages: string[]; references: Array<{ url: string; container: string; provider: string | null }> } {
+): {
+  descriptionLanguages: string[];
+  references: Array<{ url: string; container: string; provider: string | null }>;
+} {
   const languages: string[] = [];
   const references: Array<{ url: string; container: string; provider: string | null }> = [];
   if (rawJson !== null) {
@@ -940,7 +1007,13 @@ export function detailExtras(
 /** In-memory filter matching the explore-view semantics behind searchCves. */
 export function filterPriorityItems(
   items: readonly PriorityItem[],
-  filters: { severity: SeverityParam | null; kev: KevParam; epss: EpssParam; start: string | null; end: string | null },
+  filters: {
+    severity: SeverityParam | null;
+    kev: KevParam;
+    epss: EpssParam;
+    start: string | null;
+    end: string | null;
+  },
 ): PriorityItem[] {
   return items.filter((item) => {
     if (filters.kev === "listed" && !item.kevMember) return false;
@@ -952,7 +1025,8 @@ export function filterPriorityItems(
       if (filters.start !== null && item.publishedAt < filters.start) return false;
       if (filters.end !== null && item.publishedAt >= filters.end) return false;
     }
-    if (filters.severity !== null && severityBandFor(item.primary) !== filters.severity) return false;
+    if (filters.severity !== null && severityBandFor(item.primary) !== filters.severity)
+      return false;
     return true;
   });
 }
@@ -1106,10 +1180,7 @@ function kindChanges(
   }
 }
 
-function kindSourceRevision(
-  kind: RadarApiKind,
-  after: StoredRadarCheckpoint,
-): string {
+function kindSourceRevision(kind: RadarApiKind, after: StoredRadarCheckpoint): string {
   switch (kind) {
     case "kev-added":
     case "kev-removed":
@@ -1177,7 +1248,8 @@ export function mapReplayReason(reason: string): string {
   if (lowered.includes("model-changed")) return "model-changed";
   if (lowered.includes("pre-launch")) return "pre-launch";
   if (lowered.includes("no checkpoint retained")) return "missing-day";
-  if (lowered.includes("baseline") && lowered.includes("no longer retained")) return "baseline-released";
+  if (lowered.includes("baseline") && lowered.includes("no longer retained"))
+    return "baseline-released";
   if (lowered.includes("validation") || lowered.includes("corrupt") || lowered.includes("tamper")) {
     return "invalid-manifest";
   }
@@ -1207,14 +1279,16 @@ export function toReplayItem(
             status: "legacy",
             source: "cna",
             version: snapshot.primaryVersion,
-            baseScore: snapshot.primaryBaseScore === null ? null : Number(snapshot.primaryBaseScore),
+            baseScore:
+              snapshot.primaryBaseScore === null ? null : Number(snapshot.primaryBaseScore),
             vector: snapshot.primaryVector,
           }
         : {
             status: "known",
             source: "cna",
             version: snapshot.primaryVersion,
-            baseScore: snapshot.primaryBaseScore === null ? null : Number(snapshot.primaryBaseScore),
+            baseScore:
+              snapshot.primaryBaseScore === null ? null : Number(snapshot.primaryBaseScore),
             vector: snapshot.primaryVector,
           };
   return {
@@ -1256,4 +1330,54 @@ export function countRows(db: CveDatabase, sql: string, params: unknown[] = []):
   if (row === undefined) return 0;
   const value = Object.values(row)[0];
   return typeof value === "number" ? value : 0;
+}
+
+/**
+ * Exact cohort coverage over the full unfiltered PUBLISHED corpus from cheap
+ * indexed COUNT queries — no priority list is materialized. `unscored` counts
+ * rows with no valid original CNA metric (the exact condition making
+ * selectPrimaryCvss return null: origin, version preference set, and a plain
+ * decimal base score in [0, 10]); `unknownEpss` counts rows with no accepted
+ * EPSS observation. Matches coverageFor(loadItems(...)) on the same corpus
+ * for clean stored values, at a fraction of the cost on 395k rows.
+ */
+export function unfilteredCohortCoverage(
+  db: CveDatabase,
+  returned: number,
+): {
+  eligibleCohort: number;
+  returned: number;
+  unscored: number;
+  unknownEpss: number;
+  unknownDate: number;
+} {
+  const totals = db.handle
+    .prepare(
+      "SELECT COUNT(*) AS n, SUM(CASE WHEN date_published IS NULL THEN 1 ELSE 0 END) AS u " +
+        "FROM cve_records WHERE state = ?",
+    )
+    .get("PUBLISHED") as { n: number; u: number };
+  const eligibleCohort = totals.n ?? 0;
+  const unknownDate = totals.u ?? 0;
+  const epssDate = getAcceptedEpssDate(db);
+  const unknownEpss =
+    epssDate === null
+      ? eligibleCohort
+      : countRows(
+          db,
+          "SELECT COUNT(*) AS n FROM cve_records r WHERE state = ? AND NOT EXISTS " +
+            "(SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id AND e.score_date = ?)",
+          ["PUBLISHED", epssDate],
+        );
+  const unscored = countRows(
+    db,
+    "SELECT COUNT(*) AS n FROM cve_records r WHERE state = ? AND NOT EXISTS " +
+      "(SELECT 1 FROM cvss_metrics m WHERE m.cve_id = r.cve_id AND m.origin = 'CNA' " +
+      "AND m.version IN ('4.0', '3.1', '3.0', '2.0') " +
+      "AND m.base_score GLOB '[0-9]*' AND m.base_score NOT GLOB '*[^0-9.]*' " +
+      "AND m.base_score NOT GLOB '*.*.*' AND m.base_score NOT GLOB '*.' " +
+      "AND LENGTH(m.base_score) <= 64 AND CAST(m.base_score AS REAL) >= 0 AND CAST(m.base_score AS REAL) <= 10)",
+    ["PUBLISHED"],
+  );
+  return { eligibleCohort, returned, unscored, unknownEpss, unknownDate };
 }

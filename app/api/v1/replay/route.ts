@@ -29,7 +29,10 @@ export async function OPTIONS(request: Request): Promise<Response> {
 const VIEWS = ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"] as const;
 type ViewName = (typeof VIEWS)[number];
 
-const VIEW_KEYS: Record<ViewName, "knownExploited" | "highestForecast" | "newCritical" | "risingForecast"> = {
+const VIEW_KEYS: Record<
+  ViewName,
+  "knownExploited" | "highestForecast" | "newCritical" | "risingForecast"
+> = {
   "known-exploited": "knownExploited",
   "highest-forecast": "highestForecast",
   "new-critical": "newCritical",
@@ -46,7 +49,14 @@ export async function GET(request: Request): Promise<Response> {
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
   if (!acquireConcurrencySlot()) {
-    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "RATE_LIMITED",
+      "Server is busy. Retry after 60 seconds.",
+      db,
+      undefined,
+      rate,
+    );
   }
   try {
     assertRequestBounds(request);
@@ -54,7 +64,11 @@ export async function GET(request: Request): Promise<Response> {
     const date = parseDay(params.get("date"), "date", true);
     const viewRaw = params.get("view");
     if (viewRaw === null || !(VIEWS as readonly string[]).includes(viewRaw)) {
-      throw new ApiError("BAD_REQUEST", 400, "view must be one of known-exploited, highest-forecast, new-critical, rising-forecast.");
+      throw new ApiError(
+        "BAD_REQUEST",
+        400,
+        "view must be one of known-exploited, highest-forecast, new-critical, rising-forecast.",
+      );
     }
     const view = viewRaw as ViewName;
     const limit = parseLimit(params.get("limit"));
@@ -63,15 +77,23 @@ export async function GET(request: Request): Promise<Response> {
     const result = replayCheckpoint(db, date, { asOfDate: todayUtcDay(nowIso) });
     if (result.status === "unavailable") {
       const checkpoints = listCheckpoints(db);
-      const retainedFrom = checkpoints.length === 0 ? null : (checkpoints[0]?.checkpointDate ?? null);
+      const retainedFrom =
+        checkpoints.length === 0 ? null : (checkpoints[0]?.checkpointDate ?? null);
       const retainedTo =
-        checkpoints.length === 0 ? null : (checkpoints[checkpoints.length - 1]?.checkpointDate ?? null);
+        checkpoints.length === 0
+          ? null
+          : (checkpoints[checkpoints.length - 1]?.checkpointDate ?? null);
       const reason = mapReplayReason(result.reason);
-      throw new ApiError("REPLAY_UNAVAILABLE", 404, `Checkpoint ${date} is ${reason}. Current data is never substituted.`, {
-        reason,
-        retainedFrom,
-        retainedTo,
-      });
+      throw new ApiError(
+        "REPLAY_UNAVAILABLE",
+        404,
+        `Checkpoint ${date} is ${reason}. Current data is never substituted.`,
+        {
+          reason,
+          retainedFrom,
+          retainedTo,
+        },
+      );
     }
     const ids = result.manifest.views[VIEW_KEYS[view]] ?? [];
     const { page, hasMore, nextCursor } = paginate(ids, offset, limit);
@@ -86,6 +108,10 @@ export async function GET(request: Request): Promise<Response> {
         checkpointDate: date,
         view,
         rankingPolicyVersion: result.manifest.policyVersion,
+        boundedTopN: result.manifest.boundedTopN,
+        boundedNotice:
+          `Checkpoint views retain the observed top-${result.manifest.boundedTopN} entries per list ` +
+          `(boundedTopN); they are bounded observed lists, not complete enumerations.`,
         data: data.filter((row) => row !== null),
         pagination: { limit, hasMore, nextCursor },
         coverage: coverageForSnapshots(ids, result.manifest.items, page.length),
@@ -97,7 +123,14 @@ export async function GET(request: Request): Promise<Response> {
     if (error instanceof ApiError) {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "INTERNAL",
+      "Unexpected failure handling the request.",
+      db,
+      undefined,
+      rate,
+    );
   } finally {
     releaseConcurrencySlot();
   }

@@ -32,7 +32,14 @@ export async function GET(request: Request): Promise<Response> {
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
   if (!acquireConcurrencySlot()) {
-    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "RATE_LIMITED",
+      "Server is busy. Retry after 60 seconds.",
+      db,
+      undefined,
+      rate,
+    );
   }
   try {
     assertRequestBounds(request);
@@ -49,6 +56,7 @@ export async function GET(request: Request): Promise<Response> {
       epssScoreDate: manifest.sourcePins.epssScoreDate,
       epssModelVersion: manifest.sourcePins.epssModelVersion,
       eligibleCohort: manifest.cohortCount,
+      boundedTopN: manifest.boundedTopN,
       expired: isCheckpointExpired(manifest.checkpointDate, today),
     }));
     const newestFirst = [...manifests].reverse();
@@ -69,7 +77,14 @@ export async function GET(request: Request): Promise<Response> {
     if (error instanceof ApiError) {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "INTERNAL",
+      "Unexpected failure handling the request.",
+      db,
+      undefined,
+      rate,
+    );
   } finally {
     releaseConcurrencySlot();
   }
