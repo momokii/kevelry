@@ -14,12 +14,19 @@
 // container in a hot ingest loop; idling keeps the container up, the lease
 // held, and the web UI serving the just-imported snapshot.
 //
+// INGEST_ON_START=false skips even that single initial cycle: the worker
+// acquires the lease, logs worker-idle, and parks. A seeded deployment (named
+// volume already populated) can therefore serve immediately with zero import
+// contention against the web server. Default true preserves first-boot
+// population for empty volumes.
+//
 // Must NOT do: no importer logic lives here (thin wrappers only), no partial
 // snapshots (importers publish atomically), no secrets in logs. Exit non-zero
 // only on fatal init failure (config / database).
 
 import { setDefaultResultOrder } from "node:dns";
 import { mkdirSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -36,7 +43,12 @@ import {
   type CveImportOutcome,
 } from "./lib/cve-import";
 import { openDatabase, type CveDatabase } from "./lib/db";
-import { EPSS_CURRENT_CSV_URL, fetchEpssCsvText, importEpssCsv, type EpssImportResult } from "./lib/epss-import";
+import {
+  EPSS_CURRENT_CSV_URL,
+  fetchEpssCsvText,
+  importEpssCsv,
+  type EpssImportResult,
+} from "./lib/epss-import";
 import { importKevFromUrl, type KevImportResult } from "./lib/kev-import";
 import {
   IngestionScheduler,
@@ -49,10 +61,31 @@ import {
 export const CVE_REPO_URL_DEFAULT = "https://github.com/CVEProject/cvelistV5.git";
 export const CVE_REVISION_DEFAULT = "main";
 
-/** Resolve the CVE upstream pin. Env overrides exist for pinning/tests; no secrets. */
-export function resolveCvePin(
+/**
+ * Resolve whether the worker runs an import cycle immediately on boot.
+ * Default true (first boot populates an empty volume). False skips the
+ * initial cycle AND, combined with SCHEDULE_ENABLED=false, any further
+ * cycles: the worker holds the lease and idles so a seeded volume serves
+ * with zero import contention. Malformed values throw (fail closed).
+ */
+export function resolveIngestOnStart(
   env: Record<string, string | undefined> = process.env,
-): { repoUrl: string; revision: string; cloneTimeoutMs: number; cloneDepth: number } {
+): boolean {
+  const raw = env.INGEST_ON_START;
+  if (raw === undefined || raw === "") return true;
+  if (raw !== "true" && raw !== "false") {
+    throw new Error(`Invalid INGEST_ON_START ${JSON.stringify(raw)}. Expected true or false.`);
+  }
+  return raw === "true";
+}
+
+/** Resolve the CVE upstream pin. Env overrides exist for pinning/tests; no secrets. */
+export function resolveCvePin(env: Record<string, string | undefined> = process.env): {
+  repoUrl: string;
+  revision: string;
+  cloneTimeoutMs: number;
+  cloneDepth: number;
+} {
   const repoUrl = env.CVE_REPO_URL?.trim() === "" ? undefined : env.CVE_REPO_URL;
   const revision = env.CVE_REVISION?.trim() === "" ? undefined : env.CVE_REVISION;
   return {
@@ -85,7 +118,24 @@ function errorDetail(error: unknown): string {
 }
 
 function failure(source: string, error: unknown): SourceRefreshOutcome {
-  return { ok: false, version: null, error: `${source} refresh failed: ${errorDetail(error)}`.slice(0, 2000) };
+  return {
+    ok: false,
+    version: null,
+    error: `${source} refresh failed: ${errorDetail(error)}`.slice(0, 2000),
+  };
+}
+
+function lowerWorkerPriority(): void {
+  try {
+    const setPriority = (
+      os as unknown as { setPriority?: (pid: number, priority: number) => void }
+    ).setPriority;
+    if (typeof setPriority === "function") {
+      setPriority.call(os, 0, 10);
+    }
+  } catch {
+    // Best effort only: keep serving even when niceness is unavailable.
+  }
 }
 
 /**
@@ -141,7 +191,9 @@ export function createSourceJobs(db: CveDatabase, deps: SourceJobDeps = {}): Sou
   const kev: SourceJob = async () => {
     try {
       const result: KevImportResult =
-        deps.kevImport !== undefined ? await deps.kevImport(db) : await importKevFromUrl(db, { fetcher: kevFetcher });
+        deps.kevImport !== undefined
+          ? await deps.kevImport(db)
+          : await importKevFromUrl(db, { fetcher: kevFetcher });
       return { ok: true, version: result.catalogVersion };
     } catch (error) {
       return failure("kev", error);
@@ -210,6 +262,7 @@ export function createWorkerScheduler(
 export interface RunWorkerOptions {
   dataDir?: string;
   scheduleEnabled?: boolean;
+  ingestOnStart?: boolean;
   deps?: SourceJobDeps;
   schedulerOptions?: CreateSchedulerOptions;
   log?: LogFn;
@@ -218,20 +271,24 @@ export interface RunWorkerOptions {
 
 /**
  * Full worker flow minus process.exit: open DB + migrate, build jobs, start
- * the scheduler, run exactly one cycle immediately, log per-source results.
- * Returns the running scheduler; the caller keeps the process alive (timers
- * when enabled, idle park when disabled) until shutdown.
+ * the scheduler, run exactly one cycle immediately (unless INGEST_ON_START is
+ * false, in which case the cycle is skipped and worker-idle is logged), log
+ * per-source results. Returns the running scheduler; the caller keeps the
+ * process alive (timers when enabled, idle park when disabled) until shutdown.
  */
 export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   db: CveDatabase;
   scheduler: IngestionScheduler;
   releaseHandlers: () => void;
   scheduleEnabled: boolean;
+  ingestOnStart: boolean;
 }> {
   const log = options.log ?? defaultLog;
+  lowerWorkerPriority();
   const config = loadConfig();
   const dataDir = options.dataDir ?? config.dataDir;
   const scheduleEnabled = options.scheduleEnabled ?? config.scheduleEnabled;
+  const ingestOnStart = options.ingestOnStart ?? resolveIngestOnStart();
 
   let db: CveDatabase;
   try {
@@ -246,8 +303,23 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
     ...options.deps,
     workDir: options.deps?.workDir ?? path.join(dataDir, "tmp"),
   });
-  const scheduler = createWorkerScheduler(db, jobs, scheduleEnabled, options.schedulerOptions);
-  const releaseHandlers = options.installHandlers === false ? () => {} : installShutdownHandlers(scheduler);
+  const wrappedJobs: SourceJobs = {
+    cve: async (ctx) => {
+      log({ event: "source-start", source: "cve" });
+      return jobs.cve(ctx);
+    },
+    kev: async (ctx) => {
+      log({ event: "source-start", source: "kev" });
+      return jobs.kev(ctx);
+    },
+    epss: async (ctx) => {
+      log({ event: "source-start", source: "epss" });
+      return jobs.epss(ctx);
+    },
+  };
+  const scheduler = createWorkerScheduler(db, wrappedJobs, scheduleEnabled, options.schedulerOptions);
+  const releaseHandlers =
+    options.installHandlers === false ? () => {} : installShutdownHandlers(scheduler);
 
   if (!scheduler.start()) {
     const health = scheduler.getStatus();
@@ -262,24 +334,35 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
     throw new Error("worker could not acquire the scheduler lease; another worker holds it.");
   }
 
-  await scheduler.runCycle();
-  const health = scheduler.getStatus();
-  for (const source of ["cve", "kev", "epss"] as const) {
-    const status = health.sources[source];
+  if (ingestOnStart) {
+    await scheduler.runCycle();
+    const health = scheduler.getStatus();
+    for (const source of ["cve", "kev", "epss"] as const) {
+      const status = health.sources[source];
+      log({
+        event: "ingest-cycle",
+        source,
+        ok: status.lastError === null,
+        acceptedVersion: status.acceptedVersion,
+        error: status.lastError,
+      });
+    }
     log({
-      event: "ingest-cycle",
-      source,
-      ok: status.lastError === null,
-      acceptedVersion: status.acceptedVersion,
-      error: status.lastError,
+      event: scheduleEnabled ? "worker-scheduled" : "worker-idle",
+      scheduleEnabled,
+      ingestOnStart,
+      manifest: health.manifest,
+    });
+  } else {
+    const health = scheduler.getStatus();
+    log({
+      event: "worker-idle",
+      scheduleEnabled,
+      ingestOnStart,
+      manifest: health.manifest,
     });
   }
-  log({
-    event: scheduleEnabled ? "worker-scheduled" : "worker-idle",
-    scheduleEnabled,
-    manifest: health.manifest,
-  });
-  return { db, scheduler, releaseHandlers, scheduleEnabled };
+  return { db, scheduler, releaseHandlers, scheduleEnabled, ingestOnStart };
 }
 
 async function main(): Promise<void> {

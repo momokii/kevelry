@@ -12,6 +12,7 @@ import { IngestionScheduler } from "../src/lib/schedule";
 import {
   createSourceJobs,
   resolveCvePin,
+  resolveIngestOnStart,
   runWorker,
   type SourceJobDeps,
   type WorkerLog,
@@ -109,9 +110,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 describe("createSourceJobs", () => {
   it("resolves the CVE pin with configurable clone timeout and depth", () => {
     expect(resolveCvePin({})).toMatchObject({ cloneTimeoutMs: 3_600_000, cloneDepth: 1 });
-    expect(
-      resolveCvePin({ CVE_GIT_TIMEOUT_MS: "60000", CVE_CLONE_DEPTH: "0" }),
-    ).toMatchObject({ cloneTimeoutMs: 60_000, cloneDepth: 0 });
+    expect(resolveCvePin({ CVE_GIT_TIMEOUT_MS: "60000", CVE_CLONE_DEPTH: "0" })).toMatchObject({
+      cloneTimeoutMs: 60_000,
+      cloneDepth: 0,
+    });
   });
   it("maps each importer result to its SourceRefreshOutcome version pin", async () => {
     const db = makeDb();
@@ -149,7 +151,8 @@ describe("createSourceJobs", () => {
     expect(outcome.error).toContain("quarantined 1 record(s)");
   });
 
-  it("converts importer throws into failed outcomes instead of throwing", async () => {    const db = makeDb();
+  it("converts importer throws into failed outcomes instead of throwing", async () => {
+    const db = makeDb();
     const jobs = createSourceJobs(db, {
       cveImport: () => {
         throw new Error("clone exploded");
@@ -220,6 +223,52 @@ describe("runWorker", () => {
     expect(logs.some((entry) => entry.event === "worker-idle")).toBe(true);
   });
 
+  it("emits source-start for each source before its job runs", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "worker-start-"));
+    tempDirs.push(dir);
+    const events: string[] = [];
+    const logs: WorkerLog[] = [];
+    const { db, scheduler } = await runWorker({
+      dataDir: dir,
+      scheduleEnabled: false,
+      deps: {
+        cveImport: () => {
+          events.push("job:cve");
+          return CVE_OUTCOME;
+        },
+        kevImport: async () => {
+          events.push("job:kev");
+          return KEV_RESULT;
+        },
+        epssImport: async () => {
+          events.push("job:epss");
+          return EPSS_RESULT;
+        },
+      },
+      installHandlers: false,
+      log: (entry) => {
+        logs.push(entry);
+        if (entry.event === "source-start") {
+          events.push(`start:${String(entry.source)}`);
+        }
+      },
+    });
+    openHandles.push(db);
+    track(scheduler);
+
+    const starts = logs.filter((entry) => entry.event === "source-start");
+    expect(starts).toHaveLength(3);
+    expect(new Set(starts.map((entry) => entry.source))).toEqual(new Set(["cve", "kev", "epss"]));
+    expect(events).toEqual([
+      "start:cve",
+      "job:cve",
+      "start:kev",
+      "job:kev",
+      "start:epss",
+      "job:epss",
+    ]);
+  });
+
   it("keeps cycling on intervals only when scheduling is enabled", async () => {
     const enabledDir = mkdtempSync(path.join(tmpdir(), "worker-on-"));
     const disabledDir = mkdtempSync(path.join(tmpdir(), "worker-off-"));
@@ -259,5 +308,63 @@ describe("runWorker", () => {
     expect(enabledDeps.calls.kev).toBeGreaterThan(1);
     expect(enabledDeps.calls.epss).toBeGreaterThan(1);
     expect(disabledDeps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
+  });
+});
+
+describe("INGEST_ON_START boot gate (task 37)", () => {
+  it("resolves the gate from the environment with a true default", () => {
+    expect(resolveIngestOnStart({})).toBe(true);
+    expect(resolveIngestOnStart({ INGEST_ON_START: "" })).toBe(true);
+    expect(resolveIngestOnStart({ INGEST_ON_START: "true" })).toBe(true);
+    expect(resolveIngestOnStart({ INGEST_ON_START: "false" })).toBe(false);
+    expect(() => resolveIngestOnStart({ INGEST_ON_START: "yes" })).toThrowError(/INGEST_ON_START/);
+  });
+
+  it("skips the initial cycle and logs worker-idle when disabled", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "worker-no-ingest-"));
+    tempDirs.push(dir);
+    const deps = okDeps();
+    const logs: WorkerLog[] = [];
+    const { db, scheduler, scheduleEnabled, ingestOnStart } = await runWorker({
+      dataDir: dir,
+      scheduleEnabled: false,
+      ingestOnStart: false,
+      deps,
+      installHandlers: false,
+      log: (entry) => {
+        logs.push(entry);
+      },
+    });
+    openHandles.push(db);
+    track(scheduler);
+    expect(scheduleEnabled).toBe(false);
+    expect(ingestOnStart).toBe(false);
+    expect(deps.calls).toEqual({ cve: 0, kev: 0, epss: 0 });
+    expect(logs.some((entry) => entry.event === "ingest-cycle")).toBe(false);
+    const idle = logs.find((entry) => entry.event === "worker-idle");
+    expect(idle).toBeDefined();
+    expect(idle).toMatchObject({ ingestOnStart: false });
+  });
+
+  it("still runs exactly one initial cycle when enabled", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "worker-ingest-"));
+    tempDirs.push(dir);
+    const deps = okDeps();
+    const logs: WorkerLog[] = [];
+    const { db, scheduler, ingestOnStart } = await runWorker({
+      dataDir: dir,
+      scheduleEnabled: false,
+      ingestOnStart: true,
+      deps,
+      installHandlers: false,
+      log: (entry) => {
+        logs.push(entry);
+      },
+    });
+    openHandles.push(db);
+    track(scheduler);
+    expect(ingestOnStart).toBe(true);
+    expect(deps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
+    expect(logs.filter((entry) => entry.event === "ingest-cycle")).toHaveLength(3);
   });
 });

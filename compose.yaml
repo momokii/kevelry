@@ -33,6 +33,12 @@ services:
       # false still runs ONE initial import on boot, then idles (no refresh).
       # Normal `docker compose up` therefore always populates data.
       SCHEDULE_ENABLED: ${SCHEDULE_ENABLED:-true}
+      # Boot import gate: true (default) runs the worker's initial import
+      # cycle on boot. false skips it entirely (worker idles, logs
+      # worker-idle) so a seeded named volume serves immediately with zero
+      # import contention against the web server. Combine with
+      # SCHEDULE_ENABLED=false for a fully static serving deployment.
+      INGEST_ON_START: ${INGEST_ON_START:-true}
     ports:
       # Loopback-bound by default. Host side honors $BIND_ADDR (default
       # 127.0.0.1) and $PORT (default 3000); the container always listens
@@ -40,11 +46,15 @@ services:
       - "${BIND_ADDR:-127.0.0.1}:${PORT:-3000}:3000"
     volumes:
       - cve-data:/data
+    # Host-dependent sizing: the production host has 12 CPUs / 22 GB, so the
+    # single container may use up to 4 CPUs / 4 GB. The old 1 CPU / 1 GB cap
+    # let background imports starve request handling on a 395k-row corpus.
+    # Retune for smaller hosts.
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 1G
+          cpus: "4.0"
+          memory: 4G
 
 volumes:
   cve-data:
