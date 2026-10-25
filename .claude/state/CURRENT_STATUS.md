@@ -42,10 +42,8 @@ so data refreshes are deliberate, not automatic.
 
 ## Blocked
 
-- Container image rebuild is pending: host DNS cannot resolve
-  `registry-1.docker.io` / `auth.docker.io`. The running image already includes the
-  query/cache fixes; the CVSS importer change ships with the next successful build.
-  Live data is complete because the backfill script has already run.
+None. The image was rebuilt once host DNS recovered and the container recreated on
+the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 
 ## Open Questions
 
@@ -62,4 +60,4 @@ so data refreshes are deliberate, not automatic.
 
 ## Last Updated
 
-2026-10-25: deployed on Tailscale 100.124.184.116:3100 with live data; all endpoints <5s. Image rebuild pending host DNS recovery.
+2026-10-25: deployed on Tailscale 100.124.184.116:3100 with live data; image rebuilt with all fixes; endpoints 0.02-5.7s, 0 restarts.

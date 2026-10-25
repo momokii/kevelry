@@ -83,10 +83,10 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Field | Value |
 |---|---|
 | Task ID | TASK-007 |
-| Status | DONE (image rebuild pending DNS) |
+| Status | DONE |
 | Scope | Deploy the single container on this host, bind to the Tailscale address, and verify every page and API against the live 395k-row corpus. |
 | Evidence | Container `cve-change-radar-app-1` healthy at `100.124.184.116:3100`, 0 restarts. Pages 0.005-4.34s, APIs 0.003-3.08s, all 200. Data: 395,286 CVEs, 1,756 KEV, 395,249 EPSS, 285,877 CVSS rows. |
-| Limits | Stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`). Image rebuild blocked by host DNS failure; running image predates the CVSS importer change (data already backfilled). |
+| Limits | Stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`); enable ingestion to refresh. Radar history and rising forecasts stay empty until scheduled cycles accumulate. |
 
 ## Task Template
 

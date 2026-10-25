@@ -16,8 +16,8 @@ stored records), and missing `git`/CA certificates in the runtime image.
 Final state: every page and API answers 200 in under 5s with restarts 0.
 The stack is intentionally serve-only right now; enabling
 `INGEST_ON_START`/`SCHEDULE_ENABLED` resumes refresh (first cycle re-clones).
-One follow-up remains: the image rebuild that carries the CVSS importer change
-is blocked by a transient host DNS outage; data is already complete.
+The image was then rebuilt once host DNS recovered, and the container was
+recreated on the same volume with all data intact.
 
 ## 2026-10-24 - Implementation complete, all gates approved
 
