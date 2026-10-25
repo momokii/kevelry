@@ -40,6 +40,7 @@ import {
   cloneAndImportCveRevision,
   getCveCloneDepth,
   getCveCloneTimeoutMs,
+  resolveCveCacheDir,
   type CveImportOutcome,
 } from "./lib/cve-import";
 import { openDatabase, type CveDatabase } from "./lib/db";
@@ -107,6 +108,8 @@ export interface SourceJobDeps {
   repoUrl?: string;
   revision?: string;
   workDir?: string;
+  /** Stable CVE checkout path; defaults to `<DATA_DIR>/cve-repo` (persistent cache). */
+  cacheDir?: string;
   kevFetcher?: typeof fetch;
   epssUrl?: string;
   epssFetcher?: typeof fetch;
@@ -162,10 +165,17 @@ export function createSourceJobs(db: CveDatabase, deps: SourceJobDeps = {}): Sou
         deps.cveImport !== undefined
           ? await deps.cveImport(db)
           : (() => {
-              const scratchParent = deps.workDir ?? path.join(dbDirOf(db), "tmp");
+              const dataDir = dbDirOf(db);
+              const scratchParent = deps.workDir ?? path.join(dataDir, "tmp");
               mkdirSync(scratchParent, { recursive: true });
+              // Persistent cache: first boot clones shallow into
+              // `<DATA_DIR>/cve-repo`; later refreshes fetch incrementally in
+              // that same tree instead of re-cloning gigabytes of scratch.
+              const cacheDir = deps.cacheDir ?? resolveCveCacheDir(dataDir);
               return cloneAndImportCveRevision(db, pin.repoUrl, pin.revision, {
                 parentTmpDir: scratchParent,
+                cacheDir,
+                dataDir,
                 cloneTimeoutMs: pin.cloneTimeoutMs,
                 cloneDepth: pin.cloneDepth,
                 onLog: (entry) => defaultLog({ source: "cve", ...entry }),

@@ -49,6 +49,15 @@ unscored CVE is not low severity. Do not imply different CVSS versions are calib
    refreshes in-container over HTTPS; the first refresh clones a large
    repository (gigabytes, minutes), and the worker logs a `source-start` line per source before its
    job runs plus runs at a lower OS priority so web requests win contention.
+   The checkout is a persistent cache at `<DATA_DIR>/cve-repo` (override with
+   `CVE_REPO_DIR`): first run clones shallow (`CVE_CLONE_DEPTH`, default 1),
+   later runs `git fetch` incrementally in that same single working tree and
+   diff against the last imported SHA, so refreshes never re-clone and the
+   import never holds two full checkouts at once. The cache is never deleted
+   automatically; a corrupt (non-repo) directory is re-cloned with a
+   `cve-cache-corrupt-reclone` log line, and `CVE_REPO_CACHE_RESET=true`
+   forces a clean re-clone. Expected disk: ~5-6 GB shallow; every cycle logs
+   `cve-cache-size` with the measured bytes.
 2. For incremental imports, fetch upstream and pin the next revision. Compare it
    with the last successfully imported revision; enumerate added, changed and deleted
    paths, reading candidate files from the new revision rather than a moving branch.
