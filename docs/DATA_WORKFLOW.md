@@ -152,6 +152,20 @@ CVSS v2-only is legacy-scored and is not called critical. Modern primary v3/v4
 base >=9 qualifies for the proposed new-critical view. This deliberately limits
 coverage; NVD or ADP-based enrichment needs an approved revised selection policy.
 
+## CVSS Metrics Persistence
+
+Every CVSS object in `containers.cna.metrics[]` and `containers.adp[].metrics[]`
+(cvssV2_0/cvssV3_0/cvssV3_1/cvssV4_0) is preserved in `cvss_metrics` with origin
+(CNA/ADP), provider shortName, version, exact base-score text, vector, and
+source order. The importer replaces metrics per cve_id inside the same publish
+transaction (delete-then-insert; removals ride the records foreign key), so
+re-imports never duplicate and severity filters stay in lockstep with records.
+The 001 schema predates the `provider` column; the importer adds it additively
+when absent, never dropping data. Volumes populated before this existed are
+repaired with `npm run backfill:cvss` (`scripts/backfill-cvss.mjs`), which
+replays the same extraction from stored `raw_json` in keyset chunks with no
+network, git, or re-clone, and is safe to re-run.
+
 ## Ranking Proposal v1
 
 No custom 0-100 composite is produced. Multiplying CVSS by EPSS or combining them

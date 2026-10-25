@@ -12,6 +12,7 @@
     "lint": "eslint . --ignore-pattern 'dist/**'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "backfill:cvss": "node scripts/backfill-cvss.mjs",
     "format:check": "prettier --check ."
   },
   "dependencies": {

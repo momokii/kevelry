@@ -207,6 +207,11 @@ Stop and down: `docker compose stop` halts the container; `docker compose down` 
 
 Backup: follow `docs/backup-runbook.md` for backup, restore, and upgrade (round-trip verified; incompatible restores are refused with guidance).
 
+Repairing severity data: volumes populated before the importer wrote CVSS
+metrics show empty severity filters and "new critical" lists. Repair in place
+with `npm run backfill:cvss` (replays metrics from stored record bytes, no
+re-clone, safe to re-run); see `docs/DATA_WORKFLOW.md`.
+
 Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` volume with all 4+ GB of snapshots. Destructive and irreversible; back up first if the data matters.
 
 ## Troubleshooting
@@ -219,10 +224,25 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
   Raise `CVE_GIT_TIMEOUT_MS` on slow links; keep `CVE_CLONE_DEPTH=1` for fastest boot.
 - **Outbound fetches stall (IPv6).** The worker already prefers IPv4. If DNS still
   hangs, set `NODE_OPTIONS=--dns-result-order=ipv4first` and restart.
-- **Disk pressure.** Keep ~6 GB free for image, clone, and ~4.3 GB database.
-  A full disk fails imports first, so check `df -h` early.
+- **Disk pressure.** Keep ~12 GB free at peak: image ~0.4 GB, clone cache
+  ~5-6 GB, database ~4.3 GB plus WAL. A full disk fails imports first, so
+  check `df -h` early.
 - **Unhealthy container but `/api/v1/health` answers 200.** The web side is fine;
   the worker is likely contending on import. Read its log lines before restarting.
+
+## Known limitations
+
+- Change Radar and snapshot replay need accumulated daily checkpoints: a fresh
+  database shows "history begins" until the first scheduled cycles run. The
+  rising-forecast view additionally needs seven days of EPSS snapshots; with
+  one snapshot it is explicitly empty rather than guessed.
+- Severity comes from CNA-provided CVSS only. Records with no CNA metric show
+  "unscored" even when an ADP or NVD score exists; severity filters and the
+  new-critical list exclude them by policy.
+- Filtered result lists report coverage over the bounded fetch, while
+  unfiltered lists report exact cohort counts.
+- Snapshot checkpoints retain the top `CHECKPOINT_TOP_N` entries per view
+  (default 500) and label them as bounded; they are not a full enumeration.
 
 ## Development
 
