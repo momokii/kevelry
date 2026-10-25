@@ -1,3 +1,5 @@
+import { TimeZoneSelect } from "./TimeZoneSelect";
+
 const NAV_ITEMS = [
   { label: "Overview", href: "/" },
   { label: "Search", href: "/explore" },
@@ -41,6 +43,7 @@ export function Masthead({
           ),
         )}
       </nav>
+      <TimeZoneSelect testId="global-timezone" />
       {menuOpen ? (
         <span className="ledger-meta" data-testid={`${testId}-menu`}>
           Menu open: all destinations listed vertically

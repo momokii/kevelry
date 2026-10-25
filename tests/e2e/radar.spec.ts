@@ -45,9 +45,10 @@ for (const width of [360, 768, 1280]) {
     await expect(inspector).toContainText("Before: 2026-10-23 snapshot");
     await expect(inspector).toContainText("After: 2026-10-24 snapshot");
     await expect(page.getByTestId("radar-inspector-evidence-detail")).toContainText("rev-a431");
-    await expect(page.getByTestId("radar-inspector-evidence-detail")).toContainText(
-      "observed 2026-10-24T08:00:00.000Z",
-    );
+    await expect(page.getByTestId("radar-inspector-evidence-detail")).toContainText("observed");
+    await expect(
+      page.getByTestId("radar-day-note").getByTestId("radar-before-observed"),
+    ).toHaveAttribute("datetime", "2026-10-23T08:00:00.000Z");
 
     // Rank-only movement is labeled as such and never as a source change.
     await page.getByTestId("radar-event-CVE-2099-0006-rank-moved").click();
@@ -109,8 +110,8 @@ test("radar passes the task-24 accessibility audit", async ({ page }) => {
   await page.getByTestId("radar-filter-forecast-changed").focus();
   await page.getByTestId("radar-filter-forecast-changed").click();
   await expect(page.getByTestId("radar-filter-status")).toContainText("Showing 1 of 9 entries");
-  const focusedAfterFilter = await page.evaluate(
-    () => (document.activeElement instanceof HTMLElement ? document.activeElement.tagName : ""),
+  const focusedAfterFilter = await page.evaluate(() =>
+    document.activeElement instanceof HTMLElement ? document.activeElement.tagName : "",
   );
   expect(focusedAfterFilter, "focus survives the feed filter change").not.toBe("BODY");
   await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/radar-focus-1280.png`, fullPage: true });

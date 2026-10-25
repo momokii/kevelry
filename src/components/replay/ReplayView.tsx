@@ -1,4 +1,5 @@
 import type { RadarItemSnapshot, StoredRadarCheckpoint } from "@/lib/radar";
+import { TimeText } from "@/components/ledger/TimeText";
 import { officialCveLink } from "@/lib/search";
 
 export interface ReplayCheckpointOption {
@@ -179,7 +180,11 @@ export function ReplayLists({ manifest }: { manifest: StoredRadarCheckpoint }) {
         {`Replayed lists, ranking policy ${manifest.policyVersion}`}
       </h2>
       <p className="ledger-meta" data-testid="replay-lists-note">
-        {`Checkpoint ${manifest.checkpointDate} observed ${manifest.observedAt}. Source pins: CVE revision ${manifest.sourcePins.cveRevision}, KEV catalog ${manifest.sourcePins.kevCatalogDate}, EPSS ${manifest.sourcePins.epssScoreDate} model ${manifest.sourcePins.epssModelVersion}. Every value below is a retained observation.`}
+        Checkpoint {manifest.checkpointDate} observed{" "}
+        <TimeText value={manifest.observedAt} testId="replay-observed-at" />. Source pins: CVE
+        revision {manifest.sourcePins.cveRevision}, KEV catalog {manifest.sourcePins.kevCatalogDate}
+        , EPSS {manifest.sourcePins.epssScoreDate} model {manifest.sourcePins.epssModelVersion}.
+        Every value below is a retained observation.
       </p>
       {VIEW_COPY.map((view) => {
         const ids = manifest.views[view.key];

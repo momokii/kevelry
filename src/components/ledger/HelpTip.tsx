@@ -45,9 +45,17 @@ export function HelpTip({ term, children, testId, defaultOpen = false }: HelpTip
         setTransient(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setPinned(false);
+        setTransient(false);
+      }
+    };
     document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
 
@@ -61,7 +69,7 @@ export function HelpTip({ term, children, testId, defaultOpen = false }: HelpTip
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
-          close(true);
+          close(false);
         }
       }}
     >

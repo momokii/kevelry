@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Masthead } from "@/components/ledger/Masthead";
+import { TimeText } from "@/components/ledger/TimeText";
 
 import { KIND_META, type RadarUiDay, type RadarUiEvent, type RadarUiKind } from "./radar-fixtures";
 
@@ -56,7 +57,10 @@ function EventRow({
             {meta.symbol} {meta.label}
           </span>
         </span>
-        <span className="ledger-row-signals ledger-row-block" data-testid={`radar-detail-${event.eventId}`}>
+        <span
+          className="ledger-row-signals ledger-row-block"
+          data-testid={`radar-detail-${event.eventId}`}
+        >
           {event.detail}
         </span>
         <span className="ledger-row-signals ledger-row-block">
@@ -135,10 +139,13 @@ function Inspector({ event, day }: { event: RadarUiEvent | null; day: RadarUiDay
         </span>
         <span className="ledger-evidence-state">Retained snapshots</span>
         <span data-testid="radar-inspector-evidence-detail">
-          Before {day.beforeDate} observed {day.beforeObservedAt} ({day.beforeRevisionLabel}); after{" "}
-          {day.afterDate} observed {day.afterObservedAt} ({day.afterRevisionLabel}); source revision{" "}
-          {event.sourceRevision}. Forecast values are observed only; the model does not explain why
-          they moved. KEV listing records catalog membership only; it does not record when exploitation began.
+          Before {day.beforeDate} observed{" "}
+          <TimeText value={day.beforeObservedAt} testId="radar-before-observed" /> (
+          {day.beforeRevisionLabel}); after {day.afterDate} observed{" "}
+          <TimeText value={day.afterObservedAt} testId="radar-after-observed" /> (
+          {day.afterRevisionLabel}); source revision {event.sourceRevision}. Forecast values are
+          observed only; the model does not explain why they moved. KEV listing records catalog
+          membership only; it does not record when exploitation began.
         </span>
       </div>
     </div>
@@ -238,8 +245,10 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
             ))}
           </select>
           <p className="ledger-snapshot-note" data-testid="radar-day-note">
-            Before {day.beforeDate} observed {day.beforeObservedAt}; after {day.afterDate} observed{" "}
-            {day.afterObservedAt}. Policy v1
+            Before {day.beforeDate} observed{" "}
+            <TimeText value={day.beforeObservedAt} testId="radar-before-observed" />; after{" "}
+            {day.afterDate} observed{" "}
+            <TimeText value={day.afterObservedAt} testId="radar-after-observed" />. Policy v1
             {day.policyChanged ? " changed between snapshots" : " unchanged"}; cohort{" "}
             {day.cohortBefore} to {day.cohortAfter} retained PUBLISHED records
             {day.cohortChanged ? " (cohort changed)" : ""}.
@@ -264,8 +273,11 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
             </span>
             <span className="ledger-evidence-state">Retained snapshots</span>
             <span>
-              Before {day.beforeDate} observed {day.beforeObservedAt} ({day.beforeRevisionLabel});
-              after {day.afterDate} observed {day.afterObservedAt} ({day.afterRevisionLabel}).
+              Before {day.beforeDate} observed{" "}
+              <TimeText value={day.beforeObservedAt} testId="radar-before-observed" /> (
+              {day.beforeRevisionLabel}); after {day.afterDate} observed{" "}
+              <TimeText value={day.afterObservedAt} testId="radar-after-observed" /> (
+              {day.afterRevisionLabel}).
             </span>
           </div>
         </section>
