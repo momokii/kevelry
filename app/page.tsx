@@ -5,7 +5,7 @@ import { PublicationChart } from "@/components/overview/PublicationChart";
 import { SourceFreshness } from "@/components/overview/SourceFreshness";
 import { loadOverviewData, resolveDataDir } from "@/components/overview/loadOverview";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export const metadata = {
   title: "Overview — CVE Change Radar",

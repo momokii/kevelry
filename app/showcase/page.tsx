@@ -3,16 +3,23 @@ import { CveResultRow } from "@/components/ledger/CveResultRow";
 import { ChartView } from "@/components/ledger/ChartView";
 import { EvidenceStrip } from "@/components/ledger/EvidenceStrip";
 import { FilterGroup } from "@/components/ledger/FilterGroup";
+import { HelpTip } from "@/components/ledger/HelpTip";
 import { Masthead } from "@/components/ledger/Masthead";
 import { OrderingExplanation } from "@/components/ledger/OrderingExplanation";
 import { SearchField } from "@/components/ledger/SearchField";
 import { SnapshotSelector } from "@/components/ledger/SnapshotSelector";
+import { TimeText } from "@/components/ledger/TimeText";
+import { TimeZoneSelect } from "@/components/ledger/TimeZoneSelect";
 import { UpdateNotice } from "@/components/ledger/UpdateNotice";
 import type { ReactNode } from "react";
 
+const DEMO_INSTANT = "2026-10-25T05:14:00.000Z";
+const DEMO_NOW = Date.parse(DEMO_INSTANT) + (2 * 60 + 14) * 60 * 1000;
+
 export const metadata = {
   title: "Evidence Ledger primitive showcase",
-  description: "Every Section-6 primitive in every required state. No product screens, no data logic.",
+  description:
+    "Every Section-6 primitive in every required state. No product screens, no data logic.",
 };
 
 function StateCard({ id, label, children }: { id: string; label: string; children: ReactNode }) {
@@ -29,8 +36,8 @@ export default function ShowcasePage() {
     <main className="ledger-page" data-testid="showcase-root" id="main-content">
       <h1>Evidence Ledger primitive showcase</h1>
       <p className="ledger-meta">
-        Every Section-6 primitive in each required state. Tokens: DESIGN.md sections 2-4. Copy guardrails: DESIGN.md
-        section 8. No product screens, no data fetching.
+        Every Section-6 primitive in each required state. Tokens: DESIGN.md sections 2-4. Copy
+        guardrails: DESIGN.md section 8. No product screens, no data fetching.
       </p>
 
       <section className="ledger-section" aria-labelledby="section-masthead" id="section-masthead">
@@ -94,7 +101,10 @@ export default function ShowcasePage() {
             <FilterGroup testId="filter-default" />
           </StateCard>
           <StateCard id="state-filter-selected" label="selected">
-            <FilterGroup selected={["Known exploited", "Rising forecast"]} testId="filter-selected" />
+            <FilterGroup
+              selected={["Known exploited", "Rising forecast"]}
+              testId="filter-selected"
+            />
           </StateCard>
           <StateCard id="state-filter-hover" label="hover (hover a chip)">
             <FilterGroup testId="filter-hover" />
@@ -290,6 +300,107 @@ export default function ShowcasePage() {
           </StateCard>
           <StateCard id="state-notice-focus" label="focus-visible (tab to the action)">
             <UpdateNotice state="pending" testId="notice-focus" />
+          </StateCard>
+        </div>
+      </section>
+
+      <section className="ledger-section" aria-labelledby="section-time" id="section-time">
+        <h2 id="section-time">Display timezone and timestamp</h2>
+        <div className="ledger-state-grid">
+          <StateCard id="state-time-live" label="live (follows the selector)">
+            <TimeZoneSelect testId="timezone-select" />
+            <p>
+              Observed:{" "}
+              <TimeText value={DEMO_INSTANT} showRelative now={DEMO_NOW} testId="timetext-live" />
+            </p>
+          </StateCard>
+          <StateCard id="state-time-jakarta" label="Jakarta zone">
+            <TimeText value={DEMO_INSTANT} timeZone="Asia/Jakarta" testId="timetext-jakarta" />
+          </StateCard>
+          <StateCard id="state-time-utc" label="UTC zone">
+            <TimeText value={DEMO_INSTANT} timeZone="UTC" testId="timetext-utc" />
+          </StateCard>
+          <StateCard id="state-time-newyork" label="New York zone (daylight)">
+            <TimeText value={DEMO_INSTANT} timeZone="America/New_York" testId="timetext-newyork" />
+          </StateCard>
+          <StateCard id="state-time-relative" label="relative form">
+            <TimeText
+              value={DEMO_INSTANT}
+              timeZone="Asia/Jakarta"
+              showRelative
+              now={DEMO_NOW}
+              testId="timetext-relative"
+            />
+          </StateCard>
+          <StateCard id="state-time-dateonly" label="date-only input">
+            <TimeText value="2026-10-24" timeZone="Asia/Jakarta" testId="timetext-dateonly" />
+          </StateCard>
+          <StateCard id="state-time-invalid" label="invalid input / empty">
+            <TimeText value="not-a-date" timeZone="Asia/Jakarta" testId="timetext-invalid" />
+          </StateCard>
+          <StateCard id="state-time-missing" label="missing input / empty">
+            <TimeText value={null} timeZone="Asia/Jakarta" testId="timetext-missing" />
+          </StateCard>
+        </div>
+      </section>
+
+      <section className="ledger-section" aria-labelledby="section-helptip" id="section-helptip">
+        <h2 id="section-helptip">Help tip disclosure</h2>
+        <div className="ledger-state-grid">
+          <StateCard id="state-helptip-closed" label="closed">
+            <p>
+              EPSS is a daily forecast of exploitation probability.{" "}
+              <HelpTip term="EPSS" testId="helptip-closed">
+                Values run 0 to 1 with a model version and score date; unknown renders as an
+                explicit null.
+              </HelpTip>
+            </p>
+          </StateCard>
+          <StateCard id="state-helptip-open" label="open (pinned)">
+            <p>
+              KEV membership means confirmed exploitation is cataloged.{" "}
+              <HelpTip term="KEV" testId="helptip-open" defaultOpen>
+                The catalog date is shown beside each member; absence from the list is never proof
+                of safety.
+              </HelpTip>
+            </p>
+          </StateCard>
+          <StateCard id="state-helptip-focus" label="focus-visible (tab to the trigger)">
+            <p>
+              CVSS severity here is CNA-supplied only.{" "}
+              <HelpTip term="CVSS" testId="helptip-focus">
+                Records without a CNA metric read as unscored even when another party publishes a
+                score.
+              </HelpTip>
+            </p>
+          </StateCard>
+        </div>
+      </section>
+
+      <section className="ledger-section" aria-labelledby="section-emphasis" id="section-emphasis">
+        <h2 id="section-emphasis">Typographic emphasis</h2>
+        <div className="ledger-state-grid">
+          <StateCard id="state-emphasis-value" label="key value">
+            <p data-testid="emphasis-emphasis">
+              Known exploited: <span className="ledger-emphasis">CVE-2026-1234</span> was added to
+              the catalog.
+            </p>
+          </StateCard>
+          <StateCard id="state-emphasis-caveat" label="caveat">
+            <p data-testid="emphasis-caveat">
+              Forecast <span className="ledger-emphasis">0.82</span>{" "}
+              <span className="ledger-caveat">
+                model v4 dated 2026-10-24; a forecast, not observed exploitation
+              </span>
+              .
+            </p>
+          </StateCard>
+          <StateCard id="state-emphasis-label" label="signal name">
+            <p data-testid="emphasis-label">
+              <span className="ledger-label">EPSS</span>{" "}
+              <span className="ledger-emphasis">0.82</span>{" "}
+              <span className="ledger-caveat">forecast, not observed exploitation</span>
+            </p>
           </StateCard>
         </div>
       </section>

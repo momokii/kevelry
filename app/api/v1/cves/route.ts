@@ -10,7 +10,7 @@ import {
   filterPriorityItems,
   getDb,
   loadFullRecords,
-  okResponse,
+  cachedOkResponse,
   paginateCapped,
   parseCursor,
   parseDateBound,
@@ -90,8 +90,9 @@ export async function GET(request: Request): Promise<Response> {
       return toCveItem(record, scoreDate, null);
     });
     const nowIso = new Date().toISOString();
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         data: data.filter((row) => row !== null),
         pagination: { limit, hasMore, nextCursor },

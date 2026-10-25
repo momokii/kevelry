@@ -37,6 +37,10 @@ setDefaultResultOrder("ipv4first");
 
 import { loadConfig } from "./lib/config";
 import {
+  getAggregates,
+  refreshAggregates,
+} from "./lib/aggregates";
+import {
   cloneAndImportCveRevision,
   getCveCloneDepth,
   getCveCloneTimeoutMs,
@@ -128,6 +132,42 @@ function failure(source: string, error: unknown): SourceRefreshOutcome {
   };
 }
 
+/**
+ * Refresh the precomputed aggregate cache (task 43). Called once after a
+ * successful import cycle and on boot when the cache is empty, so a seeded
+ * volume serves fast reads without waiting for an import. Never throws: a
+ * refresh failure is logged and the next cycle retries.
+ */
+export function ensureAggregates(db: CveDatabase, log: LogFn = defaultLog): boolean {
+  try {
+    if (getAggregates(db) !== null) return false;
+    const snapshot = refreshAggregates(db);
+    log({
+      event: "aggregate-refresh",
+      computedAt: snapshot.computedAt,
+      published: snapshot.publishedTotal,
+    });
+    return true;
+  } catch (error) {
+    log({ event: "aggregate-refresh-failed", error: errorDetail(error) });
+    return false;
+  }
+}
+
+function refreshAggregatesForced(db: CveDatabase, log: LogFn = defaultLog): boolean {
+  try {
+    const snapshot = refreshAggregates(db);
+    log({
+      event: "aggregate-refresh",
+      computedAt: snapshot.computedAt,
+      published: snapshot.publishedTotal,
+    });
+    return true;
+  } catch (error) {
+    log({ event: "aggregate-refresh-failed", error: errorDetail(error) });
+    return false;
+  }
+}
 function lowerWorkerPriority(): void {
   try {
     const setPriority = (
@@ -357,6 +397,14 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
         error: status.lastError,
       });
     }
+    const cycleOk = (["cve", "kev", "epss"] as const).every(
+      (source) => health.sources[source].lastError === null,
+    );
+    if (cycleOk) {
+      refreshAggregatesForced(db, log);
+    } else {
+      ensureAggregates(db, log);
+    }
     log({
       event: scheduleEnabled ? "worker-scheduled" : "worker-idle",
       scheduleEnabled,
@@ -364,6 +412,7 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       manifest: health.manifest,
     });
   } else {
+    ensureAggregates(db, log);
     const health = scheduler.getStatus();
     log({
       event: "worker-idle",
@@ -375,7 +424,35 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   return { db, scheduler, releaseHandlers, scheduleEnabled, ingestOnStart };
 }
 
+/**
+ * One-off aggregate refresh without running an import cycle:
+ * `REFRESH_AGGREGATES_ONCE=true node dist/worker.mjs`. Opens the store,
+ * recomputes the cache, logs aggregate-refresh, exits 0. Used after stack
+ * upgrades on a live volume instead of waiting for the next import.
+ */
+export function resolveRefreshAggregatesOnce(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.REFRESH_AGGREGATES_ONCE === "true";
+}
+
 async function main(): Promise<void> {
+  if (resolveRefreshAggregatesOnce()) {
+    try {
+      const config = loadConfig();
+      const db = openDatabase({ dataDir: config.dataDir });
+      try {
+        refreshAggregatesForced(db, defaultLog);
+      } finally {
+        db.close();
+      }
+      process.exitCode = 0;
+    } catch (error) {
+      defaultLog({ event: "worker-fatal", reason: "aggregate-refresh-failed", error: errorDetail(error) });
+      process.exitCode = 1;
+    }
+    return;
+  }
   let scheduler: IngestionScheduler;
   let releaseHandlers: () => void;
   try {

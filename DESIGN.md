@@ -42,15 +42,15 @@ Rules:
 Single source of truth. Components reference `var(--ledger-*)` only. Raw color
 literals anywhere outside this file fail the build gate.
 
-| Token | Value | Use |
-|---|---|---|
-| `--ledger-canvas` | `#F7F6F3` | Page background. Warm paper, not a gradient hero. |
-| `--ledger-surface` | `#FFFFFF` | Inputs, menus, reading and compare surfaces needing separation. |
-| `--ledger-ink` | `#1A1A1A` | Headlines, body, important numeric values. |
-| `--ledger-ink-secondary` | `#595959` | Source and date labels. Must stay readable at 14px+. |
-| `--ledger-rule` | `#D6D3CD` | Quiet separators. Never the sole evidence of a control boundary. |
-| `--ledger-link` | `#006A9F` | Underlined links and visible keyboard focus. Not a decorative accent. |
-| `--ledger-focus-ring` | `#006A9F` | Focus outline. Same value as link by intent; separate token so focus stays visible if link styling ever changes. |
+| Token                    | Value     | Use                                                                                                              |
+| ------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------- |
+| `--ledger-canvas`        | `#F7F6F3` | Page background. Warm paper, not a gradient hero.                                                                |
+| `--ledger-surface`       | `#FFFFFF` | Inputs, menus, reading and compare surfaces needing separation.                                                  |
+| `--ledger-ink`           | `#1A1A1A` | Headlines, body, important numeric values.                                                                       |
+| `--ledger-ink-secondary` | `#595959` | Source and date labels. Must stay readable at 14px+.                                                             |
+| `--ledger-rule`          | `#D6D3CD` | Quiet separators. Never the sole evidence of a control boundary.                                                 |
+| `--ledger-link`          | `#006A9F` | Underlined links and visible keyboard focus. Not a decorative accent.                                            |
+| `--ledger-focus-ring`    | `#006A9F` | Focus outline. Same value as link by intent; separate token so focus stays visible if link styling ever changes. |
 
 What is deliberately absent:
 
@@ -71,11 +71,11 @@ never patch a single component.
 Three families, three jobs. Never substitute silently; if the loading budget
 forces two families, test tabular numerals first and record the decision here.
 
-| Role | Family stack | Sizes | Use |
-|---|---|---|---|
-| Display | `"Newsreader", Georgia, "Times New Roman", serif` | 36px desktop / 28px phone, weight 600, line-height 1.15 | Page title and section emphasis only. Not tables. |
-| Body | `"Source Sans 3", "Segoe UI", system-ui, sans-serif` | 22px section / 16px body / 14px controls and metadata minimum | Descriptions, navigation, controls, readable body. |
-| Identifier | `"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace` | 14px minimum, tabular figures | CVE identifiers and compact technical values only. Not paragraphs. |
+| Role       | Family stack                                                 | Sizes                                                         | Use                                                                |
+| ---------- | ------------------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Display    | `"Newsreader", Georgia, "Times New Roman", serif`            | 36px desktop / 28px phone, weight 600, line-height 1.15       | Page title and section emphasis only. Not tables.                  |
+| Body       | `"Source Sans 3", "Segoe UI", system-ui, sans-serif`         | 22px section / 16px body / 14px controls and metadata minimum | Descriptions, navigation, controls, readable body.                 |
+| Identifier | `"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace` | 14px minimum, tabular figures                                 | CVE identifiers and compact technical values only. Not paragraphs. |
 
 Rules:
 
@@ -86,18 +86,44 @@ Rules:
 - Semantic elements carry the scale: `h1` display, `h2` section, `p` body,
   `code`/identifier class for CVE IDs.
 
+### 3.1 Emphasis roles
+
+Three classes, three jobs. Each marks a short run inside an otherwise plain
+sentence — never an entire paragraph, never a whole card.
+
+| Class              | Style                                              | Use                                                                          |
+| ------------------ | -------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `.ledger-emphasis` | Bold, ink                                          | The key value: an entity name, a CVE identifier, a count, a verdict word.    |
+| `.ledger-caveat`   | Italic, secondary ink                              | Caveats and definitions: scope limits, date basis, methodology asides.       |
+| `.ledger-label`    | Mono, uppercase with letter-spacing, secondary ink | Signal names: KEV, EPSS, CVSS, and other short controlled-vocabulary labels. |
+
+Rules:
+
+- One emphasis per sentence in the common case; two at most. If everything is
+  emphasized, nothing is.
+- Emphasis never carries meaning alone: the surrounding words already name the
+  value, the caveat, or the signal (no-color-alone rule applies to weight and
+  style as much as to hue).
+- `.ledger-emphasis` for key values and verdicts; `.ledger-caveat` for the
+  sentence that limits them; `.ledger-label` for the signal name that produced
+  them. Example: `<span class="ledger-label">EPSS</span> <span
+  class="ledger-emphasis">0.82</span> <span class="ledger-caveat">forecast,
+  not observed exploitation</span>.
+- Forbidding: wrapping whole paragraphs, lists, or sections in any of the
+  three; using `.ledger-label` for prose; using bold ink for caveats.
+
 ## 4. Spacing
 
 4px base. Every margin, padding, and gap uses a step. No ad-hoc pixel values.
 
-| Token | Value |
-|---|---|
-| `--ledger-space-1` | `4px` |
-| `--ledger-space-2` | `8px` |
-| `--ledger-space-3` | `12px` |
-| `--ledger-space-4` | `16px` |
-| `--ledger-space-6` | `24px` |
-| `--ledger-space-8` | `32px` |
+| Token               | Value  |
+| ------------------- | ------ |
+| `--ledger-space-1`  | `4px`  |
+| `--ledger-space-2`  | `8px`  |
+| `--ledger-space-3`  | `12px` |
+| `--ledger-space-4`  | `16px` |
+| `--ledger-space-6`  | `24px` |
+| `--ledger-space-8`  | `32px` |
 | `--ledger-space-12` | `48px` |
 | `--ledger-space-16` | `64px` |
 
@@ -218,6 +244,32 @@ action. Never auto-reorders a list being read.
 
 States: default, pending-update, applied, dismissed (empty), focus-visible.
 
+### 6.11 Display timezone and timestamp
+
+`TimeZoneSelect` is a compact select listing at least Asia/Jakarta (default),
+UTC, Asia/Singapore, Europe/London, America/New_York, and America/Los_Angeles.
+The choice lives in the `DisplayPrefs` client context, persists in
+`localStorage` plus a cookie readable by server components, and re-renders every
+`TimeText` on the page with no reload. `TimeText` renders a `<time dateTime>`
+with a human absolute form in the selected zone plus the pinned abbreviation
+("25 Oct 2026, 12:14 WIB"), an optional relative form, `title` with the exact
+ISO for precision, and `suppressHydrationWarning`. Invalid or missing input
+renders the explicit words "not recorded" — never a bare ISO string.
+
+States: default (Jakarta), switched-zone, date-only, relative, invalid/missing
+(empty), persisted-after-reload.
+
+### 6.12 Help tip disclosure
+
+`HelpTip` explains one term or filter with a real `<button type="button"
+aria-expanded aria-controls>` carrying a "?" symbol (never emoji). The panel
+opens on hover, focus, and click; Escape closes it and returns focus to the
+trigger; click-outside closes it; content is linked via `aria-describedby` and
+styled with `ledger-*` tokens under reduced-motion rules. Panel text is always
+supplementary: the surrounding prose stands alone without it.
+
+States: closed, open (pinned), hover, focus-visible, escaped-closed.
+
 ## 7. Motion
 
 Purposeful state feedback only: focus outline arrival, disclosure open, pending
@@ -241,25 +293,25 @@ delay data, animated charts that conceal exact values.
 - Data copy guardrails (exact strings used in components and showcase):
   `EPSS unavailable for this snapshot`, `Unscored under this view's policy`,
   `History begins`, `Snapshot unavailable`, `Forecasts use different models;
-  change is not compared`, `Not listed in this KEV snapshot`, quiet state with a
+change is not compared`, `Not listed in this KEV snapshot`, quiet state with a
   date, last-known-good content with a visible source-specific warning.
 
 ### 8.1 Accessibility debt (todo-24 hardening, 2026-10-24)
 
-| Item | Status | Owner / exit |
-|---|---|---|
-| Showcase-only `OrderingExplanation` keeps `tabIndex={0}` plus `aria-label` on a static `div` | Open, low | Product UI owner; remove both when the showcase primitive is next touched (Wave-4 pages already dropped the pattern). Exit: `rg "tabIndex" src/components/ledger` prints nothing. |
-| Showcase-only `SnapshotSelector` note uses `role="status"` for static text | Open, low | Same as above. Exit: status/alert roles appear only on dynamic results, errors, and the radar filter count. |
-| Inline sentence links (e.g. the methodology body link) are exempt from the 44px rule per WCAG 2.5.8 | Accepted, not debt | Recorded so a future audit does not "fix" readable prose. Exit: none; `tests/e2e/a11y-audit.ts` encodes the inline exception. |
-| Automated checks are Playwright assertions, not axe-core | Accepted | axe-core was not warranted: every route is server-rendered with a small primitive set, and the audit covers headings, names, scopes, live regions, focus, touch, zoom, and reduced motion. Exit: adopt axe-core only if a client-heavy route lands. |
+| Item                                                                                                | Status             | Owner / exit                                                                                                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Showcase-only `OrderingExplanation` keeps `tabIndex={0}` plus `aria-label` on a static `div`        | Open, low          | Product UI owner; remove both when the showcase primitive is next touched (Wave-4 pages already dropped the pattern). Exit: `rg "tabIndex" src/components/ledger` prints nothing.                                                                   |
+| Showcase-only `SnapshotSelector` note uses `role="status"` for static text                          | Open, low          | Same as above. Exit: status/alert roles appear only on dynamic results, errors, and the radar filter count.                                                                                                                                         |
+| Inline sentence links (e.g. the methodology body link) are exempt from the 44px rule per WCAG 2.5.8 | Accepted, not debt | Recorded so a future audit does not "fix" readable prose. Exit: none; `tests/e2e/a11y-audit.ts` encodes the inline exception.                                                                                                                       |
+| Automated checks are Playwright assertions, not axe-core                                            | Accepted           | axe-core was not warranted: every route is server-rendered with a small primitive set, and the audit covers headings, names, scopes, live regions, focus, touch, zoom, and reduced motion. Exit: adopt axe-core only if a client-heavy route lands. |
 
 ## 9. Token-to-Code Map
 
-| Token group | Defined in | Consumed by |
-|---|---|---|
-| Colors, spacing, type, motion | `app/globals.css` `:root` | Every component via `var(--ledger-*)` |
-| Primitives | `src/components/ledger/*.tsx` | `app/showcase/page.tsx` sections |
-| State coverage | `tests/e2e/showcase.spec.ts` | Evidence dir `task-2-cve-change-radar/` |
+| Token group                   | Defined in                    | Consumed by                             |
+| ----------------------------- | ----------------------------- | --------------------------------------- |
+| Colors, spacing, type, motion | `app/globals.css` `:root`     | Every component via `var(--ledger-*)`   |
+| Primitives                    | `src/components/ledger/*.tsx` | `app/showcase/page.tsx` sections        |
+| State coverage                | `tests/e2e/showcase.spec.ts`  | Evidence dir `task-2-cve-change-radar/` |
 
 Grep gate: `rg -n "#[0-9a-fA-F]{3,8}\\b" --glob '!DESIGN.md' --glob '!.git/**' --glob '!node_modules/**' --glob '!.next/**' app src tests || true`
 must print nothing. The only sanctioned color literals live in the table in

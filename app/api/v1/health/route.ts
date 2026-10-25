@@ -1,12 +1,13 @@
+import { getAggregates } from "../../../../src/lib/aggregates";
 import {
   acquireConcurrencySlot,
   ApiError,
   assertRequestBounds,
   buildProvenance,
+  cachedOkResponse,
   countRows,
   errorResponse,
   getDb,
-  okResponse,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
@@ -32,12 +33,24 @@ export async function GET(request: Request): Promise<Response> {
   }
   try {
     assertRequestBounds(request);
-    const published = countRows(db, "SELECT COUNT(*) AS n FROM cve_records WHERE state = ?", ["PUBLISHED"]);
-    const kev = countRows(db, "SELECT COUNT(*) AS n FROM kev_entries");
-    const epss = countRows(db, "SELECT COUNT(*) AS n FROM epss_daily");
+    // Readiness counts come from the aggregate cache; freshness stays live.
+    const cached = getAggregates(db);
+    const published =
+      cached === null
+        ? countRows(db, "SELECT COUNT(*) AS n FROM cve_records WHERE state = ?", ["PUBLISHED"])
+        : cached.totals.published;
+    const kev =
+      cached === null
+        ? countRows(db, "SELECT COUNT(*) AS n FROM kev_entries")
+        : cached.totals.kev;
+    const epss =
+      cached === null
+        ? countRows(db, "SELECT COUNT(*) AS n FROM epss_daily")
+        : cached.totals.epssRows;
     const nowIso = new Date().toISOString();
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         status: published > 0 && kev > 0 && epss > 0 ? "ok" : "initializing",
         version: "v1",

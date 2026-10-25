@@ -2,6 +2,7 @@ const NAV_ITEMS = [
   { label: "Overview", href: "/" },
   { label: "Search", href: "/explore" },
   { label: "Priority", href: "/priority" },
+  { label: "API", href: "/api-docs" },
   { label: "Radar", href: "/radar" },
   { label: "Replay", href: "/replay" },
   { label: "Method", href: "/methodology" },

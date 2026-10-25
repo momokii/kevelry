@@ -192,6 +192,20 @@ Expect: health 200 with an ok/degraded state; overview has non-empty buckets plu
 date basis; known-exploited returns KEV entries; search returns matches with excerpts;
 `/` returns 200 (about 4.6 s first load here; API medians run 0.5-3.7 s).
 
+Read-path performance: overview/status/health serve the precomputed aggregate cache
+(migration 002), refreshed automatically after every successful import cycle and on
+boot when empty. After upgrading the stack on a live volume, refresh once without an
+import cycle instead of waiting:
+
+```bash
+docker compose exec app env REFRESH_AGGREGATES_ONCE=true node worker.mjs
+```
+
+Success GETs carry `Cache-Control: public, max-age=30, s-maxage=60,
+stale-while-revalidate=300` plus a strong ETag; repeats with `If-None-Match` return
+304. Warm responses for `/`, `/explore`, `/priority`, `/methodology`,
+`/api/v1/overview`, `/api/v1/status`, and `/api/v1/cves?limit=2` complete under 1.5 s.
+
 ## Operations
 
 Logs: `docker compose logs -f app` shows web plus worker output
@@ -265,7 +279,7 @@ npx playwright test     # end-to-end browser tests (tests/e2e)
 
 ## API
 
-Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/`.
+Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/` and a browsable reference at [`/api-docs`](/api-docs) (rendered from the spec at build time, so it cannot drift).
 
 | Method + path | Purpose |
 | ------------- | ------- |

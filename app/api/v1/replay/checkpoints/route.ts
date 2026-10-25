@@ -5,7 +5,7 @@ import {
   buildProvenance,
   errorResponse,
   getDb,
-  okResponse,
+  cachedOkResponse,
   paginate,
   parseCursor,
   parseLimit,
@@ -61,8 +61,9 @@ export async function GET(request: Request): Promise<Response> {
     }));
     const newestFirst = [...manifests].reverse();
     const { page, hasMore, nextCursor } = paginate(newestFirst, offset, limit);
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         retainedFrom: manifests.length === 0 ? null : (manifests[0]?.checkpointDate ?? null),
         retainedTo:

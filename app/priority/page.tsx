@@ -18,7 +18,7 @@ import {
   type PriorityMode,
   type PriorityRowData,
 } from "@/components/priority/PriorityView";
-import { openDatabase, type CveDatabase } from "@/lib/db";
+import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import {
   getAcceptedEpssDate,
   getHighestForecast,
@@ -37,7 +37,7 @@ import {
   unfilteredCohortCoverage,
 } from "@/app/api/v1/_lib/shared";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 // Display cap for every priority list on this page. The ranking services can
 // materialize the full ~395k-row corpus when called without a limit (which
@@ -243,12 +243,8 @@ export default async function PriorityPage({
   let snapshot: PrioritySnapshot | null = null;
   let loadError: string | null = null;
   try {
-    const db = openDatabase({ dataDir: resolveDataDir() });
-    try {
-      snapshot = loadSnapshot(db, new Date().toISOString(), mode);
-    } finally {
-      db.close();
-    }
+    const db = openReadDatabase(resolveDataDir());
+    snapshot = loadSnapshot(db, new Date().toISOString(), mode);
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);
   }

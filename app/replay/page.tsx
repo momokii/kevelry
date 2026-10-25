@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { mapReplayReason } from "@/app/api/v1/_lib/shared";
-import { openDatabase, type CveDatabase } from "@/lib/db";
+import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import { isCheckpointExpired, launchDay, listCheckpoints, replayCheckpoint } from "@/lib/radar";
 import {
   ReplayLists,
@@ -13,7 +13,7 @@ import {
   type ReplaySelection,
 } from "@/components/replay/ReplayView";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export const metadata = {
   title: "Snapshot replay - CVE Change Radar",
@@ -42,7 +42,7 @@ function resolveDataDir(): string {
 function readDb<T>(fn: (db: CveDatabase) => T): T | null {
   let handle = null;
   try {
-    handle = openDatabase({ dataDir: resolveDataDir() });
+    handle = openReadDatabase(resolveDataDir());
   } catch {
     return null;
   }
@@ -50,8 +50,6 @@ function readDb<T>(fn: (db: CveDatabase) => T): T | null {
     return fn(handle);
   } catch {
     return null;
-  } finally {
-    handle.close();
   }
 }
 

@@ -317,3 +317,60 @@ export class CveDatabase {
 export function openDatabase(options: OpenDatabaseOptions): CveDatabase {
   return CveDatabase.open(options);
 }
+
+// ---------------------------------------------------------------------------
+// Cached read-only handles for page renders (task 43).
+//
+// Pages used to openDatabase()+migrateUp()+close() per request. On a 4.3GB
+// volume that open/migrate handshake dominates latency, so page renders
+// share one read-only handle per data directory for the process lifetime.
+// Read-only opens never run migrations and never take the writer lock.
+// Tests stay isolated via resetReadDatabaseCache().
+// ---------------------------------------------------------------------------
+
+const readHandles = new Map<string, CveDatabase>();
+
+function resolveReadKey(dataDir: string, filename: string): string {
+  return `${dataDir}::${filename}`;
+}
+
+/** Reuse one read-only connection per data directory (never migrates, never writes). */
+export function openReadDatabase(
+  dataDir: string,
+  filename: string = DB_FILENAME,
+  busyTimeoutMs: number = DEFAULT_BUSY_TIMEOUT_MS,
+): CveDatabase {
+  if (dataDir === undefined || dataDir === "") {
+    throw new DbConfigError(
+      "Refusing to open the CVE database: DATA_DIR is missing or empty. Set DATA_DIR to a writable local directory.",
+    );
+  }
+  const key = resolveReadKey(dataDir, filename);
+  const cached = readHandles.get(key);
+  if (cached !== undefined) return cached;
+  const db = CveDatabase.open({ dataDir, filename, busyTimeoutMs, readOnly: true });
+  // Read-path tuning for the 395k-row volume, applied once per process:
+  // a roomy page cache plus mmap keeps the hot covering indexes and probe
+  // pages resident so per-request renders never touch disk. Read-only only;
+  // the writer keeps its defaults.
+  try {
+    db.handle.pragma("cache_size = -64000");
+    db.handle.pragma("mmap_size = 268435456");
+  } catch {
+    // Tuning is best-effort; a platform that rejects a pragma still serves.
+  }
+  readHandles.set(key, db);
+  return db;
+}
+
+/** Close and forget every cached read handle (test isolation; never call per request). */
+export function resetReadDatabaseCache(): void {
+  for (const db of readHandles.values()) {
+    try {
+      db.close();
+    } catch {
+      // Best-effort close during test teardown.
+    }
+  }
+  readHandles.clear();
+}

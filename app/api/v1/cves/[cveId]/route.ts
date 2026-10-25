@@ -9,7 +9,7 @@ import {
   errorResponse,
   getDb,
   loadFullRecords,
-  okResponse,
+  cachedOkResponse,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
@@ -50,8 +50,9 @@ export async function GET(
     }
     const extras = detailExtras(record.rawJson, record.descriptionLang);
     const nowIso = new Date().toISOString();
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         data: {
           ...toCveItem(record, getAcceptedEpssDate(db), null),

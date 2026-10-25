@@ -7,7 +7,7 @@ import {
   buildRadarEvents,
   errorResponse,
   getDb,
-  okResponse,
+  cachedOkResponse,
   paginate,
   parseCursor,
   parseCveIdParam,
@@ -54,8 +54,9 @@ export async function GET(request: Request): Promise<Response> {
     });
     const { page, hasMore, nextCursor } = paginate(events, offset, limit);
     const nowIso = new Date().toISOString();
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         data: page,
         pagination: { limit, hasMore, nextCursor },

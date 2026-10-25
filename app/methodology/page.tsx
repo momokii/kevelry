@@ -9,9 +9,10 @@ import path from "node:path";
 
 import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/shared";
 import { Masthead } from "@/components/ledger/Masthead";
-import { openDatabase, type CveDatabase } from "@/lib/db";
+import { getAggregates } from "@/lib/aggregates";
+import { openReadDatabase, type CveDatabase } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export const metadata = {
   title: "Methodology and data status - CVE Change Radar",
@@ -56,9 +57,15 @@ export default function MethodologyPage() {
   let loadError: string | null = null;
 
   try {
-    const db = openDatabase({ dataDir: resolveDataDir() });
-    try {
-      provenance = buildProvenance(db, nowIso);
+    const db = openReadDatabase(resolveDataDir());
+    provenance = buildProvenance(db, nowIso);
+    const cached = getAggregates(db);
+    if (cached !== null) {
+      publishedTotal = cached.totals.published;
+      kevListed = cached.totals.kev;
+      epssScored = cached.totals.epssScored;
+      unknownDates = cached.totals.unknownDate;
+    } else {
       publishedTotal = countQuery(
         db,
         "SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED'",
@@ -69,8 +76,6 @@ export default function MethodologyPage() {
         db,
         "SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED' AND date_published IS NULL",
       );
-    } finally {
-      db.close();
     }
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);

@@ -9,7 +9,7 @@ import {
   errorResponse,
   getDb,
   loadFullRecords,
-  okResponse,
+  cachedOkResponse,
   parseCursor,
   parseDateBound,
   parseEpss,
@@ -104,8 +104,9 @@ export async function GET(request: Request): Promise<Response> {
       return toCveItem(record, scoreDate, null);
     });
     const nowIso = new Date().toISOString();
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         q,
         data: data.filter((row) => row !== null),

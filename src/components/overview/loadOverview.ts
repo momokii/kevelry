@@ -1,5 +1,6 @@
 import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
-import { openDatabase, type CveDatabase } from "../../lib/db";
+import { getAggregates, type AggregateSnapshot } from "../../lib/aggregates";
+import { openReadDatabase, type CveDatabase } from "../../lib/db";
 import {
   getAcceptedEpssDate,
   getHighestForecast,
@@ -8,6 +9,7 @@ import {
   getRisingForecast,
   type PriorityItem,
 } from "../../lib/priority";
+import { selectPrimaryCvss, type CvssMetricInput } from "../../lib/ranking";
 import { officialCveLink } from "../../lib/search";
 
 export const OVERVIEW_CHART_DAYS = 14;
@@ -90,9 +92,13 @@ function readDayCounts(db: CveDatabase): {
 
 function readCorrectionNotes(db: CveDatabase): string[] {
   const row = db.handle.prepare("SELECT COUNT(*) AS n FROM cve_tombstones").get() as { n: number };
-  if (row.n <= 0) return [];
+  return tombstoneNotes(row.n <= 0 ? 0 : row.n);
+}
+
+function tombstoneNotes(tombstones: number): string[] {
+  if (tombstones <= 0) return [];
   return [
-    `${row.n} removed or rejected record(s) retained as tombstones; history reflects the accepted corpus.`,
+    `${tombstones} removed or rejected record(s) retained as tombstones; history reflects the accepted corpus.`,
   ];
 }
 
@@ -158,18 +164,109 @@ export function readTitles(db: CveDatabase, cveIds: readonly string[]): Map<stri
   return titles;
 }
 
+/**
+ * Hydrate display items for a small precomputed id list (cached top-N head).
+ * Same fields as the live getters, from chunked PK lookups only — no corpus
+ * scan. Order follows the input ids.
+ */
+function hydrateTopIds(
+  db: CveDatabase,
+  epssDate: string | null,
+  ids: readonly string[],
+): PriorityItem[] {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return [];
+  const publishedById = new Map<string, string | null>();
+  const kevDates = new Map<string, string>();
+  const epssById = new Map<string, string>();
+  const metricsById = new Map<string, CvssMetricInput[]>();
+  for (let index = 0; index < unique.length; index += TITLE_LOOKUP_CHUNK_SIZE) {
+    const group = unique.slice(index, index + TITLE_LOOKUP_CHUNK_SIZE);
+    const placeholders = group.map(() => "?").join(", ");
+    const recordRows = db.handle
+      .prepare(`SELECT cve_id, date_published FROM cve_records WHERE cve_id IN (${placeholders})`)
+      .all(...group) as Array<{ cve_id: string; date_published: string | null }>;
+    for (const row of recordRows) publishedById.set(row.cve_id, row.date_published);
+    const kevRows = db.handle
+      .prepare(`SELECT cve_id, date_added FROM kev_entries WHERE cve_id IN (${placeholders})`)
+      .all(...group) as Array<{ cve_id: string; date_added: string }>;
+    for (const row of kevRows) kevDates.set(row.cve_id, row.date_added);
+    if (epssDate !== null) {
+      const epssRows = db.handle
+        .prepare(
+          `SELECT cve_id, epss, model_version FROM epss_daily WHERE score_date = ? AND cve_id IN (${placeholders})`,
+        )
+        .all(epssDate, ...group) as Array<{ cve_id: string; epss: string; model_version: string }>;
+      const best = new Map<string, { epss: string; model: string }>();
+      for (const row of epssRows) {
+        const prior = best.get(row.cve_id);
+        if (prior === undefined || row.model_version > prior.model) {
+          best.set(row.cve_id, { epss: row.epss, model: row.model_version });
+        }
+      }
+      for (const [cveId, entry] of best) epssById.set(cveId, entry.epss);
+    }
+    const metricRows = db.handle
+      .prepare(
+        `SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics WHERE cve_id IN (${placeholders}) ORDER BY rowid`,
+      )
+      .all(...group) as Array<{
+      cve_id: string;
+      origin: string;
+      version: string;
+      base_score: string;
+      vector: string;
+      source_order: number;
+    }>;
+    for (const row of metricRows) {
+      const list = metricsById.get(row.cve_id) ?? [];
+      list.push({
+        origin: row.origin,
+        version: row.version,
+        baseScore: row.base_score,
+        vector: row.vector,
+        sourceOrder: row.source_order,
+      });
+      metricsById.set(row.cve_id, list);
+    }
+  }
+  return unique.map((id) => ({
+    id,
+    kevMember: kevDates.has(id),
+    epss: epssById.get(id) ?? null,
+    publishedAt: publishedById.get(id) ?? null,
+    dateAdded: kevDates.get(id) ?? null,
+    primary: selectPrimaryCvss(metricsById.get(id) ?? []) ?? null,
+  }));
+}
+
 function buildSummaries(
   db: CveDatabase,
   nowIso: string,
   epssDate: string | null,
+  cached: AggregateSnapshot | null,
 ): PrioritySummary[] {
+  // The cached top-N heads equal the live heads while the EPSS score date is
+  // unchanged (guarded by the caller); hydrating 3 ids costs point lookups
+  // instead of two full-corpus sorts. Known-exploited and new-critical stay
+  // live: both are already sub-second bounded queries.
+  const useCache = cached !== null && cached.epssScoreDate === epssDate;
+  const highestForecast = useCache
+    ? hydrateTopIds(db, epssDate, (cached as AggregateSnapshot).topHighest.slice(0, OVERVIEW_SUMMARY_LIMIT))
+    : getHighestForecast(db, OVERVIEW_SUMMARY_LIMIT);
+  const rising = useCache
+    ? (cached as AggregateSnapshot).topRising
+        .slice(0, OVERVIEW_SUMMARY_LIMIT)
+        .map(({ id, deltaPp }) => ({ id, deltaPp }))
+    : getRisingForecast(db, undefined, OVERVIEW_SUMMARY_LIMIT).map(({ item, deltaPp }) => ({
+        id: item.id,
+        deltaPp,
+      }));
   const knownExploited = getKnownExploited(db, OVERVIEW_SUMMARY_LIMIT);
-  const highestForecast = getHighestForecast(db, OVERVIEW_SUMMARY_LIMIT);
   const newCritical = getNewCritical(db, nowIso, OVERVIEW_SUMMARY_LIMIT);
-  const rising = getRisingForecast(db, undefined, OVERVIEW_SUMMARY_LIMIT);
   const risingTitles = readTitles(
     db,
-    rising.slice(0, OVERVIEW_SUMMARY_LIMIT).map(({ item }) => item.id),
+    rising.slice(0, OVERVIEW_SUMMARY_LIMIT).map(({ id }) => id),
   );
   return [
     {
@@ -201,11 +298,11 @@ function buildSummaries(
       title: "Rising forecast",
       href: "/priority",
       ordering: "Same-model 7-day probability rise; cross-model comparisons are ineligible.",
-      items: rising.slice(0, OVERVIEW_SUMMARY_LIMIT).map(({ item, deltaPp }) => ({
-        cveId: item.id,
-        title: risingTitles.get(item.id) ?? item.id,
+      items: rising.slice(0, OVERVIEW_SUMMARY_LIMIT).map(({ id, deltaPp }) => ({
+        cveId: id,
+        title: risingTitles.get(id) ?? id,
         signal: `7-day rise of ${deltaPp} percentage points, same model.`,
-        officialUrl: officialCveLink(item.id),
+        officialUrl: officialCveLink(id),
       })),
       emptyNote: "No rising forecasts in the retained window.",
     },
@@ -213,20 +310,34 @@ function buildSummaries(
 }
 
 /**
- * Reads the retained local snapshot for the overview page. Opens the database
- * at DATA_DIR, reads every section, then closes the handle so Playwright
- * seeding between requests never meets a held lock. A missing or unusable
- * data directory yields an explicit unavailable payload instead of a throw.
+ * Reads the retained local snapshot for the overview page through the
+ * shared read-only handle (no open/close + migrateUp per request) and the
+ * precomputed aggregate cache (no full-corpus scans). Falls back to live
+ * queries when the cache is empty so a seeded volume works immediately.
+ * A missing or unusable data directory yields an explicit unavailable
+ * payload instead of a throw.
  */
 export function loadOverviewData(dataDir: string, nowIso: string): OverviewData | null {
   let db: CveDatabase | null = null;
   try {
-    db = openDatabase({ dataDir });
+    db = openReadDatabase(dataDir);
   } catch {
     return null;
   }
   try {
-    const { counts, anchorDay, unknownDateCount, publishedTotal } = readDayCounts(db);
+    const cached = getAggregates(db);
+    const { counts, anchorDay, unknownDateCount, publishedTotal } =
+      cached === null
+        ? readDayCounts(db)
+        : {
+            counts: new Map(Object.entries(cached.dayCounts)),
+            anchorDay:
+              Object.keys(cached.dayCounts).length === 0
+                ? null
+                : Object.keys(cached.dayCounts).reduce((a, b) => (a > b ? a : b)),
+            unknownDateCount: cached.unknownDateCount,
+            publishedTotal: cached.publishedTotal,
+          };
     const buckets: DayBucket[] =
       anchorDay === null
         ? []
@@ -235,6 +346,8 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             count: counts.get(bucketStart) ?? 0,
           }));
     const epssDate = getAcceptedEpssDate(db);
+    const correctionNotes =
+      cached === null ? readCorrectionNotes(db) : tombstoneNotes(cached.tombstones);
     return {
       generatedAt: nowIso,
       empty: publishedTotal === 0,
@@ -242,12 +355,12 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       anchorDay,
       buckets,
       unknownDateCount,
-      correctionNotes: readCorrectionNotes(db),
+      correctionNotes,
       provenance: buildProvenance(db, nowIso),
-      summaries: buildSummaries(db, nowIso, epssDate),
+      summaries: buildSummaries(db, nowIso, epssDate, cached),
     };
   } finally {
-    db.close();
+    // Shared read handle stays open for the process; never close per request.
   }
 }
 

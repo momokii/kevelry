@@ -1,12 +1,13 @@
+import { getAggregates, monthCountsFromDays } from "../../../../src/lib/aggregates";
 import {
   acquireConcurrencySlot,
   ApiError,
   assertRequestBounds,
   buildProvenance,
+  cachedOkResponse,
   countRows,
   errorResponse,
   getDb,
-  okResponse,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
@@ -87,41 +88,64 @@ export async function GET(request: Request): Promise<Response> {
       }
     }
     const nowIso = new Date().toISOString();
-    // Bounded aggregation: bucket counts, unknown-date counts, and coverage
-    // all come from indexed COUNT/GROUP BY queries over the accepted tables.
-    // No priority list is materialized, so this route never holds 395k items.
+    // Hot path reads the precomputed aggregate cache (one point lookup) instead
+    // of GROUP BY / COUNT scans; identical shapes, live fallback when empty.
+    const cached = getAggregates(db);
     const prefixLen = bucket === "month" ? 7 : 10;
-    const dayRows = db.handle
-      .prepare(
-        "SELECT substr(date_published, 1, ?) AS day, COUNT(*) AS n FROM cve_records " +
-          "WHERE state = ? AND date_published IS NOT NULL GROUP BY day",
-      )
-      .all(prefixLen, "PUBLISHED") as Array<{ day: string; n: number }>;
-    const counts = new Map<string, number>();
-    for (const row of dayRows) counts.set(row.day, row.n);
-    const totals = db.handle
-      .prepare(
-        "SELECT COUNT(*) AS n, SUM(CASE WHEN date_published IS NULL THEN 1 ELSE 0 END) AS u " +
-          "FROM cve_records WHERE state = ?",
-      )
-      .get("PUBLISHED") as { n: number; u: number };
-    const unknownDateCount = totals.u ?? 0;
+    let counts: Map<string, number>;
+    let unknownDateCount: number;
+    let tombstones: number;
+    if (cached !== null) {
+      const source = bucket === "month" ? monthCountsFromDays(cached.dayCounts) : cached.dayCounts;
+      counts = new Map<string, number>();
+      for (const [key, value] of Object.entries(source)) {
+        if (key.length >= prefixLen) counts.set(key.slice(0, prefixLen), value);
+      }
+      unknownDateCount = cached.unknownDateCount;
+      tombstones = cached.tombstones;
+    } else {
+      const dayRows = db.handle
+        .prepare(
+          "SELECT substr(date_published, 1, ?) AS day, COUNT(*) AS n FROM cve_records " +
+            "WHERE state = ? AND date_published IS NOT NULL GROUP BY day",
+        )
+        .all(prefixLen, "PUBLISHED") as Array<{ day: string; n: number }>;
+      counts = new Map<string, number>();
+      for (const row of dayRows) counts.set(row.day, row.n);
+      const totals = db.handle
+        .prepare(
+          "SELECT COUNT(*) AS n, SUM(CASE WHEN date_published IS NULL THEN 1 ELSE 0 END) AS u " +
+            "FROM cve_records WHERE state = ?",
+        )
+        .get("PUBLISHED") as { n: number; u: number };
+      unknownDateCount = totals.u ?? 0;
+      tombstones = countRows(db, "SELECT COUNT(*) AS n FROM cve_tombstones");
+    }
     const anchor = bucket === "month" ? nowIso.slice(0, 7) : nowIso.slice(0, 10);
     const keys = bucket === "month" ? trailingMonths(anchor, months) : trailingDays(anchor, months);
     const buckets = keys.map((bucketStart) => ({
       bucketStart,
       count: counts.get(bucketStart) ?? 0,
     }));
-    const tombstones = countRows(db, "SELECT COUNT(*) AS n FROM cve_tombstones");
     const correctionNotes =
       tombstones > 0
         ? [
             `${tombstones} removed or rejected record(s) retained as tombstones; history reflects the accepted corpus.`,
           ]
         : [];
-    const coverage = unfilteredCohortCoverage(db, buckets.length);
-    return okResponse(
+    const coverage =
+      cached === null
+        ? unfilteredCohortCoverage(db, buckets.length)
+        : {
+            eligibleCohort: cached.publishedTotal,
+            returned: buckets.length,
+            unscored: cached.totals.unscored,
+            unknownEpss: cached.totals.unknownEpss,
+            unknownDate: cached.unknownDateCount,
+          };
+    return cachedOkResponse(
       request,
+      db,
       {
         bucket,
         dateBasis: "publishedAt-utc",

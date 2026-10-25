@@ -246,6 +246,35 @@ Do not flag an old vulnerability merely because its record has not changed.
 Flag EPSS when its accepted score date is **older than 2 UTC calendar days**.
 Keep last-known-good data with visible per-source timestamps and errors during outages.
 
+## Aggregate Cache (read-path performance)
+
+Hot paths (overview page, `/api/v1/overview`, `/api/v1/status`,
+`/api/v1/health`) read the precomputed `aggregate_cache` table (migration
+002) instead of recomputing GROUP BY / COUNT(*) / full-corpus sorts per
+request. Refresh rules:
+
+- The worker calls `refreshAggregates` once after every successful
+  CVE/KEV/EPSS import cycle, and on boot when the cache table is empty (so a
+  seeded volume serves fast reads without waiting for an import).
+- `refreshAggregates` is idempotent (recompute + INSERT OR REPLACE) and
+  bounded: every section is a GROUP BY over indexed columns (per-day,
+  per-month, per-band, per-model) — the full corpus is never materialized in
+  JS memory.
+- Readers fall back to live queries when a cache key is absent, so an empty
+  cache is never an outage; response shapes are identical either way.
+- The severity-band section uses a SQL mirror of `selectPrimaryCvss`
+  (preferred version, then max base within it); vector/sourceOrder tie-breaks
+  cannot change a band and are therefore out of scope for the mirror.
+- One-off refresh without an import cycle:
+  `REFRESH_AGGREGATES_ONCE=true node dist/worker.mjs`
+  (Compose: `docker compose exec app env REFRESH_AGGREGATES_ONCE=true node
+  worker.mjs`).
+
+Success GET responses carry `Cache-Control: public, max-age=30,
+s-maxage=60, stale-while-revalidate=300` plus a strong ETag derived from the
+aggregate revision and request shape (304 on `If-None-Match`); error
+responses are never cached.
+
 ## Security and Acceptance Gates
 
 Treat upstream text/URLs/archives as untrusted. Validate bounded input/schema,

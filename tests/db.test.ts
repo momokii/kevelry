@@ -79,7 +79,7 @@ describe("sqlite storage (todo 7)", () => {
   it("opens with WAL mode and applies the versioned schema", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
-      expect(db.appliedVersions()).toEqual([1]);
+      expect(db.appliedVersions()).toEqual([1, 2]);
       expect(db.handle.pragma("journal_mode", { simple: true })).toBe("wal");
       for (const table of [
         "cve_records",
@@ -93,6 +93,7 @@ describe("sqlite storage (todo 7)", () => {
         "cve_tombstones",
         "cve_fts",
         "schema_migrations",
+        "aggregate_cache",
       ]) {
         expect(tableNames(db)).toContain(table);
       }
@@ -131,12 +132,13 @@ describe("sqlite storage (todo 7)", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
       expect(db.migrate()).toEqual([]);
-      expect(db.revertTo(0)).toEqual([1]);
+      expect(db.revertTo(0)).toEqual([2, 1]);
       expect(db.appliedVersions()).toEqual([]);
       expect(tableNames(db)).not.toContain("cve_records");
       expect(tableNames(db)).not.toContain("cve_fts");
+      expect(tableNames(db)).not.toContain("aggregate_cache");
 
-      expect(db.migrate()).toEqual([1]);
+      expect(db.migrate()).toEqual([1, 2]);
       expect(tableNames(db)).toContain("cve_records");
       insertRecord(db, "CVE-2099-0002", "Round trip", "Schema works after re-migration");
       const rows = db.handle

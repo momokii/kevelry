@@ -16,7 +16,7 @@ import {
   errorResponse,
   getDb,
   loadFullRecords,
-  okResponse,
+  cachedOkResponse,
   parseCursor,
   parseLimit,
   preflightResponse,
@@ -95,8 +95,9 @@ export async function GET(
         if (record === undefined) return null;
         return toCveItem(record, scoreDate, null);
       });
-      return okResponse(
+      return cachedOkResponse(
         request,
+        db,
         {
           list,
           ordering: ORDERINGS[list],
@@ -132,8 +133,9 @@ export async function GET(
       if (record === undefined) return null;
       return toCveItem(record, scoreDate, null);
     });
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         list,
         ordering: ORDERINGS[list],

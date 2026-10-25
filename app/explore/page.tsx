@@ -1,4 +1,5 @@
 import path from "node:path";
+import { unstable_cache } from "next/cache";
 
 import { ExploreFilters } from "@/components/explore/ExploreFilters";
 import { ExploreResults, type ExploreOutcome } from "@/components/explore/ExploreResults";
@@ -8,17 +9,18 @@ import {
   ExploreInitial,
   isSeverityBand,
 } from "@/components/explore/filter-meta";
-import { openDatabase } from "@/lib/db";
+import { openReadDatabase } from "@/lib/db";
 import {
   MAX_SEARCH_LIMIT,
   SearchValidationError,
   searchCves,
   type EpssFilter,
   type KevFilter,
+  type SearchResponse,
   type SeverityBand,
 } from "@/lib/search";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export const metadata = {
   title: "Explore CVE records",
@@ -90,6 +92,39 @@ function hrefWith(params: URLSearchParams): string {
   return text === "" ? "/explore" : `/explore?${text}`;
 }
 
+// Param-keyed result cache (60s, same staleness as the page revalidate):
+// the unfiltered explore scan materializes the full corpus per render, so
+// repeats with identical filters serve the retained snapshot instead of
+// rescanning. Only fulfilled results are cached; validation and I/O
+// failures propagate uncached every time.
+const cachedExploreSearch = unstable_cache(
+  async (dataDir: string, key: string): Promise<SearchResponse> => {
+    const args = JSON.parse(key) as {
+      q: string;
+      dateStart: string;
+      dateEnd: string;
+      severity: SeverityBand[];
+      kev: KevFilter;
+      epss: EpssFilter;
+      limit: number;
+      cursor: string | null;
+    };
+    const db = openReadDatabase(dataDir);
+    return searchCves(db, {
+      q: args.q === "" ? undefined : args.q,
+      dateStart: args.dateStart === "" ? undefined : args.dateStart,
+      dateEnd: args.dateEnd === "" ? undefined : args.dateEnd,
+      severity: args.severity.length === 0 ? undefined : args.severity,
+      kev: args.kev,
+      epss: args.epss,
+      limit: args.limit,
+      cursor: args.cursor ?? undefined,
+    });
+  },
+  ["explore-search-v1"],
+  { revalidate: 60 },
+);
+
 function resolveDataDir(): string {
   const raw = process.env.DATA_DIR;
   if (raw !== undefined && raw.trim() !== "") {
@@ -126,52 +161,51 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
     initial.epss = epss;
     initial.limit = limit;
 
-    const dataDir = resolveDataDir();
-    let db = null;
+    let response: SearchResponse | null = null;
     try {
-      db = openDatabase({ dataDir, readOnly: true });
-    } catch {
-      db = null;
-    }
-    if (db === null) {
-      outcome = { kind: "unavailable" };
-    } else {
-      try {
-        const response = searchCves(db, {
-          q: q === "" ? undefined : q,
-          dateStart: dateStart === "" ? undefined : dateStart,
-          dateEnd: dateEnd === "" ? undefined : dateEnd,
-          severity: severity.length === 0 ? undefined : severity,
+      response = await cachedExploreSearch(
+        resolveDataDir(),
+        JSON.stringify({
+          q,
+          dateStart,
+          dateEnd,
+          severity,
           kev,
           epss,
           limit,
-          cursor,
-        });
-          const filtered =
-            q !== "" ||
-            dateStart !== "" ||
-            dateEnd !== "" ||
-            severity.length > 0 ||
-            kev !== "all" ||
-            epss !== "all";
-          const kept = new URLSearchParams();
-          if (q !== "") kept.set("q", q);
-          if (dateStart !== "") kept.set("dateStart", dateStart);
-          if (dateEnd !== "") kept.set("dateEnd", dateEnd);
-          for (const band of severity) kept.append("severity", band);
-          if (kev !== "all") kept.set("kev", kev);
-          if (epss !== "all") kept.set("epss", epss);
-          if (limit !== EXPLORE_DEFAULT_LIMIT) kept.set("limit", String(limit));
-          const nextHref =
-            response.nextCursor === null
-              ? null
-              : hrefWith(new URLSearchParams([...kept.entries(), ["cursor", response.nextCursor]]));
-          const firstHref = response.offset > 0 ? hrefWith(kept) : null;
-          outcome = { kind: "results", response, filtered, nextHref, firstHref };
-        } finally {
-          db.close();
-        }
+          cursor: cursor ?? null,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof SearchValidationError) {
+        throw error;
       }
+    }
+    if (response === null) {
+      outcome = { kind: "unavailable" };
+    } else {
+      const filtered =
+        q !== "" ||
+        dateStart !== "" ||
+        dateEnd !== "" ||
+        severity.length > 0 ||
+        kev !== "all" ||
+        epss !== "all";
+      const kept = new URLSearchParams();
+      if (q !== "") kept.set("q", q);
+      if (dateStart !== "") kept.set("dateStart", dateStart);
+      if (dateEnd !== "") kept.set("dateEnd", dateEnd);
+      for (const band of severity) kept.append("severity", band);
+      if (kev !== "all") kept.set("kev", kev);
+      if (epss !== "all") kept.set("epss", epss);
+      if (limit !== EXPLORE_DEFAULT_LIMIT) kept.set("limit", String(limit));
+      const nextHref =
+        response.nextCursor === null
+          ? null
+          : hrefWith(new URLSearchParams([...kept.entries(), ["cursor", response.nextCursor]]));
+      const firstHref = response.offset > 0 ? hrefWith(kept) : null;
+      outcome = { kind: "results", response, filtered, nextHref, firstHref };
+    }
   } catch (error) {
     if (error instanceof SearchValidationError) {
       outcome = invalid(error.message);

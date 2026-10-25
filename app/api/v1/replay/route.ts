@@ -8,7 +8,7 @@ import {
   errorResponse,
   getDb,
   mapReplayReason,
-  okResponse,
+  cachedOkResponse,
   paginate,
   parseCursor,
   parseDay,
@@ -102,8 +102,9 @@ export async function GET(request: Request): Promise<Response> {
       if (snapshot === undefined) return null;
       return toReplayItem(cveId, snapshot, result.manifest.sourcePins);
     });
-    return okResponse(
+    return cachedOkResponse(
       request,
+      db,
       {
         checkpointDate: date,
         view,
