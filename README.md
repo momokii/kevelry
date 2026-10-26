@@ -6,22 +6,23 @@ replayable history. One self-contained Docker image, one container, and a
 versioned read-only API so other platforms (or your own self-hosted copy) can
 consume the same data.
 
-> **Status: implemented, verified, and deployed, all 30 build todos plus F1-F4 gates approved.**
-> The interactive UI round (charts, filter tooltips, global timezone, methodology
-> diagrams, in-app API docs) shipped on 2026-10-26. Evidence lives under `.omo/evidence/`.
+> **Status: implemented, verified, and deployed. Full Research Console UI revamp shipped 2026-10-26.**
+> All 30 build todos and F1-F4 gates remain approved; the visual and interaction
+> layer was rebuilt around interactive SVG charts, a real severity×EPSS matrix,
+> a global timezone, and a compact analyst shell. Evidence under `.omo/evidence/`.
 
 ## What it does
 
-- **Overview:** interactive 24-month/30-day publication volume, severity mix, EPSS
-  distribution, KEV additions, and corpus totals. Every bar opens the matching
-  filtered view; a plain-language freshness panel explains what each source state
-  means for the numbers on the page.
-- **Search:** CVE ID and description search with explained filters, auto-applied
-  changes, a matching-cohort panel (severity composition plus monthly histogram),
-  excerpts, and official CVE links.
-- **Priority lists:** known-exploited, highest forecast, new critical, rising forecast.
-  KEV, EPSS, and CVSS render as separate explained blocks with a real probability
-  bar and timezone-aware dates. Deterministic ordering, no invented popularity score.
+- **Overview:** a factual hero, four corpus stats, a 24/12-month volume explorer,
+  severity composition, a log-scale EPSS distribution, KEV rhythm, and an exact
+  severity×EPSS matrix with KEV rings and a keyboard inspector. Selecting a month,
+  band, or cell explains the cohort and links into Search.
+- **Search:** explained filters that auto-apply, a cohort composition panel
+  (severity, month, signal coverage), and compact result rows with severity,
+  KEV, EPSS, and official-record links.
+- **Priority lists:** known-exploited, highest forecast, new critical, rising forecast
+  as a compact expandable table. KEV, EPSS, and CVSS remain separate signals with
+  definitions, real bars, and timezone-aware dates; no composite score.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
 - **Snapshot replay:** a retained daily checkpoint plus policy version shows
@@ -31,8 +32,28 @@ consume the same data.
 - **Methodology and data status:** pipeline, signal-relationship, and ordering
   diagrams; sources, notices, ordering rules, coverage gaps, and per-source
   stale/warning states, always visible.
-- **Global display timezone:** a masthead selector (default Asia/Jakarta) re-renders
-  every instant on the page; UTC day/month buckets stay explicitly labeled UTC.
+- **Global display timezone:** a rail selector (default Asia/Jakarta) re-renders
+  every instant; UTC day/month buckets stay explicitly labeled UTC.
+
+## Interface
+
+The product is a **Research Console**: a persistent 232px rail, a sticky command
+bar (`⌘K` focuses search), warm paper surfaces, Instrument Sans + JetBrains Mono,
+and chart-first pages. The interaction contract is deliberate:
+
+- every chart has a takeaway, a "How to read" disclosure, and a data table;
+- hover and keyboard focus show the same exact tooltip with a named denominator;
+- selection is reversible (`Escape` or clear) and click-through preserves context;
+- severity is never color-only, and unscored is an explicit band, never zero;
+- no page overflows at 360px or 200% zoom; standalone targets are 44×44px.
+
+The visual system is documented in [`DESIGN.md`](DESIGN.md). The palette is the
+same warm neutral family as before: paper `rgb(247,246,243)`, ink
+`rgb(26,26,26)`, rule `rgb(214,211,205)`, accent `rgb(0,106,159)`.
+
+Charts use visx SVG primitives rather than a canvas chart framework, so values
+remain in the DOM and CSS variables carry the theme. Fonts are self-hosted in
+`public/fonts/` (OFL) with no runtime CDN.
 
 ## How it works
 
@@ -199,9 +220,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 
 Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a
 date basis; known-exploited returns KEV entries; search returns matches with excerpts.
-Measured on the live 395k volume (2026-10-26): `/` about 0.4 s, `/explore` about
-2.3 s on the first uncached filter combination and about 0.02 s when repeated,
-`/priority` about 0.24 s, `/methodology` about 0.03 s, and
+Measured on the live 395k volume after the Research Console revamp
+(2026-10-26): `/` about 0.17 s, `/explore` about 2.3 s on the first uncached
+filter combination and about 0.03 s when repeated, `/priority` about 0.14 s,
+`/methodology` about 0.02 s, `/radar` and `/replay` under 0.02 s, and
 `/api/v1/cves?limit=2` about 1.3 s.
 
 Read-path performance: overview/status/health serve the precomputed aggregate cache
@@ -273,6 +295,9 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
   scan (about 2.3 s here); identical filter combinations are cached for 60 s.
 - The display timezone changes rendering only. Publication buckets stay UTC days or
   months, and every chart says so; it is not a timezone conversion of the data.
+- The severity×EPSS matrix scrolls horizontally below about 620px; a visible hint
+  states this. Its counts are exact but only available after aggregate cache v3 is
+  refreshed (automatic on the next import cycle, or the one-off command above).
 
 ## Development
 
@@ -326,6 +351,7 @@ Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review
 
 | Document                                                                                   | Purpose                                                                   |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| [`DESIGN.md`](DESIGN.md)                                                                   | Research Console tokens, shell, chart contract, interaction and a11y rules |
 | [`FEASIBILITY.md`](FEASIBILITY.md)                                                         | Coverage verdict: what sources support, explicit gaps, readiness gates    |
 | [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md)                                           | Proposed ingestion, ranking, history, freshness, and acceptance contracts |
 | [`docs/research/SOURCES.md`](docs/research/SOURCES.md)                                     | First-party terms, endpoints, fields, live validations, limits            |

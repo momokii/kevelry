@@ -2,6 +2,26 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-26 - Full Research Console UI revamp
+
+The owner rejected the Evidence Ledger presentation as dated and insufficiently
+interactive, while keeping the palette and the data/scoring model. Ran parallel
+research on 2026 dashboard patterns, chart libraries, and threat-intelligence
+visualization, then built three visual prototypes (Editorial Atlas, Operations
+Console, Scientific Workbench). Synthesized them into a Research Console:
+persistent rail, command bar, Instrument Sans + JetBrains Mono, visx SVG charts,
+and a centerpiece severity×EPSS matrix with KEV rings and a keyboard inspector.
+
+Aggregate cache v3 adds exact log-EPSS buckets and joint severity×EPSS cells.
+Explore gained a filter disclosure, auto-apply, and cohort composition; Priority
+became a compact expandable signal table; Radar/Replay/Methodology/API docs were
+recomposed around the same shell and primitives. All product copy, notices, and
+no-composite-score rules remain. Removed the superseded overview components and
+the legacy cohort styles.
+
+Verification: 364 unit tests and 65 Playwright tests pass (1 skipped), lint,
+typecheck, build, Docker build, 360/200% zoom and reduced-motion gates, live
+timings 0.01-0.17s warm (explore 2.3s cold, 0.03s warm), 0 restarts.
 ## 2026-10-26 - Interactive UI, global timezone, and read-path speed
 
 Reviewed the deployed site against the owner's feedback and rebuilt the weak

@@ -4,8 +4,8 @@
 
 Deployed and serving on this host: single container at
 http://100.124.184.116:3100 (Tailscale). All 30 build todos delivered, F1–F4
-approved, post-deployment hardening complete, and the interactive UI/UX round
-shipped. Local `main` only: no remote.
+approved, post-deployment hardening complete, and the full Research Console UI
+revamp shipped. Local `main` only: no remote.
 
 ## Completed
 
@@ -40,6 +40,9 @@ shipped. Local `main` only: no remote.
 - [x] In-app `/api-docs` rendered from `openapi/v1.yaml` with curl examples and a masthead entry
 - [x] Read-path performance: aggregate cache (migration 002), covering indexes, ETag/304, 60s explore/facets cache; live `/` 0.4s, `/priority` 0.24s, `/explore` 2.3s cold then 0.02s warm, `/methodology` 0.03s, 0 restarts
 - [x] Verification after the UI round: 364 unit tests pass (3 skipped), 67 Playwright tests pass (1 skipped), lint/typecheck/build green; 360/768/1280 screenshots with zero horizontal overflow and clean consoles
+- [x] Full Research Console revamp (2026-10-26): persistent rail + command bar; Instrument Sans/JetBrains Mono self-hosted; visx volume/log-EPSS/severity/KEV charts; exact severity×EPSS matrix with KEV rings and keyboard inspector; collapsible explore filters with cohort charts; compact expandable priority table; radar feed/inspector; methodology/API restyle
+- [x] Aggregate cache v3 adds `epssLogHistogram` and `severityEpssMatrix`; live refresh run on the 395k volume
+- [x] Revamp verification: 364 unit + 65 Playwright tests pass (1 skipped), 44px targets, 200%/360px overflow gates, reduced-motion gate; warm pages 0.01–0.17s, explore 2.3s cold then 0.03s warm, 0 restarts
 
 ## In Progress
 
@@ -66,4 +69,4 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 
 ## Last Updated
 
-2026-10-26: interactive UI/UX round shipped and deployed; 364 unit + 67 Playwright tests green; warm pages 0.02-0.4s, explore 2.3s cold then 0.02s warm; 0 restarts.
+2026-10-26: Research Console revamp shipped and deployed; 364 unit + 65 Playwright tests green; warm pages 0.01-0.17s, explore 2.3s cold then 0.03s warm; 0 restarts.

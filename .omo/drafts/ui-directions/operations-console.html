@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CVE Intel — Operations Console · Overview</title>
+<style>
+:root{
+  --canvas:rgb(247,246,243); --surface:#fff; --surface-2:rgb(252,251,249);
+  --ink:rgb(26,26,26); --sec:rgb(89,89,89); --faint:rgb(140,137,130);
+  --rule:rgb(214,211,205); --rule-soft:rgb(228,225,219);
+  --accent:rgb(0,106,159); --accent-wash:rgba(0,106,159,.08); --accent-line:rgba(0,106,159,.35);
+  --crit:#B42318; --high:#C65D0E; --med:#8A6D00; --low:#4D7C0F; --none:#6B7280;
+  --kev:#B42318; --ok:#2F7D32; --stale:#C65D0E;
+  --r:7px; --rail:236px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:var(--font);background:var(--canvas);color:var(--ink);font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.app{display:flex;min-height:100vh}
+/* ---- rail ---- */
+.rail{width:var(--rail);flex:0 0 var(--rail);background:var(--surface);border-right:1px solid var(--rule);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:40}
+.rail-brand{display:flex;align-items:center;gap:9px;padding:14px 16px 12px;border-bottom:1px solid var(--rule-soft)}
+.brand-mark{width:26px;height:26px;border-radius:6px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}
+.brand-name{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+.brand-sub{font-size:11px;color:var(--sec);font-family:var(--mono)}
+.rail-nav{padding:8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+.rail-label{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:10px 10px 4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:0 6px 6px 0;font-size:13.5px;color:var(--sec);border-left:2px solid transparent;width:100%;text-align:left}
+.nav-item svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.nav-item:hover{background:var(--canvas);color:var(--ink)}
+.nav-item.active{background:var(--accent-wash);color:var(--ink);border-left-color:var(--accent);font-weight:600}
+.nav-item .kbd{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint);border:1px solid var(--rule);border-radius:4px;padding:0 4px;background:var(--surface)}
+.nav-item .count{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--sec);background:var(--canvas);border:1px solid var(--rule-soft);padding:0 6px;border-radius:20px}
+.health-mini{margin:8px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface-2);padding:10px 12px}
+.health-mini h4{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+.hrow{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 0;font-family:var(--mono)}
+.hrow .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.dot.ok{background:var(--ok)} .dot.stale{background:var(--stale)}
+.hrow .src{color:var(--ink);font-weight:600}
+.hrow .st{margin-left:auto;color:var(--sec)}
+.rail-foot{margin-top:auto;border-top:1px solid var(--rule-soft);padding:8px}
+.foot-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;font-size:12.5px;color:var(--sec);width:100%;text-align:left}
+.foot-row:hover{background:var(--canvas);color:var(--ink)}
+.foot-row svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round}
+.foot-row .val{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint)}
+/* ---- main / topbar ---- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:30;background:rgba(247,246,243,.93);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:12px;padding:0 20px;height:52px}
+.hamburger{display:none;width:32px;height:32px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);align-items:center;justify-content:center;font-size:16px}
+.crumb{font-size:13.5px;white-space:nowrap}
+.crumb .ctx{color:var(--faint)}
+.crumb strong{font-weight:700}
+.search{flex:1;max-width:460px;margin:0 auto;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:5px 8px 5px 10px;color:var(--faint);font-size:13px}
+.search svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none}
+.search input{border:none;outline:none;background:none;flex:1;font:inherit;color:var(--ink);min-width:0}
+.search .cmd{font-family:var(--mono);font-size:11px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--canvas);color:var(--sec);white-space:nowrap}
+.top-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.chip-fresh{display:flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono);border:1px solid var(--rule);background:var(--surface);border-radius:20px;padding:3px 10px;white-space:nowrap}
+.chip-fresh .pulse{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.seg{display:flex;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg button{font-size:12px;padding:5px 10px;color:var(--sec);border-right:1px solid var(--rule-soft)}
+.seg button:last-child{border-right:none}
+.seg button.on{background:var(--ink);color:#fff;font-weight:600}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+/* ---- content ---- */
+.content{padding:16px 20px 40px;max-width:1240px;width:100%;margin:0 auto}
+.row-head{display:flex;align-items:baseline;gap:12px;margin:4px 0 12px;flex-wrap:wrap}
+.row-head h1{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.row-head .meta{font-size:12px;color:var(--sec);font-family:var(--mono)}
+.row-head .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{font-size:12.5px;border:1px solid var(--rule);background:var(--surface);border-radius:6px;padding:5px 11px;color:var(--ink)}
+.btn:hover{border-color:var(--accent-line)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono);background:var(--ink);color:#fff;border-radius:20px;padding:3px 6px 3px 11px}
+.pill button{width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center}
+.pill.ghost{background:var(--surface);color:var(--sec);border:1px dashed var(--rule)}
+.signal-strip{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border:1px solid var(--rule);border-radius:8px;margin-bottom:12px;overflow:hidden}
+.kpi{padding:12px 16px 11px;border-right:1px solid var(--rule-soft);cursor:default}
+.kpi:last-child{border-right:none}
+.kpi:hover{background:var(--surface-2)}
+.kpi.sel{background:var(--accent-wash);box-shadow:inset 0 -2px 0 var(--accent)}
+.kpi .k-label{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--sec)}
+.kpi .k-val{font-size:23px;font-weight:700;letter-spacing:-.02em;margin:2px 0 0}
+.kpi .k-sub{font-size:11.5px;color:var(--sec);font-family:var(--mono)}
+.delta.up{color:var(--stale);font-weight:600} .delta.flat{color:var(--ok);font-weight:600}
+.split{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:8px;min-width:0}
+.panel-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--rule-soft)}
+.panel-head h2{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--sec)}
+.panel-head .hint{font-size:11px;color:var(--faint);font-family:var(--mono)}
+.panel-head .act{margin-left:auto;display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--sec);font-family:var(--mono)}
+.chart-lg{grid-column:span 8}
+.side-stack{grid-column:span 4;display:flex;flex-direction:column;gap:12px;min-width:0}
+.chart-wrap{position:relative;padding:8px 10px 0}
+#tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;border-radius:6px;padding:7px 10px;font-size:12px;font-family:var(--mono);line-height:1.5;display:none;z-index:5;white-space:nowrap}
+#tip .t-id{color:#9CD3EE;font-weight:700}
+#tip .t-big{font-size:14px;font-weight:700}
+.sel-banner{display:flex;align-items:center;gap:8px;margin:0 14px 8px;font-size:12px;font-family:var(--mono);background:var(--accent-wash);border:1px solid var(--accent-line);border-radius:6px;padding:5px 10px}
+.sel-banner button{margin-left:auto;color:var(--accent);font-weight:700;font-size:12px}
+.brush{padding:2px 14px 12px}
+.brush .track{position:relative;height:34px;background:var(--canvas);border:1px solid var(--rule-soft);border-radius:5px}
+.brush .win{position:absolute;top:0;bottom:0;border:1.5px solid var(--accent);background:rgba(0,106,159,.07);border-radius:4px;pointer-events:none}
+.brush .mini{display:flex;align-items:flex-end;gap:1px;height:100%;padding:4px 5px}
+.brush .mini i{flex:1;background:#B9B5AB;border-radius:1px;min-height:2px}
+.brush .cap{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:3px}
+.xlabels{display:flex;padding:2px 14px 10px;font-size:10.5px;color:var(--faint);font-family:var(--mono)}
+.xlabels span{flex:1;text-align:center}
+.xlabels span:nth-child(even){visibility:hidden}
+.sev-body{padding:10px 14px 12px}
+.sev-row{display:grid;grid-template-columns:64px 1fr 62px;align-items:center;gap:8px;padding:3px 4px;border-radius:5px;font-size:12.5px}
+.sev-row:hover,.sev-row.hot{background:var(--accent-wash)}
+.sev-row .s-name{font-weight:600;font-size:12px}
+.sev-row .bar{height:9px;background:var(--canvas);border:1px solid var(--rule-soft);border-radius:5px;overflow:hidden}
+.sev-row .bar i{display:block;height:100%}
+.sev-row .s-n{font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--sec)}
+.epss-body{padding:10px 14px 6px}
+.epss-bars{display:flex;align-items:flex-end;gap:3px;height:64px}
+.epss-bars .b{flex:1;background:var(--accent);opacity:.85;border-radius:3px 3px 0 0;min-height:2px}
+.epss-bars .b:first-child{opacity:.32}
+.epss-bars .b:hover{opacity:1;outline:2px solid var(--accent-line)}
+.epss-x{display:flex;gap:3px;font-size:9.5px;color:var(--faint);font-family:var(--mono);margin-top:3px}
+.epss-x span{flex:1;text-align:center}
+.kev-body{padding:10px 14px 12px}
+.kev-nums{display:flex;align-items:flex-end;gap:4px;height:44px;margin-top:6px}
+.kev-nums i{flex:1;background:#D8A24A;border-radius:2px;min-height:3px}
+.kev-nums i:last-child{background:var(--kev)}
+.kev-cap{font-size:11px;color:var(--sec);font-family:var(--mono);margin-top:4px}
+.ptable{grid-column:span 12}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);padding:8px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--rule-soft);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover,tbody tr.hl{background:var(--accent-wash)}
+tbody tr.dim{opacity:.38}
+.cve-id{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--accent);white-space:nowrap}
+.tag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;font-family:var(--mono);border-radius:4px;padding:1px 7px;white-space:nowrap;border:1px solid transparent}
+.tag.kev{background:rgba(180,35,24,.1);color:var(--kev);border-color:rgba(180,35,24,.3)}
+.tag.epss{background:rgba(0,106,159,.09);color:var(--accent);border-color:rgba(0,106,159,.28)}
+.tag.cvss-c{background:rgba(180,35,24,.1);color:var(--kev)}
+.tag.cvss-h{background:rgba(198,93,14,.12);color:var(--high)}
+.tag.mut{background:var(--canvas);color:var(--sec);border-color:var(--rule-soft);font-weight:600}
+.tbl-title{font-size:13px}
+.tbl-title .sub{display:block;font-size:11.5px;color:var(--sec);font-weight:400}
+.tbl-foot{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12px;color:var(--sec);font-family:var(--mono)}
+.tbl-foot .pgs{margin-left:auto;display:flex;gap:4px;align-items:center}
+.tbl-foot .pgs button{border:1px solid var(--rule);border-radius:5px;min-width:26px;height:26px;font-size:12px;font-family:var(--mono);background:var(--surface)}
+.tbl-foot .pgs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.shealth{grid-column:span 12}
+.shealth summary{list-style:none;display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600}
+.shealth summary::-webkit-details-marker{display:none}
+.shealth summary .chev{transition:transform .15s;color:var(--faint);font-size:11px}
+.shealth[open] summary .chev{transform:rotate(90deg)}
+.shealth summary .ok-t{margin-left:auto;font-size:11.5px;font-family:var(--mono);color:var(--ok);font-weight:600}
+.src-grid{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--rule-soft)}
+.src-cell{padding:11px 14px;border-right:1px solid var(--rule-soft);font-size:12.5px}
+.src-cell:last-child{border-right:none}
+.src-cell .s-top{display:flex;align-items:center;gap:7px;font-weight:700;margin-bottom:3px}
+.src-cell .mono{font-family:var(--mono);font-size:11.5px;color:var(--sec)}
+.st-ok{color:var(--ok)} .st-warn{color:var(--stale)}
+.sqdot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--sec);font-family:var(--mono);padding:10px 2px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.kbd-foot{color:var(--faint);font-size:11.5px;font-family:var(--mono);padding:0 2px}
+kbd{border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--surface);font-family:var(--mono);font-size:11px}
+.scrim{display:none;position:fixed;inset:0;background:rgba(26,26,26,.4);z-index:48}
+.scrim.show{display:block}
+@media(max-width:900px){
+  .rail{position:fixed;left:0;top:0;bottom:0;transform:translateX(-105%);transition:transform .2s ease}
+  body.nav-open .rail{transform:none}
+  .hamburger{display:flex}
+  .split{grid-template-columns:1fr}
+  .chart-lg,.side-stack,.ptable,.shealth{grid-column:1/-1}
+  .signal-strip{grid-template-columns:1fr 1fr}
+  .kpi:nth-child(2){border-right:none}
+  .kpi:nth-child(1),.kpi:nth-child(2){border-bottom:1px solid var(--rule-soft)}
+  .src-grid{grid-template-columns:1fr}
+  .src-cell{border-right:none;border-bottom:1px solid var(--rule-soft)}
+  .src-cell:last-child{border-bottom:none}
+  .topbar{padding:0 12px;gap:8px}
+  .crumb{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .crumb .ctx{display:none}
+  .top-right{margin-left:0}
+  .search{min-width:0;padding-left:8px}
+  .avatar{display:none}
+  .xlabels span{visibility:hidden}
+  .xlabels span:nth-child(4n+1){visibility:visible}
+  .content{padding:12px 12px 32px}
+  .seg{display:none}
+  .chip-fresh .long{display:none}
+  thead th:nth-child(5),tbody td:nth-child(5){display:none}
+  tbody td{padding:7px 8px}
+  .search{max-width:none}
+}
+</style>
+</head>
+<body>
+<div class="scrim" id="scrim"></div>
+<div class="app">
+  <aside class="rail" aria-label="Primary">
+    <div class="rail-brand">
+      <div class="brand-mark">◈</div>
+      <div><div class="brand-name">CVE Intel</div><div class="brand-sub">ops console · v2.4</div></div>
+    </div>
+    <nav class="rail-nav">
+      <div class="rail-label">Monitor</div>
+      <a class="nav-item active" href="#"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Search<span class="kbd">/</span></a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="M12 3v10m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>Priority<span class="count">1,756</span></a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 6-8"/><path d="M18 6h3v3"/></svg>Radar</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h4"/></svg>Replay</a>
+      <div class="rail-label">Reference</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 19a2 2 0 012-2h13"/></svg>Method</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg>API<span class="count">v1</span></a>
+    </nav>
+    <div class="health-mini">
+      <h4>Source health</h4>
+      <div class="hrow"><span class="dot stale"></span><span class="src">CVE</span><span class="st">stale 11h</span></div>
+      <div class="hrow"><span class="dot stale"></span><span class="src">KEV</span><span class="st">stale 12h</span></div>
+      <div class="hrow"><span class="dot ok"></span><span class="src">EPSS</span><span class="st">current</span></div>
+    </div>
+    <div class="rail-foot">
+      <button class="foot-row"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>UTC−04:00<span class="val">EDT</span></button>
+      <button class="foot-row"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 01-.4 2.4l2 1.6-2 3.4-2.4-.9a7 7 0 01-2 1.2L14 22h-4l-.2-2.3a7 7 0 01-2-1.2l-2.4.9-2-3.4 2-1.6A7 7 0 015 12a7 7 0 01.4-2.4l-2-1.6 2-3.4 2.4.9a7 7 0 012-1.2L10 2h4l.2 2.3a7 7 0 012 1.2l2.4-.9 2 3.4-2 1.6c.3.7.4 1.6.4 2.4z"/></svg>Settings<span class="val">⌘,</span></button>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="hamburger" id="ham" aria-label="Menu">☰</button>
+      <div class="crumb"><span class="ctx">CVE Intel /</span> <strong>Overview</strong> <span class="ctx">· all sources</span></div>
+      <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="gsearch" placeholder="Search CVE, vendor, product…"><span class="cmd">⌘K</span></label>
+      <div class="top-right">
+        <span class="chip-fresh" title="CVE stale 11h · KEV stale 12h · EPSS current 2026-10-24"><span class="pulse"></span>EPSS current <span class="long">· CVE 11h · KEV 12h</span></span>
+        <div class="seg" role="group" aria-label="Density"><button class="on">Cozy</button><button>Compact</button></div>
+        <div class="avatar">AN</div>
+      </div>
+    </header>
+    <div class="content">
+      <div class="row-head">
+        <h1>Operations overview</h1>
+        <span class="meta">snapshot 2026-10-26 · corpus frozen at ingest #4,812</span>
+        <span class="right"><button class="btn">Export CSV</button><button class="btn primary">Triage queue →</button></span>
+      </div>
+      <div class="pills" id="pills">
+        <span class="pill">month = 2026-09 <button data-unlink title="Remove filter">×</button></span>
+        <span class="pill">severity ∈ {critical, high} <button data-unlink title="Remove filter">×</button></span>
+        <span class="pill ghost">+ add filter · /</span>
+      </div>
+      <section class="signal-strip" aria-label="Key indicators">
+        <div class="kpi sel" data-kpi="published">
+          <div class="k-label">● Published CVEs</div>
+          <div class="k-val">395,286</div>
+          <div class="k-sub">+13,606 last month · <span class="delta up">▲ backlog</span></div>
+        </div>
+        <div class="kpi" data-kpi="kev">
+          <div class="k-label" style="color:var(--kev)">◆ KEV-listed</div>
+          <div class="k-val">1,756</div>
+          <div class="k-sub">+26 added last month · <span class="delta up">▲ 43 peak</span></div>
+        </div>
+        <div class="kpi" data-kpi="epss">
+          <div class="k-label">◈ EPSS-scored</div>
+          <div class="k-val">395,249</div>
+          <div class="k-sub">model v2026.06.15 · <span class="delta flat">■ current</span></div>
+        </div>
+        <div class="kpi" data-kpi="unscored">
+          <div class="k-label">○ Unscored / tombstones</div>
+          <div class="k-val">215,998</div>
+          <div class="k-sub">+ 18,638 tombstones · 0 unknown dates</div>
+        </div>
+      </section>
+      <div class="split">
+        <section class="panel chart-lg" aria-label="Publication volume">
+          <div class="panel-head"><h2>Publication volume · 24 mo</h2><span class="hint">click a bar to pin · hover for crosshair</span><span class="act">max 14,934</span></div>
+          <div class="chart-wrap">
+            <svg id="volchart" viewBox="0 0 760 210" width="100%" role="img" aria-label="Monthly CVE publications, 24 months"></svg>
+            <div id="tip"><span class="t-id" id="tip-id"></span><br><span class="t-big" id="tip-big"></span><span id="tip-sub"></span></div>
+          </div>
+          <div class="xlabels" aria-hidden="true"><span>N-23</span><span></span><span>N-21</span><span></span><span>N-19</span><span></span><span>N-17</span><span></span><span>N-15</span><span></span><span>N-13</span><span></span><span>N-11</span><span></span><span>N-09</span><span></span><span>N-07</span><span></span><span>N-05</span><span></span><span>N-03</span><span></span><span>N-01</span><span></span></div>
+          <div class="sel-banner" id="selbanner"><span id="seltext">◉ pinned month 2026-09 · 14,934 published → severity + table linked</span><button id="unpin">unpin ×</button></div>
+          <div class="brush"><div class="track"><div class="mini" id="brushmini"></div><div class="win" style="left:58%;width:42%"></div></div><div class="cap"><span>2024-11</span><span>brush: last 10 mo in view</span><span>2026-10</span></div></div>
+        </section>
+        <div class="side-stack">
+          <section class="panel" aria-label="Severity mix">
+            <div class="panel-head"><h2>Severity mix</h2><span class="act">hover links table ↓</span></div>
+            <div class="sev-body" id="sevbody"></div>
+          </section>
+          <section class="panel" aria-label="EPSS distribution">
+            <div class="panel-head"><h2>EPSS distribution</h2><span class="hint">10 buckets</span></div>
+            <div class="epss-body"><div class="epss-bars" id="epssbars"></div><div class="epss-x"><span>0–.1</span><span>.1</span><span>.2</span><span>.3</span><span>.4</span><span>.5</span><span>.6</span><span>.7</span><span>.8</span><span>.9+</span></div></div>
+            <div class="kev-body" style="border-top:1px solid var(--rule-soft)">
+              <div class="panel-head" style="padding:0;border:none"><h2>KEV additions / mo</h2></div>
+              <div class="kev-nums" id="kevnums"></div>
+              <div class="kev-cap">trailing 12 mo · peak 43 · latest 26</div>
+            </div>
+          </section>
+        </div>
+        <section class="panel ptable" aria-label="Priority queue">
+          <div class="panel-head"><h2>Priority queue · top signals</h2><span class="hint">linked to pinned month + severity filter</span><span class="act"><button class="btn">Open full queue</button></span></div>
+          <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>CVE ID</th><th>Signals</th><th>Title</th><th>EPSS</th><th>CVSS</th><th style="text-align:right">Action</th></tr></thead>
+            <tbody id="prio">
+              <tr data-sev="critical">
+                <td><span class="cve-id">CVE-2026-110447</span></td>
+                <td><span class="tag kev">KEV</span> <span class="tag mut">RCE</span></td>
+                <td class="tbl-title">Remote code execution in edge gateway firmware<span class="sub">vendor · network · public exploit · 2026-09 cohort</span></td>
+                <td><span class="tag epss">2.285%</span></td>
+                <td><span class="tag cvss-c">9.2 crit</span></td>
+                <td style="text-align:right"><button class="btn primary">Triage</button></td>
+              </tr>
+              <tr data-sev="high">
+                <td><span class="cve-id">CVE-2026-110448</span></td>
+                <td><span class="tag epss">epss ▸</span> <span class="tag mut">Privesc</span></td>
+                <td class="tbl-title">Privilege escalation via service helper<span class="sub">endpoint · local · no known exploit · 2026-09 cohort</span></td>
+                <td><span class="tag epss">0.412%</span></td>
+                <td><span class="tag cvss-h">7.8 high</span></td>
+                <td style="text-align:right"><button class="btn">Queue</button></td>
+              </tr>
+              <tr data-sev="high">
+                <td><span class="cve-id">CVE-2026-110449</span></td>
+                <td><span class="tag mut">DoS</span></td>
+                <td class="tbl-title">Unauthenticated denial of service on API edge<span class="sub">network · low complexity · 2026-09 cohort</span></td>
+                <td><span class="tag epss">0.098%</span></td>
+                <td><span class="tag cvss-h">7.1 high</span></td>
+                <td style="text-align:right"><button class="btn">Queue</button></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="tbl-foot"><span>3 pinned · 1,753 more in queue</span><span class="pgs"><button class="on">1</button><button>2</button><button>3</button><span>… 586</span></span></div>
+        </section>
+        <details class="panel shealth" open>
+          <summary><span class="chev">▶</span> Source health &amp; freshness <span class="ok-t">● 1 current · 2 stale</span></summary>
+          <div class="src-grid">
+            <div class="src-cell"><div class="s-top"><span class="sqdot" style="background:var(--stale)"></span>CVE corpus <span class="mono st-warn" style="margin-left:auto">stale 11h</span></div><div class="mono">395,286 published · 0 unknown dates<br>last ingest #4,812 · next run 01:00 UTC</div></div>
+            <div class="src-cell"><div class="s-top"><span class="sqdot" style="background:var(--stale)"></span>KEV catalog <span class="mono st-warn" style="margin-left:auto">stale 12h</span></div><div class="mono">1,756 listed · +26 last sync<br>18,638 tombstones tracked</div></div>
+            <div class="src-cell"><div class="s-top"><span class="sqdot" style="background:var(--ok)"></span>EPSS scores <span class="mono st-ok" style="margin-left:auto">current</span></div><div class="mono">395,249 scored · score date 2026-10-24<br>model v2026.06.15</div></div>
+          </div>
+        </details>
+      </div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>volume</span><span><i style="background:var(--crit)"></i>critical 16,310</span><span><i style="background:var(--high)"></i>high 70,380</span><span><i style="background:var(--med)"></i>medium 83,820</span><span><i style="background:var(--low)"></i>low 8,545</span><span><i style="background:var(--none)"></i>none 110 · legacy 123 · unscored 215,998</span></div>
+      <div class="kbd-foot"><kbd>←</kbd><kbd>→</kbd> move month · <kbd>/</kbd> search · <kbd>esc</kbd> clear — state in URL <span style="color:var(--accent)">?month=2026-09&amp;sev=critical,high</span></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var VOL=[4054,3433,4273,3673,4001,4033,3980,3682,3774,3629,4319,4274,3020,5493,4302,4616,6236,5813,6933,7949,9759,12260,14934,13606];
+var SEV=[["critical",16310,"#B42318"],["high",70380,"#C65D0E"],["medium",83820,"#8A6D00"],["low",8545,"#4D7C0F"],["none",110,"#6B7280"],["legacy",123,"#7C5C00"],["unscored",215998,"#B9B5AB"]];
+var EPSS=[377908,7218,3057,1652,1081,913,961,940,713,806];
+var EPLABEL=["0–0.1","0.1–0.2","0.2–0.3","0.3–0.4","0.4–0.5","0.5–0.6","0.6–0.7","0.7–0.8","0.8–0.9","0.9–1.0"];
+var KEV=[11,20,17,28,26,31,21,23,26,31,43,26];
+var SEL=22, HOV=22;
+var NS="http://www.w3.org/2000/svg";
+var W=760, H=210, PT=10, PB=6, MAX=14934;
+function el(n,a){var e=document.createElementNS(NS,n);for(var k in a){e.setAttribute(k,a[k]);}return e;}
+function fmt(n){return n.toLocaleString("en-US");}
+function monthName(i){var y=2024,m=11+i;while(m>12){m-=12;y++;}return y+"-"+(m<10?"0"+m:m);}
+var svg=document.getElementById("volchart");
+var tip=document.getElementById("tip"), tipId=document.getElementById("tip-id"),
+    tipBig=document.getElementById("tip-big"), tipSub=document.getElementById("tip-sub");
+var slot=W/VOL.length, bw=Math.max(8,slot-7);
+[0.25,0.5,0.75,1].forEach(function(g){
+  var y=PT+(H-PT-PB)*(1-g);
+  svg.appendChild(el("line",{x1:0,x2:W,y1:y,y2:y,stroke:"#E4E1DB","stroke-width":1}));
+  var t=el("text",{x:4,y:y-3,fill:"#8C8982","font-size":9.5,"font-family":"ui-monospace,monospace"});
+  t.textContent=fmt(Math.round(MAX*g)); svg.appendChild(t);
+});
+var bars=[];
+VOL.forEach(function(v,i){
+  var h=(H-PT-PB)*(v/MAX), x=i*slot+(slot-bw)/2, y=H-PB-h;
+  var r=el("rect",{x:x.toFixed(1),y:y.toFixed(1),width:bw.toFixed(1),height:Math.max(2,h).toFixed(1),rx:2.5,fill:"#9DB9C9",opacity:.78,style:"cursor:pointer"});
+  r.dataset.i=String(i); svg.appendChild(r); bars.push(r);
+});
+var cross=el("line",{y1:PT,y2:H-PB,stroke:"#1A1A1A","stroke-width":1,"stroke-dasharray":"3 3",visibility:"hidden"});
+svg.appendChild(cross);
+var vline=el("line",{y1:PT,y2:H-PB,stroke:"#006A9F","stroke-width":2,visibility:"hidden"});
+svg.appendChild(vline);
+function setTip(i){
+  tipId.textContent=monthName(i);
+  tipBig.textContent=fmt(VOL[i]);
+  tipSub.textContent=" published · KEV +"+KEV[i%12]+" · linked";
+}
+function placeTip(clientX,clientY,wrap){
+  var wr=wrap.getBoundingClientRect();
+  var tw=tip.offsetWidth||200;
+  var x=clientX-wr.left+14, y=Math.max(0,clientY-wr.top-64);
+  if(x+tw+4>wr.width){x=clientX-wr.left-tw-14;}
+  tip.style.left=Math.max(2,x)+"px"; tip.style.top=y+"px";
+}
+function placeTipStatic(wrap){
+  var wr=wrap.getBoundingClientRect(), sr=svg.getBoundingClientRect();
+  var tw=tip.offsetWidth||200;
+  var frac=(SEL*slot+slot/2)/W;
+  var px=sr.left-wr.left+frac*sr.width+12;
+  if(px+tw+4>wr.width){px=sr.left-wr.left+frac*sr.width-tw-12;}
+  tip.style.left=Math.max(2,px)+"px"; tip.style.top="14px";
+}
+function paint(){
+  bars.forEach(function(r,i){
+    var isSel=(i===SEL), isHov=(i===HOV);
+    r.setAttribute("fill",isSel?"#006A9F":(isHov?"#4E8FB5":"#9DB9C9"));
+    r.setAttribute("opacity",isSel?"1":(isHov?".95":".78"));
+  });
+  var x=SEL*slot+slot/2;
+  vline.setAttribute("x1",x); vline.setAttribute("x2",x);
+  vline.setAttribute("visibility","visible");
+}
+function linkAll(on){
+  var rows=document.querySelectorAll(".sev-row");
+  for(var k=0;k<rows.length;k++){
+    var s=rows[k].getAttribute("data-sev");
+    if(on&&(s==="critical"||s==="high")){rows[k].classList.add("hot");}else{rows[k].classList.remove("hot");}
+  }
+  var trs=document.querySelectorAll("#prio tr");
+  for(var j=0;j<trs.length;j++){
+    trs[j].classList.remove("hl","dim");
+    if(!on){continue;}
+    var sv=trs[j].getAttribute("data-sev");
+    if(sv==="critical"||sv==="high"){trs[j].classList.add("hl");}else{trs[j].classList.add("dim");}
+  }
+}
+function syncBanner(){
+  document.getElementById("seltext").textContent="◉ pinned month "+monthName(SEL)+" · "+fmt(VOL[SEL])+" published → severity + table linked";
+}
+bars.forEach(function(r){
+  r.addEventListener("mouseenter",function(e){
+    HOV=parseInt(r.dataset.i,10); paint();
+    var x=HOV*slot+slot/2;
+    cross.setAttribute("x1",x); cross.setAttribute("x2",x); cross.setAttribute("visibility","visible");
+    setTip(HOV); tip.style.display="block"; placeTip(e.clientX,e.clientY,svg.parentElement);
+    linkAll(true);
+  });
+  r.addEventListener("mousemove",function(e){placeTip(e.clientX,e.clientY,svg.parentElement);});
+  r.addEventListener("mouseleave",function(){
+    tip.style.display="none"; cross.setAttribute("visibility","hidden");
+    HOV=SEL; paint(); linkAll(false);
+  });
+  r.addEventListener("click",function(){SEL=parseInt(r.dataset.i,10); HOV=SEL; paint(); syncBanner();});
+});
+paint(); syncBanner(); linkAll(false);
+var initRows=document.querySelectorAll("#prio tr");
+for(var q=0;q<initRows.length;q++){
+  var sv0=initRows[q].getAttribute("data-sev");
+  if(sv0==="critical"||sv0==="high"){initRows[q].classList.add("hl");}
+}
+setTip(SEL); tip.style.display="block"; placeTipStatic(svg.parentElement);
+document.getElementById("unpin").addEventListener("click",function(){
+  document.getElementById("selbanner").style.display="none";
+  vline.setAttribute("visibility","hidden");
+  var trs=document.querySelectorAll("#prio tr");
+  for(var j=0;j<trs.length;j++){trs[j].classList.remove("dim","hl");}
+});
+var bm=document.getElementById("brushmini");
+VOL.forEach(function(v){
+  var i=document.createElement("i");
+  i.style.height=Math.max(8,Math.round(v/MAX*100))+"%";
+  bm.appendChild(i);
+});
+var sb=document.getElementById("sevbody"), maxSev=215998;
+SEV.forEach(function(s){
+  var row=document.createElement("div"); row.className="sev-row"; row.setAttribute("data-sev",s[0]);
+  var nm=document.createElement("span"); nm.className="s-name"; nm.style.color=s[2]; nm.textContent=s[0]; row.appendChild(nm);
+  var bar=document.createElement("span"); bar.className="bar";
+  var fill=document.createElement("i"); fill.style.width=Math.max(1.5,s[1]/maxSev*100)+"%"; fill.style.background=s[2];
+  bar.appendChild(fill); row.appendChild(bar);
+  var n=document.createElement("span"); n.className="s-n"; n.textContent=fmt(s[1]); row.appendChild(n);
+  (function(name){
+    row.addEventListener("mouseenter",function(){
+      var trs=document.querySelectorAll("#prio tr");
+      for(var j=0;j<trs.length;j++){
+        trs[j].classList.remove("hl","dim");
+        if(trs[j].getAttribute("data-sev")===name){trs[j].classList.add("hl");}else{trs[j].classList.add("dim");}
+      }
+      row.classList.add("hot");
+    });
+    row.addEventListener("mouseleave",function(){
+      var trs=document.querySelectorAll("#prio tr");
+      for(var j=0;j<trs.length;j++){trs[j].classList.remove("hl","dim");}
+      row.classList.remove("hot");
+    });
+  })(s[0]);
+  sb.appendChild(row);
+});
+var eb=document.getElementById("epssbars"), mE=EPSS[0];
+EPSS.forEach(function(v,i){
+  var d=document.createElement("div"); d.className="b";
+  d.style.height=Math.max(2,v/mE*100)+"%";
+  d.setAttribute("title",EPLABEL[i]+": "+fmt(v));
+  eb.appendChild(d);
+});
+var kn=document.getElementById("kevnums"), mK=43;
+KEV.forEach(function(v){
+  var i=document.createElement("i");
+  i.style.height=Math.max(9,v/mK*100)+"%";
+  i.setAttribute("title","+"+v+" KEV");
+  kn.appendChild(i);
+});
+var ham=document.getElementById("ham"), scrim=document.getElementById("scrim");
+if(window.innerWidth<=900){document.getElementById("gsearch").setAttribute("placeholder","Search…");}
+ham.addEventListener("click",function(){
+  document.body.classList.toggle("nav-open");
+  if(document.body.classList.contains("nav-open")){scrim.classList.add("show");}else{scrim.classList.remove("show");}
+});
+scrim.addEventListener("click",function(){document.body.classList.remove("nav-open"); scrim.classList.remove("show");});
+document.addEventListener("keydown",function(e){
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault(); document.getElementById("gsearch").focus();}
+  if(e.key==="/"&&document.activeElement.tagName!=="INPUT"){e.preventDefault(); document.getElementById("gsearch").focus();}
+  if(e.key==="Escape"){document.body.classList.remove("nav-open"); scrim.classList.remove("show");}
+  if(e.key==="ArrowRight"&&SEL<VOL.length-1){SEL++; HOV=SEL; paint(); syncBanner();}
+  if(e.key==="ArrowLeft"&&SEL>0){SEL--; HOV=SEL; paint(); syncBanner();}
+});
+var unlinks=document.querySelectorAll("[data-unlink]");
+for(var u=0;u<unlinks.length;u++){
+  unlinks[u].addEventListener("click",function(){this.parentElement.style.display="none";});
+}
+var kpis=document.querySelectorAll(".kpi");
+for(var c=0;c<kpis.length;c++){
+  kpis[c].addEventListener("click",function(){
+    for(var j=0;j<kpis.length;j++){kpis[j].classList.remove("sel");}
+    this.classList.add("sel");
+  });
+}
+})();
+</script>
+</body>
+</html>

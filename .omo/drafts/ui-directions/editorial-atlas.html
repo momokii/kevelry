@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVE Atlas — The state of published vulnerabilities, October 2026</title>
+<meta name="description" content="Editorial Atlas direction: a data-journalism overview of 395,286 published CVEs. Static prototype, no network.">
+<style>
+:root{
+  --canvas:rgb(247,246,243);
+  --surface:#ffffff;
+  --surface-warm:#fbfaf8;
+  --ink:rgb(26,26,26);
+  --secondary:rgb(89,89,89);
+  --faint:#8a877f;
+  --rule:rgb(214,211,205);
+  --rule-soft:#e7e4dd;
+  --accent:rgb(0,106,159);
+  --accent-ink:#004e75;
+  --accent-tint:#e3eff6;
+  --accent-wash:#f0f6fa;
+  --sev-critical:#a4262c;
+  --sev-high:#b4550a;
+  --sev-medium:#8a6d00;
+  --sev-low:#5b6e1e;
+  --kev:#0b6e4f;
+  --kev-tint:#e2f0e8;
+  --stale:#a4262c;
+  --stale-tint:#f7e4e1;
+  --ok:#0b6e4f;
+  --ok-tint:#e2f0e8;
+  --grotesk:"Inter Tight","Archivo","Helvetica Now","Sohne",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --display:"Archivo Expanded","Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --max:1120px;
+  --gutter:24px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--canvas);color:var(--ink);
+  font-family:var(--grotesk);
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
+  -webkit-font-smoothing:antialiased;line-height:1.5;
+}
+.topbar{
+  position:sticky;top:0;z-index:50;background:rgba(247,246,243,.94);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--ink);
+}
+.topbar-inner{max-width:var(--max);margin:0 auto;padding:0 var(--gutter);
+  display:flex;align-items:center;gap:18px;height:56px}
+.wordmark{display:flex;align-items:baseline;gap:9px;text-decoration:none;color:var(--ink);white-space:nowrap}
+.wordmark-mark{width:22px;height:22px;flex:none;align-self:center}
+.wordmark b{font-family:var(--display);font-weight:800;letter-spacing:-.02em;font-size:17px}
+.wordmark span{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--secondary)}
+.topnav{display:flex;gap:2px;margin-left:8px}
+.topnav a{font-size:12.5px;font-weight:600;color:var(--secondary);text-decoration:none;
+  padding:6px 10px;border-radius:999px;letter-spacing:.01em}
+.topnav a[aria-current="page"]{color:var(--ink);background:#fff;box-shadow:inset 0 0 0 1px var(--rule)}
+.topnav a:hover{color:var(--ink)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.search{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--rule);
+  border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--faint);min-width:170px}
+.search svg{flex:none}
+.tz{font-family:var(--mono);font-size:11px;color:var(--secondary);border:1px solid var(--rule);
+  background:#fff;border-radius:6px;padding:6px 8px}
+.chapters{border-bottom:1px solid var(--rule);background:var(--canvas)}
+.chapters-inner{max-width:var(--max);margin:0 auto;padding:0 var(--gutter);
+  display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.chapters-inner::-webkit-scrollbar{display:none}
+.chapters a{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);text-decoration:none;padding:10px 12px;border-bottom:2px solid transparent;white-space:nowrap}
+.chapters a:hover{color:var(--ink)}
+.chapters a.on{color:var(--accent-ink);border-bottom-color:var(--accent)}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gutter)}
+.hero{padding:64px 0 8px}
+.kicker{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:11px;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--secondary)}
+.kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.kicker time{font-family:var(--mono);letter-spacing:.02em}
+.hero h1{
+  font-family:var(--display);font-weight:800;line-height:.98;letter-spacing:-.035em;
+  font-size:clamp(40px,6.2vw,84px);margin:22px 0 18px;max-width:16ch;
+}
+.hero h1 em{font-style:normal;color:var(--accent-ink)}
+.lede{font-size:clamp(16px,1.8vw,20px);line-height:1.55;color:var(--secondary);max-width:62ch;margin:0}
+.lede strong{color:var(--ink)}
+.hero-numerals{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;margin:40px 0 8px;
+  border-top:2px solid var(--ink);border-bottom:1px solid var(--rule)}
+.stat{padding:20px 20px 22px 20px;border-left:1px solid var(--rule)}
+.stat:first-child{border-left:0;padding-left:0}
+.stat .n{font-family:var(--display);font-weight:800;letter-spacing:-.04em;line-height:1;
+  font-size:clamp(44px,6vw,88px)}
+.stat.hero-big .n{font-size:clamp(64px,9.4vw,120px)}
+.stat .cap{font-size:12px;color:var(--secondary);margin-top:8px;max-width:24ch}
+.stat .cap b{color:var(--ink)}
+.stat .delta{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink)}
+section.block{background:var(--surface);border:1px solid var(--rule);border-radius:14px;
+  margin:40px 0;padding:clamp(24px,4vw,52px);position:relative}
+.sec-head{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--ink);padding-bottom:14px;margin-bottom:8px}
+.sec-no{font-family:var(--mono);font-size:12px;color:var(--accent-ink);font-weight:700}
+.sec-kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--secondary)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.takeaway{font-size:15.5px;line-height:1.55;color:var(--ink);max-width:74ch;margin:14px 0 6px;
+  border-left:3px solid var(--accent);padding-left:14px}
+.takeaway b{font-weight:750}
+.def{display:inline-block;margin:10px 0 0}
+.def summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent-ink);
+  list-style:none;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--rule);border-radius:999px;padding:5px 12px;background:var(--accent-wash)}
+.def summary::-webkit-details-marker{display:none}
+.def summary:hover{border-color:var(--accent)}
+.def p{font-size:13px;color:var(--secondary);max-width:70ch;background:var(--surface-warm);
+  border:1px solid var(--rule-soft);border-radius:8px;padding:10px 14px}
+figure.chart{margin:26px 0 6px}
+.chart-title{font-size:13px;font-weight:750;margin:0 0 2px}
+.chart-sub{font-size:12px;color:var(--secondary);margin:0 0 12px}
+.chart-svg{width:100%;height:auto;display:block;overflow:visible}
+.axis{font-family:var(--mono);font-size:10.5px;fill:var(--faint)}
+.bar{fill:var(--accent);opacity:.88}
+.bar:hover,.bar:focus{opacity:1;fill:var(--accent-ink)}
+.bar.dim{fill:#b9cfdb}
+.bar.peak{fill:var(--ink)}
+.barlabel{font-size:11px;font-weight:700;fill:var(--ink)}
+.direct{font-size:11.5px;font-weight:600;fill:var(--secondary)}
+.annot{font-size:11.5px;fill:var(--ink)}
+.annot-line{stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3}
+.why{background:var(--surface-warm);border:1px solid var(--rule-soft);border-left:3px solid var(--ink);
+  border-radius:0 10px 10px 0;padding:12px 16px;margin:18px 0 4px;max-width:78ch}
+.why h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 4px;color:var(--secondary)}
+.why p{font-size:13.5px;margin:0;color:var(--ink)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;border-radius:8px;
+  padding:10px 12px;font-size:12px;line-height:1.45;min-width:190px;max-width:250px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;transition:opacity .12s;z-index:5}
+.tip.open{opacity:1}
+.tip b{font-size:14px;display:block}
+.tip .m{color:#bcd7e6;font-family:var(--mono);font-size:11px;display:block;margin-top:2px}
+.brush{margin:14px 0 4px;border-top:1px solid var(--rule-soft);padding-top:14px}
+.brush-track{position:relative;height:44px;background:var(--canvas);border:1px solid var(--rule);
+  border-radius:8px;overflow:hidden}
+.brush-svg{position:absolute;inset:0;width:100%;height:100%}
+.brush-window{position:absolute;top:0;bottom:0;border:2px solid var(--accent-ink);border-radius:6px;
+  background:rgba(0,106,159,.08);cursor:grab}
+.brush-window::before,.brush-window::after{content:"";position:absolute;top:0;bottom:0;width:8px;
+  background:var(--accent-ink);opacity:.9}
+.brush-window::before{left:0;border-radius:4px 0 0 4px}
+.brush-window::after{right:0;border-radius:0 4px 4px 0}
+.brush-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px;
+  font-size:12px;color:var(--secondary)}
+.brush-meta output{font-family:var(--mono);font-size:11.5px;color:var(--ink);
+  background:var(--accent-wash);border:1px solid var(--rule);border-radius:6px;padding:3px 9px}
+.sev-row{display:grid;grid-template-columns:150px 1fr 110px;gap:14px;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--rule-soft);font-size:13px}
+.sev-row:last-child{border-bottom:0}
+.sev-name{font-weight:700;display:flex;align-items:center;gap:8px}
+.sev-chip{width:11px;height:11px;border-radius:3px;flex:none}
+.sev-track{background:var(--canvas);border-radius:5px;height:22px;position:relative;overflow:hidden}
+.sev-fill{height:100%;border-radius:5px}
+.sev-num{font-family:var(--mono);font-size:12px;text-align:right}
+.unscored-callout{margin-top:16px;background:#fdf7ec;border:1px solid #e3d3a8;border-radius:10px;
+  padding:14px 18px;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.unscored-callout .big{font-family:var(--display);font-weight:800;font-size:40px;letter-spacing:-.03em}
+.unscored-callout p{margin:0;font-size:13.5px;max-width:60ch;color:var(--ink)}
+.epss-note{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.pill{font-size:11.5px;font-weight:700;border-radius:999px;padding:5px 12px;border:1px solid var(--rule)}
+.pill.solid{background:var(--ink);color:#fff;border-color:var(--ink)}
+.pill.line{background:#fff;color:var(--secondary)}
+.kev-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;margin-top:18px}
+.kev-big{font-family:var(--display);font-weight:800;font-size:clamp(56px,7vw,96px);
+  letter-spacing:-.04em;line-height:1;margin:0}
+.kev-big small{font-size:15px;font-weight:600;letter-spacing:0;color:var(--secondary);display:block;margin-top:6px}
+.fresh{margin-top:18px;border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.fresh-row{display:grid;grid-template-columns:1fr auto;gap:6px 16px;padding:14px 18px;
+  border-bottom:1px solid var(--rule-soft);font-size:13.5px;background:#fff}
+.fresh-row:last-child{border-bottom:0}
+.fresh-row .src{font-weight:750}
+.fresh-row .meta{font-family:var(--mono);font-size:11.5px;color:var(--secondary);grid-column:1}
+.badge{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  border-radius:999px;padding:4px 11px;align-self:start;white-space:nowrap}
+.badge.stale{background:var(--stale-tint);color:var(--stale);border:1px solid #e3b8b3}
+.badge.ok{background:var(--ok-tint);color:var(--ok);border:1px solid #b3d4c2}
+.queue{margin:20px 0 0;padding:0;list-style:none;counter-reset:q}
+.queue li{counter-increment:q;display:grid;grid-template-columns:64px 1fr;gap:16px;
+  padding:20px 0;border-top:1px solid var(--rule)}
+.queue li::before{content:"0" counter(q);font-family:var(--display);font-weight:800;font-size:30px;
+  color:var(--accent-ink);letter-spacing:-.02em}
+.q-id{font-family:var(--mono);font-size:14px;font-weight:700}
+.q-id a{color:var(--accent-ink);text-decoration:none;border-bottom:1px solid var(--accent)}
+.q-tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.q-tags span{font-size:11px;font-weight:700;border-radius:5px;padding:3px 9px}
+.t-kev{background:var(--kev-tint);color:var(--kev)}
+.t-crit{background:#f7e4e1;color:var(--sev-critical)}
+.t-epss{background:var(--accent-tint);color:var(--accent-ink)}
+.q-why{font-size:13.5px;color:var(--ink);margin:6px 0 0;max-width:70ch}
+.q-why b{font-weight:750}
+.colophon{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:18px}
+.spec{border-top:2px solid var(--ink);padding-top:12px}
+.spec h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--secondary);margin:0 0 8px}
+.spec p{font-size:13px;color:var(--secondary);margin:0 0 8px}
+.spec .aa{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:-.02em;color:var(--ink)}
+.swatch-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.swatch{flex:1 1 90px;border:1px solid var(--rule);border-radius:8px;overflow:hidden;font-size:10.5px}
+.swatch i{display:block;height:34px}
+.swatch b{display:block;padding:5px 8px 0;font-family:var(--mono);font-weight:700;font-size:10.5px}
+.swatch span{display:block;padding:0 8px 6px;color:var(--secondary)}
+footer.site{border-top:2px solid var(--ink);margin:48px 0 0;padding:22px 0 60px;
+  display:flex;gap:20px;flex-wrap:wrap;justify-content:space-between;font-size:12px;color:var(--secondary)}
+footer.site a{color:var(--accent-ink)}
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}}
+@media (max-width:760px){
+  .topnav{display:none}
+  .search{min-width:0}
+  .search em{display:none}
+  .topbar-inner{gap:10px}
+  .hero{padding:40px 0 4px}
+  .hero-numerals{grid-template-columns:1fr 1fr}
+  .stat{padding:14px 12px}
+  .stat:nth-child(3){border-left:0;padding-left:0}
+  .stat.hero-big{grid-column:1/-1;border-bottom:1px solid var(--rule);border-left:0;padding-left:0}
+  section.block{padding:22px 18px;margin:24px 0;border-radius:12px}
+  .kev-grid,.colophon{grid-template-columns:1fr}
+  .sev-row{grid-template-columns:96px 1fr;font-size:12px}
+  .sev-num{grid-column:1/-1;text-align:left}
+  .queue li{grid-template-columns:1fr;gap:6px}
+  #volTip{left:8px !important;right:8px;top:30px;min-width:0}
+  .chapters a{padding:9px 10px}
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="#" aria-label="CVE Atlas home">
+      <svg class="wordmark-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5" fill="none" stroke="#1a1a1a" stroke-width="2"/><circle cx="12" cy="12" r="4.5" fill="#006a9f"/><circle cx="12" cy="12" r="1.6" fill="#fff"/></svg>
+      <b>CVE&nbsp;Atlas</b><span>Overview</span>
+    </a>
+    <nav class="topnav" aria-label="Primary">
+      <a href="#volume" aria-current="page">Overview</a>
+      <a href="#severity">Explore</a>
+      <a href="#queue">Priority</a>
+      <a href="#freshness">Radar</a>
+      <a href="#colophon">Methodology</a>
+    </nav>
+    <div class="topbar-right">
+      <span class="search" aria-label="Search CVEs">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="#8a877f" stroke-width="1.6"/><path d="M11 11l3.2 3.2" stroke="#8a877f" stroke-width="1.6"/></svg>
+        <em>Search CVE ID or word…</em>
+      </span>
+      <span class="tz">Asia/Jakarta</span>
+    </div>
+  </div>
+  <nav class="chapters" aria-label="On this page"><div class="chapters-inner" id="chapters">
+    <a href="#volume" class="on">01 · Volume</a><a href="#severity">02 · Severity</a>
+    <a href="#epss">03 · Exploit forecast</a><a href="#kev">04 · KEV rhythm</a>
+    <a href="#freshness">05 · Freshness</a><a href="#queue">06 · Priority queue</a>
+  </div></nav>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <p class="kicker"><span class="dot"></span> The state of published CVEs · <time datetime="2026-10-26">26 October 2026</time> · All dates UTC unless noted</p>
+    <h1>Vulnerability volume has <em>doubled in a year.</em> Almost none of it is being exploited — yet.</h1>
+    <p class="lede"><strong>395,286 CVEs</strong> are published. Monthly output rose from about 4,000 to
+      <strong>13,606 in October</strong>, while only <strong>1,756</strong> carry confirmed-exploitation
+      evidence and <strong>95.6%</strong> of scored CVEs sit under a 10% exploit forecast.
+      More than half the corpus — <strong>215,998 records</strong> — has no vendor-supplied severity at all.</p>
+    <div class="hero-numerals" role="list" aria-label="Corpus totals">
+      <div class="stat hero-big" role="listitem"><div class="n">395,286</div>
+        <div class="cap"><b>published CVEs.</b> 0 unknown publication dates · 18,638 tombstones rejected or withdrawn.</div></div>
+      <div class="stat" role="listitem"><div class="delta">3.4x vs Oct 2025</div><div class="n" style="font-size:clamp(34px,4.4vw,56px)">13,606</div>
+        <div class="cap"><b>published this month</b> (Oct 2026, partial UTC month).</div></div>
+      <div class="stat" role="listitem"><div class="delta">Confirmed signal</div><div class="n" style="font-size:clamp(34px,4.4vw,56px)">1,756</div>
+        <div class="cap"><b>KEV-listed</b> — 0.44% of the corpus with known exploitation.</div></div>
+      <div class="stat" role="listitem"><div class="delta">The blind spot</div><div class="n" style="font-size:clamp(34px,4.4vw,56px)">215,998</div>
+        <div class="cap"><b>unscored</b> — no primary CNA metric. Unknown severity, not severity none.</div></div>
+    </div>
+  </div>
+
+  <section class="block reveal" id="volume" aria-labelledby="volume-h">
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-kicker">Publication volume · 24 months</span></div>
+    <h2 id="volume-h" class="sr">Publication volume, November 2024 to October 2026</h2>
+    <p class="takeaway"><b>The surge is real and recent:</b> five calm months under 4,400 gave way to a
+      February dip (3,020) and then a steep climb — September peaked at <b>14,934</b>, and October is already at 13,606 with days left in the UTC month.</p>
+    <details class="def"><summary>What counts as “published”?</summary>
+      <p>Date basis: CVE publication date in UTC months. Rejected or withdrawn tombstones (18,638) are excluded from volume. Buckets never shift with the display timezone — the selector only re-renders instants, not month boundaries.</p>
+    </details>
+    <figure class="chart" style="position:relative">
+      <p class="chart-title">Published CVEs per month, Nov 2024 – Oct 2026 (UTC)</p>
+      <p class="chart-sub">Use the brush below to isolate a window · hover or Tab through any bar for its exact count</p>
+      <svg class="chart-svg" id="volChart" viewBox="0 0 1000 340" role="img" aria-label="Bar chart of monthly CVE publications, rising from about 4,000 to a September 2026 peak of 14,934"></svg>
+      <div class="tip open" id="volTip" role="status"><b>Sep 2026 · 14,934</b><span class="m">peak of the 24-month window · 3.7x Nov 2024</span></div>
+    </figure>
+    <div class="brush">
+      <div class="brush-track" id="brushTrack">
+        <svg class="brush-svg" id="brushSvg" viewBox="0 0 1000 44" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="brush-window" id="brushWin" style="left:62%;width:38%" tabindex="0" role="slider"
+          aria-label="Selected window" aria-valuemin="1" aria-valuemax="24" aria-valuenow="24" aria-valuetext="May 2026 to October 2026"></div>
+      </div>
+      <div class="brush-meta"><span>Showing window</span><output id="brushOut">May 2026 – Oct 2026 · 62,521 published</output></div>
+    </div>
+    <div class="why"><h3>Why this matters</h3>
+      <p>Triage capacity does not scale with disclosure volume. When monthly output triples in eight months, “patch everything” stops being a plan — the rest of this page is how to choose what goes first.</p></div>
+  </section>
+
+  <section class="block reveal" id="severity" aria-labelledby="sev-h">
+    <div class="sec-head"><span class="sec-no">02</span><span class="sec-kicker">Severity mix · vendor-supplied only</span></div>
+    <h2 id="sev-h" class="sr">Severity mix</h2>
+    <p class="takeaway"><b>Most CVEs never get a severity label:</b> of 179,288 scored records, medium and high dominate
+      (83,820 + 70,380), criticals are a sharp minority (16,310) — and the unscored majority below dwarfs all of them.</p>
+    <details class="def"><summary>Whose severity is this?</summary>
+      <p>Primary CNA CVSS only, by policy. Records with only ADP or NVD scores still show as unscored — strict, but honest about provenance. “None (110)” and “legacy (123)” are real edge bands, kept visible rather than rounded away.</p>
+    </details>
+    <figure class="chart">
+      <p class="chart-title">Scored CVEs by severity band (n = 179,288)</p>
+      <p class="chart-sub">Bar length is proportional to count · direct labels, no legend to decode</p>
+      <div id="sevRows" role="img" aria-label="Severity bands: critical 16,310; high 70,380; medium 83,820; low 8,545; none 110; legacy 123"></div>
+    </figure>
+    <div class="unscored-callout">
+      <span class="big">215,998</span>
+      <p><b>unscored — no primary CNA metric.</b> That is 54.6% of the corpus. Treat these as <i>unknown severity</i>, never as “probably low”. The EPSS forecast below is often the only numeric signal they carry.</p>
+    </div>
+    <div class="why"><h3>Why this matters</h3>
+      <p>Severity filters that exclude unscored records silently drop half the corpus. Any workflow built on “critical first” must say what it does with the 216k unknowns — or it is a coin flip dressed as policy.</p></div>
+  </section>
+
+  <section class="block reveal" id="epss" aria-labelledby="epss-h">
+    <div class="sec-head"><span class="sec-no">03</span><span class="sec-kicker">Exploit forecast · EPSS, model v2026.06.15</span></div>
+    <h2 id="epss-h" class="sr">EPSS base rate</h2>
+    <p class="takeaway"><b>Exploitation is forecast to be rare:</b> 377,908 of 395,249 scored CVEs (95.6%) sit under 10% probability.
+      The long tail above 50% is just <b>3,420</b> records — small enough to read, important enough to watch.</p>
+    <details class="def"><summary>What is EPSS?</summary>
+      <p>A dated forecast (score date 2026-10-24) of exploitation in the next 30 days — a probability, not a verdict. Unknown renders as explicit null, never zero. High EPSS without KEV means “model is worried, no confirmed exploitation yet”.</p>
+    </details>
+    <figure class="chart">
+      <p class="chart-title">EPSS score distribution, 10 buckets (n = 395,249 scored)</p>
+      <p class="chart-sub">Linear scale — the first bar is the story · hover any bucket for its count</p>
+      <svg class="chart-svg" id="epssChart" viewBox="0 0 1000 300" role="img" aria-label="EPSS histogram: 377,908 CVEs under 10 percent, steep falloff above"></svg>
+    </figure>
+    <div class="epss-note">
+      <span class="pill solid">377,908 under 10% · 95.6%</span>
+      <span class="pill line">10–50%: 13,921</span>
+      <span class="pill line">50%+: 3,420 — the watchable tail</span>
+    </div>
+    <div class="why"><h3>Why this matters</h3>
+      <p>A low EPSS is the normal state of a CVE, not good news about any specific one. Prioritization lives in the tail: cross the 50%+ set against KEV and new-critical lists before it crosses you.</p></div>
+  </section>
+
+  <section class="block reveal" id="kev" aria-labelledby="kev-h">
+    <div class="sec-head"><span class="sec-no">04</span><span class="sec-kicker">Confirmed exploitation · CISA KEV</span></div>
+    <h2 id="kev-h" class="sr">KEV rhythm</h2>
+    <div class="kev-grid">
+      <div>
+        <p class="takeaway" style="margin-top:0"><b>Known exploitation arrives in a steady drumbeat, then spikes:</b>
+          11–31 additions a month for nearly a year — then <b>43 in September 2026</b>, the loudest month in this window.</p>
+        <details class="def"><summary>What does KEV membership mean?</summary>
+          <p>CISA catalogs vulnerabilities with confirmed in-the-wild exploitation. 1,756 listed = 0.44% of published CVEs. Absence from KEV is not absence of exploitation — only absence of confirmation.</p>
+        </details>
+        <div class="why"><h3>Why this matters</h3>
+          <p>KEV is the shortest queue on this page and the hardest to argue with. If a KEV-listed CVE touches your stack, it outranks every forecast on this page — including a 2% EPSS like the October additions below.</p></div>
+      </div>
+      <div>
+        <p class="kev-big">1,756<small>KEV-listed · 0.44% of published CVEs</small></p>
+        <figure class="chart" style="margin-top:14px">
+          <p class="chart-title">KEV additions per month, Nov 2025 – Oct 2026</p>
+          <svg class="chart-svg" id="kevChart" viewBox="0 0 480 220" role="img" aria-label="KEV additions per month, peaking at 43 in September 2026"></svg>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="block reveal" id="freshness" aria-labelledby="fresh-h">
+    <div class="sec-head"><span class="sec-no">05</span><span class="sec-kicker">Source freshness · read this before citing a number</span></div>
+    <h2 id="fresh-h" class="sr">Source freshness</h2>
+    <p class="takeaway"><b>Two of three feeds are stale right now:</b> EPSS is current (score date 2026-10-24),
+      but the CVE corpus and KEV catalog are 11–12h old — treat overnight deltas as provisional, not verdicts.</p>
+    <div class="fresh">
+      <div class="fresh-row"><span class="src">CVE List V5 — 395,286 records · rev 509084ac</span>
+        <span class="badge stale">Stale · 11h ago</span>
+        <span class="meta">Last checked 11h ago · volume and severity on this page freeze at this revision.</span></div>
+      <div class="fresh-row"><span class="src">CISA KEV — 1,756 listed</span>
+        <span class="badge stale">Stale · 12h ago</span>
+        <span class="meta">Last checked 12h ago · new additions may be undercounted until refresh.</span></div>
+      <div class="fresh-row"><span class="src">FIRST EPSS — 395,249 scored · model v2026.06.15</span>
+        <span class="badge ok">Current · 2026-10-24</span>
+        <span class="meta">Score date 2026-10-24 · forecasts on this page are dated, not live.</span></div>
+    </div>
+    <div class="why"><h3>Why this matters</h3>
+      <p>Every number on this page is a snapshot with a revision attached. Stale does not mean wrong — it means “cite the revision, and re-check before a patch window”.</p></div>
+  </section>
+
+  <section class="block reveal" id="queue" aria-labelledby="q-h">
+    <div class="sec-head"><span class="sec-no">06</span><span class="sec-kicker">Priority queue · editorial evidence, not a dump</span></div>
+    <h2 id="q-h" class="sr">Priority queue</h2>
+    <p class="takeaway"><b>Start here if you patch one thing today:</b> three CVEs added to KEV on 23 Oct 2026 —
+      critical severity, low forecast, confirmed exploitation. <b>Evidence beats probability.</b></p>
+    <ol class="queue">
+      <li>
+        <div><div class="q-id"><a href="#">CVE-2026-110447</a></div>
+          <div class="q-tags"><span class="t-kev">KEV · added 23 Oct 2026</span><span class="t-crit">CVSS 9.2 · v4.0 critical</span><span class="t-epss">EPSS 2.285%</span></div>
+          <p class="q-why"><b>Why first:</b> confirmed in-the-wild exploitation with a critical vendor score. The 2.285% forecast looks calm — that is exactly why KEV exists: the model under-called it, reality did not.</p></div>
+      </li>
+      <li>
+        <div><div class="q-id"><a href="#">CVE-2026-110448</a></div>
+          <div class="q-tags"><span class="t-kev">KEV · added 23 Oct 2026</span><span class="t-epss">Co-listed with 110447</span></div>
+          <p class="q-why"><b>Why second:</b> same KEV batch, same day. Co-listed CVEs often share an exploit chain or vendor advisory — read them together, patch them together.</p></div>
+      </li>
+      <li>
+        <div><div class="q-id"><a href="#">CVE-2026-110449</a></div>
+          <div class="q-tags"><span class="t-kev">KEV · added 23 Oct 2026</span><span class="t-epss">Co-listed with 110447</span></div>
+          <p class="q-why"><b>Why third:</b> completes the 23 October triple. Three same-day KEV additions against a 31-addition month is a concentration worth noticing, not background noise.</p></div>
+      </li>
+    </ol>
+    <div class="why"><h3>Why this matters</h3>
+      <p>A queue of three with reasons beats a table of five hundred without them. Full ranked lists live under Priority — this is the editorial cut: what changed, why it outranks the forecast, what to do Monday morning.</p></div>
+  </section>
+
+  <section class="block reveal" id="colophon" aria-labelledby="c-h">
+    <div class="sec-head"><span class="sec-no">∞</span><span class="sec-kicker">Colophon · how this page is set</span></div>
+    <h2 id="c-h" class="sr">Colophon</h2>
+    <div class="colophon">
+      <div class="spec"><h3>Type scale</h3><div class="aa">Aa Gg 395,286</div>
+        <p><b>UI + numerals:</b> modern variable grotesk (Inter Tight / Archivo class) at 800 for display numerals, tabular figures everywhere. Labels 11–13px · section titles 18–20px · hero numerals 72–120px. Display treatment: tight −3.5% tracking, near-square line-height.</p>
+        <p>No Georgia serif anywhere on this page — the old fallback is retired by policy, not by accident.</p></div>
+      <div class="spec"><h3>Palette</h3>
+        <p>Canvas, white surfaces, ink text, one working blue. Severity adds deep red / amber / olive only — nothing neon, nothing that shouts over the annotations.</p>
+        <div class="swatch-row">
+          <div class="swatch"><i style="background:rgb(247,246,243)"></i><b>#F7F6F3</b><span>canvas</span></div>
+          <div class="swatch"><i style="background:#fff;border-bottom:1px solid #e7e4dd"></i><b>#FFFFFF</b><span>surface</span></div>
+          <div class="swatch"><i style="background:rgb(26,26,26)"></i><b>#1A1A1A</b><span>ink</span></div>
+          <div class="swatch"><i style="background:rgb(0,106,159)"></i><b>#006A9F</b><span>accent</span></div>
+          <div class="swatch"><i style="background:#a4262c"></i><b>#A4262C</b><span>critical</span></div>
+          <div class="swatch"><i style="background:#5b6e1e"></i><b>#5B6E1E</b><span>low/olive</span></div>
+        </div></div>
+    </div>
+  </section>
+
+  <footer class="site">
+    <span>CVE Atlas · Editorial Atlas prototype · static mock, no live data · all figures are the frozen 26-Oct-2026 values.</span>
+    <span>Explore · Priority · Radar · Replay · Methodology · API docs</span>
+  </footer>
+</main>
+
+<script>
+(function(){
+"use strict";
+var NS="http://www.w3.org/2000/svg";
+function el(n,attrs,parent){var e=document.createElementNS(NS,n);for(var k in attrs){e.setAttribute(k,attrs[k]);}if(parent)parent.appendChild(e);return e;}
+function tx(n,s,attrs,parent){var e=el(n,attrs,parent);e.textContent=s;return e;}
+function fmt(v){return v.toLocaleString("en-US");}
+
+var MONTHS=["Nov 24","Dec 24","Jan 25","Feb 25","Mar 25","Apr 25","May 25","Jun 25","Jul 25","Aug 25","Sep 25","Oct 25","Nov 25","Dec 25","Jan 26","Feb 26","Mar 26","Apr 26","May 26","Jun 26","Jul 26","Aug 26","Sep 26","Oct 26"];
+var VOL=[4054,3433,4273,3673,4001,4033,3980,3682,3774,3629,4319,4274,3020,5493,4302,4616,6236,5813,6933,7949,9759,12260,14934,13606];
+var KEV_M=["Nov 25","Dec 25","Jan 26","Feb 26","Mar 26","Apr 26","May 26","Jun 26","Jul 26","Aug 26","Sep 26","Oct 26"];
+var KEV=[11,20,17,28,26,31,21,23,26,31,43,26];
+var EPSS=[377908,7218,3057,1652,1081,913,961,940,713,806];
+var SEV=[["Critical",16310,"#a4262c"],["High",70380,"#b4550a"],["Medium",83820,"#8a6d00"],["Low",8545,"#5b6e1e"],["None",110,"#6b6b6b"],["Legacy",123,"#8a877f"]];
+var MAXV=14934;
+
+/* volume chart */
+(function(){
+  var svg=document.getElementById("volChart"),W=1000,H=340,padL=52,padB=44,padT=46;
+  var cw=(W-padL-8)/24;
+  var tip=document.getElementById("volTip");
+  var tipB=tip.querySelector("b"), tipM=tip.querySelector("span");
+  [0,5000,10000,15000].forEach(function(g){
+    var y=padT+(H-padT-padB)*(1-g/16000);
+    el("line",{x1:padL,x2:W-4,y1:y,y2:y,stroke:g?"#e7e4dd":"#1a1a1a","stroke-width":1},svg);
+    tx("text",g?fmt(g):"0",{x:padL-8,y:y+4,"text-anchor":"end","class":"axis"},svg);
+  });
+  function setTip(title,sub){
+    tipB.textContent=title; tipM.textContent=sub; tip.classList.add("open");
+  }
+  function placeTip(rect){
+    var fw=tip.parentElement.getBoundingClientRect();
+    var left=rect.left-fw.left+rect.width/2-100;
+    left=Math.max(4,Math.min(left,fw.width-210));
+    tip.style.left=left+"px";
+    tip.style.top=Math.max(40,(rect.top-fw.top-92))+"px";
+  }
+  function pinTip(){ setTip("Sep 2026 · 14,934","peak of the 24-month window · 3.7x Nov 2024"); tip.style.left="71%"; tip.style.top="34px"; }
+  VOL.forEach(function(v,i){
+    var h=(H-padT-padB)*(v/16000),x=padL+i*cw+3,y=H-padB-h;
+    var peak=(v===MAXV),dip=(v===3020);
+    var r=el("rect",{x:x.toFixed(1),y:y.toFixed(1),width:(cw-7).toFixed(1),height:h.toFixed(1),rx:3,
+      "class":"bar"+(peak?" peak":(v<5000?" dim":"")),tabindex:"0",role:"img",
+      "aria-label":MONTHS[i]+" "+fmt(v)+" published"},svg);
+    if(i%3===0||peak){tx("text",MONTHS[i],{x:x+(cw-7)/2,y:H-padB+18,"text-anchor":"middle","class":"axis"},svg);}
+    var sub=peak?"peak of the 24-month window · 3.7x Nov 2024":dip?"February dip — the last calm month before the climb":(v/4054).toFixed(1)+"x Nov 2024 baseline";
+    r.addEventListener("mouseenter",function(){setTip(MONTHS[i]+" · "+fmt(v),sub);placeTip(r.getBoundingClientRect());});
+    r.addEventListener("focus",function(){setTip(MONTHS[i]+" · "+fmt(v),sub);placeTip(r.getBoundingClientRect());});
+    r.addEventListener("mouseleave",pinTip);
+    r.addEventListener("blur",pinTip);
+  });
+  function annot(i,label,dy,anchorEnd){
+    var x=padL+i*cw+3+(cw-7)/2,y=H-padB-(H-padT-padB)*(VOL[i]/16000);
+    el("line",{x1:x,y1:y-8,x2:x,y2:y-dy,"class":"annot-line"},svg);
+    var t=tx("text",label,{"class":"annot","font-weight":700},svg);
+    if(anchorEnd){t.setAttribute("x",x-8);t.setAttribute("y",y-dy+4);t.setAttribute("text-anchor","end");}
+    else{t.setAttribute("x",x+8);t.setAttribute("y",y-dy+4);}
+  }
+  annot(12,"Feb 26 dip · 3,020",64,false);
+  annot(22,"Sep 26 peak · 14,934",30,true);
+  var c=tx("text","the climb: May to Sep 2026 nearly doubles, 6,933 to 14,934",{"class":"annot","font-style":"italic"},svg);
+  c.setAttribute("x",W-12);c.setAttribute("y",26);c.setAttribute("text-anchor","end");
+  pinTip();
+})();
+
+/* brush mini-map */
+(function(){
+  var svg=document.getElementById("brushSvg");
+  VOL.forEach(function(v,i){
+    var h=40*(v/MAXV);
+    el("rect",{x:(i*(1000/24)+2),y:42-h,width:(1000/24-4),height:h,rx:1.5,fill:"#006a9f",opacity:i>=15?.95:.45},svg);
+  });
+  var win=document.getElementById("brushWin"),out=document.getElementById("brushOut"),track=document.getElementById("brushTrack");
+  var WINDOWS=[[0,24,"Nov 2024 – Oct 2026"],[12,24,"Nov 2025 – Oct 2026"],[15,24,"Feb 2026 – Oct 2026"],[19,24,"May 2026 – Oct 2026"]];
+  var zi=3;
+  function render(){
+    var w=WINDOWS[zi];win.style.left=(w[0]/24*100)+"%";win.style.width=((w[1]-w[0])/24*100)+"%";
+    var sum=0;for(var i=w[0];i<w[1];i++)sum+=VOL[i];
+    out.textContent=w[2]+" · "+fmt(sum)+" published";
+    win.setAttribute("aria-valuetext",w[2]);
+  }
+  track.addEventListener("click",function(e){if(e.target===win)return;zi=(zi+1)%WINDOWS.length;render();});
+  win.addEventListener("keydown",function(e){if(e.key==="ArrowRight"||e.key==="ArrowLeft"){zi=(zi+(e.key==="ArrowRight"?1:WINDOWS.length-1))%WINDOWS.length;render();e.preventDefault();}});
+  render();
+})();
+
+/* severity rows */
+(function(){
+  var host=document.getElementById("sevRows"),max=83820;
+  SEV.forEach(function(s){
+    var row=document.createElement("div");row.className="sev-row";
+    var nm=document.createElement("div");nm.className="sev-name";
+    var chip=document.createElement("span");chip.className="sev-chip";chip.style.background=s[2];
+    nm.appendChild(chip);nm.appendChild(document.createTextNode(s[0]));
+    var tr=document.createElement("div");tr.className="sev-track";
+    var f=document.createElement("div");f.className="sev-fill";f.style.width=(100*s[1]/max)+"%";f.style.background=s[2];
+    tr.appendChild(f);
+    var num=document.createElement("div");num.className="sev-num";num.textContent=fmt(s[1]);
+    row.appendChild(nm);row.appendChild(tr);row.appendChild(num);host.appendChild(row);
+  });
+})();
+
+/* EPSS histogram */
+(function(){
+  var svg=document.getElementById("epssChart"),W=1000,H=300,padL=64,padB=52,padT=40;
+  var cw=(W-padL-8)/10;
+  [0,100000,200000,300000].forEach(function(g){
+    var y=padT+(H-padT-padB)*(1-g/400000);
+    el("line",{x1:padL,x2:W-4,y1:y,y2:y,stroke:"#e7e4dd","stroke-width":1},svg);
+    tx("text",g?fmt(g):"0",{x:padL-8,y:y+4,"text-anchor":"end","class":"axis"},svg);
+  });
+  var labels=["0–10%","10–20%","20–30%","30–40%","40–50%","50–60%","60–70%","70–80%","80–90%","90–100%"];
+  EPSS.forEach(function(v,i){
+    var h=Math.max(3,(H-padT-padB)*(v/400000)),x=padL+i*cw+6,y=H-padB-h;
+    var r=el("rect",{x:x.toFixed(1),y:y.toFixed(1),width:(cw-13).toFixed(1),height:h.toFixed(1),rx:3,
+      "class":"bar"+(i>0?" dim":""),tabindex:"0","aria-label":labels[i]+" EPSS: "+fmt(v)+" CVEs"},svg);
+    tx("text",labels[i],{x:x+(cw-13)/2,y:H-padB+18,"text-anchor":"middle","class":"axis"},svg);
+    if(i===0){tx("text","377,908",{x:x+(cw-13)/2,y:y-10,"text-anchor":"middle","class":"barlabel"},svg);}
+    if(i>=5){tx("text",fmt(v),{x:x+(cw-13)/2,y:y-8,"text-anchor":"middle","class":"direct"},svg);}
+  });
+  el("line",{x1:padL+9*cw+6+(cw-13),y1:padT-6,x2:padL+9*cw+6+(cw-13),y2:H-padB,"class":"annot-line"},svg);
+  var t=tx("text","the tail: 3,420 CVEs at 50% or above",{"class":"annot","font-weight":700},svg);
+  t.setAttribute("x",padL+9*cw-8);t.setAttribute("y",padT+2);t.setAttribute("text-anchor","end");
+})();
+
+/* KEV chart */
+(function(){
+  var svg=document.getElementById("kevChart"),W=480,H=220,padB=34,padT=34;
+  var cw=(W-8)/12;
+  KEV.forEach(function(v,i){
+    var h=(H-padT-padB)*(v/48),x=4+i*cw+3,y=H-padB-h;
+    var peak=(v===43);
+    el("rect",{x:x.toFixed(1),y:y.toFixed(1),width:(cw-7).toFixed(1),height:h.toFixed(1),rx:3,
+      fill:peak?"#1a1a1a":"#0b6e4f",opacity:peak?1:.82,tabindex:"0",
+      "aria-label":KEV_M[i]+": "+v+" KEV additions"},svg);
+    tx("text",String(v),{x:x+(cw-7)/2,y:y-6,"text-anchor":"middle","class":"barlabel","font-size":11},svg);
+    if(i%2===0){tx("text",KEV_M[i],{x:x+(cw-7)/2,y:H-8,"text-anchor":"middle","class":"axis","font-size":9},svg);}
+  });
+  el("line",{x1:4+9*cw+3+(cw-7)/2,y1:H-padB-((H-padT-padB)*(43/48))-6,x2:4+9*cw+3+(cw-7)/2,y2:14,"class":"annot-line"},svg);
+  var t=tx("text","Sep 26 · 43, loudest month",{"class":"annot","font-weight":700},svg);
+  t.setAttribute("x",W-6);t.setAttribute("y",12);t.setAttribute("text-anchor","end");
+})();
+
+/* chapter spy + reveal */
+(function(){
+  var links=document.querySelectorAll("#chapters a");
+  var map={};Array.prototype.forEach.call(links,function(a){map[a.getAttribute("href").slice(1)]=a;});
+  var secs=["volume","severity","epss","kev","freshness","queue"].map(function(id){return document.getElementById(id);});
+  if("IntersectionObserver" in window){
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){
+      if(e.isIntersecting){Array.prototype.forEach.call(links,function(a){a.classList.remove("on");});var a=map[e.target.id];if(a)a.classList.add("on");}
+    });},{rootMargin:"-40% 0px -55% 0px"});
+    secs.forEach(function(s){if(s)io.observe(s);});
+    var ro=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add("in");ro.unobserve(e.target);}});},{threshold:.06});
+    Array.prototype.forEach.call(document.querySelectorAll(".reveal"),function(elm){ro.observe(elm);});
+  }else{Array.prototype.forEach.call(document.querySelectorAll(".reveal"),function(elm){elm.classList.add("in");});}
+  /* fallback: IO can stay silent in some headless/prerender contexts — reveal on geometry */
+  function revealVisible(){
+    Array.prototype.forEach.call(document.querySelectorAll(".reveal:not(.in)"),function(elm){
+      var r=elm.getBoundingClientRect();
+      if(r.top<window.innerHeight*0.92&&r.bottom>0){elm.classList.add("in");try{ro.unobserve(elm);}catch(_){}}
+    });
+  }
+  window.addEventListener("scroll",revealVisible,{passive:true});
+  setTimeout(revealVisible,600);
+  setTimeout(revealVisible,1800);
+})();
+})();
+</script>
+</body>
+</html>

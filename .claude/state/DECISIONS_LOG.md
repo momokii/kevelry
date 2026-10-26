@@ -5,6 +5,22 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Rebuild the product as a Research Console and use visx SVG primitives, not a canvas chart framework.
+
+**Date:** 2026-10-26
+
+**Context:** The owner accepted the data, sources, and scoring but rejected the Evidence Ledger presentation as dated and insufficiently interactive. The palette was kept; the composition, typography, charts, and shell were not.
+
+**Rationale:** Three prototypes (Editorial Atlas, Operations Console, Scientific Workbench) were compared. The chosen synthesis keeps the console rail/command bar, the editorial opening, and a scientific severity×EPSS inspector. visx keeps values in the DOM, passes CSS variables through, supports React 19, and avoids the accessibility/theming friction of canvas. Instrument Sans and JetBrains Mono are self-hosted OFL files so the single image stays offline. The joint matrix is computed exactly into aggregate cache v3 rather than sampled or invented.
+
+**Alternatives Rejected:** Recharts (heavier, client-only, weaker linked-state story); ECharts (canvas-first, option-object theming); Mermaid for methodology (static, heavy, inaccessible); keeping the ledger look with cosmetic polish (owner explicitly rejected the approach, not just the colors).
+
+**Security Implications:** Adds no runtime network dependency or CDN. Font files and licenses are committed. Charts render escaped React text and do not execute upstream content. The CSP posture is unchanged.
+
+**Impact:** New chart interactions must keep the 44px target, focus-tooltip, denominator, data-table, and empty-state contracts in DESIGN.md. Aggregate cache changes require a version bump and a one-off refresh on a live volume. Priority rows are compact by default; any change that re-expands every row repeats the 48,000px page problem.
+
+---
+
 **Decision:** Make the display timezone global in the shared masthead, default Asia/Jakarta, display-only.
 
 **Date:** 2026-10-26

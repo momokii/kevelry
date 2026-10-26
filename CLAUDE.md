@@ -3,8 +3,8 @@
 ## Project Snapshot
 
 **Purpose:** Public CVE overview, explainable prioritization, searchable descriptions, Change Radar, and a versioned read-only API.
-**Stack:** Next.js 16 App Router, React 19, TypeScript, SQLite/FTS5, one Docker image and container.
-**Phase:** Implemented, verified, and deployed serve-only at `http://100.124.184.116:3100` (Tailscale). Interactive UI round shipped; 364 unit and 67 Playwright tests pass.
+**Stack:** Next.js 16 App Router, React 19, TypeScript, SQLite/FTS5, visx SVG primitives, one Docker image and container.
+**Phase:** Implemented, verified, and deployed serve-only at `http://100.124.184.116:3100` (Tailscale). Full Research Console revamp shipped; 364 unit and 65 Playwright tests pass.
 **Environments:** `development`, `staging`, `production`, selected by `APP_ENV`.
 
 ## Always-Loaded Context
