@@ -221,7 +221,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a
 date basis; known-exploited returns KEV entries; search returns matches with excerpts.
 Measured on the live 395k volume after the Research Console revamp
-(2026-10-26): `/` about 0.17 s, `/explore` about 2.3 s on the first uncached
+(2026-10-26): `/` about 0.17 s, `/explore` about 2–4 s on the first uncached
 filter combination and about 0.03 s when repeated, `/priority` about 0.14 s,
 `/methodology` about 0.02 s, `/radar` and `/replay` under 0.02 s, and
 `/api/v1/cves?limit=2` about 1.3 s.

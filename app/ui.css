@@ -3045,3 +3045,30 @@ a {
     display: block;
   }
 }
+
+.skeleton {
+  background: var(--ui-rule-soft);
+  border-radius: var(--ui-radius-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-line {
+  height: 12px;
+  margin-bottom: 10px;
+}
+
+.skeleton-title {
+  height: clamp(32px, 4vw, 44px);
+  width: min(520px, 84%);
+  margin-bottom: 14px;
+}
+
+.skeleton-hero {
+  height: 120px;
+  margin: var(--ui-sp-5) 0;
+}
+
+.skeleton-panel {
+  min-height: 260px;
+}
