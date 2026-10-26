@@ -13,13 +13,14 @@ consume the same data.
 
 ## What it does
 
-- **Overview:** a factual hero, four corpus stats, a 24/12-month volume explorer,
-  severity composition, a log-scale EPSS distribution, KEV rhythm, and an exact
-  severity×EPSS matrix with KEV rings and a keyboard inspector. Selecting a month,
-  band, or cell explains the cohort and links into Search.
-- **Search:** explained filters that auto-apply, a cohort composition panel
-  (severity, month, signal coverage), and compact result rows with severity,
-  KEV, EPSS, and official-record links.
+- **Overview:** a factual hero, four corpus stats, a 24/12-month volume explorer
+  with a focus-month control, a cumulative growth line, a severity donut, a
+  log-scale EPSS distribution, KEV rhythm, and an exact severity×EPSS matrix with
+  KEV rings and a keyboard inspector. Selecting a month, band, or cell explains
+  the cohort and links into Search.
+- **Search:** explained filters that auto-apply, quick UTC date presets, a cohort
+  composition panel (severity, month, signal coverage), and compact result rows
+  with severity, KEV, EPSS, and official-record links.
 - **Priority lists:** known-exploited, highest forecast, new critical, rising forecast
   as a compact expandable table. KEV, EPSS, and CVSS remain separate signals with
   definitions, real bars, and timezone-aware dates; no composite score.
@@ -34,14 +35,24 @@ consume the same data.
   stale/warning states, always visible.
 - **Global display timezone:** a rail selector (default Asia/Jakarta) re-renders
   every instant; UTC day/month buckets stay explicitly labeled UTC.
+- **Methodology explainers:** an interactive ingestion pipeline, a live signal
+  coverage diagram, and a worked ordering example that highlights the first
+  deciding key for each view.
+- **API docs:** a jump index to every topic and endpoint, parameter names resolved
+  from shared refs, and an illustrative response body per endpoint.
 
 ## Interface
 
-The product is a **Research Console**: a persistent 232px rail, a sticky command
-bar (`⌘K` focuses search), warm paper surfaces, Instrument Sans + JetBrains Mono,
-and chart-first pages. The interaction contract is deliberate:
+The product is a **Research Console**: a persistent, collapsible 232px rail
+(72px collapsed, remembered locally), a sticky command bar (`⌘K` focuses search),
+warm paper surfaces, Instrument Sans + JetBrains Mono, and chart-first pages.
+The Explore filter rail scrolls independently on desktop; its date control uses
+explicit UTC fields plus 7d/30d/90d/1y/All presets. The interaction contract is
+deliberate:
 
 - every chart has a takeaway, a "How to read" disclosure, and a data table;
+- help glyphs are a 17px inline circle inside a 44px invisible target, never a
+  large bordered box;
 - hover and keyboard focus show the same exact tooltip with a named denominator;
 - selection is reversible (`Escape` or clear) and click-through preserves context;
 - severity is never color-only, and unscored is an explicit band, never zero;
@@ -220,11 +231,11 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 
 Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a
 date basis; known-exploited returns KEV entries; search returns matches with excerpts.
-Measured on the live 395k volume after the Research Console revamp
-(2026-10-26): `/` about 0.17 s, `/explore` about 2–4 s on the first uncached
-filter combination and about 0.03 s when repeated, `/priority` about 0.14 s,
-`/methodology` about 0.02 s, `/radar` and `/replay` under 0.02 s, and
-`/api/v1/cves?limit=2` about 1.3 s.
+Measured on the live 395k volume after the final UI quality pass
+(2026-10-26): `/` about 0.39 s, `/explore` about 2–4 s on the first uncached
+filter combination and about 0.03 s when repeated, `/priority` about 0.19 s,
+`/methodology` about 0.02 s, `/api-docs` about 0.05 s, `/radar` and `/replay`
+under 0.02 s, and `/api/v1/cves?limit=2` about 1.3 s.
 
 Read-path performance: overview/status/health serve the precomputed aggregate cache
 (migration 002), refreshed automatically after every successful import cycle and on
@@ -298,6 +309,8 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
 - The severity×EPSS matrix scrolls horizontally below about 620px; a visible hint
   states this. Its counts are exact but only available after aggregate cache v3 is
   refreshed (automatic on the next import cycle, or the one-off command above).
+- The Explore filter rail scrolls independently on desktop by design; collapsing
+  the whole left navigation does not affect the filter form.
 
 ## Development
 

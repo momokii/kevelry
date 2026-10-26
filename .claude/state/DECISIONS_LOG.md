@@ -5,6 +5,22 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Keep help affordances visually tiny but keep the 44px touch target; make the shell and filter rail independently collapsible/scrollable.
+
+**Date:** 2026-10-26
+
+**Context:** The owner found the bordered “?” boxes oversized, the filter list unreachable without page scrolling, and the desktop rail un-collapsible. He also asked for more overview graphics and real API examples/jump links.
+
+**Rationale:** Move the visual affordance to a 17px outlined glyph inside a transparent 44px button. Give the Explore rail `max-height` plus its own scrollbar. Add a 72px collapsed rail persisted in localStorage. Replace same-length severity tracks with a donut so segment area encodes the share. Add a cumulative line and a focus-month select with KEV additions. Add API topics/endpoint jump links and illustrative response bodies. Fix the spec parser so shared and inline parameter names resolve.
+
+**Alternatives Rejected:** Keeping the 44px bordered button (visually heavy); removing the hit target (a11y regression); scrolling the whole page to reach filters (loses context); keeping severity meters (the user read identical tracks as identical values); canvas/pie without data table (accessibility).
+
+**Security Implications:** None: presentation and documentation only. API examples are illustrative and explicitly labeled; the OpenAPI spec remains authoritative.
+
+**Impact:** Chart and control changes must keep the 17px glyph/44px target pattern, the independent filter scroll, and the jump-index/response-example contract. New API parameters must parse names from both shared refs and inline blocks.
+
+---
+
 **Decision:** Rebuild the product as a Research Console and use visx SVG primitives, not a canvas chart framework.
 
 **Date:** 2026-10-26

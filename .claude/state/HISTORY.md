@@ -2,6 +2,28 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-26 - Research Console quality pass
+
+The owner accepted the new direction but flagged the remaining detail work:
+oversized bordered help buttons, a filter rail that could not scroll, no desktop
+rail collapse, an awkward date filter, a missing severity comparison because all
+meter tracks looked alike, weak month focus on the volume chart, a methodology
+page that still explained too little, and API docs without response examples or
+a page jump index.
+
+Fixed all of it: the help glyph is now a 17px inline circle inside a transparent
+44px target; the Explore rail scrolls independently; date presets (7d/30d/90d/1y/
+All) sit beside explicit UTC fields; the desktop rail collapses to 72px and
+persists; severity composition is a real donut; the volume chart has a focus-month
+select with KEV additions; a cumulative growth line was added; methodology gained
+an interactive pipeline, live coverage diagram, and worked ordering example; API
+docs gained a topic/endpoint jump index and illustrative response bodies. Also
+fixed a long-standing spec-parser bug that left every API parameter name blank.
+
+Final gates: 365 unit tests and 68 Playwright tests pass (1 skipped), including
+new rail-collapse, date-preset, scrollable-filter, methodology-explainer, API TOC
+and response-example coverage. Live timings 0.01-0.39s warm, explore 2-4s cold
+then 0.03s warm, 0 restarts.
 ## 2026-10-26 - Full Research Console UI revamp
 
 The owner rejected the Evidence Ledger presentation as dated and insufficiently

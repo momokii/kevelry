@@ -76,7 +76,8 @@ serif stack for product headings.
 
 Desktop (`>1080px`):
 
-- 232px persistent rail, `--ui-paper-deep`, 1px right rule.
+- 232px persistent rail, `--ui-paper-deep`, 1px right rule; collapse control
+  reduces it to 72px and persists the choice in `localStorage`.
 - Brand, seven primary destinations with inline SVG icons, active item = white
   surface + inset accent rule + `aria-current="page"`.
 - Rail footer: source-status link, API reference, display timezone.
@@ -117,18 +118,19 @@ Spacing uses the 4/8/12/16/20/24/32/40/48/64 scale.
 1. Page header with snapshot instant and data-status action.
 2. Hero: factual statement, corpus number, KEV/forecast coverage.
 3. Four stats: unknown dates, KEV-listed, EPSS-scored, unscored severity.
-4. Volume panel (24/12 months, hover/focus tooltip, click selection, data table)
-   plus KEV rhythm below.
-5. Severity composition and log-EPSS distribution in a right stack.
+4. Volume panel (24/12 months, focus-month select, hover/focus tooltip, click
+   selection with KEV additions and an Explore link) + cumulative growth line.
+5. Severity donut with an interactive legend and log-EPSS distribution.
 6. Joint severity×EPSS matrix with KEV rings and a cohort inspector.
-7. Freshness and honesty notes side by side.
+7. KEV rhythm, freshness, and honesty notes.
 8. Priority evidence in four compact lists.
 
 ### Explore
 
-Filter disclosure (open on desktop, collapsed on mobile) + cohort composition
-(severity meters, monthly counts, signal coverage) + compact result rows with
-severity/KEV/EPSS chips and official-record actions.
+Filter disclosure (open by default, collapsible) inside a rail that scrolls
+independently on desktop. UTC date fields pair with 7d/30d/90d/1y/All presets.
+Cohort composition shows severity meters, monthly counts, and signal coverage;
+compact result rows carry severity/KEV/EPSS chips and official-record actions.
 
 ### Priority
 
@@ -144,9 +146,12 @@ then the five replayed lists with the same row language.
 
 ### Methodology / API docs
 
-Methodology keeps the anchor nav and diagrams, plus the full notice text.
-API docs keeps the spec-rendered endpoint tables. Both use the shared page
-header and typography.
+Methodology adds an interactive six-stage pipeline with a detail panel and
+failure branch, a live signal-coverage diagram, and a worked ordering example
+with mode tabs and a highlighted deciding key. It keeps the anchor nav, legal
+notices, and per-source health. API docs adds a jump index for topics and every
+endpoint, resolved parameter names, and an illustrative response body per
+endpoint; the spec remains the source of truth.
 
 ## 7. Chart contract
 
@@ -174,8 +179,15 @@ chart shows the base rate; it is not a risk score.
 
 ### Severity composition
 
-Seven bands from the primary CNA CVSS policy. Full-width meter under each label,
-count and share at the right, whole row is an Explore link.
+Seven bands from the primary CNA CVSS policy. A donut shows the true proportions
+(no same-length tracks); hovering a segment updates the centre, and the counted
+legend rows are the Explore links. A data table is provided.
+
+### Cumulative growth
+
+Running total inside the displayed 24-month window, not the full corpus and not a
+forecast. Hover/focus points show the month’s additions and the cumulative total;
+a data table is provided.
 
 ### Joint matrix
 

@@ -42,7 +42,9 @@ revamp shipped. Local `main` only: no remote.
 - [x] Verification after the UI round: 364 unit tests pass (3 skipped), 67 Playwright tests pass (1 skipped), lint/typecheck/build green; 360/768/1280 screenshots with zero horizontal overflow and clean consoles
 - [x] Full Research Console revamp (2026-10-26): persistent rail + command bar; Instrument Sans/JetBrains Mono self-hosted; visx volume/log-EPSS/severity/KEV charts; exact severity×EPSS matrix with KEV rings and keyboard inspector; collapsible explore filters with cohort charts; compact expandable priority table; radar feed/inspector; methodology/API restyle
 - [x] Aggregate cache v3 adds `epssLogHistogram` and `severityEpssMatrix`; live refresh run on the 395k volume
-- [x] Revamp verification: 364 unit + 65 Playwright tests pass (1 skipped), 44px targets, 200%/360px overflow gates, reduced-motion gate; warm pages 0.01–0.17s, explore 2–4s cold then 0.03s warm, 0 restarts
+- [x] Revamp verification: 365 unit + 68 Playwright tests pass (1 skipped), 44px targets, 360px/200%-equivalent overflow gates, reduced-motion gate; warm pages 0.01–0.39s, explore 2–4s cold then 0.03s warm, 0 restarts
+- [x] UI quality pass (2026-10-26): compact 17px help glyph; independently scrollable Explore filter rail; UTC date presets; collapsible/persisted desktop rail; severity donut; cumulative growth line; focus-month control with KEV additions; interactive methodology pipeline + coverage + worked example; API jump index and illustrative responses; parameter-name parser fixed
+- [x] Final gates after the quality pass: 365 unit + 68 Playwright tests, lint/typecheck/build/Docker build green, zero overflow at 360px and the 200%-zoom-equivalent viewport, 0 restarts
 
 ## In Progress
 
@@ -69,4 +71,4 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 
 ## Last Updated
 
-2026-10-26: Research Console revamp shipped and deployed; 364 unit + 65 Playwright tests green; warm pages 0.01-0.17s, explore 2–4s cold then 0.03s warm; 0 restarts.
+2026-10-26: Research Console UI quality pass shipped; 365 unit + 68 Playwright tests green; warm pages 0.01-0.39s, explore 2–4s cold then 0.03s warm; 0 restarts.
