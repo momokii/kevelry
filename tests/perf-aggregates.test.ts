@@ -25,7 +25,12 @@ import {
   severityBandsSql,
   type AggregateSnapshot,
 } from "../src/lib/aggregates";
-import { openDatabase, openReadDatabase, resetReadDatabaseCache, type CveDatabase } from "../src/lib/db";
+import {
+  openDatabase,
+  openReadDatabase,
+  resetReadDatabaseCache,
+  type CveDatabase,
+} from "../src/lib/db";
 import { getHighestForecast, getRisingForecast } from "../src/lib/priority";
 import { selectPrimaryCvss } from "../src/lib/ranking";
 import { severityBandFor } from "../src/lib/search";
@@ -79,20 +84,16 @@ function dayFor(index: number): string {
 function seedCorpus(db: CveDatabase): void {
   const ids: string[] = [];
   for (let index = 0; index < ROWS; index += 1) ids.push(cveId(index));
-  db.executeBatched(
-    ids,
-    1000,
-    (batch) => {
-      const insert = db.handle.prepare(
-        "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, title, description, description_lang, source_revision, created_at, updated_at) VALUES (?, '5.1', 'PUBLISHED', ?, ?, ?, ?, 'en', 'rev-test', ?, ?)",
-      );
-      for (const id of batch) {
-        const index = Number(id.slice(-6)) - 1;
-        const published = index % 500 === 0 ? null : `${dayFor(index)}T00:00:00.000Z`;
-        insert.run(id, published, published, `Title ${id}`, `Description ${id}`, STAMP, STAMP);
-      }
-    },
-  );
+  db.executeBatched(ids, 1000, (batch) => {
+    const insert = db.handle.prepare(
+      "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, title, description, description_lang, source_revision, created_at, updated_at) VALUES (?, '5.1', 'PUBLISHED', ?, ?, ?, ?, 'en', 'rev-test', ?, ?)",
+    );
+    for (const id of batch) {
+      const index = Number(id.slice(-6)) - 1;
+      const published = index % 500 === 0 ? null : `${dayFor(index)}T00:00:00.000Z`;
+      insert.run(id, published, published, `Title ${id}`, `Description ${id}`, STAMP, STAMP);
+    }
+  });
   db.executeBatched(ids, 1000, (batch) => {
     const insert = db.handle.prepare(
       "INSERT INTO cvss_metrics (cve_id, origin, version, base_score, vector, source_order) VALUES (?, ?, ?, ?, 'V', 0)",
@@ -209,7 +210,9 @@ describe("task 43 aggregate cache (50k fixture)", () => {
     const applied = db.appliedVersions();
     expect(applied).toContain(2);
     const objects = db.handle
-      .prepare("SELECT name FROM sqlite_master WHERE name IN ('aggregate_cache', 'idx_cve_records_state_published', 'idx_cve_records_published_date', 'idx_cve_records_source_revision', 'idx_cvss_metrics_cve_origin_version', 'idx_epss_daily_score_cve')")
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE name IN ('aggregate_cache', 'idx_cve_records_state_published', 'idx_cve_records_published_date', 'idx_cve_records_source_revision', 'idx_cvss_metrics_cve_origin_version', 'idx_epss_daily_score_cve')",
+      )
       .all() as Array<{ name: string }>;
     expect(objects.map((row) => row.name).sort()).toEqual(
       [
@@ -235,7 +238,11 @@ describe("task 43 aggregate cache (50k fixture)", () => {
     seedCorpus(db);
     const snapshot = refreshAggregates(db);
 
-    const published = (db.handle.prepare("SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED'").get() as { n: number }).n;
+    const published = (
+      db.handle
+        .prepare("SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED'")
+        .get() as { n: number }
+    ).n;
     expect(snapshot.publishedTotal).toBe(published);
     expect(snapshot.totals.published).toBe(published);
     expect(snapshot.unknownDateCount).toBe(Math.floor(ROWS / 500));
@@ -245,21 +252,51 @@ describe("task 43 aggregate cache (50k fixture)", () => {
 
     const daySum = Object.values(snapshot.dayCounts).reduce((a, b) => a + b, 0);
     expect(daySum + snapshot.unknownDateCount).toBe(published);
-    const monthSum = Object.values(monthCountsFromDays(snapshot.dayCounts)).reduce((a, b) => a + b, 0);
+    const monthSum = Object.values(monthCountsFromDays(snapshot.dayCounts)).reduce(
+      (a, b) => a + b,
+      0,
+    );
     expect(monthSum).toBe(daySum);
 
     expect(snapshot.epssScoreDate).toBe(SCORE_DATE);
-    const scored = (db.handle.prepare("SELECT COUNT(DISTINCT cve_id) AS n FROM epss_daily WHERE score_date = ?").get(SCORE_DATE) as { n: number }).n;
+    const scored = (
+      db.handle
+        .prepare("SELECT COUNT(DISTINCT cve_id) AS n FROM epss_daily WHERE score_date = ?")
+        .get(SCORE_DATE) as { n: number }
+    ).n;
     expect(snapshot.totals.epssScored).toBe(scored);
     const histSum = snapshot.epssHistogram.reduce((a, b) => a + b, 0);
     expect(snapshot.epssHistogram).toHaveLength(10);
     expect(histSum).toBe(scored);
 
-    const kevMonths = (db.handle.prepare("SELECT COUNT(DISTINCT substr(date_added, 1, 7)) AS n FROM kev_entries").get() as { n: number }).n;
+    const matrixSum = snapshot.severityEpssMatrix.reduce((a, cell) => a + cell.count, 0);
+    const logHistSum = snapshot.epssLogHistogram.reduce((a, b) => a + b, 0);
+    expect(snapshot.epssLogHistogram).toHaveLength(9);
+    expect(matrixSum).toBe(scored);
+    expect(logHistSum).toBe(scored);
+    const matrixKev = snapshot.severityEpssMatrix.reduce((a, cell) => a + cell.kev, 0);
+    const directKev = (
+      db.handle
+        .prepare(
+          "SELECT COUNT(*) AS n FROM kev_entries k JOIN cve_records r ON r.cve_id = k.cve_id " +
+            "WHERE r.state = 'PUBLISHED' AND EXISTS (" +
+            "SELECT 1 FROM epss_daily e WHERE e.cve_id = k.cve_id AND e.score_date = ?)",
+        )
+        .get(SCORE_DATE) as { n: number }
+    ).n;
+    expect(matrixKev).toBe(directKev);
+
+    const kevMonths = (
+      db.handle
+        .prepare("SELECT COUNT(DISTINCT substr(date_added, 1, 7)) AS n FROM kev_entries")
+        .get() as { n: number }
+    ).n;
     expect(snapshot.kevByMonth.length).toBeLessThanOrEqual(12);
     expect(snapshot.kevByMonth.length).toBe(Math.min(12, kevMonths));
     const kevSum = snapshot.kevByMonth.reduce((a, row) => a + row.count, 0);
-    const kevTotal = (db.handle.prepare("SELECT COUNT(*) AS n FROM kev_entries").get() as { n: number }).n;
+    const kevTotal = (
+      db.handle.prepare("SELECT COUNT(*) AS n FROM kev_entries").get() as { n: number }
+    ).n;
     expect(snapshot.totals.kev).toBe(kevTotal);
     if (snapshot.kevByMonth.length === kevMonths) expect(kevSum).toBe(kevTotal);
 
@@ -282,77 +319,103 @@ describe("task 43 aggregate cache (50k fixture)", () => {
     expect(getAggregates(db)).toEqual(again);
   });
 
-  it("serves the cache from a primary-key point lookup (no full scan)", { timeout: 180_000 }, () => {
-    const { db } = makeDb();
-    seedCorpus(db);
-    refreshAggregates(db);
-    const planRows = db.handle
-      .prepare("EXPLAIN QUERY PLAN SELECT value_json FROM aggregate_cache WHERE key = ?")
-      .all("x") as Array<Record<string, unknown>>;
-    const detail = JSON.stringify(planRows);
-    expect(detail).toMatch(/SEARCH/i);
-    expect(detail).not.toMatch(/SCAN/i);
-    const started = Date.now();
-    const snapshot = getAggregates(db) as AggregateSnapshot;
-    expect(Date.now() - started).toBeLessThan(2000);
-    expect(snapshot.publishedTotal).toBe(ROWS);
-  });
+  it(
+    "serves the cache from a primary-key point lookup (no full scan)",
+    { timeout: 180_000 },
+    () => {
+      const { db } = makeDb();
+      seedCorpus(db);
+      refreshAggregates(db);
+      const planRows = db.handle
+        .prepare("EXPLAIN QUERY PLAN SELECT value_json FROM aggregate_cache WHERE key = ?")
+        .all("x") as Array<Record<string, unknown>>;
+      const detail = JSON.stringify(planRows);
+      expect(detail).toMatch(/SEARCH/i);
+      expect(detail).not.toMatch(/SCAN/i);
+      const started = Date.now();
+      const snapshot = getAggregates(db) as AggregateSnapshot;
+      expect(Date.now() - started).toBeLessThan(2000);
+      expect(snapshot.publishedTotal).toBe(ROWS);
+    },
+  );
 
-  it("overview/status/health keep identical shapes from cache vs live fallback", { timeout: 180_000 }, async () => {
-    const { db } = makeDb();
-    seedCorpus(db);
-    refreshAggregates(db);
-    const fromCache = (await (await getOverview(new Request("http://x/api/v1/overview?bucket=month&months=24"))).json()) as Record<string, unknown>;
-    const statusCache = (await (await getStatus(new Request("http://x/api/v1/status"))).json()) as Record<string, unknown>;
-    const healthCache = (await (await getHealth(new Request("http://x/api/v1/health"))).json()) as Record<string, unknown>;
-    db.handle.prepare("DELETE FROM aggregate_cache").run();
-    expect(getAggregates(db)).toBeNull();
-    const fromLive = (await (await getOverview(new Request("http://x/api/v1/overview?bucket=month&months=24"))).json()) as Record<string, unknown>;
-    const statusLive = (await (await getStatus(new Request("http://x/api/v1/status"))).json()) as Record<string, unknown>;
-    const healthLive = (await (await getHealth(new Request("http://x/api/v1/health"))).json()) as Record<string, unknown>;
-    const normalize = (value: unknown): unknown =>
-      JSON.parse(
-        JSON.stringify(value, (key, entry) =>
-          key === "generatedAt" || key === "lastCheckedAt" || key === "lastAcceptedAt" ? "TS" : (entry as unknown),
-        ),
+  it(
+    "overview/status/health keep identical shapes from cache vs live fallback",
+    { timeout: 180_000 },
+    async () => {
+      const { db } = makeDb();
+      seedCorpus(db);
+      refreshAggregates(db);
+      const fromCache = (await (
+        await getOverview(new Request("http://x/api/v1/overview?bucket=month&months=24"))
+      ).json()) as Record<string, unknown>;
+      const statusCache = (await (
+        await getStatus(new Request("http://x/api/v1/status"))
+      ).json()) as Record<string, unknown>;
+      const healthCache = (await (
+        await getHealth(new Request("http://x/api/v1/health"))
+      ).json()) as Record<string, unknown>;
+      db.handle.prepare("DELETE FROM aggregate_cache").run();
+      expect(getAggregates(db)).toBeNull();
+      const fromLive = (await (
+        await getOverview(new Request("http://x/api/v1/overview?bucket=month&months=24"))
+      ).json()) as Record<string, unknown>;
+      const statusLive = (await (
+        await getStatus(new Request("http://x/api/v1/status"))
+      ).json()) as Record<string, unknown>;
+      const healthLive = (await (
+        await getHealth(new Request("http://x/api/v1/health"))
+      ).json()) as Record<string, unknown>;
+      const normalize = (value: unknown): unknown =>
+        JSON.parse(
+          JSON.stringify(value, (key, entry) =>
+            key === "generatedAt" || key === "lastCheckedAt" || key === "lastAcceptedAt"
+              ? "TS"
+              : (entry as unknown),
+          ),
+        );
+      expect(Object.keys(fromCache).sort()).toEqual(Object.keys(fromLive).sort());
+      expect(normalize(fromCache)).toEqual(normalize(fromLive));
+      expect(normalize(statusCache)).toEqual(normalize(statusLive));
+      expect(normalize(healthCache)).toEqual(normalize(healthLive));
+    },
+  );
+
+  it(
+    "sets Cache-Control + ETag on success and returns 304 on repeat; errors stay uncacheable",
+    { timeout: 180_000 },
+    async () => {
+      const { db } = makeDb();
+      seedCorpus(db);
+      refreshAggregates(db);
+      const first = await getOverview(new Request("http://x/api/v1/overview?bucket=day&months=3"));
+      expect(first.status).toBe(200);
+      const etag = first.headers.get("ETag");
+      expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
+      expect(first.headers.get("Cache-Control")).toBe(
+        "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
       );
-    expect(Object.keys(fromCache).sort()).toEqual(Object.keys(fromLive).sort());
-    expect(normalize(fromCache)).toEqual(normalize(fromLive));
-    expect(normalize(statusCache)).toEqual(normalize(statusLive));
-    expect(normalize(healthCache)).toEqual(normalize(healthLive));
-  });
-
-  it("sets Cache-Control + ETag on success and returns 304 on repeat; errors stay uncacheable", { timeout: 180_000 }, async () => {
-    const { db } = makeDb();
-    seedCorpus(db);
-    refreshAggregates(db);
-    const first = await getOverview(new Request("http://x/api/v1/overview?bucket=day&months=3"));
-    expect(first.status).toBe(200);
-    const etag = first.headers.get("ETag");
-    expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
-    expect(first.headers.get("Cache-Control")).toBe(
-      "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
-    );
-    const repeat = await getOverview(
-      new Request("http://x/api/v1/overview?bucket=day&months=3", {
-        headers: { "If-None-Match": etag as string },
-      }),
-    );
-    expect(repeat.status).toBe(304);
-    expect(repeat.headers.get("ETag")).toBe(etag);
-    const statusRes = await getStatus(new Request("http://x/api/v1/status"));
-    expect(statusRes.headers.get("ETag")).toMatch(/^"[0-9a-f]{64}"$/);
-    const statusRepeat = await getStatus(
-      new Request("http://x/api/v1/status", {
-        headers: { "If-None-Match": statusRes.headers.get("ETag") as string },
-      }),
-    );
-    expect(statusRepeat.status).toBe(304);
-    const bad = await getOverview(new Request("http://x/api/v1/overview?bucket=fortnight"));
-    expect(bad.status).toBe(400);
-    expect(bad.headers.get("ETag")).toBeNull();
-    expect(bad.headers.get("Cache-Control")).toBeNull();
-  });
+      const repeat = await getOverview(
+        new Request("http://x/api/v1/overview?bucket=day&months=3", {
+          headers: { "If-None-Match": etag as string },
+        }),
+      );
+      expect(repeat.status).toBe(304);
+      expect(repeat.headers.get("ETag")).toBe(etag);
+      const statusRes = await getStatus(new Request("http://x/api/v1/status"));
+      expect(statusRes.headers.get("ETag")).toMatch(/^"[0-9a-f]{64}"$/);
+      const statusRepeat = await getStatus(
+        new Request("http://x/api/v1/status", {
+          headers: { "If-None-Match": statusRes.headers.get("ETag") as string },
+        }),
+      );
+      expect(statusRepeat.status).toBe(304);
+      const bad = await getOverview(new Request("http://x/api/v1/overview?bucket=fortnight"));
+      expect(bad.status).toBe(400);
+      expect(bad.headers.get("ETag")).toBeNull();
+      expect(bad.headers.get("Cache-Control")).toBeNull();
+    },
+  );
 
   it("reuses one read-only handle per process and isolates tests", () => {
     const { dir } = makeDb();
@@ -364,14 +427,22 @@ describe("task 43 aggregate cache (50k fixture)", () => {
     expect(third).not.toBe(first);
   });
 
-  it("worker ensureAggregates fills an empty cache and skips a filled one", { timeout: 180_000 }, () => {
-    const { db } = makeDb();
-    seedCorpus(db);
-    expect(getAggregates(db)).toBeNull();
-    const logs: Array<Record<string, unknown>> = [];
-    expect(ensureAggregates(db, (entry) => logs.push(entry as Record<string, unknown>))).toBe(true);
-    expect(getAggregates(db)).not.toBeNull();
-    expect(logs.some((entry) => entry.event === "aggregate-refresh")).toBe(true);
-    expect(ensureAggregates(db, (entry) => logs.push(entry as Record<string, unknown>))).toBe(false);
-  });
+  it(
+    "worker ensureAggregates fills an empty cache and skips a filled one",
+    { timeout: 180_000 },
+    () => {
+      const { db } = makeDb();
+      seedCorpus(db);
+      expect(getAggregates(db)).toBeNull();
+      const logs: Array<Record<string, unknown>> = [];
+      expect(ensureAggregates(db, (entry) => logs.push(entry as Record<string, unknown>))).toBe(
+        true,
+      );
+      expect(getAggregates(db)).not.toBeNull();
+      expect(logs.some((entry) => entry.event === "aggregate-refresh")).toBe(true);
+      expect(ensureAggregates(db, (entry) => logs.push(entry as Record<string, unknown>))).toBe(
+        false,
+      );
+    },
+  );
 });

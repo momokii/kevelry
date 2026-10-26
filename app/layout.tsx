@@ -2,11 +2,13 @@ import { cookies } from "next/headers";
 import type { Metadata } from "next";
 
 import { DisplayPrefsProvider } from "@/components/ledger/DisplayPrefs";
+import { Shell } from "@/components/shell/Shell";
 import "./globals.css";
+import "./ui.css";
 
 export const metadata: Metadata = {
   title: "CVE Change Radar",
-  description: "App shell. No app behavior yet.",
+  description: "Explainable CVE intelligence: volume, severity, KEV, EPSS, and change history.",
 };
 
 const SUPPORTED_ZONES = [
@@ -44,7 +46,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <a className="ledger-skip-link" href="#main-content">
           Skip to main content
         </a>
-        <DisplayPrefsProvider initialTimeZone={initialTimeZone}>{children}</DisplayPrefsProvider>
+        <DisplayPrefsProvider initialTimeZone={initialTimeZone}>
+          <Shell>{children}</Shell>
+        </DisplayPrefsProvider>
       </body>
     </html>
   );

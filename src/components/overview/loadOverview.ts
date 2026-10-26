@@ -1,5 +1,11 @@
 import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
-import { getAggregates, severityBandsSql, type AggregateSnapshot } from "../../lib/aggregates";
+import {
+  getAggregates,
+  severityBandsSql,
+  severityEpssMatrixSql,
+  type AggregateSnapshot,
+  type SeverityEpssCell,
+} from "../../lib/aggregates";
 import { monthlyVolume, type DayBucket } from "./chartData";
 
 export type { DayBucket } from "./chartData";
@@ -66,6 +72,8 @@ export interface OverviewData {
   volumeTotalMonths: number;
   severityBands: Record<string, number>;
   epssHistogram: number[];
+  epssLogHistogram: number[];
+  severityEpssMatrix: SeverityEpssCell[];
   epssScoreDate: string | null;
   kevByMonth: KevMonthBucket[];
   corpus: CorpusStats;
@@ -469,6 +477,13 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
     const severityBands = cached === null ? severityBandsSql(db) : { ...cached.severityBands };
     const epssHistogram =
       cached === null ? liveEpssHistogram(db, epssDate) : [...cached.epssHistogram];
+    const joint = cached === null ? severityEpssMatrixSql(db, epssDate) : null;
+    const epssLogHistogram =
+      cached === null ? (joint?.histogram ?? []) : [...cached.epssLogHistogram];
+    const severityEpssMatrix =
+      cached === null
+        ? (joint?.cells ?? [])
+        : cached.severityEpssMatrix.map((cell) => ({ ...cell }));
     const epssScoreDate = cached === null ? epssDate : cached.epssScoreDate;
     const kevByMonth =
       cached === null
@@ -511,6 +526,8 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       volumeTotalMonths: volumeMonths.reduce((sum, bucket) => sum + bucket.count, 0),
       severityBands,
       epssHistogram,
+      epssLogHistogram,
+      severityEpssMatrix,
       epssScoreDate,
       kevByMonth,
       corpus,

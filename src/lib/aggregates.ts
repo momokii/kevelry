@@ -12,13 +12,10 @@
 // refreshAggregates() is idempotent: recompute + INSERT OR REPLACE.
 
 import type { CveDatabase } from "./db";
-import {
-  getHighestForecast,
-  getRisingForecast,
-} from "./priority";
+import { getHighestForecast, getRisingForecast } from "./priority";
 
 export const AGGREGATE_KEY = "aggregates:v1";
-export const AGGREGATE_VERSION = 2;
+export const AGGREGATE_VERSION = 3;
 
 /** Bounded prefix stored per ranked list: exact full-order-then-slice head. */
 export const TOP_LIST_LIMIT = 100;
@@ -59,6 +56,15 @@ export interface CorpusTotals {
   unmatchedEpss: number;
 }
 
+export const EPSS_LOG_BUCKET_COUNT = 9;
+
+export interface SeverityEpssCell {
+  band: string;
+  bin: number;
+  count: number;
+  kev: number;
+}
+
 export interface AggregateSnapshot {
   version: number;
   computedAt: string;
@@ -71,6 +77,8 @@ export interface AggregateSnapshot {
   tombstones: number;
   severityBands: Record<string, number>;
   epssHistogram: number[];
+  epssLogHistogram: number[];
+  severityEpssMatrix: SeverityEpssCell[];
   kevByMonth: Array<{ month: string; count: number }>;
   totals: CorpusTotals;
   /**
@@ -187,6 +195,74 @@ function epssHistogramSql(db: CveDatabase, scoreDate: string | null): number[] {
   return buckets;
 }
 
+function epssLogBin(column: string): string {
+  return (
+    `CASE WHEN ${column} < 0.001 THEN 0 ` +
+    `WHEN ${column} < 0.005 THEN 1 ` +
+    `WHEN ${column} < 0.01 THEN 2 ` +
+    `WHEN ${column} < 0.02 THEN 3 ` +
+    `WHEN ${column} < 0.05 THEN 4 ` +
+    `WHEN ${column} < 0.1 THEN 5 ` +
+    `WHEN ${column} < 0.2 THEN 6 ` +
+    `WHEN ${column} < 0.5 THEN 7 ELSE 8 END`
+  );
+}
+
+export function severityEpssMatrixSql(
+  db: CveDatabase,
+  scoreDate: string | null,
+): { cells: SeverityEpssCell[]; histogram: number[] } {
+  if (scoreDate === null) {
+    return { cells: [], histogram: new Array<number>(EPSS_LOG_BUCKET_COUNT).fill(0) };
+  }
+  const rows = db.handle
+    .prepare(
+      "WITH best AS (" +
+        "SELECT cve_id, " +
+        "CASE WHEN MAX(s40) IS NOT NULL THEN '4.0' " +
+        "WHEN MAX(s31) IS NOT NULL THEN '3.1' " +
+        "WHEN MAX(s30) IS NOT NULL THEN '3.0' " +
+        "WHEN MAX(s20) IS NOT NULL THEN '2.0' ELSE NULL END AS version, " +
+        "COALESCE(MAX(s40), MAX(s31), MAX(s30), MAX(s20)) AS score " +
+        "FROM (SELECT cve_id, " +
+        "CASE WHEN version = '4.0' THEN CAST(base_score AS REAL) ELSE NULL END AS s40, " +
+        "CASE WHEN version = '3.1' THEN CAST(base_score AS REAL) ELSE NULL END AS s31, " +
+        "CASE WHEN version = '3.0' THEN CAST(base_score AS REAL) ELSE NULL END AS s30, " +
+        "CASE WHEN version = '2.0' THEN CAST(base_score AS REAL) ELSE NULL END AS s20 " +
+        `FROM cvss_metrics m WHERE ${VALID_CNA_SCORE_SQL}) GROUP BY cve_id` +
+        "), banded AS (" +
+        "SELECT r.cve_id, CASE " +
+        "WHEN b.score IS NULL THEN 'unknown' " +
+        "WHEN b.version = '2.0' THEN 'legacy' " +
+        "WHEN b.score = 0 THEN 'none' " +
+        "WHEN b.score <= 3.9 THEN 'low' " +
+        "WHEN b.score <= 6.9 THEN 'medium' " +
+        "WHEN b.score <= 8.9 THEN 'high' ELSE 'critical' END AS band " +
+        "FROM cve_records r LEFT JOIN best b ON b.cve_id = r.cve_id WHERE r.state = 'PUBLISHED'" +
+        "), epss AS (" +
+        "SELECT cm.cve_id, CAST(c.epss AS REAL) AS p FROM " +
+        "(SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) cm " +
+        "JOIN epss_daily c ON c.cve_id = cm.cve_id AND c.score_date = ? AND c.model_version = cm.m " +
+        `WHERE ${VALID_EPSS_SQL}` +
+        ") SELECT banded.band AS band, " +
+        epssLogBin("epss.p") +
+        " AS bin, COUNT(*) AS n, " +
+        "SUM(CASE WHEN k.cve_id IS NULL THEN 0 ELSE 1 END) AS kev " +
+        "FROM banded JOIN epss ON epss.cve_id = banded.cve_id " +
+        "LEFT JOIN kev_entries k ON k.cve_id = banded.cve_id " +
+        "GROUP BY banded.band, bin",
+    )
+    .all(scoreDate, scoreDate) as Array<{ band: string; bin: number; n: number; kev: number }>;
+  const cells: SeverityEpssCell[] = [];
+  const histogram = new Array<number>(EPSS_LOG_BUCKET_COUNT).fill(0);
+  for (const row of rows) {
+    if (!Number.isInteger(row.bin) || row.bin < 0 || row.bin >= EPSS_LOG_BUCKET_COUNT) continue;
+    cells.push({ band: row.band, bin: row.bin, count: row.n, kev: row.kev });
+    histogram[row.bin] = (histogram[row.bin] ?? 0) + row.n;
+  }
+  return { cells, histogram };
+}
+
 function kevByMonthSql(db: CveDatabase, months = 12): Array<{ month: string; count: number }> {
   const rows = db.handle
     .prepare(
@@ -225,12 +301,15 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
   const epssScored =
     scoreDate === null
       ? 0
-      : singleScalar(db, "SELECT COUNT(DISTINCT cve_id) AS n FROM epss_daily WHERE score_date = ?", [
-          scoreDate,
-        ]);
+      : singleScalar(
+          db,
+          "SELECT COUNT(DISTINCT cve_id) AS n FROM epss_daily WHERE score_date = ?",
+          [scoreDate],
+        );
   const bands = severityBandsSql(db);
   const unscored = bands.unknown ?? 0;
-  const unknownEpss = scoreDate === null ? publishedTotal : Math.max(0, publishedTotal - epssScored);
+  const unknownEpss =
+    scoreDate === null ? publishedTotal : Math.max(0, publishedTotal - epssScored);
   const unmatchedKev = singleScalar(
     db,
     "SELECT COUNT(*) AS n FROM kev_entries k LEFT JOIN cve_records r " +
@@ -251,6 +330,7 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
     id: item.id,
     deltaPp,
   }));
+  const joint = severityEpssMatrixSql(db, scoreDate);
   return {
     version: AGGREGATE_VERSION,
     computedAt: nowIso,
@@ -262,6 +342,8 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
     tombstones,
     severityBands: bands,
     epssHistogram: epssHistogramSql(db, scoreDate),
+    epssLogHistogram: joint.histogram,
+    severityEpssMatrix: joint.cells,
     kevByMonth: kevByMonthSql(db, 12),
     totals: {
       published: publishedTotal,
@@ -312,7 +394,9 @@ export function getAggregateMeta(db: CveDatabase): AggregateMeta | null {
   try {
     ensureCacheTable(db);
     const row = db.handle
-      .prepare("SELECT computed_at, source_revision, epss_score_date FROM aggregate_cache WHERE key = ?")
+      .prepare(
+        "SELECT computed_at, source_revision, epss_score_date FROM aggregate_cache WHERE key = ?",
+      )
       .get(AGGREGATE_KEY) as
       | { computed_at: string; source_revision: string | null; epss_score_date: string | null }
       | undefined;
@@ -341,7 +425,13 @@ export function refreshAggregates(db: CveDatabase, nowIso?: string): AggregateSn
         "INSERT OR REPLACE INTO aggregate_cache (key, value_json, computed_at, source_revision, epss_score_date) " +
           "VALUES (?, ?, ?, ?, ?)",
       )
-      .run(AGGREGATE_KEY, body, snapshot.computedAt, snapshot.sourceRevision, snapshot.epssScoreDate);
+      .run(
+        AGGREGATE_KEY,
+        body,
+        snapshot.computedAt,
+        snapshot.sourceRevision,
+        snapshot.epssScoreDate,
+      );
   });
   return snapshot;
 }

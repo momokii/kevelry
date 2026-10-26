@@ -237,11 +237,16 @@ for (const width of [360, 768, 1280]) {
     await page.goto("/");
 
     await expect(page.getByTestId("overview-root")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "What is changing in the CVE corpus?", exact: true }),
+    ).toBeVisible();
 
     const masthead = page.getByTestId("overview-masthead");
-    await expect(masthead.getByText("Overview (current)")).toHaveAttribute("aria-current", "page");
-    await expect(masthead.getByRole("link", { name: "Search" })).toHaveAttribute(
+    await expect(masthead.getByRole("link", { name: /Overview/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(masthead.getByRole("link", { name: "Search", exact: true })).toHaveAttribute(
       "href",
       "/explore",
     );
@@ -256,23 +261,16 @@ for (const width of [360, 768, 1280]) {
       "/methodology",
     );
 
-    const searchForm = page.locator('form[action="/explore"]');
-    await expect(searchForm).toBeVisible();
-    await expect(page.getByTestId("overview-search-input")).toBeVisible();
-    await expect(page.getByTestId("overview-search-action")).toContainText("Search");
+    await expect(page.getByTestId("global-search")).toBeVisible();
+    await expect(page.getByTestId("overview-published-total")).toContainText("4");
+    await expect(page.getByTestId("overview-volume-bar-2026-10")).toBeVisible();
+    await expect(page.getByTestId("overview-severity-critical")).toHaveAttribute(
+      "href",
+      "/explore?severity=critical",
+    );
 
-    await page
-      .getByTestId("overview-chart-table-details")
-      .getByText("View the 30-day data table")
-      .click();
-    await expect(page.getByTestId("overview-chart-table")).toBeVisible();
-    await expect(page.getByTestId("overview-chart-count-unknown")).toContainText(
-      "explicit unknown bucket",
-    );
-    await expect(page.getByTestId(`overview-chart-count-${dayAgo(5)}`)).toContainText(
-      "1 published",
-    );
-    await expect(page.getByTestId("overview-chart-correction")).toContainText("tombstones");
+    await page.getByTestId("overview-chart").getByText("Data table").click();
+    await expect(page.getByTestId("overview-chart").locator("table.data-table")).toBeVisible();
 
     await expect(page.getByTestId("overview-freshness-cve")).toContainText("Stale");
     await expect(page.getByTestId("overview-freshness-kev")).toContainText("Source failed");
@@ -292,14 +290,6 @@ for (const width of [360, 768, 1280]) {
     await expect(priority.getByTestId("overview-priority-rising-forecast-list")).toContainText(
       "same model",
     );
-    await expect(priority.getByText(LONG_TITLE).first()).toBeVisible();
-    await expect(priority.getByText(LONG_TITLE)).toHaveCount(3);
-    for (const key of ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"]) {
-      await expect(priority.getByTestId(`overview-priority-${key}-more`)).toHaveAttribute(
-        "href",
-        "/priority",
-      );
-    }
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
@@ -327,8 +317,6 @@ test("overview empty corpus shows honest empty states", async ({ page }) => {
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
   expect(overflow, "horizontal overflow on empty state").toBeLessThanOrEqual(1);
-
-  await page.screenshot({ path: `${EVIDENCE_DIR}/overview-empty-1280.png`, fullPage: true });
 });
 
 test("overview passes the task-24 accessibility audit", async ({ page }) => {
@@ -336,93 +324,54 @@ test("overview passes the task-24 accessibility audit", async ({ page }) => {
   deployDbFile(buildSeededDbFile());
   await auditRoute(page, { route: "/", name: "overview", maxLiveRegions: 1 });
 
-  await page.getByTestId("overview-search-input").focus();
-  await expect(page.getByTestId("overview-search-input")).toBeFocused();
+  await page.getByTestId("global-search").focus();
+  await expect(page.getByTestId("global-search")).toBeFocused();
   await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/overview-focus-1280.png`, fullPage: true });
 
   await auditZoomReflow(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-zoom-200.png`);
   await auditReducedMotion(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-reduced-motion.png`);
-
-  await page
-    .getByTestId("overview-chart-table-details")
-    .getByText("View the 30-day data table")
-    .click();
-  await expect(page.getByTestId("overview-chart-table").locator("th[scope]").first()).toBeVisible();
-  const uncertainCopy = await page.getByTestId("overview-chart-count-unknown").textContent();
-  expect(uncertainCopy ?? "").toMatch(/explicit unknown bucket/);
 });
 
-test("overview charts expose exact tooltips on hover and keyboard focus", async ({ page }) => {
+test("volume chart exposes tooltips, selection, and the window toggle", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
 
-  const bar = page.getByTestId(/^overview-chart-volume-bar-/).first();
+  const bars = page.getByTestId(/^overview-volume-bar-/);
+  await expect(bars).toHaveCount(24);
+  const bar = bars.last();
   await bar.hover();
-  const tooltip = page.getByTestId("overview-chart-volume-tooltip");
+  const tooltip = page.getByTestId("overview-volume-tooltip");
   await expect(tooltip).toBeVisible();
-  await expect(tooltip).toContainText(/UTC calendar (day|month)/);
   await expect(tooltip).toContainText("%");
+  await expect(tooltip).toContainText("UTC calendar month");
 
   await bar.focus();
-  await expect(tooltip).toContainText(/UTC calendar (day|month)/);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("overview-volume-selection")).toContainText(
+    "Open this month in Explore",
+  );
   await page.keyboard.press("Escape");
-  await expect(tooltip).toContainText("Hover or Tab to a bar");
+
+  await page.getByTestId("overview-volume-window-12").click();
+  await expect(page.getByTestId("overview-volume-window-12")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByTestId(/^overview-volume-bar-/)).toHaveCount(12);
 });
 
-test("overview charts link to the exact filtered views", async ({ page }) => {
+test("density matrix selection updates the inspector and supports arrow keys", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
 
-  await expect(page.getByTestId(/^overview-chart-volume-bar-/).first()).toHaveAttribute(
-    "href",
-    /\/explore\?dateStart=\d{4}-\d{2}-\d{2}&dateEnd=\d{4}-\d{2}-\d{2}/,
+  const cell = page.getByTestId("overview-density-cell-critical-0");
+  await cell.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("overview-density-inspector")).toContainText("Critical");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("overview-density-cell-critical-1")).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
-  await expect(page.getByTestId("overview-severity-bar-critical")).toHaveAttribute(
-    "href",
-    "/explore?severity=critical",
-  );
-  await expect(page.getByTestId(/^overview-kev-months-bar-/).first()).toHaveAttribute(
-    "href",
-    "/priority?view=known-exploited",
-  );
-  await expect(page.getByTestId("overview-forecast-epss-bar-epss-9")).toHaveAttribute(
-    "href",
-    "/priority?view=highest-forecast",
-  );
-});
-
-test("freshness panel explains each state and hides raw timestamps behind detail", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/");
-
-  await expect(page.getByTestId("overview-freshness-verdict")).toBeVisible();
-  await expect(page.getByTestId("overview-freshness-legend")).toContainText("3 hours");
-  for (const key of ["cve", "kev", "epss"]) {
-    const card = page.getByTestId(`overview-freshness-${key}`);
-    await expect(card).toBeVisible();
-    await expect(card.getByTestId(`overview-freshness-${key}-plain`)).toBeVisible();
-    await card.getByText("Technical detail").click();
-    await expect(card.getByTestId(`overview-freshness-${key}-technical`)).toContainText(
-      "Exact check time",
-    );
-  }
-});
-
-test("volume chart switches between 24 months and 30 days", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/");
-
-  const months = page.getByTestId("overview-chart-view-months");
-  const days = page.getByTestId("overview-chart-view-days");
-  await expect(months).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId(/^overview-chart-volume-bar-\d{4}-\d{2}$/).first()).toBeVisible();
-
-  await days.click();
-  await expect(days).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByTestId(/^overview-chart-volume-bar-\d{4}-\d{2}-\d{2}$/).first(),
-  ).toBeVisible();
-  await expect(page.getByTestId("overview-chart-view-days")).toHaveText("30 days");
+  await expect(page.getByTestId("overview-density-inspector")).toContainText("EPSS");
 });
