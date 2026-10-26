@@ -4,11 +4,10 @@
 // endpoint built from the live base URL. No invented endpoints: the unit test
 // asserts this list equals the parsed spec paths/methods.
 
+import { PageHeader } from "@/components/shell/PageHeader";
 import { readFileSync } from "node:fs";
 import { headers } from "next/headers";
 import path from "node:path";
-
-import { Masthead } from "@/components/ledger/Masthead";
 
 import { SpecDownload } from "./SpecDownload";
 import {
@@ -44,14 +43,31 @@ export default async function ApiDocsPage() {
   const baseUrl = `${protocol}://${host}`;
 
   return (
-    <main className="ledger-page" data-testid="api-docs-root" id="main-content">
-      <Masthead current="API" testId="api-docs-masthead" />
-      <h1>Public API v1 documentation</h1>
-      <p className="ledger-meta" data-testid="api-docs-lede">
-        {meta.title} {meta.version}: the same accepted local snapshots the site reads, served as
-        versioned read-only GET routes. The machine contract is openapi/v1.yaml; this page renders
-        that file, so the table below cannot drift from the spec.
-      </p>
+    <main className="page" data-testid="api-docs-root" id="main-content">
+      <PageHeader
+        eyebrow={
+          <>
+            <span>API</span>
+            <span className="dot" aria-hidden="true" />
+            <span>{meta.version}</span>
+            <span className="dot" aria-hidden="true" />
+            <span>rendered from the spec</span>
+          </>
+        }
+        title="Public API v1"
+        lede={
+          <span data-testid="api-docs-lede">
+            {meta.title} {meta.version}: the same accepted local snapshots the site reads, served as
+            versioned read-only GET routes. The table below is rendered from openapi/v1.yaml, so it
+            cannot drift from the spec.
+          </span>
+        }
+        actions={
+          <a className="btn btn-sm" href="/methodology">
+            Data semantics
+          </a>
+        }
+      />
 
       <section className="ledger-section" aria-labelledby="api-docs-overview-heading">
         <h2 id="api-docs-overview-heading">Overview</h2>

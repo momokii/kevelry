@@ -5,10 +5,10 @@
 // copied from docs/research/SOURCES.md and FEASIBILITY.md. This page gives
 // no legal advice and makes no completeness claims: gaps stay visible.
 
+import { PageHeader } from "@/components/shell/PageHeader";
 import path from "node:path";
 
 import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/shared";
-import { Masthead } from "@/components/ledger/Masthead";
 import { HelpTip } from "@/components/ledger/HelpTip";
 import { TimeText } from "@/components/ledger/TimeText";
 import { OrderingDiagram } from "@/components/methodology/OrderingDiagram";
@@ -152,15 +152,31 @@ export default function MethodologyPage() {
   ];
 
   return (
-    <main className="ledger-page" data-testid="methodology-root" id="main-content">
-      <Masthead current="Method" testId="methodology-masthead" />
-      <h1>Methodology and data status</h1>
-      <p className="ledger-meta" data-testid="methodology-lede">
-        How this site orders CVEs, where every value comes from, what is missing, and whether each
-        source is healthy. Checked 2026-10-24; recheck terms before launch and before any
-        monetization. These are dated findings, not legal advice.
-      </p>
-      <p className="ledger-meta" data-testid="methodology-generated">
+    <main className="page" data-testid="methodology-root" id="main-content">
+      <PageHeader
+        eyebrow={
+          <>
+            <span>Method</span>
+            <span className="dot" aria-hidden="true" />
+            <span>signals, pipeline, ordering</span>
+            <span className="dot" aria-hidden="true" />
+            <span>policy {RANKING_POLICY_VERSION}</span>
+          </>
+        }
+        title="How the data works"
+        lede={
+          <span data-testid="methodology-lede">
+            How CVEs are ordered, where every value comes from, what is missing, and whether each
+            source is healthy. Checked 2026-10-24; these are dated findings, not legal advice.
+          </span>
+        }
+        actions={
+          <a className="btn btn-sm" href="/api-docs">
+            API reference
+          </a>
+        }
+      />
+      <p className="chart-note" data-testid="methodology-generated">
         Page generated <TimeText value={nowIso} testId="methodology-generated-time" />.
       </p>
 

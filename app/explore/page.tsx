@@ -1,9 +1,9 @@
 import path from "node:path";
 import { unstable_cache } from "next/cache";
 
-import { ExploreFilters } from "@/components/explore/ExploreFilters";
+import { FilterPanel } from "@/components/explore/FilterPanel";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { ExploreResults, type ExploreOutcome } from "@/components/explore/ExploreResults";
-import { Masthead } from "@/components/ledger/Masthead";
 import {
   EXPLORE_DEFAULT_LIMIT,
   ExploreInitial,
@@ -235,22 +235,44 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
   }
 
   return (
-    <main className="ledger-page" data-testid="explore-root" id="main-content">
-      <Masthead current="Search" testId="explore-masthead" />
+    <main className="page" data-testid="explore-root" id="main-content">
+      <PageHeader
+        eyebrow={
+          <>
+            <span>Search</span>
+            <span className="dot" aria-hidden="true" />
+            <span>Retained snapshot</span>
+            <span className="dot" aria-hidden="true" />
+            <span>UTC filters</span>
+          </>
+        }
+        title={<span data-testid="explore-title">Find the CVE cohort</span>}
+        lede={
+          <span data-testid="explore-lede">
+            Identifier and description search over the retained local snapshot. Filters apply to the
+            cohort immediately; every chart links back into the same filter state.
+          </span>
+        }
+        actions={
+          <>
+            <a className="btn btn-sm" href="/methodology#methodology-section-signals">
+              Scoring rules
+            </a>
+            <a className="btn btn-primary btn-sm" href="/api-docs">
+              API reference
+            </a>
+          </>
+        }
+      />
 
-      <h1 data-testid="explore-title">Explore CVE records</h1>
-      <p className="ledger-meta" data-testid="explore-lede">
-        Identifier and description search over the retained local snapshot. No upstream fetch;
-        nickname matching is not promised. Publication filters use UTC date intervals.
-      </p>
-
-      <section className="ledger-section" aria-label="Search and filters">
-        <ExploreFilters initial={initial} />
-      </section>
-
-      <section className="ledger-section" aria-label="Search outcome">
-        <ExploreResults outcome={outcome} />
-      </section>
+      <div className="explore-layout">
+        <aside className="explore-sidebar" aria-label="Search and filters">
+          <FilterPanel initial={initial} />
+        </aside>
+        <div className="explore-main">
+          <ExploreResults outcome={outcome} />
+        </div>
+      </div>
     </main>
   );
 }

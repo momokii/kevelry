@@ -1,3 +1,4 @@
+import { PageHeader } from "@/components/shell/PageHeader";
 import path from "node:path";
 
 import { mapReplayReason } from "@/app/api/v1/_lib/shared";
@@ -86,8 +87,20 @@ export default async function ReplayPage({
   }));
   if (loaded === null) {
     return (
-      <main className="ledger-page" data-testid="replay-root" id="main-content">
-        <h1>Snapshot replay</h1>
+      <main className="page" data-testid="replay-root" id="main-content">
+        <PageHeader
+          eyebrow={
+            <>
+              <span>Replay</span>
+              <span className="dot" aria-hidden="true" />
+              <span>retained checkpoints</span>
+              <span className="dot" aria-hidden="true" />
+              <span>no current-data substitution</span>
+            </>
+          }
+          title="Replay a retained snapshot"
+          lede="See exactly what the site displayed on a retained date, with the checkpoint policy and source pins intact. Missing, expired, and model-changed dates are explicit outcomes."
+        />
         <ReplayMasthead bannerText={bannerFor("", "store-missing", null)} />
         <ReplayUnavailable reason="Snapshot unavailable: the retained history store could not be opened on this server." />
       </main>
@@ -98,8 +111,20 @@ export default async function ReplayPage({
   const launch = loaded.launch;
   if (checkpoints.length === 0 || launch === null) {
     return (
-      <main className="ledger-page" data-testid="replay-root" id="main-content">
-        <h1>Snapshot replay</h1>
+      <main className="page" data-testid="replay-root" id="main-content">
+        <PageHeader
+          eyebrow={
+            <>
+              <span>Replay</span>
+              <span className="dot" aria-hidden="true" />
+              <span>retained checkpoints</span>
+              <span className="dot" aria-hidden="true" />
+              <span>no current-data substitution</span>
+            </>
+          }
+          title="Replay a retained snapshot"
+          lede="See exactly what the site displayed on a retained date, with the checkpoint policy and source pins intact. Missing, expired, and model-changed dates are explicit outcomes."
+        />
         <ReplayMasthead bannerText={bannerFor("", "empty", null)} />
         <ReplayUnavailable reason="no checkpoints retained; missing days are ineligible, never interpolated" />
       </main>
@@ -109,8 +134,20 @@ export default async function ReplayPage({
   const newest = checkpoints[checkpoints.length - 1];
   if (newest === undefined) {
     return (
-      <main className="ledger-page" data-testid="replay-root" id="main-content">
-        <h1>Snapshot replay</h1>
+      <main className="page" data-testid="replay-root" id="main-content">
+        <PageHeader
+          eyebrow={
+            <>
+              <span>Replay</span>
+              <span className="dot" aria-hidden="true" />
+              <span>retained checkpoints</span>
+              <span className="dot" aria-hidden="true" />
+              <span>no current-data substitution</span>
+            </>
+          }
+          title="Replay a retained snapshot"
+          lede="See exactly what the site displayed on a retained date, with the checkpoint policy and source pins intact. Missing, expired, and model-changed dates are explicit outcomes."
+        />
         <ReplayMasthead bannerText={bannerFor("", "empty", null)} />
         <ReplayUnavailable reason="no checkpoints retained; missing days are ineligible, never interpolated" />
       </main>
@@ -137,13 +174,27 @@ export default async function ReplayPage({
     replayCheckpoint(
       handle,
       selectedDate,
-      expectedModel === undefined ? { asOfDate } : { asOfDate, expectedModelVersion: expectedModel },
+      expectedModel === undefined
+        ? { asOfDate }
+        : { asOfDate, expectedModelVersion: expectedModel },
     ),
   );
   if (result === null) {
     return (
-      <main className="ledger-page" data-testid="replay-root" id="main-content">
-        <h1>Snapshot replay</h1>
+      <main className="page" data-testid="replay-root" id="main-content">
+        <PageHeader
+          eyebrow={
+            <>
+              <span>Replay</span>
+              <span className="dot" aria-hidden="true" />
+              <span>retained checkpoints</span>
+              <span className="dot" aria-hidden="true" />
+              <span>no current-data substitution</span>
+            </>
+          }
+          title="Replay a retained snapshot"
+          lede="See exactly what the site displayed on a retained date, with the checkpoint policy and source pins intact. Missing, expired, and model-changed dates are explicit outcomes."
+        />
         <ReplayMasthead bannerText={bannerFor("", "store-missing", null)} />
         <ReplayUnavailable reason="Snapshot unavailable: the retained history store could not be read on this server." />
       </main>
@@ -152,8 +203,20 @@ export default async function ReplayPage({
   if (result.status === "unavailable") {
     const kind = mapReplayReason(result.reason);
     return (
-      <main className="ledger-page" data-testid="replay-root" id="main-content">
-        <h1>Snapshot replay</h1>
+      <main className="page" data-testid="replay-root" id="main-content">
+        <PageHeader
+          eyebrow={
+            <>
+              <span>Replay</span>
+              <span className="dot" aria-hidden="true" />
+              <span>retained checkpoints</span>
+              <span className="dot" aria-hidden="true" />
+              <span>no current-data substitution</span>
+            </>
+          }
+          title="Replay a retained snapshot"
+          lede="See exactly what the site displayed on a retained date, with the checkpoint policy and source pins intact. Missing, expired, and model-changed dates are explicit outcomes."
+        />
         <ReplayMasthead bannerText={bannerFor(selectedDate, kind, null)} />
         <ReplaySelector selection={selector} />
         {kind === "model-changed" ? (
@@ -166,8 +229,20 @@ export default async function ReplayPage({
   }
 
   return (
-    <main className="ledger-page" data-testid="replay-root" id="main-content">
-      <h1>Snapshot replay</h1>
+    <main className="page" data-testid="replay-root" id="main-content">
+      <PageHeader
+        eyebrow={
+          <>
+            <span>Replay</span>
+            <span className="dot" aria-hidden="true" />
+            <span>retained checkpoints</span>
+            <span className="dot" aria-hidden="true" />
+            <span>no current-data substitution</span>
+          </>
+        }
+        title="Replay a retained snapshot"
+        lede="See exactly what the site displayed on a retained date, with the checkpoint policy and source pins intact. Missing, expired, and model-changed dates are explicit outcomes."
+      />
       <ReplayMasthead
         bannerText={bannerFor(selectedDate, "available", result.manifest.policyVersion)}
       />

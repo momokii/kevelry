@@ -1,12 +1,14 @@
 import type { CohortFacets, SearchResponse } from "@/lib/search";
+import { TimeText } from "@/components/ledger/TimeText";
 
+import { SEVERITY_META, formatInt } from "../charts/chartTokens";
+import { CohortVisualization, type CohortLinkParams } from "./CohortVisualization";
 import {
   EXPLORE_DEFAULT_LIMIT,
   SEVERITY_LABELS,
   SEVERITY_ORDER,
   severitySignal,
 } from "./filter-meta";
-import { CohortVisualization, type CohortLinkParams } from "./CohortVisualization";
 
 export type ExploreOutcome =
   | { kind: "unavailable" }
@@ -26,6 +28,7 @@ function bandShort(band: (typeof SEVERITY_ORDER)[number]): string {
 }
 
 function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
+  const meta = SEVERITY_META[item.severityBand];
   const severity = severitySignal(
     item.severityBand,
     item.primary?.baseScore ?? null,
@@ -42,48 +45,78 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
   const updated =
     item.dateUpdated === null ? "Updated date unknown." : `Updated ${item.dateUpdated}.`;
   return (
-    <article className="ledger-row" data-testid="explore-row">
-      <span className="ledger-row-id" data-testid="explore-row-id">
-        {item.cveId}
-      </span>
-      <p className="ledger-row-title" data-testid="explore-row-title">
-        {item.title}
-      </p>
-      <p className="ledger-row-title" data-testid="explore-row-excerpt">
-        {item.excerpt}
-      </p>
-      <p className="ledger-meta" data-testid="explore-row-lang">
-        Excerpt language: {item.langLabel}
-        {item.excerptTruncated
-          ? ". Shortened to 320 code points; full text retained locally."
-          : "."}
-      </p>
-      <p className="ledger-row-signals" data-testid="explore-row-signals">
-        {severity} {kev} {epss}
-      </p>
-      <p className="ledger-meta" data-testid="explore-row-dates">
-        {published} {updated}
-      </p>
-      <a className="ledger-row-action" href={item.officialLink} data-testid="explore-row-action">
-        Official CVE record
-      </a>
+    <article className="result-row" data-testid="explore-row">
+      <div className="result-rail">
+        <span className={`badge badge-${item.severityBand}`}>{meta.short}</span>
+        {item.kevMember ? <span className="badge badge-kev">KEV</span> : null}
+        <span className="result-date">
+          <TimeText value={item.datePublished} />
+        </span>
+      </div>
+      <div className="result-body">
+        <div className="result-title-line">
+          <span className="mono result-id" data-testid="explore-row-id">
+            {item.cveId}
+          </span>
+          <p className="result-title" data-testid="explore-row-title">
+            {item.title}
+          </p>
+        </div>
+        <p className="result-excerpt" data-testid="explore-row-excerpt">
+          {item.excerpt}
+        </p>
+        <p className="result-meta" data-testid="explore-row-lang">
+          Excerpt language: {item.langLabel}
+          {item.excerptTruncated
+            ? ". Shortened to 320 code points; full text retained locally."
+            : "."}
+        </p>
+        <p className="sr-only" data-testid="explore-row-signals">
+          {severity} {kev} {epss}
+        </p>
+        <p className="sr-only" data-testid="explore-row-dates">
+          {published} {updated}
+        </p>
+        <div className="result-signal-line">
+          <span className="signal-chip">
+            <span className="signal-chip-label">CVSS</span>
+            <strong>{item.primary?.baseScore ?? "—"}</strong>
+            {item.primary?.version ? <span>v{item.primary.version}</span> : null}
+          </span>
+          <span className="signal-chip">
+            <span className="signal-chip-label">KEV</span>
+            <strong>{item.kevMember ? "Listed" : "Not listed"}</strong>
+          </span>
+          <span className="signal-chip">
+            <span className="signal-chip-label">EPSS</span>
+            <strong>{item.epssKnown ? "Present" : "Unavailable"}</strong>
+          </span>
+          <span className="signal-chip">
+            <span className="signal-chip-label">Updated</span>
+            <strong>
+              <TimeText value={item.dateUpdated} />
+            </strong>
+          </span>
+        </div>
+      </div>
+      <div className="result-action">
+        <a className="btn btn-sm" href={item.officialLink} data-testid="explore-row-action">
+          Official record
+        </a>
+      </div>
     </article>
   );
 }
 
-/**
- * Results region: honest states only. React escapes every value, so hostile
- * query text and hostile stored descriptions render inert by construction.
- */
 export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
   if (outcome.kind === "unavailable") {
     return (
       <section aria-label="Results" data-testid="explore-results">
-        <div className="ledger-notice" data-testid="explore-unavailable" role="status">
+        <div className="notice" data-testid="explore-unavailable" role="status">
           <span>
             <strong>Snapshot unavailable.</strong> No retained snapshot is readable at this data
-            directory, so there is nothing to search yet. Filters above stay usable; results appear
-            after the first accepted import.
+            directory, so there is nothing to search yet. Filters stay usable; results appear after
+            the first accepted import.
           </span>
         </div>
       </section>
@@ -94,7 +127,7 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
     return (
       <section aria-label="Results" data-testid="explore-results">
         <p className="ledger-search-error" role="alert" data-testid="explore-invalid">
-          {outcome.message} Typed text is kept in the form above.
+          {outcome.message} Typed text is kept in the form.
         </p>
       </section>
     );
@@ -104,18 +137,33 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
   const from = response.total === 0 ? 0 : response.offset + 1;
   const to = response.offset + response.items.length;
   const bands = SEVERITY_ORDER.map(
-    (band) => `${bandShort(band)} ${response.coverage.bySeverity[band]}`,
+    (band) => `${bandShort(band)} ${formatInt(response.coverage.bySeverity[band])}`,
   ).join(", ");
 
   return (
     <section aria-label="Results" data-testid="explore-results">
-      <div className="ledger-ordering" data-testid="explore-ordering">
-        <strong>Search ordering: text queries rank by the local index, then CVE ID.</strong>
-        <span className="ledger-meta">
-          Empty queries sort publication date descending with unknown dates last, then CVE ID.
-          Severity bands narrow the cohort after the text, date, and signal match. Excerpts are
-          capped at 320 code points with the language labeled.
-        </span>
+      <div className="explore-result-head">
+        <div>
+          <div className="eyebrow">Matching cohort</div>
+          <p className="explore-count" data-testid="explore-coverage">
+            Matching cohort: <strong>{formatInt(response.total)}</strong> published records
+            <span className="muted">
+              {" "}
+              · {formatInt(response.coverage.kevMembers)} KEV ·{" "}
+              {formatInt(response.coverage.epssKnown)} with a forecast ·{" "}
+              {formatInt(response.coverage.unknownDate)} unknown dates
+            </span>
+          </p>
+        </div>
+        <details className="chart-info" data-testid="explore-ordering">
+          <summary>Ordering &amp; coverage</summary>
+          <div className="chart-info-panel">
+            <strong>Search ordering:</strong> text queries rank by the local index, then CVE ID.
+            Empty queries sort publication date descending with unknown dates last. Severity bands
+            narrow the cohort after the text, date, and signal match. Excerpts are capped at 320
+            code points. Coverage is exact over the matching cohort.
+          </div>
+        </details>
       </div>
 
       <CohortVisualization
@@ -124,59 +172,45 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
         defaultLimit={EXPLORE_DEFAULT_LIMIT}
       />
 
-      <p className="ledger-meta" role="status" data-testid="explore-coverage">
-        Matching cohort: {response.total} published records. Unknown publication date:{" "}
-        {response.coverage.unknownDate}. Unscored: {response.coverage.unknownSeverity}. Legacy v2.0
-        only: {response.coverage.legacySeverity}. KEV-listed: {response.coverage.kevMembers}. With
-        forecast: {response.coverage.epssKnown}.
-      </p>
-      <p className="ledger-meta" data-testid="explore-coverage-bands">
-        By severity band: {bands}.
-      </p>
+      <div className="explore-list-head">
+        <span>
+          Showing {from}–{to} of {formatInt(response.total)}
+        </span>
+        <span className="faint" data-testid="explore-coverage-bands">
+          By severity band: {bands}
+        </span>
+      </div>
 
       {response.items.length === 0 ? (
-        <div className="ledger-notice" data-testid="explore-empty" role="status">
-          <span>
-            {filtered ? (
-              <>
-                <strong>No matches in the retained snapshot.</strong> Try fewer filters or a shorter
-                query.
-              </>
-            ) : (
-              <>
-                <strong>No published records in the retained snapshot.</strong> The corpus is empty;
-                nothing here is a zero or a guess.
-              </>
-            )}
-          </span>
+        <div className="empty-state" data-testid="explore-empty" role="status">
+          <strong>{filtered ? "No matches in this cohort" : "No published records yet"}</strong>
+          {filtered
+            ? "Try fewer filters or a shorter query."
+            : "The retained snapshot is empty; nothing here is a zero or a guess."}
         </div>
       ) : (
-        <div data-testid="explore-list">
+        <div className="result-list" data-testid="explore-list">
           {response.items.map((item) => (
             <ResultRow key={item.cveId} item={item} />
           ))}
         </div>
       )}
 
-      <nav
-        aria-label="Result pages"
-        data-testid="explore-pagination"
-        className="ledger-explore-pages"
-      >
-        <span className="ledger-meta" data-testid="explore-page-count">
+      <nav aria-label="Result pages" data-testid="explore-pagination" className="pagination">
+        <span className="muted" data-testid="explore-page-count">
           Showing {from} to {to} of {response.total}.
         </span>
         {firstHref !== null ? (
-          <a href={firstHref} data-testid="explore-first">
+          <a className="btn btn-sm" href={firstHref} data-testid="explore-first">
             First page
           </a>
         ) : null}
         {nextHref !== null ? (
-          <a href={nextHref} data-testid="explore-next">
+          <a className="btn btn-sm" href={nextHref} data-testid="explore-next">
             Next page
           </a>
         ) : (
-          <span className="ledger-meta">No further pages.</span>
+          <span className="faint">No further pages.</span>
         )}
       </nav>
     </section>

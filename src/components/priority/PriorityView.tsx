@@ -1,3 +1,5 @@
+"use client";
+
 // Priority list primitives (plan todo 20; typography pass task 49).
 // Presentational only: no database, no fetch, no ordering logic. The server
 // component in `app/priority/page.tsx` computes every value with the priority
@@ -6,7 +8,7 @@
 // definitions and TimeText dates; styling reuses the ledger classes from
 // `app/globals.css` plus the local `PrioritySignals.module.css` grid.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { HelpTip } from "../ledger/HelpTip";
 import { TimeText } from "../ledger/TimeText";
@@ -471,35 +473,97 @@ function DeltaSignal({ row }: { row: PriorityRowData }) {
   );
 }
 
-export function PriorityRow({ row }: { row: PriorityRowData }) {
+function summaryText(row: PriorityRowData): string {
+  const parts: string[] = [];
+  parts.push(row.kevListed ? "KEV listed" : "Not listed in KEV");
+  parts.push(row.epssKnown ? `EPSS ${row.epssPercent}%` : "EPSS unavailable for this snapshot");
+  if (row.primaryKnown && row.primaryScore !== null && row.primaryVersion !== null) {
+    parts.push(`CVSS ${row.primaryScore} v${row.primaryVersion}`);
+  } else if (row.primaryLegacy && row.primaryScore !== null) {
+    parts.push(`CVSS ${row.primaryScore} v2 legacy`);
+  } else if (row.primaryAdpOnly) {
+    parts.push("ADP-only, unscored here");
+  } else {
+    parts.push("Unscored");
+  }
+  const delta = row.deltaPp;
+  const formattedDelta = delta === null ? null : formatSignedDeltaPp(delta);
+  if (formattedDelta !== null) parts.push(formattedDelta);
+  return parts.join(" · ");
+}
+
+export function PriorityRow({
+  row,
+  defaultOpen = false,
+}: {
+  row: PriorityRowData;
+  defaultOpen?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultOpen);
+  const kevMeta = row.kevListed ? "KEV" : null;
   return (
-    <article className="ledger-row" data-testid="priority-row" data-cve-id={row.id}>
-      <span className="ledger-row-id" data-testid="priority-row-id">
-        {row.id}
-      </span>
-      {row.title !== row.id ? (
-        <p className="ledger-row-title" data-testid="priority-row-title">
-          {row.title}
-        </p>
-      ) : null}
-      <p className="ledger-row-title ledger-meta" data-testid="priority-row-excerpt">
-        {row.excerpt ?? "Description not supplied"}
-        {row.excerptTruncated ? " [truncated]" : ""}
-      </p>
-      <div className="ledger-row-signals" data-testid="priority-row-signals">
-        <p className="ledger-meta" data-testid="priority-row-published">
-          Published <TimeText value={row.publishedAt} testId="priority-row-published-date" />
-        </p>
-        <div className={styles.signalGrid}>
-          <KevSignal row={row} />
-          <EpssSignal row={row} />
-          <CvssSignal row={row} />
-          <DeltaSignal row={row} />
+    <article className="priority-row" data-testid="priority-row" data-cve-id={row.id}>
+      <button
+        type="button"
+        className="priority-row-main"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span className="priority-row-ident">
+          <span className="mono" data-testid="priority-row-id">
+            {row.id}
+          </span>
+          {row.title !== row.id ? (
+            <span className="priority-row-title" data-testid="priority-row-title">
+              {row.title}
+            </span>
+          ) : null}
+          <span className="priority-row-excerpt" data-testid="priority-row-excerpt">
+            {row.excerpt ?? "Description not supplied"}
+            {row.excerptTruncated ? " [truncated]" : ""}
+          </span>
+        </span>
+        <span className="priority-row-signals" data-testid="priority-row-signals">
+          {kevMeta !== null ? <span className="badge badge-kev">KEV</span> : null}
+          {row.epssKnown && row.epssPercent !== null ? (
+            <span className="badge badge-accent">EPSS {row.epssPercent}%</span>
+          ) : (
+            <span className="badge badge-unknown">EPSS unavailable</span>
+          )}
+          {row.primaryKnown && row.primaryScore !== null ? (
+            <span className={`badge badge-${cvssBandForScore(row.primaryScore)}`}>
+              CVSS {row.primaryScore}
+            </span>
+          ) : (
+            <span className="badge badge-unknown">
+              {row.primaryLegacy ? "Legacy v2" : row.primaryAdpOnly ? "ADP-only" : "Unscored"}
+            </span>
+          )}
+          {row.deltaPp !== null ? (
+            <span className="badge badge-high">{formatSignedDeltaPp(row.deltaPp)}</span>
+          ) : null}
+          <span className="priority-row-published">
+            <TimeText value={row.publishedAt} testId="priority-row-published-date" />
+          </span>
+          <span className="priority-chevron" aria-hidden="true">
+            {expanded ? "−" : "+"}
+          </span>
+          <span className="sr-only">{summaryText(row)}</span>
+        </span>
+      </button>
+      {expanded ? (
+        <div className="priority-row-detail">
+          <div className="signal-grid">
+            <KevSignal row={row} />
+            <EpssSignal row={row} />
+            <CvssSignal row={row} />
+            <DeltaSignal row={row} />
+          </div>
+          <a className="btn btn-sm" href={row.officialUrl} data-testid="priority-row-action">
+            Official CVE record
+          </a>
         </div>
-      </div>
-      <a className="ledger-row-action" href={row.officialUrl} data-testid="priority-row-action">
-        Official CVE record
-      </a>
+      ) : null}
     </article>
   );
 }
@@ -511,6 +575,7 @@ export function PriorityList({
   rows: readonly PriorityRowData[];
   mode: PriorityMode;
 }) {
+  const [visible, setVisible] = useState(25);
   if (rows.length === 0) {
     return (
       <div className="ledger-section" data-testid={`priority-empty-${mode}`}>
@@ -523,10 +588,20 @@ export function PriorityList({
     );
   }
   return (
-    <div data-testid={`priority-list-${mode}`}>
-      {rows.map((row) => (
-        <PriorityRow key={row.id} row={row} />
+    <div data-testid={`priority-list-${mode}`} className="priority-table">
+      {rows.slice(0, visible).map((row, index) => (
+        <PriorityRow key={row.id} row={row} defaultOpen={index < 5} />
       ))}
+      {rows.length > visible ? (
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => setVisible((current) => Math.min(rows.length, current + 25))}
+          style={{ marginTop: 12 }}
+        >
+          Show 25 more ({rows.length - visible} remaining)
+        </button>
+      ) : null}
     </div>
   );
 }

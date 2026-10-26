@@ -162,13 +162,17 @@ function kindFields(
   }
 }
 
+function dateOnly(value: string): string {
+  return value.slice(0, 10);
+}
+
 function revisionLabel(pins: {
   cveRevision: string;
   kevCatalogDate: string;
   epssScoreDate: string;
   epssModelVersion: string;
 }): string {
-  return `CVE ${pins.cveRevision}, KEV ${pins.kevCatalogDate}, EPSS ${pins.epssScoreDate} ${pins.epssModelVersion}`;
+  return `CVE ${pins.cveRevision}, KEV ${dateOnly(pins.kevCatalogDate)}, EPSS ${dateOnly(pins.epssScoreDate)} ${pins.epssModelVersion}`;
 }
 
 function sourceRevisionFor(
@@ -184,9 +188,9 @@ function sourceRevisionFor(
   switch (kind) {
     case "kev-added":
     case "kev-removed":
-      return `KEV catalog ${pins.kevCatalogDate}`;
+      return `KEV catalog ${dateOnly(pins.kevCatalogDate)}`;
     case "forecast-changed":
-      return `EPSS ${pins.epssScoreDate} model ${pins.epssModelVersion}`;
+      return `EPSS ${dateOnly(pins.epssScoreDate)} model ${pins.epssModelVersion}`;
     case "rank-moved":
       return `ranking policy ${policyVersion}`;
     default:

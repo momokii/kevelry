@@ -156,11 +156,14 @@ for (const width of [360, 768, 1280]) {
 
     await expect(page.getByTestId("methodology-root")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Methodology and data status", exact: true }),
+      page.getByRole("heading", { name: "How the data works", exact: true }),
     ).toBeVisible();
 
     const masthead = page.getByTestId("methodology-masthead");
-    await expect(masthead.getByText("Method (current)")).toHaveAttribute("aria-current", "page");
+    await expect(masthead.getByRole("link", { name: /Method/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     await expect(page.getByTestId("methodology-signals")).toContainText("supplied severity");
     await expect(page.getByTestId("methodology-ordering-default")).toContainText(
@@ -250,11 +253,16 @@ test("methodology passes the task-24 accessibility audit", async ({ page }) => {
   const healthSymbols = await page
     .locator('[data-testid="methodology-health"] .ledger-evidence-symbol')
     .count();
-  expect(healthSymbols, "health states carry text symbols, not color alone").toBeGreaterThanOrEqual(3);
+  expect(healthSymbols, "health states carry text symbols, not color alone").toBeGreaterThanOrEqual(
+    3,
+  );
 
   await page.locator(".ledger-skip-link").focus();
   await expect(page.locator(".ledger-skip-link")).toBeFocused();
-  await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/methodology-focus-1280.png`, fullPage: true });
+  await page.screenshot({
+    path: `${A11Y_EVIDENCE_DIR}/methodology-focus-1280.png`,
+    fullPage: true,
+  });
 
   await auditZoomReflow(page, "methodology", `${A11Y_EVIDENCE_DIR}/methodology-zoom-200.png`);
   await auditReducedMotion(

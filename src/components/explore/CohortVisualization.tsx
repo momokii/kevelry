@@ -1,9 +1,8 @@
-import type { CSSProperties } from "react";
-
 import type { CohortFacets, EpssFilter, KevFilter, SeverityBand } from "@/lib/search";
 
-import { SEVERITY_LABELS, SEVERITY_ORDER } from "./filter-meta";
-import styles from "./cohort.module.css";
+import { SEVERITY_META, SEVERITY_ORDER, formatInt, sharePercent } from "../charts/chartTokens";
+import { monthShort } from "../charts/chartTokens";
+import { SEVERITY_LABELS } from "./filter-meta";
 
 export interface CohortLinkParams {
   q: string;
@@ -21,16 +20,6 @@ type CohortVisualizationProps = {
   defaultLimit: number;
 };
 
-function formatTotal(total: number): string {
-  return total.toLocaleString("en-US");
-}
-
-function shareText(count: number, total: number): string {
-  if (total <= 0) return `0% of 0 matching records`;
-  const percent = ((count / total) * 100).toFixed(1);
-  return `${percent}% of ${formatTotal(total)} matching records`;
-}
-
 function baseKept(params: CohortLinkParams, defaultLimit: number): URLSearchParams {
   const next = new URLSearchParams();
   if (params.q !== "") next.set("q", params.q);
@@ -43,11 +32,7 @@ function baseKept(params: CohortLinkParams, defaultLimit: number): URLSearchPara
   return next;
 }
 
-function severityHref(
-  params: CohortLinkParams,
-  defaultLimit: number,
-  band: SeverityBand,
-): string {
+function severityHref(params: CohortLinkParams, defaultLimit: number, band: SeverityBand): string {
   const next = baseKept(params, defaultLimit);
   next.delete("severity");
   next.append("severity", band);
@@ -78,76 +63,76 @@ function monthHref(params: CohortLinkParams, defaultLimit: number, month: string
   return text === "" ? "/explore" : `/explore?${text}`;
 }
 
-/**
- * Filter-driven cohort picture: every figure comes from searchFacets over
- * the currently applied filters, and every bar or segment is a link that
- * rewrites exactly one filter dimension while keeping the rest.
- */
 export function CohortVisualization({ facets, params, defaultLimit }: CohortVisualizationProps) {
   const total = facets.total;
   const peakMonth = facets.byMonth.reduce((max, entry) => Math.max(max, entry.count), 0);
 
   return (
-    <section aria-label="Matching cohort visualization" data-testid="explore-cohort">
-      <p className="ledger-meta" data-testid="explore-cohort-headline">
-        <span className="ledger-emphasis">{formatTotal(total)} matching published records.</span>{" "}
-        <span className="ledger-caveat">
-          Unknown publication date: {formatTotal(facets.unknownDate)}; those records are counted
-          here and below but never appear in the monthly chart.
-        </span>
-      </p>
+    <section
+      className="cohort"
+      aria-label="Matching cohort visualization"
+      data-testid="explore-cohort"
+    >
+      <h2 className="sr-only">Matching cohort composition</h2>
+      <div className="cohort-head">
+        <div>
+          <div className="eyebrow">Cohort composition</div>
+          <p className="cohort-headline" data-testid="explore-cohort-headline">
+            <strong>{formatInt(total)}</strong> matching published records
+            <span className="muted">
+              {" "}
+              · {formatInt(facets.unknownDate)} with an unknown publication date
+            </span>
+          </p>
+        </div>
+        <p className="chart-note" style={{ margin: 0 }}>
+          Every segment and month is a link that preserves the other filters.
+        </p>
+      </div>
 
       {total === 0 ? (
-        <p className="ledger-meta" data-testid="explore-cohort-empty">
-          No records match the current filters, so there is nothing to chart. Counts are exact;
-          nothing here is a zero or a guess.
+        <p className="empty-state" data-testid="explore-cohort-empty">
+          <strong>No records match this cohort</strong>
+          There is nothing to chart. Counts are exact; nothing here is a zero or a guess.
         </p>
       ) : (
-        <>
-          <div data-testid="explore-cohort-severity">
-            <p className="ledger-meta">
-              <span className="ledger-label">Severity composition. </span>
-              Every segment is a link that shows only that band while keeping the other filters.
-            </p>
-            <div
-              className={styles.stackBar}
-              role="group"
-              aria-label="Matching records by severity band"
-            >
+        <div className="cohort-grid">
+          <div className="cohort-block">
+            <h3>Severity</h3>
+            <ul className="severity-list" data-testid="explore-cohort-severity">
               {SEVERITY_ORDER.map((band) => {
-                const count = facets.bySeverity[band];
-                const label = `${SEVERITY_LABELS[band]}: ${formatTotal(count)} (${shareText(count, total)}). Show only this band.`;
-                return (
-                  <a
-                    key={band}
-                    href={severityHref(params, defaultLimit, band)}
-                    className={
-                      band === "critical"
-                        ? `${styles.segment} ${styles.segmentCritical}`
-                        : styles.segment
-                    }
-                    style={{ flexGrow: count } as CSSProperties}
-                    title={label}
-                    aria-label={label}
-                    data-testid={`explore-cohort-severity-${band}`}
-                  >
-                    {formatTotal(count)}
-                  </a>
-                );
-              })}
-            </div>
-            <ul className={styles.legend} data-testid="explore-cohort-severity-legend">
-              {SEVERITY_ORDER.map((band) => {
+                const meta = SEVERITY_META[band];
                 const count = facets.bySeverity[band];
                 return (
-                  <li key={band} className={styles.legendItem}>
+                  <li key={band}>
                     <a
+                      className="severity-row"
                       href={severityHref(params, defaultLimit, band)}
-                      className={styles.legendLink}
-                      title={`${SEVERITY_LABELS[band]}: ${formatTotal(count)} (${shareText(count, total)}). Show only this band.`}
-                      data-testid={`explore-cohort-legend-${band}`}
+                      data-testid={`explore-cohort-severity-${band}`}
+                      title={`${SEVERITY_LABELS[band]}: ${formatInt(count)} (${sharePercent(count, total)} of the cohort). Show only this band.`}
+                      aria-label={`${SEVERITY_LABELS[band]}: ${formatInt(count)}, ${sharePercent(count, total)} of the cohort. Show only this band.`}
                     >
-                      {SEVERITY_LABELS[band]}: {formatTotal(count)} ({shareText(count, total)})
+                      <span className="severity-label">
+                        <span
+                          className="severity-dot"
+                          style={{ background: meta.color }}
+                          aria-hidden="true"
+                        />
+                        {meta.short}
+                      </span>
+                      <span className="severity-track" aria-hidden="true">
+                        <span
+                          className="severity-fill"
+                          style={{
+                            width: `${Math.max(count > 0 ? 0.6 : 0, (count / total) * 100)}%`,
+                            background: meta.color,
+                          }}
+                        />
+                      </span>
+                      <span className="severity-value">
+                        <strong>{formatInt(count)}</strong>
+                        {sharePercent(count, total)}
+                      </span>
                     </a>
                   </li>
                 );
@@ -155,69 +140,65 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
             </ul>
           </div>
 
-          <div data-testid="explore-cohort-months">
-            <p className="ledger-meta">
-              <span className="ledger-label">Monthly matching counts, UTC month. </span>
-              Every row is a link that sets the date range to that month while keeping the other
-              filters.
-            </p>
-            {facets.byMonth.length === 0 ? (
-              <p className="ledger-meta" data-testid="explore-cohort-months-empty">
-                No dated records in this cohort, so there is no month to chart.
-              </p>
-            ) : (
-              <ul className={styles.months}>
-                {facets.byMonth.map(({ month, count }) => {
-                  const href = monthHref(params, defaultLimit, month);
-                  if (href === null) return null;
-                  const label = `${month}: ${formatTotal(count)} (${shareText(count, total)}). Show only ${month}.`;
-                  const width = peakMonth > 0 ? Math.max(2, (count / peakMonth) * 100) : 0;
-                  return (
-                    <li key={month}>
-                      <a
-                        href={href}
-                        className={
-                          count === peakMonth && peakMonth > 0
-                            ? `${styles.monthLink} ${styles.monthPeak}`
-                            : styles.monthLink
-                        }
-                        title={label}
-                        aria-label={label}
-                        data-testid={`explore-cohort-month-${month}`}
-                      >
-                        <span className={styles.monthLabel}>{month}</span>
-                        <span className={styles.monthTrack} aria-hidden="true">
-                          <span className={styles.monthFill} style={{ width: `${width}%` }} />
-                        </span>
-                        <span className={styles.monthCount}>
-                          {formatTotal(count)} ({shareText(count, total)})
-                        </span>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+          <div className="cohort-block">
+            <h3>Matching records by UTC month</h3>
+            <ul className="cohort-months" data-testid="explore-cohort-months">
+              {facets.byMonth.map((entry) => {
+                const href = monthHref(params, defaultLimit, entry.month);
+                if (href === null) return null;
+                return (
+                  <li key={entry.month}>
+                    <a
+                      className="cohort-month"
+                      href={href}
+                      data-testid={`explore-cohort-month-${entry.month}`}
+                      title={`${monthShort(entry.month)}: ${formatInt(entry.count)} matching records (${sharePercent(entry.count, total)}). Show only this month.`}
+                      aria-label={`${monthShort(entry.month)}: ${formatInt(entry.count)} records, ${sharePercent(entry.count, total)} of the cohort. Show only this month.`}
+                    >
+                      <span className="cohort-month-label">{monthShort(entry.month)}</span>
+                      <span className="cohort-month-track" aria-hidden="true">
+                        <span
+                          className="cohort-month-fill"
+                          style={{
+                            width: `${peakMonth > 0 ? (entry.count / peakMonth) * 100 : 0}%`,
+                          }}
+                        />
+                      </span>
+                      <span className="cohort-month-count">{formatInt(entry.count)}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
-          <ul className={styles.stats} data-testid="explore-cohort-stats">
-            <li className={styles.statItem} data-testid="explore-cohort-stat-kev">
-              <span className="ledger-label">KEV-listed </span>
-              <span className="ledger-emphasis">{formatTotal(facets.kevMembers)}</span>{" "}
-              <span className="ledger-caveat">({shareText(facets.kevMembers, total)})</span>
-            </li>
-            <li className={styles.statItem} data-testid="explore-cohort-stat-epss">
-              <span className="ledger-label">With forecast </span>
-              <span className="ledger-emphasis">{formatTotal(facets.epssKnown)}</span>{" "}
-              <span className="ledger-caveat">({shareText(facets.epssKnown, total)})</span>
-            </li>
-            <li className={styles.statItem} data-testid="explore-cohort-stat-unknown">
-              <span className="ledger-label">Unknown publication date </span>
-              <span className="ledger-emphasis">{formatTotal(facets.unknownDate)}</span>{" "}
-              <span className="ledger-caveat">({shareText(facets.unknownDate, total)})</span>
-            </li>
-          </ul>
-        </>
+          <div className="cohort-block">
+            <h3>Signal coverage</h3>
+            <dl className="cohort-stats">
+              <div>
+                <dt>KEV-listed</dt>
+                <dd>{formatInt(facets.kevMembers)}</dd>
+              </div>
+              <div>
+                <dt>With a forecast</dt>
+                <dd>{formatInt(facets.epssKnown)}</dd>
+              </div>
+              <div>
+                <dt>Unknown date</dt>
+                <dd>{formatInt(facets.unknownDate)}</dd>
+              </div>
+              <div>
+                <dt>Unscored severity</dt>
+                <dd>{formatInt(facets.bySeverity.unknown)}</dd>
+              </div>
+            </dl>
+            <p className="chart-note">
+              Share of cohort: KEV {sharePercent(facets.kevMembers, total)} · forecast{" "}
+              {sharePercent(facets.epssKnown, total)} · unscored{" "}
+              {sharePercent(facets.bySeverity.unknown, total)}.
+            </p>
+          </div>
+        </div>
       )}
     </section>
   );

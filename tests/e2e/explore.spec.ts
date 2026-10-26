@@ -30,7 +30,7 @@ for (const width of [360, 768, 1280]) {
     await page.goto("/explore");
     await expect(page.getByTestId("explore-filters")).toHaveAttribute("data-hydrated", "true");
     await expect(page.getByTestId("explore-root")).toBeVisible();
-    await expect(page.getByTestId("explore-title")).toContainText("Explore CVE records");
+    await expect(page.getByTestId("explore-title")).toContainText("Find the CVE cohort");
     await expect(page.getByTestId("explore-filters")).toBeVisible();
     await expect(page.getByTestId("explore-query")).toBeVisible();
     await expect(page.getByTestId("explore-submit")).toBeVisible();
@@ -174,7 +174,7 @@ test("explore renders hostile input inert without breaking layout", async ({ pag
   const hostile = "<script>window.__xss=1</script><img src=x onerror=window.__xss=2>";
   await page.goto(`/explore?${new URLSearchParams({ q: hostile }).toString()}`);
 
-  await expect(page.getByTestId("explore-title")).toContainText("Explore CVE records");
+  await expect(page.getByTestId("explore-title")).toContainText("Find the CVE cohort");
   await expect(page.getByTestId("explore-query")).toHaveValue(hostile);
   const executed = await page.evaluate(() => (window as unknown as { __xss?: number }).__xss);
   expect(executed, "hostile script must not execute").toBeUndefined();

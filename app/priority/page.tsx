@@ -8,7 +8,6 @@
 
 import path from "node:path";
 
-import { Masthead } from "@/components/ledger/Masthead";
 import { TimeText } from "@/components/ledger/TimeText";
 import {
   PRIORITY_MODE_LABELS,
@@ -21,6 +20,8 @@ import {
   type PriorityRowData,
 } from "@/components/priority/PriorityView";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { Panel } from "@/components/shell/Panel";
 import {
   getAcceptedEpssDate,
   getHighestForecast,
@@ -252,88 +253,118 @@ export default async function PriorityPage({
   }
 
   return (
-    <main className="ledger-page" data-testid="priority-root" id="main-content">
-      <Masthead current="Priority" testId="priority-masthead" />
-      <h1>Priority lists</h1>
-      <p className="ledger-meta" data-testid="priority-intro">
-        Four named views over the retained PUBLISHED cohort. Signals stay distinct: KEV is
-        confirmed-exploitation evidence, EPSS is a dated forecast, CVSS is supplied severity. No
-        composite score is computed and no popularity signal exists. Ranking policy{" "}
-        {RANKING_POLICY_VERSION}.
-      </p>
+    <main className="page" data-testid="priority-root" id="main-content">
+      <PageHeader
+        eyebrow={
+          <>
+            <span>Priority</span>
+            <span className="dot" aria-hidden="true" />
+            <span>Policy {RANKING_POLICY_VERSION}</span>
+            <span className="dot" aria-hidden="true" />
+            <span>four named views</span>
+          </>
+        }
+        title="What deserves attention now?"
+        lede={
+          <span data-testid="priority-intro">
+            KEV is confirmed-exploitation evidence, EPSS is a dated forecast, CVSS is supplied
+            severity. Signals stay distinct; no composite score and no popularity signal exist.
+          </span>
+        }
+        actions={
+          <a className="btn btn-sm" href="/methodology#methodology-section-ordering">
+            Ordering rules
+          </a>
+        }
+      />
 
       {loadError !== null || snapshot === null ? (
-        <section className="ledger-section" data-testid="priority-load-error">
-          <h2>Priority data unavailable</h2>
-          <p className="ledger-meta">
-            The retained snapshot could not be read: {loadError ?? "unknown error"}. Nothing is
-            interpolated; try again once ingestion has published a snapshot.
-          </p>
-        </section>
+        <div className="notice" data-testid="priority-load-error">
+          <span>
+            <strong>Priority data unavailable.</strong> The retained snapshot could not be read:{" "}
+            {loadError ?? "unknown error"}. Nothing is interpolated; try again once ingestion has
+            published a snapshot.
+          </span>
+        </div>
       ) : (
         <>
           <PriorityModeNav current={mode} />
-          <section
-            className="ledger-section"
-            aria-labelledby="priority-mode-heading"
-            data-testid={`priority-section-${mode}`}
-          >
-            <h2 id="priority-mode-heading" data-testid="priority-mode-heading">
-              {PRIORITY_MODE_LABELS[mode]}
-            </h2>
-            <PrioritySummary
-              mode={mode}
-              scoreDate={snapshot.scoreDate}
-              scoreModel={snapshot.scoreModel}
-              displayed={Math.min(snapshot.displayLimit, snapshot.returned)}
-              eligible={snapshot.eligibleCohort}
-              publishedTotal={snapshot.publishedCount}
-              stale={snapshot.epssStale}
-            />
-            <PriorityOrdering
-              mode={mode}
-              coverage={orderingCoverage(snapshot)}
-              extra={ORDERING_EXTRAS[mode]}
-              scoreDate={snapshot.scoreDate}
-              scoreModel={snapshot.scoreModel}
-              cutoffT={mode === "new-critical" ? snapshot.cutoffT : null}
-            />
-            <PriorityEvidence
-              stale={snapshot.epssStale}
-              testId={`priority-evidence-${mode}`}
-              detail={
-                snapshot.epssStale ? (
-                  <>
-                    EPSS score date{" "}
-                    <TimeText value={snapshot.scoreDate} testId="priority-evidence-score-date" /> is
-                    older than 2 UTC calendar days. Dated values are retained with this label; they
-                    are never relabeled as current-day forecasts.
-                  </>
-                ) : snapshot.scoreDate !== null ? (
-                  <>
-                    CVE List V5 and KEV per retained manifest, observed at request time. EPSS model{" "}
-                    {snapshot.scoreModel ?? "unknown"} dated{" "}
-                    <TimeText value={snapshot.scoreDate} testId="priority-evidence-score-date" />.
-                    KEV catalog dates mark catalog addition.
-                  </>
-                ) : (
-                  "No accepted EPSS score date in this snapshot. EPSS values render as unavailable, never zero."
-                )
-              }
-            />
-            <p className="ledger-meta" data-testid={`priority-coverage-${mode}`}>
-              Coverage denominator: {snapshot.eligibleCohort} eligible of {snapshot.publishedCount}{" "}
-              published records.
-            </p>
-            <p className="ledger-meta" data-testid={`priority-display-limit-${mode}`}>
-              Showing top {snapshot.displayLimit} of the cohort for this view. Ordering and
-              eligibility are unchanged; only the display is truncated.
-            </p>
-            <p className="ledger-meta" data-testid={`priority-methodology-${mode}`}>
-              <a href="/methodology">Methodology, sources, and reuse notices</a>
-            </p>
-            <PriorityList rows={snapshot.rows} mode={mode} />
-          </section>
+          <div className="priority-layout" data-testid={`priority-section-${mode}`}>
+            <div className="priority-main">
+              <div className="priority-list-head">
+                <h2 id="priority-mode-heading" data-testid="priority-mode-heading">
+                  {PRIORITY_MODE_LABELS[mode]}
+                </h2>
+                <PrioritySummary
+                  mode={mode}
+                  scoreDate={snapshot.scoreDate}
+                  scoreModel={snapshot.scoreModel}
+                  displayed={Math.min(snapshot.displayLimit, snapshot.returned)}
+                  eligible={snapshot.eligibleCohort}
+                  publishedTotal={snapshot.publishedCount}
+                  stale={snapshot.epssStale}
+                />
+              </div>
+              <PriorityList rows={snapshot.rows} mode={mode} />
+              <p className="chart-note" data-testid={`priority-coverage-${mode}`}>
+                Coverage denominator: {snapshot.eligibleCohort} eligible of{" "}
+                {snapshot.publishedCount} published records.
+              </p>
+              <p className="chart-note" data-testid={`priority-display-limit-${mode}`}>
+                Showing top {snapshot.displayLimit} of the cohort for this view. Ordering and
+                eligibility are unchanged; only the display is truncated.
+              </p>
+              <p className="chart-note" data-testid={`priority-methodology-${mode}`}>
+                <a href="/methodology">Methodology, sources, and reuse notices</a>
+              </p>
+            </div>
+
+            <aside className="priority-rail">
+              <Panel
+                title="How this list is ordered"
+                sub="First key wins; ties break deterministically."
+              >
+                <PriorityOrdering
+                  mode={mode}
+                  coverage={orderingCoverage(snapshot)}
+                  extra={ORDERING_EXTRAS[mode]}
+                  scoreDate={snapshot.scoreDate}
+                  scoreModel={snapshot.scoreModel}
+                  cutoffT={mode === "new-critical" ? snapshot.cutoffT : null}
+                />
+              </Panel>
+              <Panel title="Snapshot evidence">
+                <PriorityEvidence
+                  stale={snapshot.epssStale}
+                  testId={`priority-evidence-${mode}`}
+                  detail={
+                    snapshot.epssStale ? (
+                      <>
+                        EPSS score date{" "}
+                        <TimeText
+                          value={snapshot.scoreDate}
+                          testId="priority-evidence-score-date"
+                        />{" "}
+                        is older than 2 UTC calendar days. Dated values are retained with this
+                        label; they are never relabeled as current-day forecasts.
+                      </>
+                    ) : snapshot.scoreDate !== null ? (
+                      <>
+                        EPSS model {snapshot.scoreModel ?? "unknown"} dated{" "}
+                        <TimeText
+                          value={snapshot.scoreDate}
+                          testId="priority-evidence-score-date"
+                        />
+                        . KEV catalog dates mark catalog addition, not first exploitation.
+                      </>
+                    ) : (
+                      "No accepted EPSS score date in this snapshot. EPSS values render as unavailable, never zero."
+                    )
+                  }
+                />
+              </Panel>
+            </aside>
+          </div>
         </>
       )}
     </main>

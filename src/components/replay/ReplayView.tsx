@@ -55,22 +55,9 @@ const REPLAY_NAV = [
 
 export function ReplayMasthead({ bannerText }: { bannerText: string }) {
   return (
-    <header className="ledger-masthead" data-testid="replay-masthead">
-      <span className="ledger-brand">Evidence Ledger</span>
-      <nav className="ledger-nav" aria-label="Primary">
-        {REPLAY_NAV.map((item) => (
-          <a key={item.label} className="ledger-nav-link" href={item.href}>
-            {item.label}
-          </a>
-        ))}
-        <span className="ledger-nav-link ledger-nav-link-current" aria-current="page">
-          Replay (current)
-        </span>
-      </nav>
-      <p className="ledger-historical-banner" data-testid="replay-banner">
-        {bannerText}
-      </p>
-    </header>
+    <p className="ledger-historical-banner" data-testid="replay-banner">
+      {bannerText}
+    </p>
   );
 }
 

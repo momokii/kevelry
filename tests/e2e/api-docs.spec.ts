@@ -26,12 +26,10 @@ test("api-docs renders the endpoints table with an example per endpoint", async 
   await page.goto("/api-docs");
 
   await expect(page.getByTestId("api-docs-root")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Public API v1 documentation", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Public API v1", exact: true })).toBeVisible();
 
   const masthead = page.getByTestId("api-docs-masthead");
-  await expect(masthead.getByText("API (current)")).toHaveAttribute("aria-current", "page");
+  await expect(masthead.getByRole("link", { name: /API/ })).toHaveAttribute("aria-current", "page");
 
   await expect(page.getByTestId("api-docs-base-url")).toContainText("/api/v1");
   await expect(page.getByTestId("api-docs-auth")).toContainText("None");
@@ -81,7 +79,9 @@ test("masthead API link navigates from the methodology page", async ({ page }) =
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/methodology", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("methodology-masthead")).toBeVisible({ timeout: 30000 });
-  await expect(page.getByTestId("methodology-masthead").getByRole("link", { name: "API" })).toBeVisible({
+  await expect(
+    page.getByTestId("methodology-masthead").getByRole("link", { name: "API" }),
+  ).toBeVisible({
     timeout: 30000,
   });
 

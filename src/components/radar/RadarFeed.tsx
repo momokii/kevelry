@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { Masthead } from "@/components/ledger/Masthead";
 import { TimeText } from "@/components/ledger/TimeText";
+import { PageHeader } from "@/components/shell/PageHeader";
 
 import { KIND_META, type RadarUiDay, type RadarUiEvent, type RadarUiKind } from "./radar-fixtures";
 
@@ -190,16 +190,19 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
   if (day === undefined || days.length === 0) {
     return (
       <main
-        className="ledger-page"
+        className="page"
         data-testid="radar-root"
         id="main-content"
         data-hydrated={hydrated ? "true" : "false"}
       >
-        <Masthead current="Radar" testId="radar-masthead" />
-        <h1>Change Radar</h1>
-        <p data-testid="radar-unavailable">
-          Snapshot unavailable: no retained checkpoints to compare.
-        </p>
+        <PageHeader
+          eyebrow="Radar / retained checkpoints"
+          title="Change Radar"
+          lede="What changed between two retained daily snapshots, with before and after evidence."
+        />
+        <div className="notice" data-testid="radar-unavailable">
+          <span>Snapshot unavailable: no retained checkpoints to compare.</span>
+        </div>
       </main>
     );
   }
@@ -208,17 +211,29 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
 
   return (
     <main
-      className="ledger-page"
+      className="page"
       data-testid="radar-root"
       id="main-content"
       data-hydrated={hydrated ? "true" : "false"}
     >
-      <Masthead current="Radar" testId="radar-masthead" />
-      <h1>Change Radar</h1>
-      <p className="ledger-meta" data-testid="radar-lede">
-        What changed between two retained daily snapshots, with the before and after values behind
-        every entry. Rank-only movement is labeled as such and never presented as a source change.
-      </p>
+      <PageHeader
+        eyebrow={
+          <>
+            <span>Radar</span>
+            <span className="dot" aria-hidden="true" />
+            <span>retained checkpoints</span>
+            <span className="dot" aria-hidden="true" />
+            <span>rank-only moves stay separate</span>
+          </>
+        }
+        title="What changed between snapshots?"
+        lede={
+          <span data-testid="radar-lede">
+            Before and after evidence for every entry. Rank-only movement is labeled as such and
+            never presented as a source change.
+          </span>
+        }
+      />
 
       <section className="ledger-section" aria-labelledby="radar-day-heading">
         <h2 id="radar-day-heading">Snapshot pair</h2>
@@ -311,40 +326,45 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
             </div>
           </section>
 
-          <section className="ledger-section" aria-labelledby="radar-feed-heading">
-            <h2 id="radar-feed-heading" tabIndex={-1}>
-              Change feed: {day.afterDate} vs {day.beforeDate} ({String(visibleEvents.length)}{" "}
-              {visibleEvents.length === 1 ? "entry" : "entries"})
-            </h2>
-            <p className="ledger-meta" role="status" data-testid="radar-filter-status">
-              Showing {visibleEvents.length} of {day.events.length} entries
-              {kindFilter === null ? "" : ` for ${KIND_META[kindFilter].label}`}.
-            </p>
-            <div data-testid="radar-feed">
-              {visibleEvents.length === 0 ? (
-                <p data-testid="radar-filter-empty">
-                  No entries of this kind in this snapshot pair. Clear the filter to see the full
-                  feed.
-                </p>
-              ) : (
-                <ul className="ledger-feed-list">
-                  {visibleEvents.map((event) => (
-                    <EventRow
-                      key={event.eventId}
-                      event={event}
-                      selected={selected?.eventId === event.eventId}
-                      onSelect={() => setSelectedId(event.eventId)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+          <div className="radar-layout">
+            <section className="ledger-section" aria-labelledby="radar-feed-heading">
+              <h2 id="radar-feed-heading" tabIndex={-1}>
+                Change feed: {day.afterDate} vs {day.beforeDate} ({String(visibleEvents.length)}{" "}
+                {visibleEvents.length === 1 ? "entry" : "entries"})
+              </h2>
+              <p className="ledger-meta" role="status" data-testid="radar-filter-status">
+                Showing {visibleEvents.length} of {day.events.length} entries
+                {kindFilter === null ? "" : ` for ${KIND_META[kindFilter].label}`}.
+              </p>
+              <div data-testid="radar-feed">
+                {visibleEvents.length === 0 ? (
+                  <p data-testid="radar-filter-empty">
+                    No entries of this kind in this snapshot pair. Clear the filter to see the full
+                    feed.
+                  </p>
+                ) : (
+                  <ul className="ledger-feed-list">
+                    {visibleEvents.map((event) => (
+                      <EventRow
+                        key={event.eventId}
+                        event={event}
+                        selected={selected?.eventId === event.eventId}
+                        onSelect={() => setSelectedId(event.eventId)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
 
-          <section className="ledger-section" aria-labelledby="radar-inspector-heading">
-            <h2 id="radar-inspector-heading">Evidence inspector</h2>
-            <Inspector event={selected} day={day} />
-          </section>
+            <section
+              className="ledger-section radar-inspector-panel"
+              aria-labelledby="radar-inspector-heading"
+            >
+              <h2 id="radar-inspector-heading">Evidence inspector</h2>
+              <Inspector event={selected} day={day} />
+            </section>
+          </div>
         </>
       )}
     </main>
