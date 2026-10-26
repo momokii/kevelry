@@ -53,6 +53,26 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
     }, AUTO_SUBMIT_DELAY_MS);
   };
 
+  const applyPreset = (days: number | null): void => {
+    const form = formRef.current;
+    if (form === null) return;
+    const start = form.elements.namedItem("dateStart");
+    const end = form.elements.namedItem("dateEnd");
+    if (!(start instanceof HTMLInputElement) || !(end instanceof HTMLInputElement)) return;
+    if (days === null) {
+      start.value = "";
+      end.value = "";
+    } else {
+      const endDate = new Date();
+      const exclusiveEnd = new Date(
+        Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate() + 1),
+      );
+      end.value = exclusiveEnd.toISOString().slice(0, 10);
+      start.value = new Date(exclusiveEnd.getTime() - days * 86_400_000).toISOString().slice(0, 10);
+    }
+    form.requestSubmit();
+  };
+
   return (
     <form
       ref={formRef}
@@ -82,36 +102,84 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <fieldset className="ledger-explore-fieldset">
         <legend className="ledger-meta">
-          Published date range, UTC, start inclusive, end exclusive{" "}
+          Published date range{" "}
           <HelpTip term="date range filter" testId="explore-help-date">
             Compares the stored publication timestamp in UTC. The start binds inclusively, the end
             exclusively. Records with an unknown publication date are excluded as soon as either
             bound is set; they never match a bounded range.
           </HelpTip>
         </legend>
-        <div className="ledger-explore-dates">
-          <label className="ledger-explore-label" htmlFor="explore-date-start">
-            Published on or after
-            <input
-              id="explore-date-start"
-              className="ledger-explore-date"
-              type="date"
-              name="dateStart"
-              defaultValue={initial.dateStart}
-              data-testid="explore-date-start"
-            />
-          </label>
-          <label className="ledger-explore-label" htmlFor="explore-date-end">
-            Published before
-            <input
-              id="explore-date-end"
-              className="ledger-explore-date"
-              type="date"
-              name="dateEnd"
-              defaultValue={initial.dateEnd}
-              data-testid="explore-date-end"
-            />
-          </label>
+        <div className="date-range">
+          <div className="date-fields">
+            <label className="date-field" htmlFor="explore-date-start">
+              <span>From · UTC</span>
+              <input
+                id="explore-date-start"
+                type="date"
+                name="dateStart"
+                defaultValue={initial.dateStart}
+                data-testid="explore-date-start"
+              />
+            </label>
+            <span className="date-arrow" aria-hidden="true">
+              →
+            </span>
+            <label className="date-field" htmlFor="explore-date-end">
+              <span>Before · UTC</span>
+              <input
+                id="explore-date-end"
+                type="date"
+                name="dateEnd"
+                defaultValue={initial.dateEnd}
+                data-testid="explore-date-end"
+              />
+            </label>
+          </div>
+          <div className="date-presets" role="group" aria-label="Quick date ranges">
+            <button
+              type="button"
+              className="date-preset"
+              onClick={() => applyPreset(7)}
+              data-testid="explore-preset-7"
+            >
+              7d
+            </button>
+            <button
+              type="button"
+              className="date-preset"
+              onClick={() => applyPreset(30)}
+              data-testid="explore-preset-30"
+            >
+              30d
+            </button>
+            <button
+              type="button"
+              className="date-preset"
+              onClick={() => applyPreset(90)}
+              data-testid="explore-preset-90"
+            >
+              90d
+            </button>
+            <button
+              type="button"
+              className="date-preset"
+              onClick={() => applyPreset(365)}
+              data-testid="explore-preset-365"
+            >
+              1y
+            </button>
+            <button
+              type="button"
+              className="date-preset"
+              onClick={() => applyPreset(null)}
+              data-testid="explore-preset-all"
+            >
+              All
+            </button>
+          </div>
+          <p className="chart-note" style={{ margin: 0 }}>
+            Start inclusive, end exclusive. Unknown dates are excluded from any bounded range.
+          </p>
         </div>
       </fieldset>
 

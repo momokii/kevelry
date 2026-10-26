@@ -21,13 +21,13 @@ export const SEVERITY_ORDER: readonly SeverityBand[] = [
  * they are never truncated to fit a row.
  */
 export const SEVERITY_LABELS: Record<SeverityBand, string> = {
-  critical: "Critical, CVSS v4.0/v3.x from 9.0 to 10.0",
-  high: "High, CVSS v4.0/v3.x from 7.0 to 8.9",
-  medium: "Medium, CVSS v4.0/v3.x from 4.0 to 6.9",
-  low: "Low, CVSS v4.0/v3.x from 0.1 to 3.9",
-  none: "None, CVSS v4.0/v3.x scored 0.0",
-  legacy: "Legacy, CVSS v2.0 only, not compared with v3/v4",
-  unknown: "Unknown, unscored under this view's policy",
+  critical: "Critical · 9.0–10.0",
+  high: "High · 7.0–8.9",
+  medium: "Medium · 4.0–6.9",
+  low: "Low · 0.1–3.9",
+  none: "None · scored 0.0",
+  legacy: "Legacy · v2 only",
+  unknown: "Unscored · no CNA metric",
 };
 
 const SEVERITY_SET: ReadonlySet<string> = new Set(SEVERITY_ORDER);

@@ -34,6 +34,163 @@ function readSpecText(): string {
   return readFileSync(path.join(process.cwd(), "openapi", "v1.yaml"), "utf8");
 }
 
+function exampleResponse(endpoint: { path: string }): string {
+  const provenance = {
+    rankingPolicyVersion: "ranking-v1",
+    generatedAt: "2026-10-26T00:00:00.000Z",
+    sources: {
+      cve: { revision: "509084ac", lastAcceptedAt: "2026-10-25T15:27:00.000Z", stale: false },
+      kev: {
+        catalogVersion: "2026-10-24",
+        lastAcceptedAt: "2026-10-25T14:39:00.000Z",
+        stale: false,
+      },
+      epss: { scoreDate: "2026-10-24", modelVersion: "v2026.06.15", stale: false },
+    },
+  };
+  if (endpoint.path.includes("/health")) {
+    return JSON.stringify({ status: "ok", version: "v1", provenance }, null, 2);
+  }
+  if (endpoint.path.includes("/status")) {
+    return JSON.stringify(
+      {
+        state: "ok",
+        sources: provenance.sources,
+        cohort: { published: 395286, kev: 1756, epssScored: 395249, unscored: 215998 },
+        notices: [],
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("/overview")) {
+    return JSON.stringify(
+      {
+        bucket: "month",
+        dateBasis: "publishedAt-utc",
+        buckets: [{ bucketStart: "2026-09", count: 14934 }],
+        coverage: { eligibleCohort: 395286, returned: 24 },
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("/priority/")) {
+    return JSON.stringify(
+      {
+        view: "known-exploited",
+        items: [
+          {
+            cveId: "CVE-2026-110447",
+            kevMember: true,
+            dateAdded: "2026-10-23T00:00:00.000Z",
+            epss: {
+              status: "known",
+              value: 0.02285,
+              percentile: 0.91,
+              scoreDate: "2026-10-24",
+              modelVersion: "v2026.06.15",
+            },
+            cvss: { status: "known", source: "cna", version: "4.0", baseScore: 9.2 },
+          },
+        ],
+        coverage: { eligibleCohort: 1756, returned: 1 },
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("/radar")) {
+    return JSON.stringify(
+      {
+        events: [
+          { kind: "kev-added", cveId: "CVE-2026-110447", before: null, after: { kevMember: true } },
+        ],
+        snapshot: { before: "2026-10-23", after: "2026-10-24" },
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("/replay/checkpoints")) {
+    return JSON.stringify(
+      {
+        checkpoints: [
+          { checkpointDate: "2026-10-24", policyVersion: "ranking-v1", expired: false },
+        ],
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("/replay")) {
+    return JSON.stringify(
+      {
+        status: "available",
+        manifest: {
+          checkpointDate: "2026-10-24",
+          policyVersion: "ranking-v1",
+          cohortCount: 395286,
+        },
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("/search")) {
+    return JSON.stringify(
+      {
+        items: [
+          {
+            cveId: "CVE-2026-110447",
+            title: "Edge gateway overflow",
+            severityBand: "critical",
+            kevMember: true,
+            epssKnown: true,
+          },
+        ],
+        total: 1,
+        coverage: { unknownDate: 0, kevMembers: 1, epssKnown: 1 },
+        nextCursor: null,
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  if (endpoint.path.includes("{cveId}")) {
+    return JSON.stringify(
+      {
+        data: {
+          cveId: "CVE-2026-110447",
+          title: "Edge gateway overflow",
+          state: "PUBLISHED",
+          kev: { status: "known" },
+          epss: { status: "known", value: 0.02285 },
+          cvss: { status: "known", source: "cna", version: "4.0", baseScore: 9.2 },
+        },
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
+  return JSON.stringify(
+    {
+      data: [{ cveId: "CVE-2026-110447", title: "Edge gateway overflow", state: "PUBLISHED" }],
+      nextCursor: null,
+      provenance,
+    },
+    null,
+    2,
+  );
+}
+
 export default async function ApiDocsPage() {
   const specText = readSpecText();
   const { meta, endpoints } = parseSpec(specText);
@@ -68,6 +225,29 @@ export default async function ApiDocsPage() {
           </a>
         }
       />
+
+      <nav className="page-toc" aria-label="On this page" data-testid="api-docs-toc">
+        <span className="eyebrow">On this page</span>
+        <div className="page-toc-links">
+          <a href="#api-docs-overview-heading">Overview</a>
+          <a href="#api-docs-auth-heading">Authentication</a>
+          <a href="#api-docs-limits-heading">Rate limits</a>
+          <a href="#api-docs-pagination-heading">Pagination</a>
+          <a href="#api-docs-freshness-heading">Freshness</a>
+          <a href="#api-docs-errors-heading">Errors</a>
+          <a href="#api-docs-deprecation-heading">Deprecation</a>
+          <a href="#api-docs-endpoints-heading">Endpoints</a>
+          <a href="#api-docs-spec-heading">Machine contract</a>
+          <a href="#api-docs-guides-heading">Human guides</a>
+        </div>
+        <div className="page-toc-links page-toc-endpoints">
+          {endpoints.map((endpoint) => (
+            <a key={endpoint.operationId} href={`#endpoint-${endpoint.operationId}`}>
+              <code>{endpoint.path}</code>
+            </a>
+          ))}
+        </div>
+      </nav>
 
       <section className="ledger-section" aria-labelledby="api-docs-overview-heading">
         <h2 id="api-docs-overview-heading">Overview</h2>
@@ -294,6 +474,15 @@ export default async function ApiDocsPage() {
             >
               {buildCurl(baseUrl, endpoint)}
             </pre>
+            <details className="api-response-example">
+              <summary>Example response · illustrative shape</summary>
+              <pre data-testid={`api-docs-response-${endpointSlug(endpoint)}`}>
+                {exampleResponse(endpoint)}
+              </pre>
+              <p className="chart-note">
+                Illustrative values only. The OpenAPI schema and the live route are authoritative.
+              </p>
+            </details>
           </article>
         ))}
       </section>

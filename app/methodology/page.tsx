@@ -12,10 +12,12 @@ import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/share
 import { HelpTip } from "@/components/ledger/HelpTip";
 import { TimeText } from "@/components/ledger/TimeText";
 import { OrderingDiagram } from "@/components/methodology/OrderingDiagram";
-import { PipelineDiagram } from "@/components/methodology/PipelineDiagram";
+import { PipelineExplorer } from "@/components/methodology/PipelineExplorer";
+import { CoverageDiagram } from "@/components/methodology/CoverageDiagram";
+import { ScoringExample } from "@/components/methodology/ScoringExample";
 import { SignalDiagram } from "@/components/methodology/SignalDiagram";
 import styles from "@/components/methodology/MethodologyDiagrams.module.css";
-import { getAggregates } from "@/lib/aggregates";
+import { getAggregates, severityBandsSql } from "@/lib/aggregates";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 
 export const revalidate = 60;
@@ -60,6 +62,7 @@ export default function MethodologyPage() {
   let kevListed: number | null = null;
   let epssScored: number | null = null;
   let unknownDates: number | null = null;
+  let cnaScored: number | null = null;
   let loadError: string | null = null;
 
   try {
@@ -71,6 +74,14 @@ export default function MethodologyPage() {
       kevListed = cached.totals.kev;
       epssScored = cached.totals.epssScored;
       unknownDates = cached.totals.unknownDate;
+      const bands = cached.severityBands;
+      cnaScored =
+        (bands.critical ?? 0) +
+        (bands.high ?? 0) +
+        (bands.medium ?? 0) +
+        (bands.low ?? 0) +
+        (bands.none ?? 0) +
+        (bands.legacy ?? 0);
     } else {
       publishedTotal = countQuery(
         db,
@@ -82,6 +93,14 @@ export default function MethodologyPage() {
         db,
         "SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED' AND date_published IS NULL",
       );
+      const bands = severityBandsSql(db);
+      cnaScored =
+        (bands.critical ?? 0) +
+        (bands.high ?? 0) +
+        (bands.medium ?? 0) +
+        (bands.low ?? 0) +
+        (bands.none ?? 0) +
+        (bands.legacy ?? 0);
     }
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);
@@ -190,10 +209,16 @@ export default function MethodologyPage() {
             <a href="#methodology-section-signals">Signals</a>
           </li>
           <li>
+            <a href="#methodology-section-coverage">Coverage</a>
+          </li>
+          <li>
             <a href="#methodology-section-pipeline">Pipeline</a>
           </li>
           <li>
             <a href="#methodology-section-ordering">Ordering</a>
+          </li>
+          <li>
+            <a href="#methodology-section-example">Example</a>
           </li>
           <li>
             <a href="#methodology-section-sources">Sources</a>
@@ -260,6 +285,24 @@ export default function MethodologyPage() {
 
       <section
         className="ledger-section"
+        aria-labelledby="methodology-coverage-heading"
+        id="methodology-section-coverage"
+      >
+        <h2 id="methodology-coverage-heading">What the corpus actually covers</h2>
+        <p className="ledger-meta">
+          Different signals cover different populations. These bars are percentages of all published
+          records, not a quality score.
+        </p>
+        <CoverageDiagram
+          published={publishedTotal ?? 0}
+          cnaScored={cnaScored ?? 0}
+          epssScored={epssScored ?? 0}
+          kev={kevListed ?? 0}
+        />
+      </section>
+
+      <section
+        className="ledger-section"
         aria-labelledby="methodology-pipeline-heading"
         id="methodology-section-pipeline"
       >
@@ -269,7 +312,7 @@ export default function MethodologyPage() {
             The worker fetches; pages and the API read accepted local snapshots only.
           </HelpTip>
         </h2>
-        <PipelineDiagram />
+        <PipelineExplorer />
       </section>
 
       <section
@@ -340,6 +383,19 @@ export default function MethodologyPage() {
           </HelpTip>
         </h3>
         <OrderingDiagram />
+      </section>
+
+      <section
+        className="ledger-section"
+        aria-labelledby="methodology-example-heading"
+        id="methodology-section-example"
+      >
+        <h2 id="methodology-example-heading">Worked ordering example</h2>
+        <p className="ledger-meta">
+          One illustrative record, five views. The highlighted rule is the first key that explains
+          its position in that view.
+        </p>
+        <ScoringExample />
       </section>
 
       <section

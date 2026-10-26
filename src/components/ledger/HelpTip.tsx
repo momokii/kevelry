@@ -89,7 +89,9 @@ export function HelpTip({ term, children, testId, defaultOpen = false }: HelpTip
         onFocus={() => setTransient(true)}
         onBlur={() => setTransient(false)}
       >
-        <span aria-hidden="true">?</span>
+        <span className="ledger-helptip-glyph" aria-hidden="true">
+          ?
+        </span>
       </button>
       <span
         id={contentId}

@@ -1,7 +1,8 @@
 import { DensityMatrix } from "@/components/charts/DensityMatrix";
 import { EpssDistribution } from "@/components/charts/EpssDistribution";
 import { KevRhythm } from "@/components/charts/KevRhythm";
-import { SeverityMix } from "@/components/charts/SeverityMix";
+import { SeverityDonut } from "@/components/charts/SeverityDonut";
+import { CumulativeChart } from "@/components/charts/CumulativeChart";
 import { VolumeChart } from "@/components/charts/VolumeChart";
 import { ChartInfo } from "@/components/charts/ChartInfo";
 import { formatInt, monthLong, sharePercent } from "@/components/charts/chartTokens";
@@ -136,17 +137,18 @@ export default function OverviewPage() {
               </ChartInfo>
             }
           >
-            <VolumeChart months={months} publishedTotal={data.publishedTotal} />
+            <VolumeChart
+              months={months}
+              publishedTotal={data.publishedTotal}
+              kevMonths={data.kevByMonth}
+            />
           </Panel>
           <Panel
-            title="KEV rhythm"
-            sub="Catalog additions by month. This is listing activity, not exploitation volume."
-            testId="overview-kev"
+            title="Cumulative growth"
+            sub="The running total inside this window. It is cumulative, not a forecast."
+            testId="overview-cumulative-panel"
           >
-            <KevRhythm
-              months={data.kevByMonth}
-              total={data.kevByMonth.reduce((sum, entry) => sum + entry.count, 0)}
-            />
+            <CumulativeChart months={months} publishedTotal={data.publishedTotal} />
           </Panel>
         </div>
 
@@ -163,7 +165,7 @@ export default function OverviewPage() {
               </ChartInfo>
             }
           >
-            <SeverityMix bands={data.severityBands} publishedTotal={data.publishedTotal} />
+            <SeverityDonut bands={data.severityBands} total={data.publishedTotal} />
           </Panel>
 
           <Panel
@@ -207,9 +209,21 @@ export default function OverviewPage() {
         </Panel>
 
         <Panel
+          title="KEV rhythm"
+          sub="Catalog additions by month. This is listing activity, not exploitation volume."
+          className="span-4"
+          testId="overview-kev"
+        >
+          <KevRhythm
+            months={data.kevByMonth}
+            total={data.kevByMonth.reduce((sum, entry) => sum + entry.count, 0)}
+          />
+        </Panel>
+
+        <Panel
           title="Source freshness"
           sub="How old the snapshot is, and what each state means for the numbers."
-          className="span-6"
+          className="span-4"
           testId="overview-freshness-panel"
         >
           <FreshnessPanel provenance={data.provenance} />
@@ -218,7 +232,7 @@ export default function OverviewPage() {
         <Panel
           title="How this page stays honest"
           sub="No score stitching, no silent zeros, no interpolation."
-          className="span-6"
+          className="span-4"
           testId="overview-method-panel"
         >
           <ul className="plain-list">

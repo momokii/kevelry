@@ -84,3 +84,22 @@ describe("api-docs endpoint list", () => {
     }
   });
 });
+
+describe("api-docs parameter names", () => {
+  it("resolves shared and inline parameter names instead of leaving them blank", () => {
+    const { endpoints } = parseSpec(SPEC);
+    const cves = endpoints.find((endpoint) => endpoint.path === "/api/v1/cves");
+    expect(cves).toBeDefined();
+    expect(cves?.params.map((param) => param.name)).toEqual([
+      "cursor",
+      "limit",
+      "severity",
+      "kev",
+      "epss",
+      "publishedStart",
+      "publishedEnd",
+    ]);
+    const search = endpoints.find((endpoint) => endpoint.path === "/api/v1/search");
+    expect(search?.params[0]?.name).toBe("q");
+  });
+});

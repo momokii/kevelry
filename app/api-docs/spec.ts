@@ -70,11 +70,13 @@ function parseParamBlock(lines: string[]): Omit<ApiParam, "name"> & { name: stri
   let format = "";
   let enumValues: string[] = [];
   let schemaRef = "";
-  const first = (lines[0] ?? "").replace(/^-\s*/, "").trim();
+  const first = (lines[0] ?? "").trim().replace(/^-\s*/, "");
   const nameMatch = first.match(/^name:\s*(.+)$/);
   if (nameMatch?.[1]) name = nameMatch[1].trim();
   for (let i = 0; i < lines.length; i += 1) {
     const line = (lines[i] ?? "").trim();
+    const nameLine = line.match(/^-\s*name:\s*(.+)$/) ?? line.match(/^name:\s*(.+)$/);
+    if (nameLine?.[1] && name === "") name = nameLine[1].trim();
     const inMatch = line.match(/^in:\s*(.+)$/);
     if (inMatch?.[1]) location = inMatch[1].trim();
     const reqMatch = line.match(/^required:\s*(.+)$/);

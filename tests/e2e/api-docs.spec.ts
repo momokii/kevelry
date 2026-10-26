@@ -31,6 +31,16 @@ test("api-docs renders the endpoints table with an example per endpoint", async 
   const masthead = page.getByTestId("api-docs-masthead");
   await expect(masthead.getByRole("link", { name: /API/ })).toHaveAttribute("aria-current", "page");
 
+  await expect(page.getByTestId("api-docs-toc")).toBeVisible();
+  await expect(
+    page.getByTestId("api-docs-toc").getByRole("link", { name: "Errors" }),
+  ).toBeVisible();
+  const responseExamples = page.locator('[data-testid^="api-docs-response-"]');
+  await expect(responseExamples).toHaveCount(10);
+  const firstEndpoint = page.locator('[data-testid^="api-docs-endpoint-"]').first();
+  await firstEndpoint.locator("summary").click();
+  await expect(firstEndpoint.locator("pre").last()).toContainText("provenance");
+
   await expect(page.getByTestId("api-docs-base-url")).toContainText("/api/v1");
   await expect(page.getByTestId("api-docs-auth")).toContainText("None");
   await expect(page.getByTestId("api-docs-rate-limits")).toContainText("600 requests per minute");

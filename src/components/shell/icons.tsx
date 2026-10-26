@@ -112,3 +112,21 @@ export function InfoIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function CollapseIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="m14 6-6 6 6 6" />
+      <path d="M20 4v16" />
+    </svg>
+  );
+}
+
+export function ExpandIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="m10 6 6 6-6 6" />
+      <path d="M4 4v16" />
+    </svg>
+  );
+}

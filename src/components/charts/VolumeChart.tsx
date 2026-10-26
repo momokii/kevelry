@@ -20,6 +20,7 @@ export interface VolumeDatum {
 type VolumeChartProps = {
   months: VolumeDatum[];
   publishedTotal: number;
+  kevMonths?: Array<{ month: string; count: number }>;
 };
 
 const MARGIN = { top: 24, right: 10, bottom: 26, left: 44 };
@@ -95,6 +96,8 @@ function VolumeSvg({
         className="chart-svg"
         width={width}
         height={HEIGHT}
+        viewBox={`0 0 ${width} ${HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`Published CVE volume by UTC month. ${months.length} months, peak ${formatInt(peak.count)} in ${monthLong(peak.month)}.`}
       >
@@ -209,7 +212,7 @@ function VolumeSvg({
   );
 }
 
-export function VolumeChart({ months, publishedTotal }: VolumeChartProps) {
+export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeChartProps) {
   const [windowSize, setWindowSize] = useState<12 | 24>(24);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -261,11 +264,43 @@ export function VolumeChart({ months, publishedTotal }: VolumeChartProps) {
             12 months
           </button>
         </div>
+        <label className="volume-month-focus">
+          <span>Focus month</span>
+          <select
+            className="ledger-snapshot-select"
+            value={selected ?? ""}
+            data-testid="overview-volume-month-select"
+            onChange={(event) => setSelected(event.target.value === "" ? null : event.target.value)}
+          >
+            <option value="">All months</option>
+            {visible.map((entry) => (
+              <option key={entry.month} value={entry.month}>
+                {monthLong(entry.month)} · {formatInt(entry.count)}
+              </option>
+            ))}
+          </select>
+        </label>
         <span className="faint" style={{ fontSize: 12 }}>
           {formatInt(total)} in view
           {growth !== null ? ` · latest is ${growth}× the first month` : ""}
         </span>
       </div>
+      {selectedEntry !== null && href !== null ? (
+        <div className="selection-strip" data-testid="overview-volume-selection">
+          <span>
+            <strong>{monthLong(selectedEntry.month)}</strong>: {formatInt(selectedEntry.count)}{" "}
+            published ({sharePercent(selectedEntry.count, publishedTotal)} of the corpus) ·{" "}
+            {formatInt(kevMonths.find((entry) => entry.month === selectedEntry.month)?.count ?? 0)}{" "}
+            KEV additions
+          </span>
+          <a className="btn btn-sm btn-primary" href={href}>
+            Open this month in Explore
+          </a>
+          <button type="button" className="btn btn-sm" onClick={() => setSelected(null)}>
+            Clear
+          </button>
+        </div>
+      ) : null}
       <ParentSize parentSizeStyles={{ width: "100%", height: HEIGHT }}>
         {({ width }) =>
           width > 0 ? (
@@ -279,25 +314,6 @@ export function VolumeChart({ months, publishedTotal }: VolumeChartProps) {
           ) : null
         }
       </ParentSize>
-      {selectedEntry !== null && href !== null ? (
-        <div className="selection-strip" data-testid="overview-volume-selection">
-          <span>
-            <strong>{monthLong(selectedEntry.month)}</strong>: {formatInt(selectedEntry.count)}{" "}
-            published ({sharePercent(selectedEntry.count, publishedTotal)} of the corpus)
-          </span>
-          <a className="btn btn-sm" href={href}>
-            Open this month in Explore
-          </a>
-          <button
-            type="button"
-            className="pill-x"
-            aria-label="Clear month selection"
-            onClick={() => setSelected(null)}
-          >
-            ×
-          </button>
-        </div>
-      ) : null}
       <details className="chart-table">
         <summary>Data table</summary>
         <div className="table-wrap">

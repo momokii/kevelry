@@ -8,7 +8,7 @@
 // definitions and TimeText dates; styling reuses the ledger classes from
 // `app/globals.css` plus the local `PrioritySignals.module.css` grid.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { HelpTip } from "../ledger/HelpTip";
 import { TimeText } from "../ledger/TimeText";
@@ -576,6 +576,12 @@ export function PriorityList({
   mode: PriorityMode;
 }) {
   const [visible, setVisible] = useState(25);
+  const [openCount, setOpenCount] = useState(5);
+
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 700px)").matches) setOpenCount(1);
+  }, []);
+
   if (rows.length === 0) {
     return (
       <div className="ledger-section" data-testid={`priority-empty-${mode}`}>
@@ -590,7 +596,7 @@ export function PriorityList({
   return (
     <div data-testid={`priority-list-${mode}`} className="priority-table">
       {rows.slice(0, visible).map((row, index) => (
-        <PriorityRow key={row.id} row={row} defaultOpen={index < 5} />
+        <PriorityRow key={row.id} row={row} defaultOpen={index < openCount} />
       ))}
       {rows.length > visible ? (
         <button

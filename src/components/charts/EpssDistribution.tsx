@@ -61,6 +61,8 @@ function EpssSvg({
         className="chart-svg"
         width={width}
         height={HEIGHT}
+        viewBox={`0 0 ${width} ${HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="EPSS probability distribution across nine log-spaced buckets. Most records sit below ten percent."
       >

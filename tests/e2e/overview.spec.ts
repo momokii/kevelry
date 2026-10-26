@@ -375,3 +375,17 @@ test("density matrix selection updates the inspector and supports arrow keys", a
   );
   await expect(page.getByTestId("overview-density-inspector")).toContainText("EPSS");
 });
+
+test("desktop rail collapses and remembers the choice", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const rail = page.locator(".app-rail");
+  const expanded = await rail.evaluate((el) => el.getBoundingClientRect().width);
+  expect(expanded).toBeGreaterThan(200);
+  await page.getByRole("button", { name: "Collapse navigation" }).click();
+  await expect(page.getByRole("button", { name: "Expand navigation" })).toBeVisible();
+  const collapsed = await rail.evaluate((el) => el.getBoundingClientRect().width);
+  expect(collapsed).toBeLessThanOrEqual(80);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Expand navigation" })).toBeVisible();
+});

@@ -41,10 +41,10 @@ export async function auditRoute(page: Page, options: AuditOptions): Promise<voi
 
   const root = page.locator("#main-content");
   await expect(root, `${name}: skip-link target #main-content exists`).toHaveCount(1);
-  await expect(
-    page.locator(".ledger-skip-link"),
-    `${name}: skip link present`,
-  ).toHaveAttribute("href", "#main-content");
+  await expect(page.locator(".ledger-skip-link"), `${name}: skip link present`).toHaveAttribute(
+    "href",
+    "#main-content",
+  );
 
   const h1Count = await page.locator("h1").count();
   expect(h1Count, `${name}: exactly one h1`).toBe(1);
@@ -73,39 +73,47 @@ export async function auditRoute(page: Page, options: AuditOptions): Promise<voi
   );
   expect(badImages, `${name}: every image has alt text`).toBe(0);
 
-  const unlabeledControls = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("input, select, textarea")).filter((el) => {
-      const input = el as HTMLInputElement;
-      if (input.type === "hidden") return false;
-      const aria = (el.getAttribute("aria-label") ?? "").trim();
-      if (aria !== "") return false;
-      const labelledBy = el.getAttribute("aria-labelledby") ?? "";
-      if (labelledBy.trim() !== "") return false;
-      const id = el.getAttribute("id") ?? "";
-      if (id !== "" && document.querySelector(`label[for="${id}"]`) !== null) return false;
-      if (el.closest("label") !== null) return false;
-      if (el.closest("fieldset") !== null && el.tagName === "INPUT") {
-        const group = el.closest("fieldset")?.querySelector("legend");
-        if (group !== null) return false;
-      }
-      return true;
-    }).length,
+  const unlabeledControls = await page.evaluate(
+    () =>
+      Array.from(document.querySelectorAll("input, select, textarea")).filter((el) => {
+        const input = el as HTMLInputElement;
+        if (input.type === "hidden") return false;
+        const aria = (el.getAttribute("aria-label") ?? "").trim();
+        if (aria !== "") return false;
+        const labelledBy = el.getAttribute("aria-labelledby") ?? "";
+        if (labelledBy.trim() !== "") return false;
+        const id = el.getAttribute("id") ?? "";
+        if (id !== "" && document.querySelector(`label[for="${id}"]`) !== null) return false;
+        if (el.closest("label") !== null) return false;
+        if (el.closest("fieldset") !== null && el.tagName === "INPUT") {
+          const group = el.closest("fieldset")?.querySelector("legend");
+          if (group !== null) return false;
+        }
+        return true;
+      }).length,
   );
   expect(unlabeledControls, `${name}: every form control has an accessible name`).toBe(0);
 
-  const unnamedActions = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("button, a[href]")).filter(
-      (el) => ((el.textContent ?? "").trim() === "" && (el.getAttribute("aria-label") ?? "").trim() === "" && (el.getAttribute("aria-labelledby") ?? "").trim() === ""),
-    ).length,
+  const unnamedActions = await page.evaluate(
+    () =>
+      Array.from(document.querySelectorAll("button, a[href]")).filter(
+        (el) =>
+          (el.textContent ?? "").trim() === "" &&
+          (el.getAttribute("aria-label") ?? "").trim() === "" &&
+          (el.getAttribute("aria-labelledby") ?? "").trim() === "",
+      ).length,
   );
   expect(unnamedActions, `${name}: every link and button has an accessible name`).toBe(0);
 
-  const badTables = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("table")).filter((table) => {
-      const headers = Array.from(table.querySelectorAll("th"));
-      if (headers.length === 0) return true;
-      return headers.some((th) => th.getAttribute("scope") !== "col" && th.getAttribute("scope") !== "row");
-    }).length,
+  const badTables = await page.evaluate(
+    () =>
+      Array.from(document.querySelectorAll("table")).filter((table) => {
+        const headers = Array.from(table.querySelectorAll("th"));
+        if (headers.length === 0) return true;
+        return headers.some(
+          (th) => th.getAttribute("scope") !== "col" && th.getAttribute("scope") !== "row",
+        );
+      }).length,
   );
   expect(badTables, `${name}: every data table uses scoped headers`).toBe(0);
 
@@ -132,9 +140,7 @@ export async function auditRoute(page: Page, options: AuditOptions): Promise<voi
     alertsOnLoad,
     `${name}: no assertive live region fires on clean load. Found: ${alertHtml}`,
   ).toBe(0);
-  const liveCount = await page
-    .locator(":light([role='status']), :light([aria-live])")
-    .count();
+  const liveCount = await page.locator(":light([role='status']), :light([aria-live])").count();
   expect(liveCount, `${name}: polite live regions stay bounded (no spam)`).toBeLessThanOrEqual(
     maxLiveRegions,
   );
@@ -213,24 +219,30 @@ export async function auditRoute(page: Page, options: AuditOptions): Promise<voi
       focusFailures.push(record.key);
     }
   }
-  expect(seen.size, `${name}: keyboard reaches multiple stops without a trap`).toBeGreaterThanOrEqual(5);
+  expect(
+    seen.size,
+    `${name}: keyboard reaches multiple stops without a trap`,
+  ).toBeGreaterThanOrEqual(5);
   expect(focusFailures, `${name}: every keyboard focus stop shows a visible outline`).toEqual([]);
 
   await auditNoHorizontalOverflow(page, `${name} at 1280px`);
 }
 
 export async function auditZoomReflow(page: Page, name: string, screenshot: string): Promise<void> {
-  await page.evaluate(() => {
-    document.body.style.zoom = "200%";
-  });
-  await auditNoHorizontalOverflow(page, `${name} at 200% zoom`);
+  const viewport = page.viewportSize();
+  const width = viewport === null ? 640 : Math.max(360, Math.round(viewport.width / 2));
+  const height = viewport?.height ?? 900;
+  await page.setViewportSize({ width, height });
+  await auditNoHorizontalOverflow(page, `${name} at 200% zoom equivalent`);
   await page.screenshot({ path: screenshot, fullPage: true });
-  await page.evaluate(() => {
-    document.body.style.zoom = "";
-  });
+  if (viewport !== null) await page.setViewportSize(viewport);
 }
 
-export async function auditReducedMotion(page: Page, name: string, screenshot: string): Promise<void> {
+export async function auditReducedMotion(
+  page: Page,
+  name: string,
+  screenshot: string,
+): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const durations = await page.evaluate(() =>
     Array.from(

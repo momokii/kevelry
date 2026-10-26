@@ -42,9 +42,9 @@ for (const width of [360, 768, 1280]) {
       ).toBeVisible();
     }
     await expect(page.getByTestId("explore-severity-critical")).not.toBeChecked();
-    await expect(page.getByText("CVSS v4.0/v3.x from 9.0 to 10.0").first()).toBeVisible();
-    await expect(page.getByText("CVSS v2.0 only, not compared with v3/v4").first()).toBeVisible();
-    await expect(page.getByText("unscored under this view's policy").first()).toBeVisible();
+    await expect(page.getByText("Critical · 9.0–10.0").first()).toBeVisible();
+    await expect(page.getByText("Legacy · v2 only").first()).toBeVisible();
+    await expect(page.getByText("Unscored · no CNA metric").first()).toBeVisible();
 
     await expect(page.getByTestId("explore-kev-all")).toBeVisible();
     await expect(page.getByTestId("explore-kev-only")).toBeVisible();
@@ -515,4 +515,23 @@ test.describe("cohort visualization", () => {
     const over = await cohortHorizontalOverflow(page);
     expect(over, "horizontal overflow at 360px").toBeLessThanOrEqual(1);
   });
+});
+
+test("date presets apply a UTC range and the filter rail scrolls independently", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/explore");
+  await expect(page.getByTestId("explore-filters")).toHaveAttribute("data-hydrated", "true");
+  const scrollable = await page.locator(".explore-sidebar").evaluate((el) => ({
+    overflow: getComputedStyle(el).overflowY,
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(scrollable.overflow).toBe("auto");
+  expect(scrollable.scrollHeight).toBeGreaterThan(scrollable.clientHeight);
+  await page.getByTestId("explore-preset-30").click();
+  await expect(page).toHaveURL(/dateStart=\d{4}-\d{2}-\d{2}/);
+  await expect(page).toHaveURL(/dateEnd=\d{4}-\d{2}-\d{2}/);
+  await expect(page.getByTestId("explore-date-start")).not.toHaveValue("");
 });

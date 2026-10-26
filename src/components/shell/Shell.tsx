@@ -9,6 +9,8 @@ import { TimeZoneSelect } from "@/components/ledger/TimeZoneSelect";
 import {
   ApiIcon,
   CloseIcon,
+  CollapseIcon,
+  ExpandIcon,
   MenuIcon,
   MethodIcon,
   OverviewIcon,
@@ -47,7 +49,20 @@ function currentLabel(pathname: string): string {
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCollapsed(window.localStorage.getItem("ui-rail-collapsed") === "true");
+  }, []);
+
+  const toggleRail = (): void => {
+    setCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("ui-rail-collapsed", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     setOpen(false);
@@ -68,7 +83,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const mastheadId = MASTHEAD_IDS[pathname] ?? "shell-masthead";
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${collapsed ? "rail-collapsed" : ""}`}>
       <button
         type="button"
         className={`app-scrim ${open ? "is-open" : ""}`}
@@ -99,6 +114,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             <CloseIcon />
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon rail-collapse-button"
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            aria-expanded={!collapsed}
+            onClick={toggleRail}
+          >
+            {collapsed ? <ExpandIcon /> : <CollapseIcon />}
+          </button>
         </div>
 
         <nav className="app-nav" aria-label="Primary">
@@ -111,9 +135,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 className="app-nav-link"
                 aria-current={active ? "page" : undefined}
+                aria-label={item.label}
+                title={collapsed ? item.label : undefined}
               >
                 <Icon className="app-nav-icon" />
-                <span>
+                <span className="app-nav-text">
                   {item.label}
                   {active ? (
                     <span className="sr-only" aria-current="page">
