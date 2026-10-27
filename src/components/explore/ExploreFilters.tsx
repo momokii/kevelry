@@ -297,10 +297,12 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <div className="ledger-explore-actions">
         <label className="ledger-explore-label" htmlFor="explore-limit">
-          Results per page{" "}
-          <HelpTip term="page size" testId="explore-help-limit">
-            Bounded page size. Totals and cohort coverage may exceed the returned page.
-          </HelpTip>
+          <span className="ledger-explore-caption">
+            Results per page{" "}
+            <HelpTip term="page size" testId="explore-help-limit">
+              Bounded page size. Totals and cohort coverage may exceed the returned page.
+            </HelpTip>
+          </span>
           <select
             id="explore-limit"
             name="limit"

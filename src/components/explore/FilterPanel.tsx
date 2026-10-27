@@ -12,8 +12,13 @@ export function FilterPanel({ initial }: { initial: ExploreInitial }) {
   return (
     <details className="explore-filter-details" open>
       <summary>
-        <span>Filters</span>
-        <span className="pill">{active === 0 ? "none active" : `${active} active`}</span>
+        <span className="filter-summary-title">
+          <span className="filter-chevron" aria-hidden="true" />
+          <span>Filters</span>
+        </span>
+        <span className={`filter-count${active > 0 ? " is-active" : ""}`}>
+          {active === 0 ? "none active" : `${active} active`}
+        </span>
       </summary>
       <div className="explore-filter-body">
         <ExploreFilters initial={initial} />

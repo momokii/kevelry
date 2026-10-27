@@ -53,11 +53,45 @@ const REPLAY_NAV = [
   { label: "Method", href: "/methodology" },
 ] as const;
 
+export function ReplayExplainer() {
+  return (
+    <section
+      className="ledger-section"
+      aria-labelledby="replay-purpose-heading"
+      data-testid="replay-explainer"
+    >
+      <h2 id="replay-purpose-heading">What is replay for</h2>
+      <p className="takeaway">
+        Replay restores exactly what this site showed on a past day: the same lists, the same order,
+        the same source pins. It answers “why did that CVE rank there last week” — a KEV listing, a
+        forecast move, and a record correction each leave different evidence.
+      </p>
+      <ul className="plain-list">
+        <li>
+          <strong>Pick a retained day.</strong> Only days the scheduler observed exist; missing days
+          are ineligible, never interpolated.
+        </li>
+        <li>
+          <strong>Read the pins.</strong> Every replay names its CVE revision, KEV catalog date,
+          EPSS score date, and ranking policy version.
+        </li>
+        <li>
+          <strong>Empty today is honest.</strong> Checkpoints accumulate while the scheduled refresh
+          runs. With none retained yet, this page stays empty instead of substituting current data.
+        </li>
+      </ul>
+    </section>
+  );
+}
+
 export function ReplayMasthead({ bannerText }: { bannerText: string }) {
   return (
-    <p className="ledger-historical-banner" data-testid="replay-banner">
-      {bannerText}
-    </p>
+    <>
+      <p className="ledger-historical-banner" data-testid="replay-banner">
+        {bannerText}
+      </p>
+      <ReplayExplainer />
+    </>
   );
 }
 

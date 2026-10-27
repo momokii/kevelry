@@ -56,6 +56,15 @@ export default function OverviewPage() {
   const kevLastMonth = data.kevByMonth[data.kevByMonth.length - 1]?.count ?? 0;
   const latestLabel = lastMonth !== undefined ? monthLong(lastMonth.month) : null;
   const epssTotal = data.corpus.epssScored;
+  const sources = data.provenance.sources;
+  const snapshotUpdated = [
+    sources.cve.lastAcceptedAt,
+    sources.kev.lastAcceptedAt,
+    sources.epss.lastAcceptedAt,
+  ]
+    .filter((value): value is string => typeof value === "string" && value !== "")
+    .sort()
+    .at(-1);
 
   return (
     <main className="page" data-testid="overview-root" id="main-content">
@@ -98,6 +107,13 @@ export default function OverviewPage() {
             <strong>{formatInt(data.corpus.kev)}</strong> records carry confirmed-exploitation
             evidence; <strong>{formatInt(data.corpus.unscored)}</strong> have no primary severity
             score.
+          </p>
+          <p className="chart-note" data-testid="overview-updated">
+            Snapshot updated{" "}
+            <TimeText value={snapshotUpdated ?? null} showRelative testId="overview-updated-at" /> ·
+            CVE List {sources.cve.revision?.slice(0, 8) ?? "not recorded"} · KEV{" "}
+            {sources.kev.catalogVersion ?? "not recorded"} · EPSS{" "}
+            {sources.epss.scoreDate ?? "not recorded"}
           </p>
           <p className="chart-note">
             Latest month: {latestLabel ?? "not recorded"} · {formatInt(lastMonthCount)} published ·

@@ -118,6 +118,7 @@ function VolumeSvg({
             return (
               <g key={entry.month}>
                 <rect
+                  className="volume-bar"
                   x={barX}
                   y={barY}
                   width={bandwidth}
@@ -244,7 +245,7 @@ export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeCh
   return (
     <div>
       <div className="chart-actions" style={{ marginBottom: 12 }}>
-        <div className="pill" role="group" aria-label="Chart window">
+        <div className="pill segmented" role="group" aria-label="Chart window">
           <button
             type="button"
             className={`btn btn-sm ${windowSize === 24 ? "btn-primary" : "btn-ghost"}`}

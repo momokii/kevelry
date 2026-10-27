@@ -358,6 +358,25 @@ test("volume chart exposes tooltips, selection, and the window toggle", async ({
     "true",
   );
   await expect(page.getByTestId(/^overview-volume-bar-/)).toHaveCount(12);
+
+  // Segmented control: every option sits fully inside the track, and the
+  // bars glide on window switches.
+  const containment = await page.evaluate(() => {
+    const track = document.querySelector(".pill.segmented");
+    const options = [...document.querySelectorAll(".pill.segmented .btn")];
+    if (track === null || options.length !== 2) return { ok: false, reason: "missing" };
+    const box = track.getBoundingClientRect();
+    for (const option of options) {
+      const inner = option.getBoundingClientRect();
+      if (inner.top < box.top || inner.bottom > box.bottom) {
+        return { ok: false, reason: "overflow" };
+      }
+    }
+    const bar = document.querySelector(".volume-bar");
+    const animated = bar !== null && getComputedStyle(bar).transitionProperty.includes("height");
+    return { ok: animated, reason: animated ? "ok" : "no-transition" };
+  });
+  expect(containment, "segmented options overflow the track").toEqual({ ok: true, reason: "ok" });
 });
 
 test("density matrix selection updates the inspector and supports arrow keys", async ({ page }) => {

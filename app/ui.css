@@ -876,6 +876,35 @@ a {
   font-weight: 600;
 }
 
+/* True segmented control: the track pads the options, every option is
+   fully round, and the 44px target height is preserved. */
+.pill.segmented {
+  min-height: 0;
+  padding: 3px;
+  gap: 2px;
+}
+
+.pill.segmented .btn {
+  min-height: 44px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ui-ink-2);
+}
+
+.pill.segmented .btn:hover {
+  border-color: transparent;
+  background: var(--ui-surface-raised);
+  color: var(--ui-ink);
+}
+
+.pill.segmented .btn-primary,
+.pill.segmented .btn-primary:hover {
+  background: var(--ui-ink);
+  border-color: var(--ui-ink);
+  color: var(--ui-paper);
+}
+
 .pill-accent {
   background: var(--ui-accent-soft);
   border-color: var(--ui-accent-line);
@@ -2028,9 +2057,9 @@ a {
 .ledger-snapshot-select:focus-visible,
 .ledger-timezone-select:focus-visible,
 .ui-select:focus-visible {
-  outline: none;
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
   border-color: var(--ui-accent);
-  box-shadow: 0 0 0 3px var(--ui-accent-soft);
 }
 
 .ledger-snapshot-select:disabled,
@@ -2169,17 +2198,95 @@ a {
   color: var(--ui-accent-deep);
 }
 
-.explore-sidebar .ledger-explore-chip input {
-  margin-right: 5px;
+/* Custom checkbox and radio inside filter chips: accent control, paper
+   tick or dot, visible keyboard focus. */
+.ledger-filter-chip input[type="checkbox"],
+.ledger-filter-chip input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin: 0 8px 0 0;
+  border: 1.5px solid var(--ui-rule-strong);
+  background: var(--ui-paper);
+  cursor: pointer;
+}
+
+.ledger-filter-chip input[type="checkbox"] {
+  border-radius: 5px;
+}
+
+.ledger-filter-chip input[type="radio"] {
+  border-radius: 50%;
+}
+
+.ledger-filter-chip input[type="checkbox"]:hover,
+.ledger-filter-chip input[type="radio"]:hover {
+  border-color: var(--ui-accent-line);
+}
+
+.ledger-filter-chip input[type="checkbox"]:checked,
+.ledger-filter-chip input[type="radio"]:checked {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+}
+
+.ledger-filter-chip input[type="checkbox"]:checked::before {
+  content: "";
+  width: 5px;
+  height: 9px;
+  margin-top: -2px;
+  border-right: 2px solid var(--ui-paper);
+  border-bottom: 2px solid var(--ui-paper);
+  transform: rotate(45deg);
+}
+
+.ledger-filter-chip input[type="radio"]:checked::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ui-paper);
+}
+
+.ledger-filter-chip input[type="checkbox"]:focus-visible,
+.ledger-filter-chip input[type="radio"]:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .ledger-filter-chip input[type="checkbox"],
+  .ledger-filter-chip input[type="radio"] {
+    appearance: auto;
+    width: auto;
+    height: auto;
+  }
 }
 
 .explore-sidebar .ledger-explore-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   border-top: 1px solid var(--ui-rule-soft);
   padding-top: 14px;
+}
+
+.ledger-explore-actions .ledger-explore-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.ledger-explore-caption {
+  display: inline-flex;
+  align-items: center;
 }
 
 .explore-sidebar .ledger-explore-clear {
@@ -3125,6 +3232,48 @@ a {
   margin-bottom: 12px;
 }
 
+.filter-summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-chevron {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-right: 2px solid var(--ui-ink-3);
+  border-bottom: 2px solid var(--ui-ink-3);
+  transform: rotate(-45deg);
+  transition: transform var(--ui-fast) ease-out;
+}
+
+.explore-filter-details[open] .filter-chevron {
+  transform: rotate(45deg);
+}
+
+.filter-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 999px;
+  background: var(--ui-paper);
+  color: var(--ui-ink-3);
+  font-family: var(--ui-font-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.filter-count.is-active {
+  border-color: var(--ui-accent-line);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-deep);
+  font-weight: 600;
+}
+
 .explore-filter-body {
   padding-top: 2px;
 }
@@ -3277,12 +3426,31 @@ a {
     color var(--ui-fast) ease-out;
 }
 
-.ledger-helptip-trigger:hover .ledger-helptip-glyph,
+/* Hover is a plain ink shift; keyboard focus keeps the accent ring. */
+.ledger-helptip-trigger:hover .ledger-helptip-glyph {
+  border-color: var(--ui-ink-2);
+  color: var(--ui-ink);
+}
+
+.ledger-helptip-trigger:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
 .ledger-helptip-trigger:focus-visible .ledger-helptip-glyph,
 .ledger-helptip-trigger[aria-expanded="true"] .ledger-helptip-glyph {
   border-color: var(--ui-accent);
   color: var(--ui-accent);
-  background: var(--ui-accent-soft);
+}
+
+/* Volume bars glide when the 24/12-month window switches. The global
+   reduced-motion gate already forces this to instant. */
+.volume-bar {
+  transition:
+    x 240ms ease-out,
+    y 240ms ease-out,
+    width 240ms ease-out,
+    height 240ms ease-out;
 }
 
 .rail-collapse-button {
