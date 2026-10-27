@@ -46,7 +46,9 @@ revamp shipped. Local `main` only: no remote.
 
 ## In Progress
 
-None. The stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`)
+- [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green.
+
+None further. The stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`)
 so data refreshes are deliberate, not automatic.
 
 ## Blocked

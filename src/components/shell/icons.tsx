@@ -80,6 +80,14 @@ export function ApiIcon({ className }: IconProps) {
   );
 }
 
+export function ActivityIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+    </svg>
+  );
+}
+
 export function MenuIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

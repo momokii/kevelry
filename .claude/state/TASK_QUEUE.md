@@ -92,6 +92,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Evidence | Container `cve-change-radar-app-1` healthy at `100.124.184.116:3100`, 0 restarts. Pages 0.005-4.34s, APIs 0.003-3.08s, all 200. Data: 395,286 CVEs, 1,756 KEV, 395,249 EPSS, 285,877 CVSS rows. |
 | Limits   | Stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`); enable ingestion to refresh. Radar history and rising forecasts stay empty until scheduled cycles accumulate.        |
 
+## TASK-008 — Sidebar rail polish (dropdown theme + Data-status rows)
+
+| Field    | Value                                                                                                                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID  | TASK-008                                                                                                                                                                                                                                                                            |
+| Name     | Theme all dropdowns; align rail Data-status rows with nav rows                                                                                                                                                                                                                      |
+| Priority | Medium                                                                                                                                                                                                                                                                              |
+| Status   | DONE                                                                                                                                                                                                                                                                                |
+| Complexity | S                                                                                                                                                                                                                                                                                  |
+| Depends On | None                                                                                                                                                                                                                                                                              |
+| Scope    | Shared themed `<select>` treatment (custom chevron, surface, focus ring, forced-colors fallback) for `ledger-snapshot-select` / `ledger-timezone-select` / `ui-select`; rail Data-status rows rebuilt as icon + label + trailing pill mirroring `.app-nav-link`, with active state and a new `ActivityIcon`. |
+| Acceptance Criteria | New `tests/e2e/shell.spec.ts` rail-consistency test passes; prior rail/timezone specs still pass; lint/typecheck/prettier clean; no overflow at 360px (rail is a fixed 232px drawer). |
+| Security Concerns | None: presentation-only, no input handling or endpoint changes. |
+| Notes | Owner-reported: native OS dropdown arrow clashed with the warm-paper theme; Data-status rows used leading pills unlike every other rail row. Screenshot-verified before/after on desktop rail. |
+
 ## Task Template
 
 ```markdown

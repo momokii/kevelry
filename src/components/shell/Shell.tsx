@@ -7,6 +7,7 @@ import Link from "next/link";
 import { TimeZoneSelect } from "@/components/ledger/TimeZoneSelect";
 
 import {
+  ActivityIcon,
   ApiIcon,
   CloseIcon,
   CollapseIcon,
@@ -160,13 +161,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <div className="app-rail-section">
           <div className="app-rail-label">Data status</div>
-          <Link className="app-rail-status" href="/methodology#methodology-section-status">
+          <Link
+            className="app-rail-status"
+            href="/methodology#methodology-section-status"
+            aria-current={pathname === "/methodology" ? "page" : undefined}
+          >
+            <ActivityIcon className="app-nav-icon" />
+            <span className="app-nav-text">Source freshness</span>
             <span className="app-nav-count">status</span>
-            <span>Source freshness</span>
           </Link>
-          <Link className="app-rail-status" href="/api-docs">
+          <Link
+            className="app-rail-status"
+            href="/api-docs"
+            aria-current={pathname === "/api-docs" ? "page" : undefined}
+          >
+            <ApiIcon className="app-nav-icon" />
+            <span className="app-nav-text">Reference</span>
             <span className="app-nav-count">v1</span>
-            <span>Reference</span>
           </Link>
         </div>
 
