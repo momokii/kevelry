@@ -3443,6 +3443,39 @@ a {
   color: var(--ui-accent);
 }
 
+/* Floating tooltip bubble: anchored to the trigger, never pushing
+   surrounding content. Appears instantly; no animation. */
+.ledger-helptip {
+  position: relative;
+  display: inline-block;
+}
+
+.ledger-helptip-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 10px);
+  right: -6px;
+  left: auto;
+  width: max-content;
+  min-width: 0;
+  max-width: min(270px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--ui-ink);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-ink);
+  color: var(--ui-paper);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--ui-shadow-pop);
+}
+
+.ledger-helptip-panel[hidden] {
+  display: none;
+}
+
 /* Volume bars glide when the 24/12-month window switches. The global
    reduced-motion gate already forces this to instant. */
 .volume-bar {

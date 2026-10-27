@@ -86,6 +86,12 @@ export function FreshnessPanel({ provenance }: { provenance: Provenance }) {
                   value={entry.source.lastCheckedAt}
                   showRelative
                   testId={`overview-freshness-${entry.key}-checked`}
+                />{" "}
+                · accepted{" "}
+                <TimeText
+                  value={entry.source.lastAcceptedAt}
+                  showRelative
+                  testId={`overview-freshness-${entry.key}-accepted`}
                 />
               </span>
             </div>
@@ -93,7 +99,12 @@ export function FreshnessPanel({ provenance }: { provenance: Provenance }) {
         })}
       </div>
       <p className="chart-note">
-        {states.map((entry) => `${entry.name}: ${meaningOf(entry.name === "CVE List V5" ? "cve" : entry.name === "CISA KEV" ? "kev" : "epss", entry.state)}`).join(" ")}
+        {states
+          .map(
+            (entry) =>
+              `${entry.name}: ${meaningOf(entry.name === "CVE List V5" ? "cve" : entry.name === "CISA KEV" ? "kev" : "epss", entry.state)}`,
+          )
+          .join(" ")}
       </p>
       {entries.map((entry) =>
         entry.source.error !== null ? (

@@ -47,6 +47,27 @@ test("explore checkboxes wear the themed control", async ({ page }) => {
   await expect(box).toHaveCSS("appearance", "none");
 });
 
+test("help tooltip floats inside the viewport without pushing content", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/explore");
+  const trigger = page.getByTestId("explore-help-severity-trigger");
+  const panel = page.getByTestId("explore-help-severity-panel");
+  const before = await page.locator(".explore-sidebar").boundingBox();
+  await trigger.focus();
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box === null ? 0 : box.x + box.width).toBeLessThanOrEqual(1280);
+  expect(box?.x).toBeGreaterThanOrEqual(0);
+  const after = await page.locator(".explore-sidebar").boundingBox();
+  expect(after?.height).toEqual(before?.height);
+});
+
+test("freshness panel names per-source accepted times", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await expect(page.getByTestId("overview-freshness")).toContainText("accepted");
+});
+
 test("replay explains its own purpose", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/replay");

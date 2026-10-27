@@ -22,10 +22,43 @@ type HelpTipProps = {
 export function HelpTip({ term, children, testId, defaultOpen = false }: HelpTipProps) {
   const [pinned, setPinned] = useState(defaultOpen);
   const [transient, setTransient] = useState(false);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; maxWidth: number } | null>(
+    null,
+  );
   const rootRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentId = useId();
   const open = pinned || transient;
+
+  // Viewport-anchored bubble: measure the trigger on open and clamp into
+  // the viewport so the panel never causes horizontal overflow and never
+  // gets clipped by scroll containers. Dismiss on scroll/resize, like
+  // click-outside and Escape.
+  useEffect(() => {
+    if (!open) {
+      setAnchor(null);
+      return;
+    }
+    const place = (): void => {
+      const trigger = triggerRef.current;
+      if (trigger === null) return;
+      const rect = trigger.getBoundingClientRect();
+      const maxWidth = Math.min(280, window.innerWidth - 32);
+      const left = Math.max(16, Math.min(rect.left - 6, window.innerWidth - maxWidth - 16));
+      setAnchor({ top: rect.bottom + 10, left, maxWidth });
+    };
+    place();
+    const dismiss = (): void => {
+      setPinned(false);
+      setTransient(false);
+    };
+    window.addEventListener("scroll", place, { capture: true, passive: true });
+    window.addEventListener("resize", dismiss);
+    return () => {
+      window.removeEventListener("scroll", place, { capture: true });
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open]);
 
   const close = (returnFocus: boolean) => {
     setPinned(false);
@@ -99,6 +132,17 @@ export function HelpTip({ term, children, testId, defaultOpen = false }: HelpTip
         className="ledger-helptip-panel"
         hidden={!open}
         data-testid={testId ? `${testId}-panel` : undefined}
+        style={
+          anchor === null
+            ? undefined
+            : {
+                position: "fixed",
+                top: anchor.top,
+                left: anchor.left,
+                right: "auto",
+                maxWidth: anchor.maxWidth,
+              }
+        }
       >
         {children}
       </span>
