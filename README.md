@@ -1,12 +1,15 @@
 # cve-injector
 
-Public CVE overview with explainable prioritization, searchable descriptions,
-official-record links, plus **Change Radar**: what changed, why it matters, and
-replayable history. One self-contained Docker image, one container, and a
-versioned read-only API so other platforms (or your own self-hosted copy) can
-consume the same data.
+**Naming:** the repository/package/image name is `cve-change-radar` (folder
+`cve-injector`); the product wordmark is **CVE Intel**. They refer to this one app.
 
-> **Status: implemented, verified, and deployed. Full Research Console UI revamp shipped 2026-10-26.**
+Public CVE intelligence console with an interactive overview, explainable
+prioritization, searchable descriptions, official-record links, plus **Change
+Radar** and replayable history. One self-contained Docker image, one container,
+and a versioned read-only API so other platforms (or your own self-hosted copy)
+can consume the same data.
+
+> **Status: implemented, verified, and deployed. Research Console UI revamp and quality pass shipped 2026-10-26.**
 > All 30 build todos and F1-F4 gates remain approved; the visual and interaction
 > layer was rebuilt around interactive SVG charts, a real severity×EPSS matrix,
 > a global timezone, and a compact analyst shell. Evidence under `.omo/evidence/`.
@@ -122,7 +125,7 @@ All three feeds are free to access today (checked 2026-10-24; recheck terms befo
 
 | Source                                                                   | What we take                                                          | Reuse basis                                                                                                                   |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [CVE List V5](https://github.com/CVEProject/cvelistV5)                   | Records, descriptions, dates, references, available CNA/ADP metrics   | CVE Terms: no-charge reproduction, derivatives, display, distribution, reproduce MITRE copyright designation and license     |
+| [CVE List V5](https://github.com/CVEProject/cvelistV5)                   | Records, descriptions, dates, references, available CNA/ADP metrics   | CVE Terms: no-charge reproduction, derivatives, display, distribution, reproduce MITRE copyright designation and license      |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited membership, date added, catalog metadata              | CC0 1.0 for catalog data; third-party links and CISA/DHS marks not covered                                                    |
 | [FIRST EPSS](https://www.first.org/epss/data)                            | Daily exploitation probability, percentile, score date, model version | Free, no registration; FAQ asks attribution; services terms permit specified preventative-security uses with notices retained |
 
@@ -161,21 +164,31 @@ initializing state until then. Live scale here: 395,286 CVEs, 1,756 KEV, 395,249
 `.env` is gitignored; `.env.example` is the committed template. Every variable
 the app reads is listed there.
 
-| Variable | Default | Meaning |
-| -------- | ------- | ------- |
-| `APP_ENV` | `production` | Runtime profile: `development`, `staging`, `production` |
-| `NODE_ENV` | `production` | Node profile, kept in step with `APP_ENV` |
-| `DATA_DIR` | `/data` | Database and snapshot directory inside the container |
-| `SCHEDULE_ENABLED` | `true` | `true` imports on boot then refreshes on schedule; `false` imports once, then idles |
-| `INGEST_ON_START` | `true` | `false` skips even the first import cycle (worker logs `worker-idle` and parks) |
-| `BIND_ADDR` | `127.0.0.1` | Host address the web port binds to |
-| `PORT` | `3000` | Host-side web port (container always listens on 3000) |
-| `CVE_GIT_TIMEOUT_MS` | `3600000` | CVE List V5 clone timeout in ms (1 hour) |
-| `CVE_CLONE_DEPTH` | `1` | `1` is shallow `--depth 1`; `0` means full history |
-| `CVE_REPO_DIR` | `<DATA_DIR>/cve-repo` | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
-| `CVE_REPO_CACHE_RESET` | `false` | `true` wipes the cache and re-clones clean on the next cycle |
-| `CVE_MAX_RECORD_BYTES` | `16777216` | Per-record size cap in bytes (16 MiB); oversize records are quarantined |
-| `CHECKPOINT_TOP_N` | `500` | Entries kept per view in each daily Change Radar checkpoint |
+| Variable               | Default               | Meaning                                                                                                                   |
+| ---------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`              | `production`          | Runtime profile: `development`, `staging`, `production`                                                                   |
+| `NODE_ENV`             | `production`          | Node profile, kept in step with `APP_ENV`                                                                                 |
+| `DATA_DIR`             | `/data`               | Database and snapshot directory inside the container                                                                      |
+| `SCHEDULE_ENABLED`     | `true`                | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                       |
+| `INGEST_ON_START`      | `true`                | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                           |
+| `BIND_ADDR`            | `127.0.0.1`           | Host address the web port binds to                                                                                        |
+| `PORT`                 | `3000`                | Host-side web port (container always listens on 3000)                                                                     |
+| `CVE_GIT_TIMEOUT_MS`   | `3600000`             | CVE List V5 clone timeout in ms (1 hour)                                                                                  |
+| `CVE_CLONE_DEPTH`      | `1`                   | `1` is shallow `--depth 1`; `0` means full history                                                                        |
+| `CVE_REPO_DIR`         | `<DATA_DIR>/cve-repo` | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
+| `CVE_REPO_CACHE_RESET` | `false`               | `true` wipes the cache and re-clones clean on the next cycle                                                              |
+| `CVE_MAX_RECORD_BYTES` | `16777216`            | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                   |
+| `CHECKPOINT_TOP_N`     | `500`                 | Entries kept per view in each daily Change Radar checkpoint                                                               |
+| `PRIORITY_PAGE_LIMIT`  | `100`                 | QA-only display cap for priority views (1–1000)                                                                           |
+| `CVE_REPO_URL`         | official repository   | Optional CVE source override (mirror/tests)                                                                               |
+| `CVE_REVISION`         | `main`                | Optional CVE revision override                                                                                            |
+| `CVE_DB_FILE`          | unset                 | Backfill script: explicit database path                                                                                   |
+| `BACKFILL_CHUNK`       | `2000`                | Backfill script: rows per transaction                                                                                     |
+| `BETTER_SQLITE3_PATH`  | unset                 | Backfill script: explicit native module path                                                                              |
+
+`.env.example` is a local-development template (`APP_ENV=development`,
+`DATA_DIR=./data`); Compose and the image default to production (`APP_ENV=production`,
+`DATA_DIR=/data`).
 
 Compose notes: `compose.yaml` is the production-safe default (single `app`
 service, `APP_ENV`/`NODE_ENV=production`, named volume
@@ -233,7 +246,7 @@ Expect: health 200 with an ok/degraded state; overview has non-empty buckets plu
 date basis; known-exploited returns KEV entries; search returns matches with excerpts.
 Measured on the live 395k volume after the final UI quality pass
 (2026-10-26): `/` about 0.39 s, `/explore` about 2–4 s on the first uncached
-filter combination and about 0.03 s when repeated, `/priority` about 0.19 s,
+filter combination (up to ~4.5 s immediately after a restart) and about 0.03 s when repeated, `/priority` about 0.19 s,
 `/methodology` about 0.02 s, `/api-docs` about 0.05 s, `/radar` and `/replay`
 under 0.02 s, and `/api/v1/cves?limit=2` about 1.3 s.
 
@@ -247,8 +260,7 @@ docker compose exec app env REFRESH_AGGREGATES_ONCE=true node worker.mjs
 ```
 
 Success GETs carry `Cache-Control: public, max-age=30, s-maxage=60,
-stale-while-revalidate=300` plus a strong ETag; repeats with `If-None-Match` return
-304. Warm responses for `/`, `/explore`, `/priority`, `/methodology`,
+stale-while-revalidate=300` plus a strong ETag; repeats with `If-None-Match` return 304. Warm responses for `/`, `/explore`, `/priority`, `/methodology`,
 `/api/v1/overview`, `/api/v1/status`, and `/api/v1/cves?limit=2` complete under 1.5 s.
 
 ## Operations
@@ -303,7 +315,7 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
 - Snapshot checkpoints retain the top `CHECKPOINT_TOP_N` entries per view
   (default 500) and label them as bounded; they are not a full enumeration.
 - The first unfiltered Explore query on a 395k-row volume performs the full cohort
-  scan (about 2.3 s here); identical filter combinations are cached for 60 s.
+  scan (about 2–4 s, up to ~4.5 s after a restart); identical filter combinations are cached for 60 s.
 - The display timezone changes rendering only. Publication buckets stay UTC days or
   months, and every chart says so; it is not a timezone conversion of the data.
 - The severity×EPSS matrix scrolls horizontally below about 620px; a visible hint
@@ -327,26 +339,32 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite
-npx playwright test     # end-to-end browser tests (tests/e2e)
+npm test                # vitest suite (365 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (68 passing, 1 skipped)
+npx prettier --write <paths>  # format touched files
+
+`npm run format:check` currently reports pre-existing repository-wide Markdown/test
+formatting drift (66 files); use Prettier on touched files. `npm audit` reports three
+dev-only findings in the Vitest toolchain; the production image excludes dev
+dependencies. Both are tracked under TASK-002.
 ```
 
 ## API
 
-Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/` and a browsable reference at [`/api-docs`](/api-docs) (rendered from the spec at build time, so it cannot drift).
+Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/` and a browsable reference at [`/api-docs`](/api-docs) (rendered from the spec on each request, so it cannot drift).
 
-| Method + path | Purpose |
-| ------------- | ------- |
-| `GET /api/v1/health` | Liveness plus readiness state |
-| `GET /api/v1/status` | Per-source freshness and warnings |
-| `GET /api/v1/overview` | Published-CVE volume buckets with date basis |
-| `GET /api/v1/cves` | Paginated CVE records |
-| `GET /api/v1/cves/{cveId}` | One CVE record with references |
-| `GET /api/v1/search?q=...` | CVE ID and description search |
+| Method + path                     | Purpose                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `GET /api/v1/health`              | Liveness plus readiness state                                            |
+| `GET /api/v1/status`              | Per-source freshness and warnings                                        |
+| `GET /api/v1/overview`            | Published-CVE volume buckets with date basis                             |
+| `GET /api/v1/cves`                | Paginated CVE records                                                    |
+| `GET /api/v1/cves/{cveId}`        | One CVE record with references                                           |
+| `GET /api/v1/search?q=...`        | CVE ID and description search                                            |
 | `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast` |
-| `GET /api/v1/radar` | Change feed with before/after evidence |
-| `GET /api/v1/replay` | Replay a retained checkpoint plus policy version |
-| `GET /api/v1/replay/checkpoints` | List available checkpoints |
+| `GET /api/v1/radar`               | Change feed with before/after evidence                                   |
+| `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                         |
+| `GET /api/v1/replay/checkpoints`  | List available checkpoints                                               |
 
 GET only, no auth, rate limited. Unknown EPSS renders as explicit `null`, never zero. `GET /api/v1/status` reports per-source stale and warning states.
 
@@ -354,7 +372,7 @@ GET only, no auth, rate limited. Unknown EPSS renders as explicit `null`, never 
 
 Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
 
-- Upstream descriptions, references, and archives are **untrusted**: encoded output, constrained links, strict CSP, no PoC execution, archive guards.
+- Upstream descriptions, references, and archives are **untrusted**: React-escaped output, constrained links, no PoC execution, archive guards. API responses carry a strict JSON CSP; page HTML does not currently set one.
 - Parameterized queries, validated filters, bounded pages/time/concurrency, rate-limited reads; SSRF allow-lists for the fixed upstream endpoints.
 - Public reads are anonymous by design; imports, migrations, and maintenance stay private CLI/internal operations.
 - No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release; pinned dependencies, minimal non-root image, no Docker socket.
@@ -362,19 +380,19 @@ Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review
 
 ## Docs map
 
-| Document                                                                                   | Purpose                                                                   |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Document                                                                                   | Purpose                                                                    |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
 | [`DESIGN.md`](DESIGN.md)                                                                   | Research Console tokens, shell, chart contract, interaction and a11y rules |
-| [`FEASIBILITY.md`](FEASIBILITY.md)                                                         | Coverage verdict: what sources support, explicit gaps, readiness gates    |
-| [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md)                                           | Proposed ingestion, ranking, history, freshness, and acceptance contracts |
-| [`docs/research/SOURCES.md`](docs/research/SOURCES.md)                                     | First-party terms, endpoints, fields, live validations, limits            |
-| [`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md)                             | Verified competitor overlap and check limits                              |
-| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md)                   | Approved bundle: design, stack, history, ranking, testing basis           |
-| [`.omo/drafts/cve-change-radar.md`](.omo/drafts/cve-change-radar.md)                       | Planning record: users, gaps, decisions, open questions                   |
-| [`.omo/drafts/cve-change-radar-design.md`](.omo/drafts/cve-change-radar-design.md)         | Candidate Evidence Ledger visual direction                                |
-| [`.omo/drafts/cve-single-image-deployment.md`](.omo/drafts/cve-single-image-deployment.md) | Single-image runtime, persistence, lifecycle, parity tests                |
-| [`.omo/drafts/cve-stack-contract-audit.md`](.omo/drafts/cve-stack-contract-audit.md)       | Proposed stack compatibility evidence (not a selected stack)              |
-| [`.claude/`](.claude/)                                                                     | Agent rules, security standards, environment guide, task queue, history   |
+| [`FEASIBILITY.md`](FEASIBILITY.md)                                                         | Coverage verdict: what sources support, explicit gaps, readiness gates     |
+| [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md)                                           | Implemented ingestion, ranking, history, freshness, and cache contracts    |
+| [`docs/research/SOURCES.md`](docs/research/SOURCES.md)                                     | First-party terms, endpoints, fields, live validations, limits             |
+| [`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md)                             | Verified competitor overlap and check limits                               |
+| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md)                   | Approved bundle: design, stack, history, ranking, testing basis            |
+| [`.omo/drafts/cve-change-radar.md`](.omo/drafts/cve-change-radar.md)                       | Planning record: users, gaps, decisions, open questions                    |
+| [`.omo/drafts/cve-change-radar-design.md`](.omo/drafts/cve-change-radar-design.md)         | Historical pre-build visual direction; current system is `DESIGN.md`       |
+| [`.omo/drafts/cve-single-image-deployment.md`](.omo/drafts/cve-single-image-deployment.md) | Single-image runtime, persistence, lifecycle, parity tests                 |
+| [`.omo/drafts/cve-stack-contract-audit.md`](.omo/drafts/cve-stack-contract-audit.md)       | Historical stack audit; selected stack is Next.js/SQLite/visx              |
+| [`.claude/`](.claude/)                                                                     | Agent rules, security standards, environment guide, task queue, history    |
 
 ## Build gates (all done)
 

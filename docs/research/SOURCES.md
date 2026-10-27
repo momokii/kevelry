@@ -14,14 +14,14 @@ establish complete coverage, continuous availability, unlimited use, or future t
 
 ## Source Decisions
 
-| Source | Access | Public-use basis | Confidence / decision |
-|---|---|---|---|
-| CVE List V5 | Public Git repository, raw files and release downloads | CVE terms permit reproduction, derivatives, display and distribution with MITRE copyright designation and license reproduced | High for current access/reuse; core |
-| CISA KEV | Public JSON/CSV and official GitHub mirror | Catalog data is CC0 1.0; third-party links and government marks are not covered | High for current access/reuse; core |
-| FIRST EPSS | Free daily full CSV and small-batch API, no registration | FAQ requests product attribution; services terms permit specified cybersecurity uses with notices retained | High for access; medium for legal interpretation of a particular public deployment; core subject to purpose/notices |
-| NVD | Optional API/feeds | Current detailed quota and reuse review not completed here | Unverified optional enrichment; not a build prerequisite |
-| Shodan CVEDB | Free API without account for non-commercial use | Landing page requires enterprise licensing to make money | Verified restriction; exclude from core |
-| Social/PoC/vendor scores | Mixed and source-specific | No uniform free redistribution basis established | Exclude from core; no popularity promise |
+| Source                   | Access                                                   | Public-use basis                                                                                                             | Confidence / decision                                                                                               |
+| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| CVE List V5              | Public Git repository, raw files and release downloads   | CVE terms permit reproduction, derivatives, display and distribution with MITRE copyright designation and license reproduced | High for current access/reuse; core                                                                                 |
+| CISA KEV                 | Public JSON/CSV and official GitHub mirror               | Catalog data is CC0 1.0; third-party links and government marks are not covered                                              | High for current access/reuse; core                                                                                 |
+| FIRST EPSS               | Free daily full CSV and small-batch API, no registration | FAQ requests product attribution; services terms permit specified cybersecurity uses with notices retained                   | High for access; medium for legal interpretation of a particular public deployment; core subject to purpose/notices |
+| NVD                      | Optional API/feeds                                       | Current detailed quota and reuse review not completed here                                                                   | Unverified optional enrichment; not a build prerequisite                                                            |
+| Shodan CVEDB             | Free API without account for non-commercial use          | Landing page requires enterprise licensing to make money                                                                     | Verified restriction; exclude from core                                                                             |
+| Social/PoC/vendor scores | Mixed and source-specific                                | No uniform free redistribution basis established                                                                             | Exclude from core; no popularity promise                                                                            |
 
 Free access and permission to display are separate questions. Before ads, paid access,
 resale or other commercialization, recheck every source and clarify FIRST's terms.
@@ -46,16 +46,16 @@ not CC0. Public display and derived ordering are supported subject to these cond
 Retain the full applicable license/notice in distributed data and on the site's
 attribution page; a bare source link is not a substitute for reproducing required text.
 
-| Field / path | Use / qualification |
-|---|---|
-| `dataVersion` | Select the record-format schema; mixed versions exist |
-| `cveMetadata.cveId`, `.state` | Identity and public record state |
-| `cveMetadata.datePublished`, `.dateUpdated` | Publication/update chronology, not ingestion time |
-| `containers.cna.title`, `.descriptions[].lang/value` | Title if supplied; original description by language |
-| `containers.cna.metrics[]` | Optional CNA metrics, including versioned CVSS |
-| `containers.cna.affected[]` | Provider-supplied vendor/product labels; not normalized exhaustive inventory |
-| `containers.cna.references[]`, `containers.adp[].references[]` | References with container/provider provenance |
-| `containers.adp[].metrics[]` | Optional enrichment; preserve provider and distinguish from CNA |
+| Field / path                                                   | Use / qualification                                                          |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `dataVersion`                                                  | Select the record-format schema; mixed versions exist                        |
+| `cveMetadata.cveId`, `.state`                                  | Identity and public record state                                             |
+| `cveMetadata.datePublished`, `.dateUpdated`                    | Publication/update chronology, not ingestion time                            |
+| `containers.cna.title`, `.descriptions[].lang/value`           | Title if supplied; original description by language                          |
+| `containers.cna.metrics[]`                                     | Optional CNA metrics, including versioned CVSS                               |
+| `containers.cna.affected[]`                                    | Provider-supplied vendor/product labels; not normalized exhaustive inventory |
+| `containers.cna.references[]`, `containers.adp[].references[]` | References with container/provider provenance                                |
+| `containers.adp[].metrics[]`                                   | Optional enrichment; preserve provider and distinguish from CNA              |
 
 The public record corpus includes `PUBLISHED` and `REJECTED` formats. It does not
 enumerate all unpublished reserved IDs. Ordinary counts/rankings use `PUBLISHED`;
@@ -64,7 +64,8 @@ have known issues documented in the README. Metrics, titles, languages, products
 aliases are not universally populated; never turn absence into a zero score.
 
 Distribution choices:
-- Git snapshot plus changed-path diff between imported commits: recommended proposal.
+
+- Git snapshot plus changed-path diff between imported commits: implemented workflow.
 - Daily full baseline ZIP plus hourly **cumulative changes since that baseline**:
   alternative, not independent previous-hour deltas.
 - Rolling `delta.json` / `deltaLog.json`: not a permanent transaction log. Retention
@@ -72,7 +73,7 @@ Distribution choices:
 
 At day rollover, pair each release delta with the matching dated baseline. If a
 baseline/checkpoint is missing, history has expired or continuity cannot be proven,
-fetch a fresh complete baseline. See [workflow](../DATA_WORKFLOW.md) for the proposal.
+fetch a fresh complete baseline. See [workflow](../DATA_WORKFLOW.md) for the implemented contract.
 
 ## CISA KEV Contract
 
@@ -110,11 +111,11 @@ cybersecurity incident response, or preventative cybersecurity uses" with notice
 retained. A preventative dashboard appears aligned; blanket permission for every
 commercial arrangement is **not established**. Seek clarification before monetizing.
 
-| Access | Contract |
-|---|---|
+| Access                                                              | Contract                                                                               |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `GET https://epss.empiricalsecurity.com/epss_scores-current.csv.gz` | Follow redirects; full daily bulk snapshot; preferred for local corpus synchronization |
-| `GET https://api.first.org/data/v1/epss?cve=<ID>` | Public lookup/small batches; not a bulk-sync mechanism |
-| Historical daily files in linked repository | Needed for genuine dated comparisons; availability is not unlimited API throughput |
+| `GET https://api.first.org/data/v1/epss?cve=<ID>`                   | Public lookup/small batches; not a bulk-sync mechanism                                 |
+| Historical daily files in linked repository                         | Needed for genuine dated comparisons; availability is not unlimited API throughput     |
 
 CSV columns are `cve,epss,percentile`. Read the leading comment for `model_version`
 and `score_date`. API rows include `cve`, `epss`, `percentile`, `date`.
@@ -127,9 +128,10 @@ conditions: do not interpret a cross-model jump as rising threat. A missing curr
 row is unknown, not zero and not permission to silently reuse yesterday's score.
 Partner exploitation telemetry behind the model is not redistributed by this feed.
 
-## Live Evidence Ledger
+## Live Evidence Log
 
 Checked without keys on 2026-10-24:
+
 - [CVE sample](https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/109xxx/CVE-2026-109618.json)
   returned HTTP 200 and JSON; published state/date and description previously parsed
   in this audit series. This is a sample, not a full-corpus completeness test.

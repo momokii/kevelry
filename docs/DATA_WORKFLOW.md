@@ -1,9 +1,10 @@
 # Data Workflow and Ranking Contract
 
-**PROPOSED: owner approval pending.** These are candidate product policies, not
-approved architecture or validated risk science. No framework, database or host is
-selected. See [feasibility](../FEASIBILITY.md), [source audit](research/SOURCES.md)
-and [competitor audit](research/COMPETITORS.md) for evidence and limitations.
+**Implemented contract.** The deployed site and API follow this workflow. If this
+document and the code differ, the code and its tests are authoritative; update this
+document in the same change. See [feasibility](../FEASIBILITY.md),
+[source audit](research/SOURCES.md) and [competitor audit](research/COMPETITORS.md)
+for the historical evidence and limitations.
 
 ## Scope and Field Mapping
 
@@ -11,7 +12,7 @@ Use locally imported CVE List V5, CISA KEV and FIRST EPSS. Visitor-facing search
 lists read local data, not upstream APIs. No paid model or generated summary is needed.
 Default search and all ranked views include only current `PUBLISHED` CVE records.
 
-| Feature                | Proposed input and treatment                                                                                                                                     |
+| Feature                | Shipped input and treatment                                                                                                                                      |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ID/text search         | Validated ID, supplied title, descriptions and supplied product/vendor labels; local text index, no guaranteed nickname matching                                 |
 | Description excerpt    | Prefer first `en`/`en-*` CNA description in source order; otherwise first supplied description with language label; missing text says "Description not supplied" |
@@ -149,7 +150,7 @@ official reconciliation of providers. Preserve every original metric for inspect
    promoted by this policy. No valid CNA metric means unknown primary.
 
 CVSS v2-only is legacy-scored and is not called critical. Modern primary v3/v4
-base >=9 qualifies for the proposed new-critical view. This deliberately limits
+base >=9 qualifies for the new-critical view. This deliberately limits
 coverage; NVD or ADP-based enrichment needs an approved revised selection policy.
 
 ## CVSS Metrics Persistence
@@ -166,7 +167,7 @@ repaired with `npm run backfill:cvss` (`scripts/backfill-cvss.mjs`), which
 replays the same extraction from stored `raw_json` in keyset chunks with no
 network, git, or re-clone, and is safe to re-run.
 
-## Ranking Proposal v1
+## Ranking Contract v1
 
 No custom 0-100 composite is produced. Multiplying CVSS by EPSS or combining them
 with arbitrary weights does not create a calibrated probability or risk score.
@@ -239,7 +240,7 @@ Assume publication timestamps equal/known except where stated.
 
 ## Freshness Proposal
 
-Proposed schedules: CVE hourly; KEV hourly with conditional requests where supported;
+Refresh targets: CVE hourly; KEV hourly with conditional requests where supported;
 EPSS daily after expected publication. These are our targets, not upstream SLAs.
 Flag CVE/KEV when last successful check is **more than 3 hours** old, even if unchanged.
 Do not flag an old vulnerability merely because its record has not changed.
@@ -249,9 +250,11 @@ Keep last-known-good data with visible per-source timestamps and errors during o
 ## Aggregate Cache (read-path performance)
 
 Hot paths (overview page, `/api/v1/overview`, `/api/v1/status`,
-`/api/v1/health`) read the precomputed `aggregate_cache` table (migration
-002) instead of recomputing GROUP BY / COUNT(*) / full-corpus sorts per
-request. Refresh rules:
+`/api/v1/health`) read the precomputed `aggregate_cache` table (migration 002) instead of recomputing GROUP BY / COUNT(*) / full-corpus sorts per
+request. Cache schema version 3 stores day/month counts, severity bands, the
+linear EPSS histogram, the nine-bin log EPSS histogram, the exact
+severity×EPSS matrix with KEV counts, KEV months, corpus totals, and the
+bounded top heads for the two slowest priority lists. Refresh rules:
 
 - The worker calls `refreshAggregates` once after every successful
   CVE/KEV/EPSS import cycle, and on boot when the cache table is empty (so a
@@ -260,15 +263,15 @@ request. Refresh rules:
   bounded: every section is a GROUP BY over indexed columns (per-day,
   per-month, per-band, per-model) — the full corpus is never materialized in
   JS memory.
-- Readers fall back to live queries when a cache key is absent, so an empty
-  cache is never an outage; response shapes are identical either way.
+- Readers fall back to live queries when the cache key is absent or its version is
+  stale, so an empty/old cache is never an outage; response shapes are identical either way.
 - The severity-band section uses a SQL mirror of `selectPrimaryCvss`
   (preferred version, then max base within it); vector/sourceOrder tie-breaks
   cannot change a band and are therefore out of scope for the mirror.
 - One-off refresh without an import cycle:
   `REFRESH_AGGREGATES_ONCE=true node dist/worker.mjs`
   (Compose: `docker compose exec app env REFRESH_AGGREGATES_ONCE=true node
-  worker.mjs`).
+worker.mjs`).
 
 Success GET responses carry `Cache-Control: public, max-age=30,
 s-maxage=60, stale-while-revalidate=300` plus a strong ETag derived from the
@@ -301,7 +304,7 @@ The full EPSS structural check in the source audit is not a full application ben
 ## Documentation Verification
 
 On 2026-10-24, an in-memory synthetic driver passed **31 assertions** covering
-the proposed view orders, CVSS selection, known-zero versus missing values, decimal
+the shipped view orders, CVSS selection, known-zero versus missing values, decimal
 ties, exact cutoff dates, missing history and model transitions. Fixtures used exact
 scaled integers for probability arithmetic, not rounded display values. This checks
 documented examples, not a production ingestion/search implementation.

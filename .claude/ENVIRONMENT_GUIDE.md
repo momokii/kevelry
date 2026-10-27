@@ -2,11 +2,11 @@
 
 ## Definitions
 
-| Environment | Purpose | Characteristics |
-|---|---|---|
-| `development` | Local development | Debug on, verbose logs, hot reload, mock or sandbox services |
-| `staging` | Pre-production validation | Production-like config, sandboxed real services, debug off |
-| `production` | Live system | Debug off, minimal logs, hardened config, real secrets |
+| Environment   | Purpose                   | Characteristics                                              |
+| ------------- | ------------------------- | ------------------------------------------------------------ |
+| `development` | Local development         | Debug on, verbose logs, hot reload, mock or sandbox services |
+| `staging`     | Pre-production validation | Production-like config, sandboxed real services, debug off   |
+| `production`  | Live system               | Debug off, minimal logs, hardened config, real secrets       |
 
 `APP_ENV` selects the environment. If it is missing or unknown, apply production-safe
 defaults (fail closed).
@@ -44,8 +44,8 @@ Use `docker compose`, not the legacy `docker-compose`.
   normal startup into development mode; only the explicit dev override does that.
 - Do not ship an automatically discovered development `compose.override.yaml` or
   `compose.override.yml`. Plain startup must not silently enable development behavior.
-- `compose.dev.yaml`: explicitly selected development overrides when implemented;
-  hot reload/debug/source mounts belong only in that opt-in path.
+- `compose.dev.yaml`: the shipped explicit development override (hot reload,
+  source mounts, debug port); it never loads automatically.
 - `compose.prod.yaml`: optional explicit deployment-specific overrides if needed,
   not a mandatory extra command or additional service for normal startup.
 
@@ -57,14 +57,17 @@ docker compose up -d
 docker compose -f compose.yaml -f compose.dev.yaml up
 ```
 
-These are approved command contracts, not verified commands: no Compose/Dockerfile
-implementation exists yet. Plain `up -d` must handle normal first startup; document
-upgrades/rebuilds separately because it does not guarantee rebuilding an existing image.
+The layout is implemented and verified: `compose.yaml` (production-safe single
+service), `compose.dev.yaml` (explicit opt-in), and a multi-stage `Dockerfile`.
+Plain `docker compose up -d` starts the existing image and **does not rebuild**;
+after source changes run `docker compose build && docker compose up -d`.
 
-The agent must **always ask** before any Compose command that is not clearly development,
-including the normal production-safe `docker compose up -d` path.
-If the project uses different file names, document them here and follow the existing
-names.
+Current host deployment: `BIND_ADDR=100.124.184.116`, `PORT=3100`, container
+`cve-change-radar-app-1`, volume `cve-change-radar-data`, serve-only
+(`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`).
+
+The agent must **always ask** before `docker compose up/down` or any non-development
+Compose command. `docker compose build/ps/logs` are pre-allowed; `up` asks.
 
 One runtime image/container must include web, ingestion/scheduling, local storage/
 search and Radar/replay. Compose is a convenience wrapper, not a prerequisite for
@@ -90,5 +93,5 @@ disabled** in production images and configuration.
 - Secrets are injected at runtime, never baked into images or committed files.
 - Every new variable is added to `.env.example` with a placeholder and a description.
 
-> **Self-update:** once the real Docker setup and commands exist, replace the generic
-> examples with the verified commands for this project.
+> **Self-update:** these are the verified commands for this project. Update this file
+> when Compose file names, service names, bindings, or deployment flags change.

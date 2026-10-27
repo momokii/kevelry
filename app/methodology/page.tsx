@@ -23,7 +23,7 @@ import { openReadDatabase, type CveDatabase } from "@/lib/db";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Methodology and data status - CVE Change Radar",
+  title: "Methodology — CVE Intel",
   description:
     "What CVSS, KEV, and EPSS mean, exact ordering rules, source dates and reuse notices, coverage gaps, and per-source health.",
 };

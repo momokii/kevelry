@@ -2,6 +2,21 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-10-26 - Handoff documentation reconciliation
+
+Audited the documentation and state files against the actual tree before handing
+the project to another agent. Corrected the stale pre-build framing in the package
+description, `.claude/README.md`, `ENVIRONMENT_GUIDE.md`, `HOW_TO_RESUME.md`,
+`FEASIBILITY.md`, and `DATA_WORKFLOW.md`; reconciled `CURRENT_STATUS` with the shipped
+Research Console, cache v3, test counts, timings, and deployment; documented the
+actual API parameter list, env vars, collapsible rail, scrollable filters, date
+presets, tooltip glyph, overview donut/cumulative visuals, methodology explainers,
+and API docs behavior. Also recorded the known dev-only Vitest audit findings and
+repository-wide Prettier drift so no successor claims a green gate that is not true.
+
+Verification after the reconciliation: 365 unit tests and 68 Playwright tests pass
+(1 skipped), lint/typecheck/build green, live container healthy with 0 restarts.
+
 ## 2026-10-26 - Research Console quality pass
 
 The owner accepted the new direction but flagged the remaining detail work:
@@ -24,6 +39,7 @@ Final gates: 365 unit tests and 68 Playwright tests pass (1 skipped), including
 new rail-collapse, date-preset, scrollable-filter, methodology-explainer, API TOC
 and response-example coverage. Live timings 0.01-0.39s warm, explore 2-4s cold
 then 0.03s warm, 0 restarts.
+
 ## 2026-10-26 - Full Research Console UI revamp
 
 The owner rejected the Evidence Ledger presentation as dated and insufficiently
@@ -44,6 +60,7 @@ the legacy cohort styles.
 Verification: 364 unit tests and 65 Playwright tests pass (1 skipped), lint,
 typecheck, build, Docker build, 360/200% zoom and reduced-motion gates, live
 timings 0.01-0.17s warm (explore 2.3s cold, 0.03s warm), 0 restarts.
+
 ## 2026-10-26 - Interactive UI, global timezone, and read-path speed
 
 Reviewed the deployed site against the owner's feedback and rebuilt the weak
@@ -69,6 +86,7 @@ ETag/304 responses, and a coverage-reusing facet path. Live measurements:
 tooltip Escape re-open bug, and 21px mobile overflow in the monthly list.
 Verification: 364 unit tests pass (3 skipped), 67 Playwright tests pass
 (1 skipped), lint/typecheck/build green, screenshots at 360/768/1280.
+
 ## 2026-10-25 - Deployed on Tailscale with live data
 
 Built and deployed the single container on this host, bound to the Tailscale

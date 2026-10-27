@@ -1,15 +1,15 @@
 # CVE dashboard feasibility
 
-Audited: 2026-10-24. **Documentation complete; website build not approved or started.**
-Product workflow and ranking remain proposals pending owner approval.
+Audited: 2026-10-24. **Historical pre-build audit; the website was subsequently approved, built, and deployed.**
+The shipped workflow and ranking live in `docs/DATA_WORKFLOW.md`; this file records the feasibility evidence, not the current implementation status.
 
 ## Read This First
 
-| Document | What it establishes |
-|---|---|
-| [Source audit](docs/research/SOURCES.md) | Primary-source access/reuse evidence, confidence, endpoints, fields, live validations and exclusions |
-| [Competitor audit](docs/research/COMPETITORS.md) | Tested URLs, observed versus claimed features, blocked/browser limits, build-versus-use verdict |
-| [Data workflow and ranking](docs/DATA_WORKFLOW.md) | Proposed exact normalization, ingestion/recovery, freshness, ranking keys, formulas, examples and acceptance gates |
+| Document                                           | What it establishes                                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [Source audit](docs/research/SOURCES.md)           | Primary-source access/reuse evidence, confidence, endpoints, fields, live validations and exclusions            |
+| [Competitor audit](docs/research/COMPETITORS.md)   | Tested URLs, observed versus claimed features, blocked/browser limits, build-versus-use verdict                 |
+| [Data workflow and ranking](docs/DATA_WORKFLOW.md) | Implemented normalization, ingestion/recovery, freshness, ranking keys, formulas, examples and acceptance gates |
 
 Evidence is dated and claims are scoped. **Verified** means a cited source or observed
 read supports that claim; **proposed** means our product policy; **unverified** means
@@ -17,18 +17,18 @@ not tested or evidence unavailable. No confidence percentage is invented.
 
 ## Feature Coverage
 
-| Requested feature | Selected data / confidence | Fulfilled by sources? |
-|---|---|---|
-| Overall published-CVE charts | CVE List V5 publication timestamps/state; high source fit | Yes, with UTC buckets, unknown-date coverage and correction/rejection handling |
-| Search CVE ID and description | CVE ID and upstream descriptions; high source fit | Yes; local search implementation and performance not yet tested |
-| Short description before official link | CNA descriptions plus constructed CVE.org ID link; high source fit | Yes where text exists; explicit missing-text/language behavior |
-| Severity/date/KEV/EPSS filters | Source fields and source-dated joins; unknown full-corpus coverage | Conditional: severity uses primary CNA metrics only; ADP-only/legacy/unknown cases are separate; date and join gaps stay visible |
-| Transparent top/priority lists | KEV evidence, EPSS forecast and supplied CVSS; high signal fit | Yes as separate signals and deterministic policy, not a calibrated custom risk score |
-| New critical CVEs | Selected modern primary CNA CVSS and publication date | Conditional: primary CNA metric and timestamp required; ADP-only cases excluded by proposed policy; coverage unmeasured |
-| Rising forecast | Two exact daily EPSS observations under one model | Conditional: history required; exclude missing days/model changes |
-| Social popularity / most talked about | No validated source selected | No; EPSS/KEV do not measure this |
-| Nickname search, e.g. PHP2Shell | Only text actually indexed from records | Not guaranteed; curated aliases would be separate optional editorial work |
-| Complete reservation counts / Osprey forecast parity | No full unpublished reservation list or validated projection model | Not covered; basic publication overview is covered, not every Osprey control/model |
+| Requested feature                                    | Selected data / confidence                                         | Fulfilled by sources?                                                                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Overall published-CVE charts                         | CVE List V5 publication timestamps/state; high source fit          | Yes, with UTC buckets, unknown-date coverage and correction/rejection handling                                                   |
+| Search CVE ID and description                        | CVE ID and upstream descriptions; high source fit                  | Yes; local search implementation and performance not yet tested                                                                  |
+| Short description before official link               | CNA descriptions plus constructed CVE.org ID link; high source fit | Yes where text exists; explicit missing-text/language behavior                                                                   |
+| Severity/date/KEV/EPSS filters                       | Source fields and source-dated joins; unknown full-corpus coverage | Conditional: severity uses primary CNA metrics only; ADP-only/legacy/unknown cases are separate; date and join gaps stay visible |
+| Transparent top/priority lists                       | KEV evidence, EPSS forecast and supplied CVSS; high signal fit     | Yes as separate signals and deterministic policy, not a calibrated custom risk score                                             |
+| New critical CVEs                                    | Selected modern primary CNA CVSS and publication date              | Conditional: primary CNA metric and timestamp required; ADP-only cases excluded by policy; coverage measured at runtime          |
+| Rising forecast                                      | Two exact daily EPSS observations under one model                  | Conditional: history required; exclude missing days/model changes                                                                |
+| Social popularity / most talked about                | No validated source selected                                       | No; EPSS/KEV do not measure this                                                                                                 |
+| Nickname search, e.g. PHP2Shell                      | Only text actually indexed from records                            | Not guaranteed; curated aliases would be separate optional editorial work                                                        |
+| Complete reservation counts / Osprey forecast parity | No full unpublished reservation list or validated projection model | Not covered; basic publication overview is covered, not every Osprey control/model                                               |
 
 **Answer to "are all features fulfilled?": not literally all.** The core public
 overview/search/excerpt/exploitation-priority site has a viable source basis. True
@@ -80,16 +80,17 @@ independently reverified here. Do not rely on earlier exhaustive competitor clai
 
 ## Source decision
 
-| Source | Cost and reuse | Access | MVP decision |
-|---|---|---|---|
-| CVE List V5 | No-charge reuse, derivatives, display and distribution under CVE terms; reproduce MITRE copyright designation and license | Official repository; daily baseline, hourly delta assets | Required: records, descriptions, publication dates, references, available CNA/ADP metrics |
-| CISA KEV | CC0 1.0; no implied endorsement or right to CISA/DHS branding | Static JSON/CSV or official GitHub mirror; no paid account | Required: evidence of known exploitation, date added |
-| FIRST EPSS | Scores free, no registration; FAQ requests attribution in products; services terms permit distribution for preventative cybersecurity uses with notices retained | Full daily compressed CSV; API for individual/small-batch lookups | Required: probability and percentile, score date, model version |
-| NVD | Public developer access; quotas and attribution/disclaimer requirements need checking before integration | API and bulk feeds | Optional later: richer CPE/CVSS coverage; not necessary for core MVP |
-| Shodan CVEDB | Free only for non-commercial use; enterprise license needed to make money | Daily API, no key | Exclude from core so monetization does not create a paid-data dependency |
-| Social feeds, vendor risk scores, community PoC indexes | Terms, coverage and availability vary; public GitHub content is not automatically licensed for redistribution | Mixed | Exclude from core; no paid or unverified popularity feed |
+| Source                                                  | Cost and reuse                                                                                                                                                   | Access                                                            | MVP decision                                                                              |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| CVE List V5                                             | No-charge reuse, derivatives, display and distribution under CVE terms; reproduce MITRE copyright designation and license                                        | Official repository; daily baseline, hourly delta assets          | Required: records, descriptions, publication dates, references, available CNA/ADP metrics |
+| CISA KEV                                                | CC0 1.0; no implied endorsement or right to CISA/DHS branding                                                                                                    | Static JSON/CSV or official GitHub mirror; no paid account        | Required: evidence of known exploitation, date added                                      |
+| FIRST EPSS                                              | Scores free, no registration; FAQ requests attribution in products; services terms permit distribution for preventative cybersecurity uses with notices retained | Full daily compressed CSV; API for individual/small-batch lookups | Required: probability and percentile, score date, model version                           |
+| NVD                                                     | Public developer access; quotas and attribution/disclaimer requirements need checking before integration                                                         | API and bulk feeds                                                | Optional later: richer CPE/CVSS coverage; not necessary for core MVP                      |
+| Shodan CVEDB                                            | Free only for non-commercial use; enterprise license needed to make money                                                                                        | Daily API, no key                                                 | Exclude from core so monetization does not create a paid-data dependency                  |
+| Social feeds, vendor risk scores, community PoC indexes | Terms, coverage and availability vary; public GitHub content is not automatically licensed for redistribution                                                    | Mixed                                                             | Exclude from core; no paid or unverified popularity feed                                  |
 
 Primary evidence:
+
 - [CVE List V5 README](https://github.com/CVEProject/cvelistV5#readme): official list,
   updates about every seven minutes, baseline and delta distribution. Hourly assets
   contain cumulative changes since the baseline, not just the previous hour.
@@ -109,6 +110,7 @@ Link to vendor advisories rather than copying their prose, logos or exploit code
 ## Live access verification
 
 Public reads were performed without API keys:
+
 - CVE List V5 record `CVE-2026-109618` returned valid JSON, state `PUBLISHED`,
   publication date `2026-10-21`, and an upstream description of PHP OOM cleanup RCE.
 - KEV mirror returned catalog `2026.10.23`, with declared and actual counts both 1,756.
@@ -120,16 +122,17 @@ Public reads were performed without API keys:
 Successful lookups are not a full ingestion benchmark. Whole-corpus import time,
 disk consumption, search latency, and operating cost remain unmeasured.
 
-## Ranking proposal
+## Ranking policy (implemented)
 
 The earlier weighted Heat formula was an illustrative heuristic, not a validated
-scoring model. It is superseded by the [exact proposed ranking contract](docs/DATA_WORKFLOW.md#ranking-proposal-v1),
+scoring model. It is superseded by the [exact implemented ranking contract](docs/DATA_WORKFLOW.md#ranking-contract-v1),
 including CVSS selection, missing data, stable ties, date boundaries and worked examples.
 Do not present that earlier formula as a calibrated risk or popularity score.
 CVSS is severity, EPSS is predicted observed exploitation, and KEV is known
 exploitation evidence. They are not interchangeable.
 
 Prefer separate, explainable lists in the first version:
+
 1. Known exploited: KEV members first; optionally show newest KEV additions.
 2. Highest predicted exploitation: descending EPSS probability with its date.
 3. New critical: published in a selectable recent window, with CVSS >= 9.0;
@@ -171,6 +174,7 @@ date separately from retrieval time. Archive a bounded EPSS history for rising l
 Choose the scheduler and hosting only after checking their current quotas and terms.
 
 Proposed entities, not an approved database schema:
+
 - `cve_records`: ID, state, title if present, original description, affected labels,
   publication/update times, upstream references and source revision.
 - `cvss_metrics`: CVE ID, provider, score, vector and version. Preserve disagreements;

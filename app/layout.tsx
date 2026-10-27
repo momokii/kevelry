@@ -7,7 +7,7 @@ import "./globals.css";
 import "./ui.css";
 
 export const metadata: Metadata = {
-  title: "CVE Change Radar",
+  title: "CVE Intel",
   description: "Explainable CVE intelligence: volume, severity, KEV, EPSS, and change history.",
 };
 

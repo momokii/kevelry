@@ -1,6 +1,6 @@
 # Public API v1 — human docs
 
-Versioned read-only API for the CVE Change Radar site. The machine contract is
+Versioned read-only API for the CVE Intel site (package/image `cve-change-radar`). The machine contract is
 `openapi/v1.yaml`; these pages explain it. If this text and the spec disagree,
 the spec wins and the docs-vs-spec test fails until they agree again.
 
@@ -67,13 +67,13 @@ curl "https://radar.example.org/api/v1/cves?limit=50&cursor=W1lOVUYtMjAyNi0xMDk2
 `cves` and `search` share the explore-view filters, so the site and the API
 read the same cohort:
 
-| Param | Values | Notes |
-| --- | --- | --- |
-| `q` (search only) | 2–200 chars | ID or description text; local index only |
-| `severity` | `critical`, `high`, `medium`, `low`, `unknown`, `legacy` | Primary-CNA band; CVSS versions not calibrated alike |
-| `kev` | `listed`, `not-listed`, `any` (default) | Membership in accepted snapshot |
-| `epss` | `scored`, `unscored`, `any` (default) | `unscored` means unknown, never zero |
-| `publishedStart`, `publishedEnd` | RFC 3339 UTC | Half-open `[start, end)` interval |
+| Param                            | Values                                                   | Notes                                                |
+| -------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| `q` (search only)                | 2–200 chars                                              | ID or description text; local index only             |
+| `severity`                       | `critical`, `high`, `medium`, `low`, `unknown`, `legacy` | Primary-CNA band; CVSS versions not calibrated alike |
+| `kev`                            | `listed`, `not-listed`, `any` (default)                  | Membership in accepted snapshot                      |
+| `epss`                           | `scored`, `unscored`, `any` (default)                    | `unscored` means unknown, never zero                 |
+| `publishedStart`, `publishedEnd` | RFC 3339 UTC                                             | Half-open `[start, end)` interval                    |
 
 Injection-shaped input is rejected with `BAD_QUERY` or `BAD_FILTER`; it never
 reaches the query layer as code. See [SECURITY_STANDARDS](../.claude/SECURITY_STANDARDS.md).
@@ -94,20 +94,20 @@ on the status route ([status.md](status.md)).
 All errors share `{code, message, details?, requestId?, provenance}`. `code` is
 stable; `message` is sanitized; no stack traces, paths, or secrets.
 
-| Code | HTTP | Meaning |
-| --- | --- | --- |
-| `BAD_REQUEST` | 400 | Generic rejected input |
-| `BAD_CURSOR` | 400 | Malformed or foreign cursor |
-| `BAD_LIMIT` | 400 | `limit` outside 1–200 |
-| `BAD_QUERY` | 400 | `q` too short, too long, or unsafe |
-| `BAD_FILTER` | 400 | Unknown enum value or bad combination |
-| `BAD_DATE_RANGE` | 400 | Unparseable dates or `start >= end` |
-| `CVE_NOT_FOUND` | 404 | No current `PUBLISHED` record for the ID |
-| `LIST_NOT_FOUND` | 404 | Unknown priority list name |
-| `CHECKPOINT_UNAVAILABLE` | 404 | No manifest for the date |
-| `REPLAY_UNAVAILABLE` | 404 | Expired, missing, or model-changed; `details.reason` names it |
-| `RATE_LIMITED` | 429 | Per-IP budget spent; `Retry-After` tells when to return |
-| `INTERNAL` | 500 | Sanitized failure; report `requestId` |
+| Code                     | HTTP | Meaning                                                       |
+| ------------------------ | ---- | ------------------------------------------------------------- |
+| `BAD_REQUEST`            | 400  | Generic rejected input                                        |
+| `BAD_CURSOR`             | 400  | Malformed or foreign cursor                                   |
+| `BAD_LIMIT`              | 400  | `limit` outside 1–200                                         |
+| `BAD_QUERY`              | 400  | `q` too short, too long, or unsafe                            |
+| `BAD_FILTER`             | 400  | Unknown enum value or bad combination                         |
+| `BAD_DATE_RANGE`         | 400  | Unparseable dates or `start >= end`                           |
+| `CVE_NOT_FOUND`          | 404  | No current `PUBLISHED` record for the ID                      |
+| `LIST_NOT_FOUND`         | 404  | Unknown priority list name                                    |
+| `CHECKPOINT_UNAVAILABLE` | 404  | No manifest for the date                                      |
+| `REPLAY_UNAVAILABLE`     | 404  | Expired, missing, or model-changed; `details.reason` names it |
+| `RATE_LIMITED`           | 429  | Per-IP budget spent; `Retry-After` tells when to return       |
+| `INTERNAL`               | 500  | Sanitized failure; report `requestId`                         |
 
 ## Limits
 

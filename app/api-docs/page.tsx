@@ -1,5 +1,5 @@
 // Browsable v1 API documentation (task 45). Server component that reads
-// openapi/v1.yaml at build time and renders every documented path+method with
+// openapi/v1.yaml on each request and renders every documented path+method with
 // summary, parameters, response highlights, and one copy-paste curl per
 // endpoint built from the live base URL. No invented endpoints: the unit test
 // asserts this list equals the parsed spec paths/methods.
@@ -25,7 +25,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Public API v1 documentation - CVE Change Radar",
+  title: "Public API v1 — CVE Intel",
   description:
     "Browsable reference for the versioned read-only v1 API: endpoints, parameters, curl examples, rate limits, freshness, errors, and deprecation policy.",
 };
@@ -492,7 +492,7 @@ export default async function ApiDocsPage() {
         <div data-testid="api-docs-spec">
           <p>
             The full contract lives in <code>openapi/v1.yaml</code> in the repo. This page renders
-            that file at build time; download the exact text below (served from this page as a file
+            that file on each request; download the exact text below (served from this page as a file
             download, so no extra route is needed).
           </p>
           <SpecDownload specText={specText} />

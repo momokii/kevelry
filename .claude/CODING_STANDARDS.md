@@ -1,73 +1,74 @@
 # Coding Standards
 
-Stack-agnostic by design. This file is imported into every session, so keep it short.
-When the stack is confirmed, replace general guidance with concrete conventions and cite
-representative file paths.
+Project-specific. Imported into every session; keep it short.
 
-## Principles
+## Stack and layout
 
-- **Clarity over cleverness.** Code is read far more often than it is written.
-- **One responsibility** per function, file, and module. If describing it needs "and",
-  split it.
-- **Explicit over implicit.** Avoid hidden side effects, magic values, and action at a
-  distance.
-- **Fail fast and loudly.** Validate assumptions at the boundary and raise a clear error
-  instead of continuing in an unknown state.
-- **Smallest change that solves the problem.** No opportunistic refactors in a feature
-  or bug-fix change.
+- Next.js 16 App Router, React 19, strict TypeScript, SQLite via `better-sqlite3`.
+- Server Components by default; add `"use client"` only for stateful interaction
+  (`src/components/charts/*`, shell, filters, tip disclosures).
+- Routes: `app/**/page.tsx`; API handlers: `app/api/v1/**/route.ts`.
+- Domain/data logic: `src/lib/**`; UI: `src/components/**`; shared shell:
+  `src/components/shell/**`.
+- Product CSS: `app/ui.css`; tokens are documented in `DESIGN.md`. Legacy
+  `app/globals.css` remains for the showcase and `ledger-*` aliases.
+- SQL belongs in `src/lib/**` or `app/api/v1/_lib/shared.ts`; UI components never
+  build SQL. Fixed read-only fallback counters in the methodology page are the
+  known exception.
 
 ## Naming
 
-- Follow the ecosystem's idiom once it is known (for example `snake_case` vs
-  `camelCase`); record the choice in `state/DECISIONS_LOG.md` if it is not obvious.
-- Functions are descriptive verb-noun: `calculate_total`, `send_invite`, `parse_config`.
-- Constants use `UPPER_SNAKE_CASE`.
-- Booleans read as predicates: `is_active`, `has_access`, `should_retry`, `can_edit`.
-- Avoid abbreviations except well-known domain terms; spell names out.
+- TypeScript/React: `camelCase` values, `PascalCase` components and types.
+- Database/SQL: `snake_case` columns and tables.
+- Constants: `UPPER_SNAKE_CASE`; CSS custom properties `--ui-*`.
+- Booleans read as predicates (`isStale`, `hasAdp`, `canRead`).
+- Keep CVE IDs in mono text; never wrap the ID and title into one unlabeled string.
 
-## Error Handling
+## Data and time
 
-- Never swallow an error. Catch only what you can handle, and let the rest propagate.
-- Log with enough context to reproduce the problem: operation, identifiers, and cause.
-- Never log secrets, tokens, passwords, full request bodies, or personal data.
-- Never expose internals or stack traces to end users; return a generic message and keep
-  details server-side.
-- Distinguish expected failures (validation, not found) from unexpected ones (bugs,
-  outages); they need different responses and alerts.
+- Snapshots are the source of truth. Never estimate an unknown value or coerce it
+  to zero.
+- Dates: UTC is the storage/bucket basis; display instants through `TimeText` so the
+  global timezone preference applies. Date-only values stay date-only.
+- Shares always name their denominator. Bounded lists must be labeled as bounded.
+- Preserve the no-composite-score rule: KEV, EPSS, and CVSS stay separate.
+
+## Errors
+
+- Validate at the boundary; return typed errors (`SearchValidationError`,
+  `DbConfigError`, `DbBusyError`) and sanitized client messages.
+- Never swallow an error. Best-effort cleanup catches must say why in a short comment.
+- Never log secrets, record bodies, or full SQL parameters from untrusted input.
 
 ## Testing
 
-- Every feature has tests. Every bug fix has a regression test that fails before the fix
-  and passes after it.
-- Tests run with a single documented command.
-- Security-relevant behavior has negative tests: unauthenticated, wrong role, malformed
-  input, oversized input.
-- Tests are isolated and deterministic; no dependency on shared external state unless the
-  test is explicitly an integration test.
-- Assertions are specific: assert the value and the failure mode, not just "no error".
+- `npm test` runs Vitest; `npx playwright test` runs the browser suite.
+- Every behavior change adds or updates a test. Bug fixes add a regression test.
+- Keep E2E fixtures hermetic: seed the server DATA_DIR, restore it in `afterAll`.
+- Accessibility gates are part of the tests: 44px targets, visible focus, one h1,
+  no heading skips, scoped tables, no horizontal overflow at 360px or the
+  200%-zoom-equivalent viewport, reduced motion at `0s`.
+- Never disable or delete a failing assertion to make a change pass.
 
-## Quality Tooling
+## Quality tooling
 
-- Configure a formatter, a linter, and a type checker (where the language supports it)
-  during project setup, before feature work.
-- Run all three before declaring a task done. Fix findings; do not suppress them.
-- Never disable a rule inline without a comment explaining why and a tracked issue.
+- `npm run lint`, `npm run typecheck`, `npm run build`, and `npx prettier --write`
+  on touched files before completion.
+- No `any`, `@ts-ignore`, or `@ts-expect-error`; no raw hex colors outside
+  `DESIGN.md` (use `rgb()` tokens).
+- Keep client components thin; data loading stays server-side.
+- Run the Security Gate in `SECURITY_STANDARDS.md` for every change.
 
 ## Documentation
 
-- Public functions and modules document their contract: inputs, outputs, errors, and
-  side effects.
-- Non-obvious decisions get a short *why* comment, not a *what* comment.
-- Update `.env.example` and relevant docs in the same change that adds configuration.
-- Keep documentation next to the code it describes; link rather than duplicate.
+- Update `README.md` for user-visible behavior, `DESIGN.md` for visual/interaction
+  contracts, `docs/DATA_WORKFLOW.md` for data/ranking contracts, and
+  `docs/api/` + `openapi/v1.yaml` for API changes.
+- Add every new environment variable to `.env.example` in the same change.
+- Answer “why” in comments; do not narrate obvious code.
 
-## Version Control
+## Version control
 
-- Small, focused commits with clear messages: what changed and why.
-- One logical change per commit; no unrelated formatting or refactoring mixed in.
-- Never commit secrets, generated files, or local configuration.
-- Do not commit or push unless the user asks. Never use `--no-verify`. Never force-push.
-
-> **Self-update:** when the stack is confirmed, replace this file with concrete language
-> and framework conventions, linter configuration references, and patterns observed in
-> the actual code, citing representative file paths.
+- One logical concern per commit; message says what changed and why.
+- Do not commit or push unless the owner asks. Never force-push or use `--no-verify`.
+- Keep runtime data, `.env` files, evidence logs, and local agent state out of Git.

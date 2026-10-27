@@ -4,20 +4,20 @@ Orientation for humans and agents working in this repository.
 
 ## What This Repository Is
 
-A public CVE overview/search/priority website with approved Radar/replay scope is
-being planned. No application exists and the stack is not selected yet. Deployment
-must support one runtime image/container and production-safe plain Compose startup.
-This `.claude/` directory records the rules, current state and verification gates.
+A public CVE intelligence console (overview, search, priority, Radar, replay and a
+read-only API) is implemented and deployed as one Docker image/container. The stack
+is Next.js 16 + React 19 + SQLite/FTS5 + visx SVG primitives. This `.claude/`
+directory records the rules, current state and verification gates.
 
 ## How Context Loads
 
 Claude Code auto-loads the root `CLAUDE.md` at the start of every session, and it
 persists through context compaction. Nothing else in `.claude/` is auto-loaded.
 
-| Loaded when | Files |
-|---|---|
-| Every session (automatic) | `../CLAUDE.md`, which imports `AGENT_RULES.md`, `CODING_STANDARDS.md`, `SECURITY_STANDARDS.md`, and `state/CURRENT_STATUS.md` |
-| On demand (agent reads when needed) | Everything else in this directory |
+| Loaded when                         | Files                                                                                                                         |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Every session (automatic)           | `../CLAUDE.md`, which imports `AGENT_RULES.md`, `CODING_STANDARDS.md`, `SECURITY_STANDARDS.md`, and `state/CURRENT_STATUS.md` |
+| On demand (agent reads when needed) | Everything else in this directory                                                                                             |
 
 Import lines are plain text lines beginning with `@` and a relative path. Imports are
 not evaluated inside code fences or inline code, so never wrap them. Imported files
@@ -25,26 +25,26 @@ load in full and consume context; keep them short.
 
 ## File Map
 
-| File | Purpose |
-|---|---|
-| `settings.json` | Shared permission baseline (deny, ask, allow), enforced by Claude Code. |
-| `README.md` | This orientation document. |
-| `AGENT_RULES.md` | Non-negotiable behavioral rules; imported every session. |
-| `CODING_STANDARDS.md` | Stack-agnostic coding standards; imported every session. |
-| `SECURITY_STANDARDS.md` | Security requirements and the Security Gate; imported every session. |
-| `ENVIRONMENT_GUIDE.md` | Development/staging/production definitions, agent behavior, and the Compose pattern. |
-| `HOW_TO_RESUME.md` | The full session-start protocol. |
-| `commands/resume.md` | `/resume`: run the protocol through baseline verification and report. |
-| `commands/wrap-up.md` | `/wrap-up`: update state files after a task, in one batched write. |
-| `commands/security-check.md` | `/security-check`: audit uncommitted changes against the Security Gate. |
-| `state/CURRENT_STATUS.md` | Living state: phase, completed, in progress, blocked, open questions. Imported every session. |
-| `state/TASK_QUEUE.md` | Ordered backlog with acceptance criteria and dependencies. |
-| `state/DECISIONS_LOG.md` | Significant decisions and their rationale. |
-| `state/HISTORY.md` | Append-only log of past session summaries. |
-| `templates/new_feature.md` | Checklist for a new feature. |
-| `templates/new_endpoint.md` | Checklist for a new API endpoint. |
-| `templates/new_test.md` | Checklist for a new test. |
-| `templates/bug_fix.md` | Checklist for a bug fix. |
+| File                         | Purpose                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `settings.json`              | Shared permission baseline (deny, ask, allow), enforced by Claude Code.                       |
+| `README.md`                  | This orientation document.                                                                    |
+| `AGENT_RULES.md`             | Non-negotiable behavioral rules; imported every session.                                      |
+| `CODING_STANDARDS.md` | Project-specific coding/testing standards; imported every session. |
+| `SECURITY_STANDARDS.md`      | Security requirements and the Security Gate; imported every session.                          |
+| `ENVIRONMENT_GUIDE.md`       | Development/staging/production definitions, agent behavior, and the Compose pattern.          |
+| `HOW_TO_RESUME.md`           | The full session-start protocol.                                                              |
+| `commands/resume.md`         | `/resume`: run the protocol through baseline verification and report.                         |
+| `commands/wrap-up.md`        | `/wrap-up`: update state files after a task, in one batched write.                            |
+| `commands/security-check.md` | `/security-check`: audit uncommitted changes against the Security Gate.                       |
+| `state/CURRENT_STATUS.md`    | Living state: phase, completed, in progress, blocked, open questions. Imported every session. |
+| `state/TASK_QUEUE.md`        | Ordered backlog with acceptance criteria and dependencies.                                    |
+| `state/DECISIONS_LOG.md`     | Significant decisions and their rationale.                                                    |
+| `state/HISTORY.md`           | Append-only log of past session summaries.                                                    |
+| `templates/new_feature.md`   | Checklist for a new feature.                                                                  |
+| `templates/new_endpoint.md`  | Checklist for a new API endpoint.                                                             |
+| `templates/new_test.md`      | Checklist for a new test.                                                                     |
+| `templates/bug_fix.md`       | Checklist for a bug fix.                                                                      |
 
 ## Permission Design Notes
 
@@ -66,9 +66,10 @@ always beats allow. These rules are guardrails, not a security boundary.
   Other command forms/flag placement still require agent judgment; Bash patterns
   are guardrails, not an enforcement boundary. Non-development Compose execution
   still needs confirmation, independent of this startup convenience for the human.
-- Stack-specific commands (test runner, linter, package manager) are **not**
-  pre-allowed. When the stack is chosen, propose an allow-list to the user and add it
-  only with confirmation. Never add broad wildcards such as `Bash(*)`.
+- Only routine `git add/commit` and `docker compose build/ps/logs` forms are
+  pre-allowed. Local validation commands (`npm test`, `npm run lint`,
+  `npm run typecheck`, `npm run build`, Playwright) may be run directly; Compose
+  `up` asks. Never add broad wildcards such as `Bash(*)`.
 - `permissions.defaultMode` is deliberately **not** set; the user controls the mode.
 - Do not create or modify `.claude/settings.local.json`.
 
@@ -87,8 +88,8 @@ and `.mcp.json`. Prompts for those files are expected.
 
 ## Shared vs. Local
 
-| Shared (committed) | Local (gitignored) |
-|---|---|
+| Shared (committed)                                                      | Local (gitignored)                               |
+| ----------------------------------------------------------------------- | ------------------------------------------------ |
 | `CLAUDE.md`, `.claude/settings.json`, and everything else in `.claude/` | `CLAUDE.local.md`, `.claude/settings.local.json` |
 
 Never put personal preferences or secrets in shared files. Claude's own auto-memory is
@@ -96,11 +97,10 @@ machine-local; team-relevant knowledge must live in these versioned files.
 
 ## This Setup Evolves
 
-Every file here starts general **by design**. As the stack, patterns, and decisions
-become known, replace general content with project-specific content: real commands,
-conventions observed in the code, framework-specific security guidance, and verified
-environment procedures. Extend and sharpen rules; never weaken or remove a security
-rule or loosen permissions without explicit user approval.
+The stack and deployment are known and documented. Keep this directory synchronized
+with the real commands, code conventions, framework-specific security guidance, and
+verified environment procedures. Extend and sharpen rules; never weaken or remove a
+security rule or loosen permissions without explicit user approval.
 
 ## Confirm Context Loaded
 

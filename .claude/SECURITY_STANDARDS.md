@@ -1,7 +1,26 @@
 # Security Standards
 
-Imported into every session. These are requirements, not suggestions. Extend them as the
-stack becomes known; never weaken them without explicit user approval.
+Imported into every session. These are requirements, not suggestions. The stack
+(Next.js 16 / React 19 / SQLite / HTTP read-only API) and its implemented controls are
+known; remaining guardrails are tracked in `TASK_QUEUE.md`. Never weaken a rule
+without explicit user approval.
+
+## 0. Project status (2026-10-26)
+
+- Public surface is a read-only website plus anonymous GET `/api/v1/*`; there is no
+  login, write endpoint, upload, or user data store.
+- API controls in `app/api/v1/_lib/shared.ts`: 600 requests/minute/IP, 32 concurrent
+  requests, bounded URL length/parameter count, strict identifier validation,
+  parameterized SQLite reads, ETag/304, `no-referrer`, `nosniff`, `DENY` framing,
+  and a strict JSON CSP on API responses.
+- Page HTML relies on React escaping and a strict link allow-list for upstream
+  references. It does **not** currently send a page-level CSP; do not claim one.
+- The container runs as non-root `nextjs`, has no Docker socket, and is capped at
+  4 CPUs / 4 GB. TLS is not terminated by Compose; public HTTPS requires a reverse
+  proxy.
+- Remaining supply-chain gap: automated secret scanning, dependency audit, static
+  analysis, image scanning, and CI are **not** implemented yet (TASK-002). Do not
+  claim a clean gitleaks/Trivy run.
 
 ## 1. Security Gate (Definition of Done for Every Change)
 
@@ -104,13 +123,21 @@ report it instead of proceeding.
 - Never use privileged mode or mount the Docker socket into an application container.
 - Expose only necessary ports in production.
 
-## 10. Web and API Hardening (stack-specific — fill in when the stack is known)
+## 10. Web and API Hardening (implemented contract)
 
-- CORS: explicit allow-list of origins; never `*` with credentials.
-- CSRF protection for cookie-based flows.
-- Security headers: HSTS, CSP, `X-Content-Type-Options`, frame-ancestors.
-- Rate limiting and request size limits on public endpoints.
-- Secure cookie flags; no sensitive data in URLs or client-side storage.
+- API is GET-only and anonymous; no cookies, sessions, or CSRF surface. CORS is not
+  opened with credentials; callers get explicit public cache headers.
+- Per-IP rate limit 600/min, 32 concurrent requests, URL length and parameter-count
+  bounds, identifier/date/enum allow-lists; oversized or malformed input fails closed.
+- API responses carry `Content-Security-Policy: default-src 'none'; frame-ancestors
+'none'; base-uri 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer`, and rate-limit headers.
+- Page HTML is React-escaped; links are constrained to `http(s)://`; no
+  `dangerouslySetInnerHTML` in product UI.
+- Media page images (if any) must remain local; no third-party runtime scripts or CDNs.
+- TLS is terminated by the deployment layer; binding to Tailscale is access control,
+  not transport encryption for the public internet.
+- Secrets stay in `.env`/runtime injection; the image and repository contain none.
 
 ## 11. Logging and Monitoring
 
@@ -122,8 +149,8 @@ report it instead of proceeding.
 
 ## 12. Verification and Enforcement
 
-Once the stack is known, **propose** (do not silently add) automated guardrails and add
-them with user confirmation:
+The stack is known, but automated guardrails are **not yet implemented** (TASK-002).
+Propose them and add them only with user confirmation:
 
 - Pre-commit secret scanning (for example gitleaks).
 - Dependency audit.

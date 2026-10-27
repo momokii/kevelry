@@ -39,6 +39,8 @@ short but complete enough for someone who was not in the session.
 
 **Decision:** Make the display timezone global in the shared masthead, default Asia/Jakarta, display-only.
 
+**Status:** Behavior retained; the selector now lives in the collapsible rail (updated 2026-10-26).
+
 **Date:** 2026-10-26
 
 **Context:** Timestamps were a mix of raw ISO strings and page-local formatting, so the owner could not read the site in one timezone.
@@ -108,7 +110,7 @@ daily checkpoints/EPSS dates accumulate.
 **Date:** 2026-10-24
 
 **Context:** All 30 build todos plus F1–F4 verification passed with evidence;
- Wave 5 merged to `main` on this machine only.
+Wave 5 merged to `main` on this machine only.
 
 **Rationale:** Every deliverable was independently verified (DoneClaim →
 AdversarialVerify → confirmed) before its commit; review findings were fixed,
@@ -207,7 +209,7 @@ cross-model fallback is disabled to honor the selected model.
 OpenCode instance. On 2026-10-24, actual assistant metadata for the subsequent planner,
 two researchers, writer and reviewer confirmed GPT-6 Luna, resolving the earlier
 unverified restart blocker for those handoffs. Source pipeline, stack and ranking in
-`FEASIBILITY.md` and `docs/DATA_WORKFLOW.md` remain proposals, not architectural decisions.
+`FEASIBILITY.md` and `docs/DATA_WORKFLOW.md` were proposals at this point; they were later approved and implemented.
 
 ---
 

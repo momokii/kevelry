@@ -2,7 +2,7 @@
 
 ## Project Snapshot
 
-**Purpose:** Public CVE overview, explainable prioritization, searchable descriptions, Change Radar, and a versioned read-only API.
+**Purpose:** Public CVE intelligence console (wordmark CVE Intel; package/image cve-change-radar), with explainable prioritization, searchable descriptions, Change Radar, and a versioned read-only API.
 **Stack:** Next.js 16 App Router, React 19, TypeScript, SQLite/FTS5, visx SVG primitives, one Docker image and container.
 **Phase:** Implemented, verified, and deployed serve-only at `http://100.124.184.116:3100` (Tailscale). Full Research Console UI quality pass shipped; 365 unit and 68 Playwright tests pass.
 **Environments:** `development`, `staging`, `production`, selected by `APP_ENV`.
@@ -33,34 +33,34 @@ If a file above is missing or did not load, read it manually before doing any wo
 
 ## Commands
 
-| Purpose | Command | Status |
-|---|---|---|
-| Install dependencies | `npm ci` | Ready |
-| Run (development) | `npm run dev` | Ready |
-| Run (production-like) | `docker compose up -d --build` | Ready (never rebuilds without `build`) |
-| Test | `npm test` | Ready (Vitest) |
-| Browser tests | `npx playwright test` | Ready |
-| Lint | `npm run lint` | Ready |
-| Format | `npx prettier --write .` / `npm run format:check` | Ready |
-| Type check | `npm run typecheck` | Ready |
-| Build | `npm run build` | Ready |
-| Health check | `curl -fsS http://127.0.0.1:3000/api/v1/health` | Ready |
-| View logs | `docker compose logs -f app` | Ready |
+| Purpose               | Command                                                                                                       | Status                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Install dependencies  | `npm ci`                                                                                                      | Ready                                                                     |
+| Run (development)     | `npm run dev`                                                                                                 | Ready                                                                     |
+| Run (production-like) | `docker compose up -d --build`                                                                                | Ready (never rebuilds without `build`)                                    |
+| Test                  | `npm test`                                                                                                    | Ready (Vitest)                                                            |
+| Browser tests         | `npx playwright test`                                                                                         | Ready                                                                     |
+| Lint                  | `npm run lint`                                                                                                | Ready                                                                     |
+| Format                | `npx prettier --write <paths>`                                                                                | Touched files; repo-wide `format:check` has pre-existing drift (66 files) |
+| Type check            | `npm run typecheck`                                                                                           | Ready                                                                     |
+| Build                 | `npm run build`                                                                                               | Ready                                                                     |
+| Health check          | `curl -fsS http://127.0.0.1:3000/api/v1/health` (live Tailscale: `http://100.124.184.116:3100/api/v1/health`) | Ready                                                                     |
+| View logs             | `docker compose logs -f app`                                                                                  | Ready                                                                     |
 
 ## On-Demand References
 
-| When you need... | Read |
-|---|---|
-| The next task or backlog order | `.claude/state/TASK_QUEUE.md` |
-| Why a choice was made | `.claude/state/DECISIONS_LOG.md` |
-| Environment definitions and the Compose layout | `.claude/ENVIRONMENT_GUIDE.md` |
-| The full session-start protocol | `.claude/HOW_TO_RESUME.md` |
-| A checklist for features, endpoints, tests, or bugs | `.claude/templates/` |
-| How this `.claude/` setup works and why | `.claude/README.md` |
-| Past session summaries | `.claude/state/HISTORY.md` |
-| Product docs, specs, or architecture decision records | `docs/` (created with the project) |
-| Source terms, competitors, and proposed CVE pipeline | `FEASIBILITY.md` |
-| Exact proposed ingestion, missing-data and ranking rules | `docs/DATA_WORKFLOW.md` |
+| When you need...                                      | Read                                                        |
+| ----------------------------------------------------- | ----------------------------------------------------------- |
+| The next task or backlog order                        | `.claude/state/TASK_QUEUE.md`                               |
+| Why a choice was made                                 | `.claude/state/DECISIONS_LOG.md`                            |
+| Environment definitions and the Compose layout        | `.claude/ENVIRONMENT_GUIDE.md`                              |
+| The full session-start protocol                       | `.claude/HOW_TO_RESUME.md`                                  |
+| A checklist for features, endpoints, tests, or bugs   | `.claude/templates/`                                        |
+| How this `.claude/` setup works and why               | `.claude/README.md`                                         |
+| Past session summaries                                | `.claude/state/HISTORY.md`                                  |
+| Product/API docs and research records                 | `docs/` (`DATA_WORKFLOW.md`, `docs/api/`, `docs/research/`) |
+| Source terms, competitors, and pre-build feasibility  | `FEASIBILITY.md`                                            |
+| Implemented ingestion, missing-data and ranking rules | `docs/DATA_WORKFLOW.md`                                     |
 
 Use `/resume` to run the session-start protocol, `/wrap-up` to close a task, and
 `/security-check` to audit uncommitted changes against the Security Gate.

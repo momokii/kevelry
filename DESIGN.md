@@ -232,8 +232,7 @@ the encoded value, no count-up numbers, no scroll reveals that delay data.
 
 - Fonts: `public/fonts/instrument-sans-latin.woff2` and
   `jetbrains-mono-latin.woff2`; licenses alongside. No CDN.
-- Charts: `@visx/shape`, `scale`, `axis`, `group`, `grid`, `responsive`,
-  `tooltip`, `annotation`, `brush` (primitives only; no `xychart`/spring peer).
+- Charts: `@visx/scale`, `axis`, `group`, `grid`, `responsive` (primitives only; no `xychart`/spring peer).
 - Design CSS lives in `app/ui.css`; `app/globals.css` remains for the showcase
   and legacy primitives, with token aliases in `ui.css`.
 - The aggregate cache version is 3 (`epssLogHistogram`, `severityEpssMatrix`).

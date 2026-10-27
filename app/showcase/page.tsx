@@ -17,7 +17,7 @@ const DEMO_INSTANT = "2026-10-25T05:14:00.000Z";
 const DEMO_NOW = Date.parse(DEMO_INSTANT) + (2 * 60 + 14) * 60 * 1000;
 
 export const metadata = {
-  title: "Evidence Ledger primitive showcase",
+  title: "Research Console primitive showcase",
   description:
     "Every Section-6 primitive in every required state. No product screens, no data logic.",
 };
@@ -34,7 +34,7 @@ function StateCard({ id, label, children }: { id: string; label: string; childre
 export default function ShowcasePage() {
   return (
     <main className="ledger-page" data-testid="showcase-root" id="main-content">
-      <h1>Evidence Ledger primitive showcase</h1>
+      <h1>Research Console primitive showcase</h1>
       <p className="ledger-meta">
         Every Section-6 primitive in each required state. Tokens: DESIGN.md sections 2-4. Copy
         guardrails: DESIGN.md section 8. No product screens, no data fetching.

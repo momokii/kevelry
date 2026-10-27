@@ -1,7 +1,7 @@
 "use client";
 
 // Client island for the spec download. The full openapi/v1.yaml text is
-// passed from the server component (read at build time from the repo file),
+// passed from the server component (read on each request from the repo file),
 // so the download matches the rendered table byte-for-byte without a new
 // route or a public/ copy. Offline-safe: no CDN, just a Blob URL.
 

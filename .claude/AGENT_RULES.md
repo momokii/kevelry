@@ -88,10 +88,10 @@ the end of the task to minimize permission prompts.
 
 ## Self-Maintenance
 
-- Replace general content with project-specific content as facts become known. When the
-  stack is chosen, immediately update `CODING_STANDARDS.md`, `SECURITY_STANDARDS.md`,
-  `ENVIRONMENT_GUIDE.md`, the `CLAUDE.md` Commands table, and `HOW_TO_RESUME.md`
-  commands, and propose a stack-specific `settings.json` allow-list.
+- Keep project-specific content current as facts change. When commands, deployment,
+  architecture, schema, or security controls change, update `CODING_STANDARDS.md`,
+  `SECURITY_STANDARDS.md`, `ENVIRONMENT_GUIDE.md`, the `CLAUDE.md` Commands table,
+  `HOW_TO_RESUME.md`, and `state/CURRENT_STATUS.md` in the same change.
 - **Guardrail:** you may extend and sharpen rules, but never weaken or remove a rule in
   `AGENT_RULES.md` or `SECURITY_STANDARDS.md`, and never loosen `settings.json`
   permissions, without explicit user approval.

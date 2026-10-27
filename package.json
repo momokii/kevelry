@@ -2,7 +2,7 @@
   "name": "cve-change-radar",
   "version": "0.1.0",
   "private": true,
-  "description": "Public CVE overview with explainable prioritization and Change Radar. App shell only, no app behavior yet.",
+  "description": "Public CVE intelligence console: interactive overview, explainable prioritization, search, Change Radar, replay, and a versioned read-only API.",
   "type": "module",
   "scripts": {
     "dev": "next dev",
