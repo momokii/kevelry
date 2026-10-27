@@ -46,7 +46,7 @@ revamp shipped. Local `main` only: no remote.
 
 ## In Progress
 
-- [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green.
+- [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green. Committed as 7b70a63, rebuilt, live at 100.124.184.116:3100 (healthy, same volume, screenshot-verified).
 
 None further. The stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`)
 so data refreshes are deliberate, not automatic.
