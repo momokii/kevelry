@@ -48,6 +48,7 @@ revamp shipped. Local `main` only: no remote.
 
 - [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green. Committed as 7b70a63, rebuilt, live at 100.124.184.116:3100 (healthy, same volume, screenshot-verified).
 - [x] TASK-009 console polish batch (2026-10-27): 8 owner-reported UI fixes across overview/explore/replay; committed as 27b5f93, rebuilt, live and screenshot-verified. One focus-outline regression caught and fixed mid-task.
+- [x] TASK-010 tooltip bubble + accepted times (2026-10-28): committed as 011df29, rebuilt, live and screenshot-verified. Open: owner decision on scheduled refresh (data 2 days old by design).
 
 None further. The stack runs serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`)
 so data refreshes are deliberate, not automatic.
