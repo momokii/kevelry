@@ -12,7 +12,7 @@ task loop.
    `state/DECISIONS_LOG.md` for _why_ and `state/HISTORY.md` for prior sessions.
 6. **Verify the environment works.** Check `docker compose ps`, then
    `curl -fsS http://127.0.0.1:3000/api/v1/health` (or the Tailscale
-   `100.124.184.116:3100` base). The stack is serve-only by default on this host.
+   `100.124.184.116:3100` base). Scheduled refresh is ON on this host: expect fresh `lastAcceptedAt` per source in `/api/v1/status`; a stale source plus an error means the refresh path needs attention, not the schedule.
 7. **Run the existing test suite as a baseline.** `npm test`, then
    `npm run lint` and `npm run typecheck`; record pass/fail before changing anything.
 8. **Plan.** State scope, files to create or modify, risks, and verification. Ask for confirmation if the change is significant or touches architecture, schema, dependencies, or infrastructure.

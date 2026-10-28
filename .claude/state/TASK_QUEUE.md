@@ -135,7 +135,7 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Scope    | HelpTip measures its trigger and clamps a fixed bubble into the viewport (reposition on scroll, dismiss on resize); ui.css neutralizes legacy globals.css leftovers; FreshnessPanel rows gain per-source accepted times.                                                                                                                                          |
 | Acceptance Criteria | Bubble containment + accepted-times e2e pass; 365 unit green; touched e2e green; 360px overflow gate green; live screenshot verified. Root causes found: unstyled panel flowed inline (the bulge), then legacy globals.css left:0 beat ui.css right-anchor, then sidebar scroll-clip. |
 | Security Concerns | None: presentation-only.                                                                                                                                                                                                                                                                                                                                       |
-| Notes | Commit 011df29, rebuilt, live at 100.124.184.116:3100 (healthy, same volume). Mid-task flake (focus-scroll dismiss) fixed by reposition-on-scroll; caught before commit. Open owner question: enable scheduled refresh (serve-only since Oct 25, hence Snapshot-updated 2 days). |
+| Notes | Commit 011df29, rebuilt, live at 100.124.184.116:3100 (healthy, same volume). Mid-task flake (focus-scroll dismiss) fixed by reposition-on-scroll; caught before commit. Former open question (scheduled refresh) resolved by TASK-011 on 2026-10-28. |
 
 ## TASK-011 — Enable scheduled refresh (Option A)
 

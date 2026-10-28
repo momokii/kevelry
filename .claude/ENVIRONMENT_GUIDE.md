@@ -63,8 +63,8 @@ Plain `docker compose up -d` starts the existing image and **does not rebuild**;
 after source changes run `docker compose build && docker compose up -d`.
 
 Current host deployment: `BIND_ADDR=100.124.184.116`, `PORT=3100`, container
-`cve-change-radar-app-1`, volume `cve-change-radar-data`, serve-only
-(`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`).
+`cve-change-radar-app-1`, volume `cve-change-radar-data`, scheduled refresh ON
+(`INGEST_ON_START=true`, `SCHEDULE_ENABLED=true`): CVE + KEV hourly, EPSS daily.
 
 The agent must **always ask** before `docker compose up/down` or any non-development
 Compose command. `docker compose build/ps/logs` are pre-allowed; `up` asks.

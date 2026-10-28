@@ -5,6 +5,22 @@ short but complete enough for someone who was not in the session.
 
 ---
 
+**Decision:** Switch the live deployment from serve-only to scheduled refresh (Option A).
+
+**Date:** 2026-10-28
+
+**Context:** The dashboard showed "Snapshot updated ... (2 days ago)" because the deployment ran serve-only (`INGEST_ON_START=false`, `SCHEDULE_ENABLED=false`) since Oct 25. The owner asked for the site to stay current on its own with retries and fallbacks always active.
+
+**Rationale:** Enable `INGEST_ON_START=true` + `SCHEDULE_ENABLED=true` in the host `.env` (gitignored): CVE + KEV refresh hourly, EPSS daily — the cadence the ingestion contract and stale thresholds (3h/3h/2d) were designed around. No image rebuild; same volume and binding. Verified the fallback story live: per-source independence (KEV/EPSS advanced while CVE failed), fetch→deepen→reclone retries, last-known-good serving with stale flags, and EPSS auto-recovery on the next cycle.
+
+**Alternatives Rejected:** One manual refresh staying serve-only (data would rot again); enabling without watching the first cycles (the first cycles needed cache surgery: stale shallow.lock, missing local main, forced upstream rewrite).
+
+**Security Implications:** None new: same image, fixed upstream allow-list, no secrets touched, failures stay last-known-good with explicit flags.
+
+**Impact:** Hero Snapshot-updated line and freshness panel now advance on their own; Radar checkpoints and replay history accumulate daily. Restarting mid-import can cause a lease-acquire crash loop (logged as TASK-012, TODO).
+
+---
+
 **Decision:** Keep help affordances visually tiny but keep the 44px touch target; make the shell and filter rail independently collapsible/scrollable.
 
 **Date:** 2026-10-26
