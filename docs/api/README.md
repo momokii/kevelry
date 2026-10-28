@@ -114,6 +114,10 @@ stable; `message` is sanitized; no stack traces, paths, or secrets.
 Defaults, enforced per client IP and visible on every response:
 
 - 600 requests per minute per IP; bursts over the budget get `429 RATE_LIMITED`
+- The client IP is the address observed at the server socket (last `X-Forwarded-For`
+  entry when proxied). Self-hosters must put a reverse proxy in front that
+  overwrites forwarding headers and never expose the app port directly; see the
+  deployment notes in the root README
 - `limit` parameter capped at 200; `q` capped at 200 characters
 - Request bodies are irrelevant (GET only) and URL length is bounded by the server
 - Every `200` and `429` carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
