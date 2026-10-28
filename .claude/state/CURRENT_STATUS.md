@@ -51,6 +51,7 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-010 tooltip bubble + accepted times (2026-10-28): committed as 011df29, rebuilt, live and screenshot-verified.
 - [x] TASK-011 scheduled refresh enabled (2026-10-28, Option A): .env SCHEDULE_ENABLED/INGEST_ON_START true (gitignored); CVE hourly + KEV hourly + EPSS daily. Recovery took 3 cycles (stale lock, missing local main, forced upstream rewrite); all three sources accepted fresh, hero shows minutes-ago. New backlog TASK-012 (restart lease storm, TODO).
 - [x] TASK-013 v1 public release batch (2026-10-28): Apache-2.0 LICENSE + data-terms note, SECURITY.md, XFF hardening + test, CI on pinned SHAs, robots/sitemap/favicon/OG/404, showcase noindex, API identity note, Cloud Run single-image + VM/Caddy docs. Rebuilt, live, verified end to end.
+- [x] TASK-014 API docs accuracy (2026-10-28): curl uses the spec origin (machine IP appears only once, in the intentional instance note); illustrative responses rewritten key-for-key against live shapes; committed as d4abaa2, rebuilt, live verified.
 
 None further. Scheduled refresh is ON (`INGEST_ON_START=true`, `SCHEDULE_ENABLED=true`):
 CVE + KEV refresh hourly, EPSS daily; all three accepted fresh on 2026-10-28.
