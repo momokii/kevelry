@@ -67,6 +67,30 @@ test("api-docs renders the endpoints table with an example per endpoint", async 
   await page.screenshot({ path: `${EVIDENCE_DIR}/api-docs-1280.png`, fullPage: true });
 });
 
+test("api-docs examples use the spec origin and shape-true responses", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/api-docs");
+
+  // Curl examples must never leak the machine's own origin (private IPs,
+  // loopback, or Tailscale addresses): they use the spec's example origin.
+  const curl = page.getByTestId("api-docs-example-get-api-v1-cves-cveid");
+  await expect(curl).toContainText('curl "https://radar.example.org/api/v1/cves/');
+  await expect(curl).not.toContainText("127.0.0.1");
+  await expect(curl).not.toContainText("localhost");
+
+  // Illustrative responses mirror the live shapes key for key.
+  await expect(page.getByTestId("api-docs-response-get-api-v1-search")).toContainText(
+    "cvssPrimary",
+  );
+  await expect(page.getByTestId("api-docs-response-get-api-v1-status")).toContainText(
+    "joinCoverage",
+  );
+  await expect(page.getByTestId("api-docs-response-get-api-v1-replay-checkpoints")).toContainText(
+    "retainedFrom",
+  );
+  await expect(page.getByTestId("api-docs-response-get-api-v1-radar")).toContainText("eventId");
+});
+
 test("api-docs stays readable at 360px", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 });
   await page.goto("/api-docs");

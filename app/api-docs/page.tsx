@@ -34,19 +34,71 @@ function readSpecText(): string {
   return readFileSync(path.join(process.cwd(), "openapi", "v1.yaml"), "utf8");
 }
 
+// Illustrative payloads mirror the live route shapes key for key (verified
+// against the running API); only the values are invented. The OpenAPI schema
+// and the live route stay authoritative.
 function exampleResponse(endpoint: { path: string }): string {
   const provenance = {
     rankingPolicyVersion: "ranking-v1",
-    generatedAt: "2026-10-26T00:00:00.000Z",
+    generatedAt: "2026-10-28T00:00:00.000Z",
     sources: {
-      cve: { revision: "509084ac", lastAcceptedAt: "2026-10-25T15:27:00.000Z", stale: false },
-      kev: {
-        catalogVersion: "2026-10-24",
-        lastAcceptedAt: "2026-10-25T14:39:00.000Z",
+      cve: {
+        revision: "5119c87eab4aac3a87300d577fa5f95393b140e7",
+        lastCheckedAt: "2026-10-28T00:00:00.000Z",
+        lastAcceptedAt: "2026-10-28T00:00:00.000Z",
         stale: false,
+        error: null,
       },
-      epss: { scoreDate: "2026-10-24", modelVersion: "v2026.06.15", stale: false },
+      kev: {
+        catalogVersion: "2026.10.27",
+        lastCheckedAt: "2026-10-28T00:00:00.000Z",
+        lastAcceptedAt: "2026-10-28T00:00:00.000Z",
+        stale: false,
+        error: null,
+      },
+      epss: {
+        scoreDate: "2026-10-27",
+        modelVersion: "v2026.06.15",
+        lastCheckedAt: "2026-10-28T00:00:00.000Z",
+        lastAcceptedAt: "2026-10-28T00:00:00.000Z",
+        stale: false,
+        error: null,
+      },
     },
+  };
+  const cveItem = {
+    cveId: "CVE-2026-110447",
+    title: "Edge gateway overflow",
+    state: "PUBLISHED",
+    publishedAt: "2026-10-21T13:54:43.866Z",
+    officialUrl: "https://www.cve.org/CVERecord?id=CVE-2026-110447",
+    excerpt: "A buffer overflow in the edge gateway decoder allows crafted frames ...",
+    excerptTruncated: true,
+    excerptLanguage: "en",
+    excerptStatus: "present",
+    kev: { listed: true, dateAdded: "2026-10-23" },
+    epss: {
+      status: "known",
+      value: 0.02285,
+      percentile: 0.91,
+      scoreDate: "2026-10-27",
+      modelVersion: "v2026.06.15",
+    },
+    cvssPrimary: {
+      status: "known",
+      source: "cna",
+      version: "4.0",
+      baseScore: 9.2,
+      vector: "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+    },
+  };
+  const pagination = { limit: 2, hasMore: true, nextCursor: "eyJvZmZzZXQiOjJ9" };
+  const coverage = {
+    eligibleCohort: 396841,
+    returned: 2,
+    unscored: 216625,
+    unknownEpss: 584,
+    unknownDate: 0,
   };
   if (endpoint.path.includes("/health")) {
     return JSON.stringify({ status: "ok", version: "v1", provenance }, null, 2);
@@ -54,10 +106,12 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/status")) {
     return JSON.stringify(
       {
-        state: "ok",
+        rankingPolicyVersion: "ranking-v1",
+        generatedAt: "2026-10-28T00:00:00.000Z",
         sources: provenance.sources,
-        cohort: { published: 395286, kev: 1756, epssScored: 395249, unscored: 215998 },
-        notices: [],
+        cohorts: { published: 396841, kevListed: 1760, epssScored: 396257 },
+        joinCoverage: { unmatchedKev: 0, unmatchedEpss: 0 },
+        notices: ["CVE content reproduced per MITRE CVE Terms of Use."],
       },
       null,
       2,
@@ -68,8 +122,13 @@ function exampleResponse(endpoint: { path: string }): string {
       {
         bucket: "month",
         dateBasis: "publishedAt-utc",
-        buckets: [{ bucketStart: "2026-09", count: 14934 }],
-        coverage: { eligibleCohort: 395286, returned: 24 },
+        buckets: [
+          { bucketStart: "2026-09", count: 14934 },
+          { bucketStart: "2026-10", count: 13606 },
+        ],
+        unknownDateCount: 0,
+        correctionNotes: [],
+        coverage: { ...coverage, returned: 24 },
         provenance,
       },
       null,
@@ -79,23 +138,18 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/priority/")) {
     return JSON.stringify(
       {
-        view: "known-exploited",
-        items: [
-          {
-            cveId: "CVE-2026-110447",
-            kevMember: true,
-            dateAdded: "2026-10-23T00:00:00.000Z",
-            epss: {
-              status: "known",
-              value: 0.02285,
-              percentile: 0.91,
-              scoreDate: "2026-10-24",
-              modelVersion: "v2026.06.15",
-            },
-            cvss: { status: "known", source: "cna", version: "4.0", baseScore: 9.2 },
-          },
-        ],
-        coverage: { eligibleCohort: 1756, returned: 1 },
+        list: "known-exploited",
+        ordering: ["kev-dateAdded-desc", "cveId-asc"],
+        data: [{ ...cveItem }],
+        deltaPp: null,
+        pagination: { limit: 1, hasMore: true, nextCursor: "eyJvZmZzZXQiOjF9" },
+        coverage: {
+          eligibleCohort: 1760,
+          returned: 1,
+          unscored: 0,
+          unknownEpss: 0,
+          unknownDate: 0,
+        },
         provenance,
       },
       null,
@@ -105,10 +159,23 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/radar")) {
     return JSON.stringify(
       {
-        events: [
-          { kind: "kev-added", cveId: "CVE-2026-110447", before: null, after: { kevMember: true } },
+        data: [
+          {
+            eventId: "radar-2026-10-24-0001",
+            checkpointDate: "2026-10-24",
+            observedAt: "2026-10-24T00:00:00.000Z",
+            kind: "kev-added",
+            cveId: "CVE-2026-110447",
+            title: "CVE-2026-110447",
+            changes: [
+              { field: "kev.listed", before: "false", after: "true" },
+              { field: "kev.dateAdded", before: null, after: "2026-10-23" },
+            ],
+            sourceRevision: "kev-2026.10.23",
+            reason: "KEV catalog addition observed between checkpoints.",
+          },
         ],
-        snapshot: { before: "2026-10-23", after: "2026-10-24" },
+        pagination,
         provenance,
       },
       null,
@@ -118,9 +185,13 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/replay/checkpoints")) {
     return JSON.stringify(
       {
-        checkpoints: [
+        retainedFrom: "2026-10-24",
+        retainedTo: "2026-10-27",
+        data: [
+          { checkpointDate: "2026-10-27", policyVersion: "ranking-v1", expired: false },
           { checkpointDate: "2026-10-24", policyVersion: "ranking-v1", expired: false },
         ],
+        pagination: { limit: 2, hasMore: false, nextCursor: null },
         provenance,
       },
       null,
@@ -130,11 +201,29 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/replay")) {
     return JSON.stringify(
       {
-        status: "available",
-        manifest: {
-          checkpointDate: "2026-10-24",
-          policyVersion: "ranking-v1",
-          cohortCount: 395286,
+        checkpointDate: "2026-10-24",
+        view: "known-exploited",
+        rankingPolicyVersion: "ranking-v1",
+        boundedTopN: 500,
+        boundedNotice:
+          "Checkpoint views retain the observed top-500 entries per list (boundedTopN); they are bounded observed lists, not complete enumerations.",
+        data: [
+          {
+            ...cveItem,
+            excerpt: null,
+            excerptTruncated: false,
+            excerptLanguage: null,
+            excerptStatus: "not-supplied",
+            epss: { ...cveItem.epss, percentile: null },
+          },
+        ],
+        pagination: { limit: 2, hasMore: false, nextCursor: null },
+        coverage: {
+          eligibleCohort: 500,
+          returned: 1,
+          unscored: 12,
+          unknownEpss: 30,
+          unknownDate: 0,
         },
         provenance,
       },
@@ -145,18 +234,10 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/search")) {
     return JSON.stringify(
       {
-        items: [
-          {
-            cveId: "CVE-2026-110447",
-            title: "Edge gateway overflow",
-            severityBand: "critical",
-            kevMember: true,
-            epssKnown: true,
-          },
-        ],
-        total: 1,
-        coverage: { unknownDate: 0, kevMembers: 1, epssKnown: 1 },
-        nextCursor: null,
+        q: "openssl",
+        data: [{ ...cveItem }],
+        pagination,
+        coverage,
         provenance,
       },
       null,
@@ -167,12 +248,11 @@ function exampleResponse(endpoint: { path: string }): string {
     return JSON.stringify(
       {
         data: {
-          cveId: "CVE-2026-110447",
-          title: "Edge gateway overflow",
-          state: "PUBLISHED",
-          kev: { status: "known" },
-          epss: { status: "known", value: 0.02285 },
-          cvss: { status: "known", source: "cna", version: "4.0", baseScore: 9.2 },
+          ...cveItem,
+          descriptionLanguages: ["en"],
+          references: [
+            { url: "https://example.org/advisory/42", container: "cna", provider: null },
+          ],
         },
         provenance,
       },
@@ -182,8 +262,9 @@ function exampleResponse(endpoint: { path: string }): string {
   }
   return JSON.stringify(
     {
-      data: [{ cveId: "CVE-2026-110447", title: "Edge gateway overflow", state: "PUBLISHED" }],
-      nextCursor: null,
+      data: [{ ...cveItem }],
+      pagination,
+      coverage,
       provenance,
     },
     null,
@@ -254,8 +335,9 @@ export default async function ApiDocsPage() {
         <div data-testid="api-docs-overview">
           <p>
             Base path: <code data-testid="api-docs-base-url">/api/v1</code> on{" "}
-            <code>{baseUrl}</code>. Self-hosted copies serve the API from their own origin; the
-            example origin in the spec is illustrative.
+            <code>{baseUrl}</code>. Examples below use the illustrative origin{" "}
+            <code>{meta.serverUrl || baseUrl}</code> from the spec so they stay stable and
+            shareable; swap in this instance&apos;s origin to run them here.
           </p>
           <p>
             Versioned and read-only: every route is GET under the <code>/api/v1</code> path major.
@@ -472,7 +554,7 @@ export default async function ApiDocsPage() {
               className="ledger-api-curl"
               data-testid={`api-docs-example-${endpointSlug(endpoint)}`}
             >
-              {buildCurl(baseUrl, endpoint)}
+              {buildCurl(meta.serverUrl || baseUrl, endpoint)}
             </pre>
             <details className="api-response-example">
               <summary>Example response · illustrative shape</summary>
@@ -492,8 +574,8 @@ export default async function ApiDocsPage() {
         <div data-testid="api-docs-spec">
           <p>
             The full contract lives in <code>openapi/v1.yaml</code> in the repo. This page renders
-            that file on each request; download the exact text below (served from this page as a file
-            download, so no extra route is needed).
+            that file on each request; download the exact text below (served from this page as a
+            file download, so no extra route is needed).
           </p>
           <SpecDownload specText={specText} />
           <details>
