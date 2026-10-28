@@ -20,6 +20,10 @@ export const metadata = {
   title: "Research Console primitive showcase",
   description:
     "Every Section-6 primitive in every required state. No product screens, no data logic.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 function StateCard({ id, label, children }: { id: string; label: string; children: ReactNode }) {

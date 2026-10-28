@@ -6,9 +6,23 @@ import { Shell } from "@/components/shell/Shell";
 import "./globals.css";
 import "./ui.css";
 
+const SITE_URL = process.env.SITE_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "CVE Intel",
   description: "Explainable CVE intelligence: volume, severity, KEV, EPSS, and change history.",
+  openGraph: {
+    type: "website",
+    siteName: "CVE Intel",
+    title: "CVE Intel",
+    description: "Explainable CVE intelligence: volume, severity, KEV, EPSS, and change history.",
+  },
+  twitter: {
+    card: "summary",
+    title: "CVE Intel",
+    description: "Explainable CVE intelligence: volume, severity, KEV, EPSS, and change history.",
+  },
 };
 
 const SUPPORTED_ZONES = [
