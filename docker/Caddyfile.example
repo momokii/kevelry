@@ -1,0 +1,30 @@
+# Example edge proxy for a public VM deployment of cve-change-radar.
+#
+# Copy, set your hostname, and run:
+#   sudo caddy run --config docker/Caddyfile.example --adapter caddyfile
+#
+# What this buys: automatic TLS certificates, loopback-only app binding, and
+# correct client-IP forwarding. The API rate limit keys on the LAST
+# X-Forwarded-For entry, so the proxy MUST overwrite (never append) the
+# header with the observed peer address; otherwise the leftmost value is
+# client-spoofable and the rate limit is bypassable. The app port itself
+# must never be reachable directly (firewall it; expose only 80/443).
+
+cve.example.com {
+	# ACME + HTTP->HTTPS redirect are automatic.
+	encode gzip
+
+	# The app listens on loopback only (BIND_ADDR=127.0.0.1, PORT=3000).
+	reverse_proxy 127.0.0.1:3000 {
+		# Overwrite: the single value is the real peer, safe to rate-limit on.
+		header_up X-Forwarded-For {http.request.remote.host}
+		header_up X-Real-IP {http.request.remote.host}
+		header_up X-Forwarded-Proto {http.request.scheme}
+		header_up Host {http.request.host}
+
+		# Fail fast on a hung backend instead of queuing public traffic.
+		fail_duration 30s
+		max_fails 3
+		unhealthy_status 5xx
+	}
+}

@@ -222,12 +222,58 @@ curl http://100.124.184.116:3100/api/v1/health
 
 Open `http://100.124.184.116:3100` in the browser.
 
-### Public HTTPS
+### Public deployment
 
-Compose does not provide TLS. Public serving needs a reverse proxy or
-platform TLS with a real hostname and certificate, keeping
-`APP_ENV=production`. Never bind `0.0.0.0` casually; it exposes every
-interface.
+The release artifact is **one self-contained image** (`cve-change-radar:local`
+from `docker compose build`; publish it to your registry to ship it). It runs
+the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
+container as non-root, listening on `$PORT` (default 3000) with data in
+`/data`. Two supported shapes:
+
+**A. Single image on a serverless platform (e.g. Google Cloud Run).**
+
+```bash
+gcloud run deploy cve-intel \
+  --image REGION-docker.pkg.dev/PROJECT/REPO/cve-change-radar:TAG \
+  --memory 4Gi --cpu 4 --min-instances 1 \
+  --no-cpu-throttling \
+  --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://cve.example.com
+```
+
+Platform notes, all load-bearing:
+
+- Keep **one warm instance with CPU always allocated**. Ingestion runs on a
+  schedule inside the container; throttled CPU stalls imports and can wedge
+  refresh behind timeouts.
+- The platform sets `$PORT`; the image honors it. Set `SITE_URL` to the real
+  public origin so sitemap and social cards point at it.
+- Instance disk is **ephemeral**: on eviction the CVE checkout cache and the
+  database are rebuilt from upstream (first boot clones for tens of minutes
+  while serving an honest initializing state). For durable history across
+  evictions, mount persistent storage (e.g. GCS FUSE on `/data`) instead.
+- Give the revision time to finish its first import before judging freshness;
+  watch `GET /api/v1/status` (`stale` flags clear per source as each lands).
+
+**B. Recommended VM deployment (Compose + Caddy for TLS).**
+
+Keep the app on loopback and terminate TLS in Caddy (automatic certificates).
+An example proxy file ships as `docker/Caddyfile.example`:
+
+```bash
+# .env for a public VM behind Caddy
+docker compose up -d --build
+sudo caddy run --config docker/Caddyfile.example --adapter caddyfile
+```
+
+Proxy rules that matter (already in the example):
+
+- Caddy sets `X-Forwarded-For {http.request.remote.host}` (**overwrite**, never
+  append): the API rate limit keys on the last forwarded address, so a
+  spoofable leftmost value must never survive the edge.
+- Firewall the app port off the public internet; expose only 80/443. Never
+  bind `0.0.0.0` casually; `APP_ENV` stays `production`.
+- Point a cron or timer at the backup runbook (`docs/backup-runbook.md`) and
+  an external uptime check at `GET /api/v1/health` before announcing the URL.
 
 ## Verify it works
 
