@@ -20,6 +20,7 @@ import { writeCheckpoint } from "../src/lib/radar";
 import {
   acquireConcurrencySlot,
   checkRateLimit,
+  clientKeyFor,
   RATE_LIMIT_MAX,
   RATE_LIMIT_WINDOW_SECONDS,
   releaseConcurrencySlot,
@@ -141,7 +142,9 @@ function seedMinimal(db: CveDatabase): void {
   });
   db.runBoundedWrite(() => {
     db.handle
-      .prepare("INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)")
+      .prepare(
+        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
+      )
       .run("CVE-2099-0001", CHECKPOINT_B, "2026.10.23", STAMP);
   });
   writeCheckpoint(db, {
@@ -178,6 +181,22 @@ function withIp(url: string, ip: string, init?: RequestInit): Request {
   });
 }
 
+describe("client identity for rate limiting", () => {
+  const keyRequest = (headers: Record<string, string>): Request =>
+    new Request("https://radar.test/api/v1/health", { headers });
+
+  it("uses the proxy-appended address, not a spoofable client value", () => {
+    expect(clientKeyFor(keyRequest({}))).toBe("local");
+    expect(clientKeyFor(keyRequest({ "x-forwarded-for": "203.0.113.7" }))).toBe("203.0.113.7");
+    // Leftmost entries are client-supplied and untrusted; the edge proxy
+    // appends the real peer last, so the last entry is the identity.
+    expect(clientKeyFor(keyRequest({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }))).toBe(
+      "203.0.113.7",
+    );
+    expect(clientKeyFor(keyRequest({ "x-real-ip": "203.0.113.8" }))).toBe("203.0.113.8");
+  });
+});
+
 describe("rate budget", () => {
   it("enforces the documented 600/minute per-IP budget with Retry-After", async () => {
     makeDb();
@@ -200,7 +219,9 @@ describe("rate budget", () => {
     expectSecurityHeaders(limited);
     const retryAfter = Number(limited.headers.get("retry-after"));
     expect(retryAfter).toBeGreaterThanOrEqual(1);
-    expect((limitedBody.provenance as Record<string, unknown>).rankingPolicyVersion).toBe("ranking-v1");
+    expect((limitedBody.provenance as Record<string, unknown>).rankingPolicyVersion).toBe(
+      "ranking-v1",
+    );
 
     const other = await getHealth(withIp("https://radar.test/api/v1/health", "10.9.9.10"));
     expect(other.status).toBe(200);
@@ -319,7 +340,9 @@ describe("expensive queries time out safely", () => {
     void db;
 
     setSearchBudgetMs(0);
-    const timedOut = await getSearch(new Request("https://radar.test/api/v1/search?q=packet%20parser"));
+    const timedOut = await getSearch(
+      new Request("https://radar.test/api/v1/search?q=packet%20parser"),
+    );
     expect(timedOut.status).toBe(500);
     const timedOutBody = await bodyOf(timedOut);
     expect(timedOutBody.code).toBe("INTERNAL");
@@ -381,8 +404,14 @@ describe("sanitized errors", () => {
     const ip = "10.8.8.8";
     for (let n = 0; n < RATE_LIMIT_MAX; n += 1) checkRateLimit(ip);
     const cases: { name: string; response: Response }[] = [
-      { name: "BAD_LIMIT", response: await getCves(new Request("https://radar.test/api/v1/cves?limit=999")) },
-      { name: "BAD_QUERY", response: await getSearch(new Request("https://radar.test/api/v1/search?q=x")) },
+      {
+        name: "BAD_LIMIT",
+        response: await getCves(new Request("https://radar.test/api/v1/cves?limit=999")),
+      },
+      {
+        name: "BAD_QUERY",
+        response: await getSearch(new Request("https://radar.test/api/v1/search?q=x")),
+      },
       {
         name: "CVE_NOT_FOUND",
         response: await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-9999"), {
@@ -402,10 +431,15 @@ describe("sanitized errors", () => {
         ),
       },
       { name: "INTERNAL", response: forcedTimeout },
-      { name: "RATE_LIMITED", response: await getHealth(withIp("https://radar.test/api/v1/health", ip)) },
+      {
+        name: "RATE_LIMITED",
+        response: await getHealth(withIp("https://radar.test/api/v1/health", ip)),
+      },
       {
         name: "BAD_REQUEST",
-        response: await getHealth(new Request(`https://radar.test/api/v1/health?pad=${"p".repeat(4200)}`)),
+        response: await getHealth(
+          new Request(`https://radar.test/api/v1/health?pad=${"p".repeat(4200)}`),
+        ),
       },
     ];
 
@@ -418,10 +452,14 @@ describe("sanitized errors", () => {
       expect(typeof body.code).toBe("string");
       expect(typeof body.message).toBe("string");
       expect(typeof body.requestId).toBe("string");
-      expect(JSON.stringify(body), entry.name).not.toMatch(/\.ts\b|node_modules|\/home\/|stack|Error:/i);
+      expect(JSON.stringify(body), entry.name).not.toMatch(
+        /\.ts\b|node_modules|\/home\/|stack|Error:/i,
+      );
       if (entry.name === "REPLAY_UNAVAILABLE") {
         const details = body.details as Record<string, unknown>;
-        expect(new Set(Object.keys(details))).toEqual(new Set(["reason", "retainedFrom", "retainedTo"]));
+        expect(new Set(Object.keys(details))).toEqual(
+          new Set(["reason", "retainedFrom", "retainedTo"]),
+        );
       } else {
         expect(body.details, `${entry.name} carries no details`).toBeUndefined();
       }

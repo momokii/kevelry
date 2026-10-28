@@ -102,10 +102,19 @@ export function resetRateLimits(): void {
 }
 
 export function clientKeyFor(request: Request): string {
+  // Proxies append the observed peer address; the client-supplied leftmost
+  // entries are spoofable, so the rate-limit identity is the LAST entry —
+  // the one added by our own edge proxy. Deployments must put a proxy in
+  // front that overwrites (never blindly trusts) these headers, and must
+  // never expose the app port directly. See README deployment notes.
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded !== null && forwarded.trim() !== "") {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first !== undefined && first !== "") return first;
+    const entries = forwarded
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry !== "");
+    const last = entries[entries.length - 1];
+    if (last !== undefined && last !== "") return last;
   }
   const realIp = request.headers.get("x-real-ip");
   if (realIp !== null && realIp.trim() !== "") return realIp.trim();
@@ -501,8 +510,7 @@ export function okResponse(
 // ---------------------------------------------------------------------------
 
 /** Shared cache policy for success GETs: cheap revalidation, stale shielded. */
-export const CACHE_CONTROL_HEADER =
-  "public, max-age=30, s-maxage=60, stale-while-revalidate=300";
+export const CACHE_CONTROL_HEADER = "public, max-age=30, s-maxage=60, stale-while-revalidate=300";
 
 /** Strong ETag from a revision seed (aggregate revision + request shape). */
 export function etagFromSeed(seed: string): string {
@@ -1430,8 +1438,7 @@ export function unfilteredCohortCoverage(
   // instead of ~1.9s warm on 395k rows). Values match the three-query form
   // exactly; the CVSS validity predicate mirrors selectPrimaryCvss.
   const epssDate = getAcceptedEpssDate(db);
-  const cached =
-    epssDate === null ? null : getAggregates(db);
+  const cached = epssDate === null ? null : getAggregates(db);
   if (cached !== null && cached.epssScoreDate === epssDate) {
     return {
       eligibleCohort: cached.publishedTotal,
@@ -1479,7 +1486,7 @@ export function unfilteredCohortCoverage(
     eligibleCohort,
     returned,
     unscored: row.s ?? 0,
-    unknownEpss: epssDate === null ? eligibleCohort : (row as { e?: number }).e ?? 0,
+    unknownEpss: epssDate === null ? eligibleCohort : ((row as { e?: number }).e ?? 0),
     unknownDate: row.u ?? 0,
   };
 }
