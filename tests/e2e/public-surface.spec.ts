@@ -30,7 +30,9 @@ test("unknown route renders the branded 404", async ({ page }) => {
   await expect(page.getByTestId("not-found-root")).toBeVisible();
   await expect(page.getByTestId("not-found-root")).toContainText("Nothing retained here");
   await page.getByRole("link", { name: "Back to overview" }).click();
-  await expect(page).toHaveURL("/");
+  // The overview route cold-compiles on a fresh dev server; allow it time.
+  await expect(page).toHaveURL("/", { timeout: 20000 });
+  await expect(page.getByTestId("overview-root")).toBeVisible({ timeout: 20000 });
 });
 
 test("showcase asks crawlers not to index", async ({ page }) => {
