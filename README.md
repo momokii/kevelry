@@ -173,27 +173,31 @@ initializing state until then. Live scale here: 396,841 CVEs, 1,762 KEV, 396,966
 `.env` is gitignored; `.env.example` is the committed template. Every variable
 the app reads is listed there.
 
-| Variable               | Default               | Meaning                                                                                                                   |
-| ---------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`              | `production`          | Runtime profile: `development`, `staging`, `production`                                                                   |
-| `NODE_ENV`             | `production`          | Node profile, kept in step with `APP_ENV`                                                                                 |
-| `DATA_DIR`             | `/data`               | Database and snapshot directory inside the container                                                                      |
-| `SCHEDULE_ENABLED`     | `true`                | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                       |
-| `INGEST_ON_START`      | `true`                | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                           |
-| `BIND_ADDR`            | `127.0.0.1`           | Host address the web port binds to                                                                                        |
-| `PORT`                 | `3000`                | Host-side web port (container always listens on 3000)                                                                     |
-| `CVE_GIT_TIMEOUT_MS`   | `3600000`             | CVE List V5 clone timeout in ms (1 hour)                                                                                  |
-| `CVE_CLONE_DEPTH`      | `1`                   | `1` is shallow `--depth 1`; `0` means full history                                                                        |
-| `CVE_REPO_DIR`         | `<DATA_DIR>/cve-repo` | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
-| `CVE_REPO_CACHE_RESET` | `false`               | `true` wipes the cache and re-clones clean on the next cycle                                                              |
-| `CVE_MAX_RECORD_BYTES` | `16777216`            | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                   |
-| `CHECKPOINT_TOP_N`     | `500`                 | Entries kept per view in each daily Change Radar checkpoint                                                               |
-| `PRIORITY_PAGE_LIMIT`  | `100`                 | QA-only display cap for priority views (1–1000)                                                                           |
-| `CVE_REPO_URL`         | official repository   | Optional CVE source override (mirror/tests)                                                                               |
-| `CVE_REVISION`         | `main`                | Optional CVE revision override                                                                                            |
-| `CVE_DB_FILE`          | unset                 | Backfill script: explicit database path                                                                                   |
-| `BACKFILL_CHUNK`       | `2000`                | Backfill script: rows per transaction                                                                                     |
-| `BETTER_SQLITE3_PATH`  | unset                 | Backfill script: explicit native module path                                                                              |
+| Variable                  | Required | Default               | Meaning                                                                                                                   |
+| ------------------------- | -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                 | yes      | `production`          | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                     |
+| `NODE_ENV`                | no       | `production`          | Node profile, kept in step with `APP_ENV`                                                                                 |
+| `DATA_DIR`                | yes      | `/data`               | Database and snapshot directory inside the container                                                                      |
+| `SCHEDULE_ENABLED`        | yes      | `true`                | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                       |
+| `INGEST_ON_START`         | no       | `true`                | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                           |
+| `BIND_ADDR`               | no       | `127.0.0.1`           | Host address the web port binds to (Compose only)                                                                         |
+| `PORT`                    | yes      | `3000`                | Host-side web port (container always listens on 3000; serverless platforms inject their own)                              |
+| `SITE_URL`                | no       | loopback fallback     | Public origin for sitemap/canonical/social cards; blank means unset                                                       |
+| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`             | CVE List V5 clone timeout in ms (1 hour)                                                                                  |
+| `CVE_CLONE_DEPTH`         | no       | `1`                   | `1` is shallow `--depth 1`; `0` means full history                                                                        |
+| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo` | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
+| `CVE_REPO_CACHE_RESET`    | no       | `false`               | `true` wipes the cache and re-clones clean on the next cycle                                                              |
+| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`            | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                   |
+| `CHECKPOINT_TOP_N`        | no       | `500`                 | Entries kept per view in each daily Change Radar checkpoint                                                               |
+| `PRIORITY_PAGE_LIMIT`     | no       | `100`                 | QA-only display cap for priority views (1–1000)                                                                           |
+| `CVE_REPO_URL`            | no       | official repository   | Optional CVE source override (mirror/tests)                                                                               |
+| `CVE_REVISION`            | no       | `main`                | Optional CVE revision override                                                                                            |
+| `REFRESH_AGGREGATES_ONCE` | no       | `false`               | One-off aggregate-cache refresh, then exit (no import cycle)                                                              |
+| `RUN_BACKUP_ONCE`         | no       | `false`               | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                    |
+| `BACKUP_DIR`              | no*      | unset                 | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                  |
+| `CVE_DB_FILE`             | no       | unset                 | Backfill script: explicit database path                                                                                   |
+| `BACKFILL_CHUNK`          | no       | `2000`                | Backfill script: rows per transaction                                                                                     |
+| `BETTER_SQLITE3_PATH`     | no       | unset                 | Backfill script: explicit native module path                                                                              |
 
 `.env.example` is a local-development template (`APP_ENV=development`,
 `DATA_DIR=./data`); Compose and the image default to production (`APP_ENV=production`,
