@@ -6,7 +6,10 @@ import { Shell } from "@/components/shell/Shell";
 import "./globals.css";
 import "./ui.css";
 
-const SITE_URL = process.env.SITE_URL ?? "http://localhost:3000";
+// Blank counts as unset (never `new URL("")`, which throws): without a public
+// origin the sitemap/cards fall back to loopback, which is correct for
+// private deployments and harmless otherwise. Public deploys set SITE_URL.
+const SITE_URL = (process.env.SITE_URL ?? "").trim().replace(/\/+$/, "") || "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
