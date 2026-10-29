@@ -212,6 +212,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns | None: presentation-only. |
 | Notes | Commit 50120e2, rebuilt, live verified via screenshot. |
 
+## TASK-016 — Row date labels, single rail highlight, data-display audit
+
+| Field    | Value                                                                                                                                                                                                                                                                                                                                                    |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID  | TASK-016                                                                                                                                                                                                                                                                                                                                                   |
+| Name     | Label every row-level date; fix double-active rail; audit all displayed data for release                                                                                                                                                                                                                                                                    |
+| Priority | High                                                                                                                                                                                                                                                                                                                                                         |
+| Status   | DONE                                                                                                                                                                                                                                                                                                                                                         |
+| Complexity | S                                                                                                                                                                                                                                                                                                                                                          |
+| Depends On | None                                                                                                                                                                                                                                                                                                                                                         |
+| Scope    | Priority + explore rows prefix dates with Published; rail-status links drop aria-current (nav owns it); end-to-end audit of every user-visible date/number across overview/explore/priority/radar/replay/methodology/API. |
+| Acceptance Criteria | Shell single-active test + priority/explore suites green; live screenshots confirm label + highlight; audit verdict recorded. |
+| Security Concerns | None: presentation-only. |
+| Notes | Commit 84131bf, rebuilt, live verified. Audit verdict: these were the last two unlabeled-date defects; all other dates/numbers already carry labels, denominators, and stale/unknown states. Data display sufficient for v1 after this fix; radar/replay history still accumulating (messaged in UI). |
+
 ## Task Template
 
 ```markdown

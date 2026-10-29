@@ -53,6 +53,7 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-013 v1 public release batch (2026-10-28): Apache-2.0 LICENSE + data-terms note, SECURITY.md, XFF hardening + test, CI on pinned SHAs, robots/sitemap/favicon/OG/404, showcase noindex, API identity note, Cloud Run single-image + VM/Caddy docs. Rebuilt, live, verified end to end.
 - [x] TASK-014 API docs accuracy (2026-10-28): curl uses the spec origin (machine IP appears only once, in the intentional instance note); illustrative responses rewritten key-for-key against live shapes; committed as d4abaa2, rebuilt, live verified.
 - [x] TASK-015 disclosure markers (2026-10-28): response-example and data-table summaries had no visible affordance; added the rotating chevron + 44px target. Committed as 50120e2, rebuilt, live healthy.
+- [x] TASK-016 row dates + rail highlight (2026-10-28): priority/explore rows now say Published; rail-status no longer double-highlights with nav. Committed as 84131bf, rebuilt, live screenshot-verified.
 
 None further. Scheduled refresh is ON (`INGEST_ON_START=true`, `SCHEDULE_ENABLED=true`):
 CVE + KEV refresh hourly, EPSS daily; all three accepted fresh on 2026-10-28.
