@@ -56,6 +56,7 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-016 row dates + rail highlight (2026-10-28): priority/explore rows now say Published; rail-status no longer double-highlights with nav. Committed as 84131bf, rebuilt, live screenshot-verified.
 - [x] TASK-012 lease storm + page headers (2026-10-29): lease-acquire retry, page framing headers, Dockerfile patch-shape fix. Verified live with no API header dupes.
 - [x] TASK-017 nightly backups (2026-10-29): RUN_BACKUP_ONCE branch, host script + 02:00 cron, live 4.6GB backup verified, >2 GiB hash fix, dependabot, CONTRIBUTING, Permissions-Policy.
+- [x] README v1 face (2026-10-29): product title, license/node badges, live screenshots, repo map + stack rationale, fresh scale counts. Committed as e2fb129 (docs-only, no redeploy needed).
 
 None further. Scheduled refresh is ON (`INGEST_ON_START=true`, `SCHEDULE_ENABLED=true`):
 CVE + KEV refresh hourly, EPSS daily; all three accepted fresh on 2026-10-28.
