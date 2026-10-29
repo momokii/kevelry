@@ -24,6 +24,7 @@ import {
   preUpgradeBackup,
   restoreBackup,
   rollbackUpgrade,
+  sha256File,
   verifyBackup,
 } from "../src/lib/backup";
 import { type CveDatabase, DB_FILENAME, openDatabase } from "../src/lib/db";
@@ -132,6 +133,21 @@ function seedCorpus(db: CveDatabase): void {
   });
 }
 
+describe("sha256File chunked hashing", () => {
+  it("matches a single-update digest across chunk boundaries", async () => {
+    const { createHash } = await import("node:crypto");
+    const dir = makeTempDir("cve-backup-hash-");
+    const file = path.join(dir, "nine.bin");
+    // 9 MiB crosses the 8 MiB read chunk; deterministic fill keeps it fast.
+    const bytes = Buffer.alloc(9 * 1024 * 1024, 0x5a);
+    writeFileSync(file, bytes);
+    expect(sha256File(file)).toBe(createHash("sha256").update(bytes).digest("hex"));
+    const tiny = path.join(dir, "tiny.bin");
+    writeFileSync(tiny, "abc");
+    expect(sha256File(tiny)).toBe(createHash("sha256").update("abc").digest("hex"));
+  });
+});
+
 describe("backup, restore, and upgrade procedures (todo 29)", () => {
   it("round-trips backup, wipe, and restore with identical data, history, and manifests", () => {
     const dataDir = makeTempDir("cve-backup-src-");
@@ -165,19 +181,16 @@ describe("backup, restore, and upgrade procedures (todo 29)", () => {
       .all() as Array<{ manifest_hash: string }>;
     expect(checkpoints).toHaveLength(1);
     expect(checkpoints[0]?.manifest_hash).toEqual(expect.any(String));
-    const history = restored.handle
-      .prepare("SELECT COUNT(*) AS count FROM kev_history")
-      .get() as { count: number };
+    const history = restored.handle.prepare("SELECT COUNT(*) AS count FROM kev_history").get() as {
+      count: number;
+    };
     expect(history.count).toBe(1);
   });
 
   it("never presents an interrupted (staged *.tmp only) backup as good", () => {
     const backupDir = makeTempDir("cve-backup-interrupted-");
     writeFileSync(path.join(backupDir, `${BACKUP_DB_FILENAME}.tmp`), "partial-bytes");
-    writeFileSync(
-      path.join(backupDir, `${BACKUP_MANIFEST_FILENAME}.tmp`),
-      '{"backupVersion":1}',
-    );
+    writeFileSync(path.join(backupDir, `${BACKUP_MANIFEST_FILENAME}.tmp`), '{"backupVersion":1}');
     expect(() => verifyBackup(backupDir)).toThrow(BackupError);
 
     const dataDir = makeTempDir("cve-backup-recovery-");
@@ -260,9 +273,7 @@ describe("backup, restore, and upgrade procedures (todo 29)", () => {
     upgraded.close();
     openHandles.pop();
 
-    expect(() => restoreBackup({ backupDir, dataDir })).toThrow(
-      /downgrade without a backup/i,
-    );
+    expect(() => restoreBackup({ backupDir, dataDir })).toThrow(/downgrade without a backup/i);
     expect(() => restoreBackup({ backupDir, dataDir, allowDowngrade: true })).toThrow(
       /preRestoreBackupDir/,
     );

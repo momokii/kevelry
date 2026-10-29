@@ -33,11 +33,14 @@
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   copyFileSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -140,8 +143,28 @@ function sha256Hex(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function sha256File(filePath: string): string {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+/**
+ * SHA-256 of a file of any size, exported for unit coverage of the chunk
+ * boundary. Production database images exceed Node's 2 GiB readFileSync
+ * limit, so this must never go back to a single whole-file read.
+ */
+export function sha256File(filePath: string): string {
+  // Chunked reads: Node's readFileSync refuses files over 2 GiB, and the
+  // production database image is already past 4 GiB. Same digest as a
+  // single update, constant memory.
+  const hash = createHash("sha256");
+  const fd = openSync(filePath, "r");
+  try {
+    const chunk = Buffer.allocUnsafe(8 * 1024 * 1024);
+    for (;;) {
+      const read = readSync(fd, chunk, 0, chunk.length, null);
+      if (read === 0) break;
+      hash.update(chunk.subarray(0, read));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest("hex");
 }
 
 function escapeSqlStringLiteral(value: string): string {
@@ -182,9 +205,9 @@ function removeStaleStaging(backupDir: string): void {
 function rowCountsOf(handle: Database.Database): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const table of CONTENT_TABLES) {
-    const row = handle
-      .prepare(`SELECT COUNT(*) AS count FROM "${table}"`)
-      .get() as { count: number };
+    const row = handle.prepare(`SELECT COUNT(*) AS count FROM "${table}"`).get() as {
+      count: number;
+    };
     counts[table] = row.count;
   }
   return counts;
@@ -271,9 +294,7 @@ export function createBackup(options: CreateBackupOptions): BackupManifest {
   try {
     // Quiesce: fold the WAL into the main image before snapshotting.
     db.checkpointStatus();
-    db.handle["exec"](
-      `VACUUM INTO '${escapeSqlStringLiteral(stagedDbPath)}'`,
-    );
+    db.handle["exec"](`VACUUM INTO '${escapeSqlStringLiteral(stagedDbPath)}'`);
     const schemaVersions = db.appliedVersions();
     const manifest: BackupManifest = {
       backupVersion: BACKUP_VERSION,
