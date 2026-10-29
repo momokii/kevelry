@@ -21,6 +21,14 @@ DAY_DIR="$BACKUP_ROOT/$STAMP"
 LOG="$BACKUP_ROOT/backup-cron.log"
 
 mkdir -p "$BACKUP_ROOT"
+# The backup container runs as non-root uid 1001 while this script (and the
+# prune step) runs as the host user: grant both standing access so neither
+# side can lock the other out. No-op when ACLs are unavailable.
+if command -v setfacl >/dev/null 2>&1; then
+  setfacl -m u:1001:rwx "$BACKUP_ROOT" 2>/dev/null || true
+  setfacl -d -m u:1001:rwx "$BACKUP_ROOT" 2>/dev/null || true
+  setfacl -d -m "u:$(id -un):rwx" "$BACKUP_ROOT" 2>/dev/null || true
+fi
 exec >>"$LOG" 2>&1
 
 echo "=== backup start $(date -u +%FT%TZ) stamp=$STAMP retain_days=$RETAIN_DAYS ==="
