@@ -43,7 +43,9 @@ COPY . .
 # Enable standalone output + keep better-sqlite3 external (traced, not
 # bundled) for this build layer only. The repo's next.config.ts is not
 # modified on the host: this edit exists only inside the image layer.
-RUN node -e "const fs=require('fs');let s=fs.readFileSync('next.config.ts','utf8');if(!s.includes('standalone')){const t='const nextConfig: NextConfig = {\n  output: \"standalone\",\n  serverExternalPackages: [\"better-sqlite3\"],\n};';if(!s.includes('const nextConfig: NextConfig = {};')){console.error('FATAL: next.config.ts shape changed; update the ephemeral standalone patch');process.exit(1);}s=s.replace('const nextConfig: NextConfig = {};',t);fs.writeFileSync('next.config.ts',s);}console.log(fs.readFileSync('next.config.ts','utf8'))" \
+# The patch inserts the two standalone keys after the config opening brace,
+# preserving any other keys (e.g. headers) the repo file defines.
+RUN node -e "const fs=require('fs');let s=fs.readFileSync('next.config.ts','utf8');if(!s.includes('standalone')){if(!s.includes('const nextConfig: NextConfig = {')){console.error('FATAL: next.config.ts shape changed; update the ephemeral standalone patch');process.exit(1);}s=s.replace('const nextConfig: NextConfig = {','const nextConfig: NextConfig = {\n  output: \"standalone\",\n  serverExternalPackages: [\"better-sqlite3\"],');fs.writeFileSync('next.config.ts',s);}console.log(fs.readFileSync('next.config.ts','utf8'))" \
   && mkdir -p public \
   && npm run build
 # Adversarial gate 1: standalone server must exist.
