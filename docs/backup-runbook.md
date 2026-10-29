@@ -19,6 +19,21 @@ backup image plus a `manifest.json` sidecar.
   backup until the upgraded app passes health/readiness checks.
 - **Roll back:** `rollbackUpgrade({ backupDir, dataDir, preRestoreBackupDir })`.
 
+## Nightly automation (host cron)
+
+`scripts/nightly-backup.sh` runs the same verified path on a schedule:
+a one-off container on the compose volume executes the `RUN_BACKUP_ONCE`
+worker branch (create + verify, never an import cycle), then generations
+older than 7 days are pruned. Install from the repo root:
+
+```bash
+(crontab -l 2>/dev/null; echo "0 2 * * * <repo>/scripts/nightly-backup.sh") | crontab -
+```
+
+Backups land in `~/cve-backups/<UTC date>/` with `backup-cron.log` beside
+them. A non-zero exit means cron mails the failure; the live container is
+never restarted by a backup run.
+
 ## Compatibility policy
 
 - A backup newer than the running code is **refused** — an old image must

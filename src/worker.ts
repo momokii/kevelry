@@ -35,6 +35,7 @@ import { pathToFileURL } from "node:url";
 // startup, before any fetch. Optional override: NODE_OPTIONS=--dns-result-order=ipv4first.
 setDefaultResultOrder("ipv4first");
 
+import { createBackup, verifyBackup } from "./lib/backup";
 import { loadConfig } from "./lib/config";
 import { getAggregates, refreshAggregates } from "./lib/aggregates";
 import {
@@ -474,7 +475,57 @@ export function resolveRefreshAggregatesOnce(
   return env.REFRESH_AGGREGATES_ONCE === "true";
 }
 
+/**
+ * One-off verified backup without running an import cycle:
+ * `RUN_BACKUP_ONCE=true BACKUP_DIR=/backups/2026-10-29 node dist/worker.mjs`.
+ * Opens the store, writes a hash-verified backup image plus manifest, then
+ * re-verifies the promoted files and exits 0. Used by the nightly host cron
+ * (scripts/nightly-backup.sh) through a one-off container on the same
+ * volume, so the running worker is never disturbed. BACKUP_DIR is required.
+ */
+export function resolveRunBackupOnce(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.RUN_BACKUP_ONCE === "true";
+}
+
+export function resolveBackupDir(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const raw = env.BACKUP_DIR;
+  if (raw === undefined || raw.trim() === "") return null;
+  return raw;
+}
+
 async function main(): Promise<void> {
+  if (resolveRunBackupOnce()) {
+    const backupDir = resolveBackupDir();
+    if (backupDir === null) {
+      defaultLog({ event: "worker-fatal", reason: "backup-dir-missing" });
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const config = loadConfig();
+      const manifest = createBackup({ dataDir: config.dataDir, backupDir });
+      const verification = verifyBackup(backupDir);
+      defaultLog({
+        event: "backup-done",
+        backupDir,
+        createdAt: manifest.createdAt,
+        rowCounts: verification.rowCounts,
+      });
+      process.exitCode = 0;
+    } catch (error) {
+      defaultLog({
+        event: "worker-fatal",
+        reason: "backup-failed",
+        error: errorDetail(error),
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (resolveRefreshAggregatesOnce()) {
     try {
       const config = loadConfig();

@@ -12,8 +12,10 @@ import { IngestionScheduler } from "../src/lib/schedule";
 import {
   acquireLeaseWithRetry,
   createSourceJobs,
+  resolveBackupDir,
   resolveCvePin,
   resolveIngestOnStart,
+  resolveRunBackupOnce,
   runWorker,
   type SourceJobDeps,
   type WorkerLog,
@@ -376,6 +378,17 @@ describe("lease-acquire retry (TASK-012)", () => {
     expect(acquired).toBe(false);
     expect(sleeps).toBe(2);
     expect(logs.filter((entry) => entry.event === "worker-lease-wait")).toHaveLength(2);
+  });
+});
+
+describe("RUN_BACKUP_ONCE one-shot gate", () => {
+  it("resolves the gate and requires a backup directory", () => {
+    expect(resolveRunBackupOnce({})).toBe(false);
+    expect(resolveRunBackupOnce({ RUN_BACKUP_ONCE: "true" })).toBe(true);
+    expect(resolveRunBackupOnce({ RUN_BACKUP_ONCE: "false" })).toBe(false);
+    expect(resolveBackupDir({})).toBe(null);
+    expect(resolveBackupDir({ BACKUP_DIR: "" })).toBe(null);
+    expect(resolveBackupDir({ BACKUP_DIR: "/backups/2026-10-29" })).toBe("/backups/2026-10-29");
   });
 });
 

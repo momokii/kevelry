@@ -41,6 +41,7 @@ test("pages carry framing and referrer hardening", async ({ request }) => {
   expect(response.headers()["x-frame-options"]).toBe("DENY");
   expect(response.headers()["referrer-policy"]).toBe("no-referrer");
   expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response.headers()["permissions-policy"]).toContain("camera=()");
 });
 
 test("showcase asks crawlers not to index", async ({ page }) => {
