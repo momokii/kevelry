@@ -1,4 +1,7 @@
-# cve-injector
+# CVE Intel (cve-change-radar)
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 
 **Naming:** the repository/package/image name is `cve-change-radar` (folder
 `cve-injector`); the product wordmark is **CVE Intel**. They refer to this one app.
@@ -9,10 +12,13 @@ Radar** and replayable history. One self-contained Docker image, one container,
 and a versioned read-only API so other platforms (or your own self-hosted copy)
 can consume the same data.
 
-> **Status: implemented, verified, and deployed. Research Console UI revamp and quality pass shipped 2026-10-26.**
-> All 30 build todos and F1-F4 gates remain approved; the visual and interaction
-> layer was rebuilt around interactive SVG charts, a real severity×EPSS matrix,
-> a global timezone, and a compact analyst shell. Evidence under `.omo/evidence/`.
+> **Status: v1 released and serving with scheduled refresh on (CVE + KEV hourly,
+> EPSS daily).** 371 unit + 84 Playwright tests green; lint, typecheck, build, and
+> secret-scan run on every push via CI. See [Build gates](#build-gates-all-done).
+
+![Overview: corpus hero, freshness, and publication volume](docs/images/overview.png)
+![Search: explained filters with live cohort composition](docs/images/explore.png)
+![Priority: one expanded known-exploited row with labeled signals](docs/images/priority.png)
 
 ## What it does
 
@@ -157,7 +163,7 @@ docker compose logs -f app    # watch first-boot ingestion progress
 Ready means: `GET /api/v1/health` returns 200 and `GET /api/v1/status`
 shows the first snapshots accepted. KEV/EPSS land in seconds-to-minutes; the
 gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
-initializing state until then. Live scale here: 395,286 CVEs, 1,756 KEV, 395,249 EPSS.
+initializing state until then. Live scale here: 396,841 CVEs, 1,762 KEV, 396,966 EPSS.
 
 ## Configuration
 
@@ -388,8 +394,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (365 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (68 passing, 1 skipped)
+npm test                # vitest suite (371 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (84 passing)
 npx prettier --write <paths>  # format touched files
 
 `npm run format:check` currently reports pre-existing repository-wide Markdown/test
@@ -426,6 +432,31 @@ Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review
 - Public reads are anonymous by design; imports, migrations, and maintenance stay private CLI/internal operations.
 - No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release; pinned dependencies, minimal non-root image, no Docker socket.
 - Public serving needs explicit HTTPS/certificate/binding setup. Compose alone does not create trusted TLS.
+
+## Repository
+
+```
+app/                    Next.js pages + versioned API routes (app/api/v1/*)
+  api-docs/             Browsable reference rendered from openapi/v1.yaml
+src/lib/                Domain core: importers, ranking, priority, radar,
+                        aggregates, scheduler, backup, database + migrations
+src/components/         UI: shell, charts (visx SVG), explore, priority,
+                        radar, replay, methodology, ledger primitives
+src/worker.ts           Ingestion entrypoint (the only upstream fetcher)
+openapi/v1.yaml         Machine API contract (authoritative for /api-docs)
+docs/                   Human docs: workflow, research, API guides, runbooks
+tests/                  Vitest unit + Playwright browser suites
+docker/                 Entrypoint supervisor, Caddy edge-proxy example
+scripts/                Backfill + nightly-backup host automation
+```
+
+Stack: Next.js 16 App Router, React 19, strict TypeScript, SQLite + FTS5 via
+`better-sqlite3`, visx SVG charts, self-hosted Instrument Sans + JetBrains
+Mono (OFL). One Docker image, one container, one named volume. Why these
+choices: server-rendered pages with zero chart JS framework keep every value
+in the DOM (accessible, themeable); a single SQLite file keeps self-hosting
+to one volume with WAL-speed reads and `VACUUM INTO` backups; one image
+keeps Cloud Run and VM deployments identical.
 
 ## Docs map
 
