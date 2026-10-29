@@ -250,26 +250,40 @@ container as non-root, listening on `$PORT` (default 3000) with data in
 **A. Single image on a serverless platform (e.g. Google Cloud Run).**
 
 ```bash
-gcloud run deploy cve-intel \
-  --image REGION-docker.pkg.dev/PROJECT/REPO/cve-change-radar:TAG \
-  --memory 4Gi --cpu 4 --min-instances 1 \
+gcloud run deploy kevelry \
+  --image docker.io/kelanach/kevelry:1.0.0 \
+  --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
-  --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://cve.example.com
+  --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
 ```
 
-Platform notes, all load-bearing:
+How the database works here, and the rules that follow from it:
 
-- Keep **one warm instance with CPU always allocated**. Ingestion runs on a
-  schedule inside the container; throttled CPU stalls imports and can wedge
-  refresh behind timeouts.
+- The database is a **SQLite file on instance disk** (`/data`): ~4.6 GB for
+  records plus ~4 GB for the CVE checkout cache today. Instance disk is
+  **ephemeral and sized from memory**, so provision **8 GiB or more** — a 4 GiB
+  instance cannot hold the working set.
+- **Exactly one instance (`--max-instances 1`).** Every instance keeps its own
+  database file and runs its own importer; two instances would serve
+  divergent snapshots and double the upstream load. One warm instance
+  (`--min-instances 1`) with **CPU always allocated** (`--no-cpu-throttling`)
+  keeps the hourly/daily refresh on schedule.
+- **First boot is slow by design:** the web side listens in seconds (serving
+  an honest initializing state), while the worker clones and imports for
+  tens of minutes in the background. Judge freshness via
+  `GET /api/v1/status`, not the first paint.
+- **Every new revision starts empty** unless `/data` is persistent: without a
+  volume each deploy re-imports from scratch. For durable history (and sane
+  deploy times), mount a GCS FUSE volume on `/data`; ephemeral disk is fine
+  only if you accept a full re-import per revision.
 - The platform sets `$PORT`; the image honors it. Set `SITE_URL` to the real
-  public origin so sitemap and social cards point at it.
-- Instance disk is **ephemeral**: on eviction the CVE checkout cache and the
-  database are rebuilt from upstream (first boot clones for tens of minutes
-  while serving an honest initializing state). For durable history across
-  evictions, mount persistent storage (e.g. GCS FUSE on `/data`) instead.
-- Give the revision time to finish its first import before judging freshness;
-  watch `GET /api/v1/status` (`stale` flags clear per source as each lands).
+  public origin (a custom domain, or the automatic
+  `https://<service>-<hash>-<region>.a.run.app`) so sitemap and social cards
+  point at it. Leave it blank only for private deployments.
+- Cloud SQL / Postgres is **not** supported: the storage contract is a local
+  SQLite file (`better-sqlite3`), which is what keeps self-hosting to one
+  volume. The honest cost comparison is one always-on instance versus one
+  small VM — the VM is usually cheaper for this always-warm, stateful shape.
 
 **B. Recommended VM deployment (Compose + Caddy for TLS).**
 
