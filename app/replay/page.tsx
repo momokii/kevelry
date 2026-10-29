@@ -17,7 +17,7 @@ import {
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Replay — CVE Intel",
+  title: "Replay — Kevelry",
   description:
     "Restore a retained daily checkpoint and ranking policy version. Unavailable states never substitute current data.",
 };

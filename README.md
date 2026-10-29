@@ -1,12 +1,14 @@
-# CVE Intel (cve-change-radar)
+# Kevelry (cve-change-radar)
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 
-**Naming:** the repository/package/image name is `cve-change-radar` (folder
-`cve-injector`); the product wordmark is **CVE Intel**. They refer to this one app.
+**Naming:** **Kevelry** is the public name (repository, wordmark). The
+package/image name stays `cve-change-radar` (local folder `cve-injector`);
+all three refer to this one app. Internal names were kept stable on purpose
+so the live volume and image references never break.
 
-Public CVE intelligence console with an interactive overview, explainable
+Self-hosted CVE intelligence console with an interactive overview, explainable
 prioritization, searchable descriptions, official-record links, plus **Change
 Radar** and replayable history. One self-contained Docker image, one container,
 and a versioned read-only API so other platforms (or your own self-hosted copy)

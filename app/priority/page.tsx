@@ -60,7 +60,7 @@ export function resolvePriorityPageLimit(env: NodeJS.ProcessEnv = process.env): 
 }
 
 export const metadata = {
-  title: "Priority — CVE Intel",
+  title: "Priority — Kevelry",
   description:
     "Four named CVE priority views with exact ordering rules, score dates, and coverage. No composite score.",
 };

@@ -25,7 +25,7 @@ import {
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Explore CVE records — CVE Intel",
+  title: "Explore CVE records — Kevelry",
   description:
     "CVE identifier and description search with date, severity, KEV, and forecast filters over the retained local snapshot.",
 };

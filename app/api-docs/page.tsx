@@ -25,7 +25,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Public API v1 — CVE Intel",
+  title: "Public API v1 — Kevelry",
   description:
     "Browsable reference for the versioned read-only v1 API: endpoints, parameters, curl examples, rate limits, freshness, errors, and deprecation policy.",
 };

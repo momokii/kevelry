@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Page not found — CVE Intel",
+  title: "Page not found — Kevelry",
   description: "The requested page does not exist on this CVE intelligence console.",
 };
 

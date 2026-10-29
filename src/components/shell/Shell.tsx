@@ -103,7 +103,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               CV
             </span>
             <span>
-              <span className="app-brand-name">CVE Intel</span>
+              <span className="app-brand-name">Kevelry</span>
               <span className="app-brand-sub">research console</span>
             </span>
           </Link>

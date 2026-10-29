@@ -9,7 +9,7 @@ import {
 import { diffCheckpoints, type RadarChangeKind, type RadarItemSnapshot } from "@/lib/radar";
 
 export const metadata = {
-  title: "Change Radar — CVE Intel",
+  title: "Change Radar — Kevelry",
   description:
     "What changed between retained daily CVE snapshots, with before/after evidence for every entry.",
 };

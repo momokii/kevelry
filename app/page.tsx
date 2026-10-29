@@ -17,7 +17,7 @@ import { Panel } from "@/components/shell/Panel";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Overview — CVE Intel",
+  title: "Overview — Kevelry",
   description:
     "Published CVE volume, severity composition, EPSS distribution, KEV rhythm, and source freshness from the retained snapshot.",
 };
