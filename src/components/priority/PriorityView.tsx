@@ -543,7 +543,7 @@ export function PriorityRow({
             <span className="badge badge-high">{formatSignedDeltaPp(row.deltaPp)}</span>
           ) : null}
           <span className="priority-row-published">
-            <TimeText value={row.publishedAt} testId="priority-row-published-date" />
+            Published <TimeText value={row.publishedAt} testId="priority-row-published-date" />
           </span>
           <span className="priority-chevron" aria-hidden="true">
             {expanded ? "−" : "+"}

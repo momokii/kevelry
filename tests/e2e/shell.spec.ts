@@ -19,6 +19,16 @@ test("rail data-status rows match nav rows and dropdowns are themed", async ({ p
     expect(box?.height).toBeGreaterThanOrEqual(44);
   }
 
+  await page.goto("/api-docs");
+  const current = page.locator(
+    '.app-nav-link[aria-current="page"], .app-rail-status[aria-current="page"]',
+  );
+  await expect(current).toHaveCount(1);
+  await expect(page.locator('.app-rail .app-nav-link[href="/api-docs"]')).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
   const timezone = page.getByTestId("global-timezone");
   await expect(timezone).toBeVisible();
   await expect(timezone).toHaveCSS("appearance", "none");

@@ -50,7 +50,7 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
         <span className={`badge badge-${item.severityBand}`}>{meta.short}</span>
         {item.kevMember ? <span className="badge badge-kev">KEV</span> : null}
         <span className="result-date">
-          <TimeText value={item.datePublished} />
+          Published <TimeText value={item.datePublished} />
         </span>
       </div>
       <div className="result-body">
