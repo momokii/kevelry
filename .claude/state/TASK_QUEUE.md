@@ -197,6 +197,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns | None: docs-only; removes private-infra leakage from shareable examples. |
 | Notes | Commit d4abaa2, rebuilt, live verified. Per-endpoint docs/api/*.md guides were already shape-true; only the /api-docs page examples had drifted. |
 
+## TASK-015 — Disclosure summary affordance
+
+| Field    | Value                                                                                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID  | TASK-015                                                                                                                                                       |
+| Name     | Make example-response and data-table summaries visibly clickable                                                                                               |
+| Priority | Low                                                                                                                                                            |
+| Status   | DONE                                                                                                                                                           |
+| Complexity | S                                                                                                                                                            |
+| Depends On | TASK-014                                                                                                                                                     |
+| Scope    | Rotating chevron + 44px target on `.api-response-example` and `.chart-table` summaries (both suppressed the native marker and looked like static captions). |
+| Acceptance Criteria | Marker-presence e2e passes; api-docs suite 5/5 green; live healthy. |
+| Security Concerns | None: presentation-only. |
+| Notes | Commit 50120e2, rebuilt, live verified via screenshot. |
+
 ## Task Template
 
 ```markdown
