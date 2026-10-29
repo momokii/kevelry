@@ -36,10 +36,7 @@ import { pathToFileURL } from "node:url";
 setDefaultResultOrder("ipv4first");
 
 import { loadConfig } from "./lib/config";
-import {
-  getAggregates,
-  refreshAggregates,
-} from "./lib/aggregates";
+import { getAggregates, refreshAggregates } from "./lib/aggregates";
 import {
   cloneAndImportCveRevision,
   getCveCloneDepth,
@@ -170,9 +167,8 @@ function refreshAggregatesForced(db: CveDatabase, log: LogFn = defaultLog): bool
 }
 function lowerWorkerPriority(): void {
   try {
-    const setPriority = (
-      os as unknown as { setPriority?: (pid: number, priority: number) => void }
-    ).setPriority;
+    const setPriority = (os as unknown as { setPriority?: (pid: number, priority: number) => void })
+      .setPriority;
     if (typeof setPriority === "function") {
       setPriority.call(os, 0, 10);
     }
@@ -309,12 +305,49 @@ export function createWorkerScheduler(
   });
 }
 
+export interface LeaseRetryOptions {
+  /** Additional acquire attempts after the first try. Default 10. */
+  retries?: number;
+  /** Wait between attempts. Default 15s (covers the 60s lease TTL). */
+  delayMs?: number;
+  /** Injectable clock for tests. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Lease-acquire with bounded waiting (TASK-012). A worker killed mid-import
+ * (SIGKILL during a blocking git call skips shutdown handlers) leaves its
+ * 60s lease behind; the replacement must out-wait the TTL instead of
+ * exiting immediately — an immediate exit kills the web server too (the
+ * entrypoint exits when any child dies), turning one restart into a crash
+ * loop. A genuinely live second worker keeps renewing, so sustained failure
+ * still fatals loudly instead of running two importers on one volume.
+ */
+export async function acquireLeaseWithRetry(
+  scheduler: IngestionScheduler,
+  options: LeaseRetryOptions & { log?: LogFn } = {},
+): Promise<boolean> {
+  const log = options.log ?? defaultLog;
+  const retries = options.retries ?? 10;
+  const delayMs = options.delayMs ?? 15_000;
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    if (scheduler.start()) return true;
+    if (attempt === retries) break;
+    log({ event: "worker-lease-wait", holder: scheduler.holder, attempt: attempt + 1, retries });
+    await sleep(delayMs);
+  }
+  return false;
+}
+
 export interface RunWorkerOptions {
   dataDir?: string;
   scheduleEnabled?: boolean;
   ingestOnStart?: boolean;
   deps?: SourceJobDeps;
   schedulerOptions?: CreateSchedulerOptions;
+  leaseRetry?: LeaseRetryOptions;
   log?: LogFn;
   installHandlers?: boolean;
 }
@@ -367,11 +400,16 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       return jobs.epss(ctx);
     },
   };
-  const scheduler = createWorkerScheduler(db, wrappedJobs, scheduleEnabled, options.schedulerOptions);
+  const scheduler = createWorkerScheduler(
+    db,
+    wrappedJobs,
+    scheduleEnabled,
+    options.schedulerOptions,
+  );
   const releaseHandlers =
     options.installHandlers === false ? () => {} : installShutdownHandlers(scheduler);
 
-  if (!scheduler.start()) {
+  if (!(await acquireLeaseWithRetry(scheduler, { ...options.leaseRetry, log }))) {
     const health = scheduler.getStatus();
     log({
       event: "worker-fatal",
@@ -448,7 +486,11 @@ async function main(): Promise<void> {
       }
       process.exitCode = 0;
     } catch (error) {
-      defaultLog({ event: "worker-fatal", reason: "aggregate-refresh-failed", error: errorDetail(error) });
+      defaultLog({
+        event: "worker-fatal",
+        reason: "aggregate-refresh-failed",
+        error: errorDetail(error),
+      });
       process.exitCode = 1;
     }
     return;

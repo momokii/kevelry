@@ -35,6 +35,14 @@ test("unknown route renders the branded 404", async ({ page }) => {
   await expect(page.getByTestId("overview-root")).toBeVisible({ timeout: 20000 });
 });
 
+test("pages carry framing and referrer hardening", async ({ request }) => {
+  const response = await request.get("/");
+  expect(response).toBeOK();
+  expect(response.headers()["x-frame-options"]).toBe("DENY");
+  expect(response.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+});
+
 test("showcase asks crawlers not to index", async ({ page }) => {
   await page.goto("/showcase");
   const robots = page.locator('meta[name="robots"]');

@@ -10,6 +10,7 @@ import type { EpssImportResult } from "../src/lib/epss-import";
 import type { KevImportResult } from "../src/lib/kev-import";
 import { IngestionScheduler } from "../src/lib/schedule";
 import {
+  acquireLeaseWithRetry,
   createSourceJobs,
   resolveCvePin,
   resolveIngestOnStart,
@@ -308,6 +309,73 @@ describe("runWorker", () => {
     expect(enabledDeps.calls.kev).toBeGreaterThan(1);
     expect(enabledDeps.calls.epss).toBeGreaterThan(1);
     expect(disabledDeps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
+  });
+});
+
+describe("lease-acquire retry (TASK-012)", () => {
+  const idleJobs = {
+    cve: () => Promise.resolve({ ok: true, version: null }),
+    kev: () => Promise.resolve({ ok: true, version: null }),
+    epss: () => Promise.resolve({ ok: true, version: null }),
+  };
+
+  it("starts immediately when the lease is free", async () => {
+    const db = makeDb();
+    const scheduler = track(new IngestionScheduler({ db, jobs: idleJobs, manual: true }));
+    const logs: WorkerLog[] = [];
+    const acquired = await acquireLeaseWithRetry(scheduler, {
+      retries: 3,
+      delayMs: 1,
+      sleep: () => Promise.resolve(),
+      log: (entry) => logs.push(entry),
+    });
+    expect(acquired).toBe(true);
+    expect(logs.filter((entry) => entry.event === "worker-lease-wait")).toHaveLength(0);
+  });
+
+  it("out-waits a dead holder instead of failing at once", async () => {
+    const db = makeDb();
+    const dead = track(new IngestionScheduler({ db, jobs: idleJobs, manual: true }));
+    expect(dead.start()).toBe(true);
+    const replacement = track(new IngestionScheduler({ db, jobs: idleJobs, manual: true }));
+    expect(replacement.start()).toBe(false);
+    const logs: WorkerLog[] = [];
+    let sleeps = 0;
+    const acquired = await acquireLeaseWithRetry(replacement, {
+      retries: 3,
+      delayMs: 1,
+      sleep: () => {
+        sleeps += 1;
+        // The dead holder's shutdown releases the lease mid-wait.
+        if (sleeps === 1) dead.releaseLease();
+        return Promise.resolve();
+      },
+      log: (entry) => logs.push(entry),
+    });
+    expect(acquired).toBe(true);
+    expect(sleeps).toBe(1);
+    expect(logs.filter((entry) => entry.event === "worker-lease-wait")).toHaveLength(1);
+  });
+
+  it("still fails loudly when a live holder keeps renewing", async () => {
+    const db = makeDb();
+    const live = track(new IngestionScheduler({ db, jobs: idleJobs, manual: true }));
+    expect(live.start()).toBe(true);
+    const replacement = track(new IngestionScheduler({ db, jobs: idleJobs, manual: true }));
+    const logs: WorkerLog[] = [];
+    let sleeps = 0;
+    const acquired = await acquireLeaseWithRetry(replacement, {
+      retries: 2,
+      delayMs: 1,
+      sleep: () => {
+        sleeps += 1;
+        return Promise.resolve();
+      },
+      log: (entry) => logs.push(entry),
+    });
+    expect(acquired).toBe(false);
+    expect(sleeps).toBe(2);
+    expect(logs.filter((entry) => entry.event === "worker-lease-wait")).toHaveLength(2);
   });
 });
 
