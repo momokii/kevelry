@@ -57,6 +57,7 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-012 lease storm + page headers (2026-10-29): lease-acquire retry, page framing headers, Dockerfile patch-shape fix. Verified live with no API header dupes.
 - [x] TASK-017 nightly backups (2026-10-29): RUN_BACKUP_ONCE branch, host script + 02:00 cron, live 4.6GB backup verified, >2 GiB hash fix, dependabot, CONTRIBUTING, Permissions-Policy.
 - [x] README v1 face (2026-10-29): product title, license/node badges, live screenshots, repo map + stack rationale, fresh scale counts. Committed as e2fb129 (docs-only, no redeploy needed).
+- [x] Docker Hub release (2026-10-29): `kelanach/kevelry:1.0.0` + `latest` pushed (same digest, verified via Hub API); README points at the real image.
 - [x] Kevelry rebrand (2026-10-29): wordmark CVE Intel → Kevelry across UI titles/brand + README. Internals (package/image/volume) intentionally unchanged. Committed as b17f2ef, rebuilt, live title verified.
 - [x] GitHub launch (2026-10-29): `momokii/kevelry` created by owner; full history pushed over SSH and verified byte-identical; CI badge wired to the real repo. Remote `origin` tracks `main`.
 

@@ -237,11 +237,12 @@ Open `http://100.124.184.116:3100` in the browser.
 
 ### Public deployment
 
-The release artifact is **one self-contained image** (`cve-change-radar:local`
-from `docker compose build`; publish it to your registry to ship it — Docker Hub
-is just `docker tag cve-change-radar:local USER/cve-intel:v1 && docker push
-USER/cve-intel:v1`, then pull and `docker run` it anywhere with the env vars
-below). It runs
+The release artifact is **one self-contained image** — published as
+[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`1.0.0` and
+`latest` point at the same digest; prefer the versioned tag). Pull and
+`docker run` it anywhere with the env vars below. To publish your own build:
+`docker tag cve-change-radar:local USER/kevelry:1.0.0 && docker push
+USER/kevelry:1.0.0`. It runs
 the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
 container as non-root, listening on `$PORT` (default 3000) with data in
 `/data`. Two supported shapes:
