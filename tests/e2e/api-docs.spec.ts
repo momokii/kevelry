@@ -91,6 +91,19 @@ test("api-docs examples use the spec origin and shape-true responses", async ({ 
   await expect(page.getByTestId("api-docs-response-get-api-v1-radar")).toContainText("eventId");
 });
 
+test("response examples show a clickable marker", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/api-docs");
+  const marker = await page.evaluate(() => {
+    const el = document.querySelector(".api-response-example > summary");
+    return el === null ? null : getComputedStyle(el, "::before").content;
+  });
+  expect(marker, "missing disclosure marker").not.toBe("none");
+  const summary = page.locator(".api-response-example > summary").first();
+  await summary.click();
+  await expect(page.locator(".api-response-example pre").first()).toBeVisible();
+});
+
 test("api-docs stays readable at 360px", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 });
   await page.goto("/api-docs");
