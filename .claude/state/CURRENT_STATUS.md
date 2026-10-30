@@ -55,6 +55,7 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-015 disclosure markers (2026-10-28): response-example and data-table summaries had no visible affordance; added the rotating chevron + 44px target. Committed as 50120e2, rebuilt, live healthy.
 - [x] TASK-016 row dates + rail highlight (2026-10-28): priority/explore rows now say Published; rail-status no longer double-highlights with nav. Committed as 84131bf, rebuilt, live screenshot-verified.
 - [x] TASK-018 chart navigation (2026-10-29): inspector + month links go client-side; live URL swap 58ms vs 4.8s reload. Committed as 24710ae, rebuilt, live timed.
+- [x] TASK-019 dashboard grid (2026-10-30): rows even left/right, legend numbers aligned; verified pixel-equal live at desktop/tablet/mobile. Committed as d629fd1.
 - [x] TASK-012 lease storm + page headers (2026-10-29): lease-acquire retry, page framing headers, Dockerfile patch-shape fix. Verified live with no API header dupes.
 - [x] TASK-017 nightly backups (2026-10-29): RUN_BACKUP_ONCE branch, host script + 02:00 cron, live 4.6GB backup verified, >2 GiB hash fix, dependabot, CONTRIBUTING, Permissions-Policy.
 - [x] README v1 face (2026-10-29): product title, license/node badges, live screenshots, repo map + stack rationale, fresh scale counts. Committed as e2fb129 (docs-only, no redeploy needed).

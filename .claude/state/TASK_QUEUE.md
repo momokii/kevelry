@@ -257,6 +257,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns | None: same destinations, client-side routing only. |
 | Notes | Commit 24710ae, rebuilt, live timed. Cold cohort scan still takes seconds after arrival, but under skeleton instead of a white flash. |
 
+## TASK-019 — Even dashboard grid + aligned donut legend
+
+| Field    | Value                                                                                                                                                                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID  | TASK-019                                                                                                                                                                                                                                                                                                                                    |
+| Name     | Align dashboard rows left/right; line up donut legend numbers                                                                                                                                                                                                                                                                                 |
+| Priority | High                                                                                                                                                                                                                                                                                                                                          |
+| Status   | DONE                                                                                                                                                                                                                                                                                                                                          |
+| Complexity | S                                                                                                                                                                                                                                                                                                                                           |
+| Depends On | None                                                                                                                                                                                                                                                                                                                                          |
+| Scope    | Flattened the independent left/right stacks into one 12-col grid (volume+severity / cumulative+EPSS share tops and heights via stretch); scoped tablet rule keeps full-width stacking; donut legend to one column with tabular right-aligned numbers. No global CSS touched. |
+| Acceptance Criteria | Measured pixel-equal tops+heights on live; screenshots at 1600/900/390 clean; overview suite 9/9 green. |
+| Security Concerns | None: presentation-only. |
+| Notes | Commit d629fd1, rebuilt, live verified. Mobile order improves as a side effect (severity follows volume). Also fixed a latent missing span class on the EPSS panel exposed by the flattening. |
+
 ## Task Template
 
 ```markdown
