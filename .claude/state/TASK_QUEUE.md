@@ -242,6 +242,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns | Backup dirs hold a full DB copy: host path ~/cve-backups with owner-only traversal (0700 home? verify) — container uid 1001 via file ACL only on the backup root; no secrets in backups beyond the public corpus itself. |
 | Notes | Found live: backup path assumed <2 GiB (Node readFileSync cap) — production DB is 4.6GB; fixed with chunked hashing + multi-chunk unit test. Keep ~/cve-backups out of any off-box sync until reviewed. |
 
+## TASK-018 — Client-side chart navigation
+
+| Field    | Value                                                                                                                                                                                                                                                                                                                                                        |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID  | TASK-018                                                                                                                                                                                                                                                                                                                                                       |
+| Name     | Replace full-reload anchors with next/link on chart CTAs                                                                                                                                                                                                                                                                                                       |
+| Priority | Medium                                                                                                                                                                                                                                                                                                                                                         |
+| Status   | DONE                                                                                                                                                                                                                                                                                                                                                           |
+| Complexity | S                                                                                                                                                                                                                                                                                                                                                            |
+| Depends On | None                                                                                                                                                                                                                                                                                                                                                           |
+| Scope    | DensityMatrix inspector (2 links) + VolumeChart month link become next/link; external official-record links stay native anchors. New e2e pins zero document reloads on inspector navigation. |
+| Acceptance Criteria | No-load-event test passes; live URL swap 58ms (was 4.8s full reload); explore filter itself verified correct (severity=unknown is the valid Unscored band). |
+| Security Concerns | None: same destinations, client-side routing only. |
+| Notes | Commit 24710ae, rebuilt, live timed. Cold cohort scan still takes seconds after arrival, but under skeleton instead of a white flash. |
+
 ## Task Template
 
 ```markdown
