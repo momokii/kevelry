@@ -139,70 +139,68 @@ export default function OverviewPage() {
 
       <StatStrip corpus={data.corpus} kevLastMonth={kevLastMonth} />
 
-      <div className="grid" style={{ marginTop: "var(--ui-sp-6)" }}>
-        <div className="stack span-8">
-          <Panel
-            title="Publication volume"
-            sub="Monthly CVE publications in the retained snapshot. Select a month to inspect it; the chart window switches without changing the corpus."
-            testId="overview-chart"
-            actions={
-              <ChartInfo>
-                Bars are UTC calendar months, not smoothed. Select a bar with click or Enter, clear
-                with Escape. The peak is marked. The y-axis is count; the x-axis is month. Unknown
-                publication dates are excluded from this chart, not plotted as zero.
-              </ChartInfo>
-            }
-          >
-            <VolumeChart
-              months={months}
-              publishedTotal={data.publishedTotal}
-              kevMonths={data.kevByMonth}
-            />
-          </Panel>
-          <Panel
-            title="Cumulative growth"
-            sub="The running total inside this window. It is cumulative, not a forecast."
-            testId="overview-cumulative-panel"
-          >
-            <CumulativeChart months={months} publishedTotal={data.publishedTotal} />
-          </Panel>
-        </div>
-
-        <div className="stack span-4">
-          <Panel
-            title="Severity composition"
-            sub="Primary CNA CVSS only. Click a band to filter Explore; unscored is an explicit band, never low."
-            testId="overview-severity"
-            actions={
-              <ChartInfo>
-                Bands follow the primary CNA metric, preferring v4.0 → v3.1 → v3.0. Legacy v2 is
-                separate. ADP-only and metric-less records land in Unscored. Shares use all
-                published records as the denominator.
-              </ChartInfo>
-            }
-          >
-            <SeverityDonut bands={data.severityBands} total={data.publishedTotal} />
-          </Panel>
-
-          <Panel
-            title="EPSS distribution"
-            sub="Log-spaced probability buckets reveal the base rate: most records sit far below 10%."
-            testId="overview-forecast"
-            actions={
-              <ChartInfo>
-                EPSS is a dated forecast of exploitation in the next 30 days, not severity. Bars use
-                a log count scale so the tail is visible. Probability and percentile are different;
-                this chart uses probability.
-              </ChartInfo>
-            }
-          >
-            <EpssDistribution
-              histogram={data.epssLogHistogram}
-              total={epssTotal}
-              scoreDate={data.epssScoreDate}
-            />
-          </Panel>
-        </div>
+      <div className="grid overview-grid" style={{ marginTop: "var(--ui-sp-6)" }}>
+        <Panel
+          title="Publication volume"
+          className="span-8"
+          sub="Monthly CVE publications in the retained snapshot. Select a month to inspect it; the chart window switches without changing the corpus."
+          testId="overview-chart"
+          actions={
+            <ChartInfo>
+              Bars are UTC calendar months, not smoothed. Select a bar with click or Enter, clear
+              with Escape. The peak is marked. The y-axis is count; the x-axis is month. Unknown
+              publication dates are excluded from this chart, not plotted as zero.
+            </ChartInfo>
+          }
+        >
+          <VolumeChart
+            months={months}
+            publishedTotal={data.publishedTotal}
+            kevMonths={data.kevByMonth}
+          />
+        </Panel>
+        <Panel
+          title="Severity composition"
+          className="span-4"
+          sub="Primary CNA CVSS only. Click a band to filter Explore; unscored is an explicit band, never low."
+          testId="overview-severity"
+          actions={
+            <ChartInfo>
+              Bands follow the primary CNA metric, preferring v4.0 → v3.1 → v3.0. Legacy v2 is
+              separate. ADP-only and metric-less records land in Unscored. Shares use all published
+              records as the denominator.
+            </ChartInfo>
+          }
+        >
+          <SeverityDonut bands={data.severityBands} total={data.publishedTotal} />
+        </Panel>
+        <Panel
+          title="Cumulative growth"
+          className="span-8"
+          sub="The running total inside this window. It is cumulative, not a forecast."
+          testId="overview-cumulative-panel"
+        >
+          <CumulativeChart months={months} publishedTotal={data.publishedTotal} />
+        </Panel>
+        <Panel
+          title="EPSS distribution"
+          className="span-4"
+          sub="Log-spaced probability buckets reveal the base rate: most records sit far below 10%."
+          testId="overview-forecast"
+          actions={
+            <ChartInfo>
+              EPSS is a dated forecast of exploitation in the next 30 days, not severity. Bars use a
+              log count scale so the tail is visible. Probability and percentile are different; this
+              chart uses probability.
+            </ChartInfo>
+          }
+        >
+          <EpssDistribution
+            histogram={data.epssLogHistogram}
+            total={epssTotal}
+            scoreDate={data.epssScoreDate}
+          />
+        </Panel>
 
         <Panel
           title="Joint distribution: severity × forecast"
