@@ -379,6 +379,21 @@ test("volume chart exposes tooltips, selection, and the window toggle", async ({
   expect(containment, "segmented options overflow the track").toEqual({ ok: true, reason: "ok" });
 });
 
+test("matrix inspector links navigate client-side without a full reload", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const cell = page.getByTestId("overview-density-cell-critical-0");
+  await cell.focus();
+  await page.keyboard.press("Enter");
+  let loads = 0;
+  page.on("load", () => {
+    loads += 1;
+  });
+  await page.getByRole("link", { name: "Open this severity band" }).click();
+  await expect(page).toHaveURL(/\/explore\?severity=critical/, { timeout: 20000 });
+  expect(loads, "inspector link caused a full page reload").toBe(0);
+});
+
 test("density matrix selection updates the inspector and supports arrow keys", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AxisBottom, AxisLeft } from "@visx/axis";
@@ -294,9 +295,9 @@ export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeCh
             {formatInt(kevMonths.find((entry) => entry.month === selectedEntry.month)?.count ?? 0)}{" "}
             KEV additions
           </span>
-          <a className="btn btn-sm btn-primary" href={href}>
+          <Link className="btn btn-sm btn-primary" href={href}>
             Open this month in Explore
-          </a>
+          </Link>
           <button type="button" className="btn btn-sm" onClick={() => setSelected(null)}>
             Clear
           </button>

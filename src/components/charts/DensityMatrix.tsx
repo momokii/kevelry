@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
@@ -222,12 +223,12 @@ export function DensityMatrix({
               : `Primary CNA score range ${selectedMeta.range}.`}
         </p>
         <div className="stack" style={{ gap: 8 }}>
-          <a className="btn btn-sm" href={`/explore?severity=${selected.band}`}>
+          <Link className="btn btn-sm" href={`/explore?severity=${selected.band}`}>
             Open this severity band
-          </a>
-          <a className="btn btn-sm" href="/priority?view=highest-forecast">
+          </Link>
+          <Link className="btn btn-sm" href="/priority?view=highest-forecast">
             Highest forecast list
-          </a>
+          </Link>
         </div>
       </aside>
     </div>
