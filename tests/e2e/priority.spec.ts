@@ -339,6 +339,15 @@ test.describe.serial("priority list views", () => {
     await expect(page.getByTestId("priority-evidence-highest-forecast")).toContainText("Current");
   });
 
+  test("expanded rows sparkline the retained EPSS history", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=highest-forecast");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+    const trend = page.getByTestId("priority-row-epss-trend").first();
+    await expect(trend).toBeVisible();
+    await expect(trend).toHaveAttribute("aria-label", /dated observations/);
+  });
+
   test("new-critical renders windowed order and names the ineligible cases", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/priority?view=new-critical");

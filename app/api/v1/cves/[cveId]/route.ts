@@ -8,6 +8,7 @@ import {
   detailExtras,
   errorResponse,
   getDb,
+  loadEpssHistory,
   loadFullRecords,
   cachedOkResponse,
   preflightResponse,
@@ -35,7 +36,14 @@ export async function GET(
   const rate = reserveRateLimit(request, db);
   if (rate instanceof Response) return rate;
   if (!acquireConcurrencySlot()) {
-    return errorResponse(request, "RATE_LIMITED", "Server is busy. Retry after 60 seconds.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "RATE_LIMITED",
+      "Server is busy. Retry after 60 seconds.",
+      db,
+      undefined,
+      rate,
+    );
   }
   try {
     assertRequestBounds(request);
@@ -49,6 +57,7 @@ export async function GET(
       throw new ApiError("CVE_NOT_FOUND", 404, `No current PUBLISHED record for ${cveId}.`);
     }
     const extras = detailExtras(record.rawJson, record.descriptionLang);
+    const history = loadEpssHistory(db, [cveId]);
     const nowIso = new Date().toISOString();
     return cachedOkResponse(
       request,
@@ -58,6 +67,9 @@ export async function GET(
           ...toCveItem(record, getAcceptedEpssDate(db), null),
           descriptionLanguages: extras.descriptionLanguages,
           references: extras.references,
+          // Detail-only: per-date EPSS observations, oldest first, capped.
+          // Lists omit it for cost; null means no observations were retained.
+          epssHistory: history.get(cveId) ?? null,
         },
         provenance: buildProvenance(db, nowIso),
       },
@@ -67,7 +79,14 @@ export async function GET(
     if (error instanceof ApiError) {
       return errorResponse(request, error.code, error.message, db, error.details, rate);
     }
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", db, undefined, rate);
+    return errorResponse(
+      request,
+      "INTERNAL",
+      "Unexpected failure handling the request.",
+      db,
+      undefined,
+      rate,
+    );
   } finally {
     releaseConcurrencySlot();
   }

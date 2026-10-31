@@ -34,8 +34,10 @@ import { displayProbabilityPercent } from "@/lib/ranking";
 import { excerptDescription, officialCveLink } from "@/lib/search";
 import {
   buildProvenance,
+  loadEpssHistory,
   loadFullRecords,
   RANKING_POLICY_VERSION,
+  type EpssHistoryPoint,
   type FullRecord,
   unfilteredCohortCoverage,
 } from "@/app/api/v1/_lib/shared";
@@ -93,6 +95,7 @@ function toRow(
   records: Map<string, FullRecord>,
   scoreDate: string | null,
   deltaById: Map<string, { deltaPp: string; previousDate: string }>,
+  historyById: Map<string, EpssHistoryPoint[]> = new Map(),
 ): PriorityRowData | null {
   const record = records.get(item.id);
   if (record === undefined) return null;
@@ -127,6 +130,7 @@ function toRow(
     primaryScore: primary?.baseScore ?? null,
     deltaPp: delta?.deltaPp ?? null,
     deltaPreviousDate: delta?.previousDate ?? null,
+    epssHistory: historyById.get(item.id) ?? null,
     officialUrl: officialCveLink(item.id),
   };
 }
@@ -197,9 +201,12 @@ export function loadSnapshot(
 
   const ids = [...new Set(items.map((item) => item.id))];
   const records = new Map(loadFullRecords(db, ids).map((record) => [record.cveId, record]));
+  // One bulk trend query for the rendered rows; the detail panels sparkline
+  // from it without per-row queries.
+  const historyById = loadEpssHistory(db, ids);
 
   const rows = items
-    .map((item) => toRow(item, records, scoreDate, deltaById))
+    .map((item) => toRow(item, records, scoreDate, deltaById, historyById))
     .filter((row): row is PriorityRowData => row !== null);
 
   return {

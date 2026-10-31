@@ -20,10 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
-import {
-  resetDbOverride,
-  setDbOverride,
-} from "../app/api/v1/_lib/shared";
+import { loadEpssHistory, resetDbOverride, setDbOverride } from "../app/api/v1/_lib/shared";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
@@ -72,8 +69,24 @@ function seedSyncRuns(db: CveDatabase): void {
     const insert = db.handle.prepare(
       "INSERT INTO sync_runs (source, started_at, finished_at, status, revision, content_hash, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
     );
-    insert.run("cve", "2026-10-24T03:50:00.000Z", "2026-10-24T03:55:00.000Z", "succeeded", "rev-test-aaa", "hash-cve", null);
-    insert.run("kev", "2026-10-24T03:50:00.000Z", "2026-10-24T03:55:00.000Z", "succeeded", "2026.10.23", "hash-kev", null);
+    insert.run(
+      "cve",
+      "2026-10-24T03:50:00.000Z",
+      "2026-10-24T03:55:00.000Z",
+      "succeeded",
+      "rev-test-aaa",
+      "hash-cve",
+      null,
+    );
+    insert.run(
+      "kev",
+      "2026-10-24T03:50:00.000Z",
+      "2026-10-24T03:55:00.000Z",
+      "succeeded",
+      "2026.10.23",
+      "hash-kev",
+      null,
+    );
     insert.run(
       "epss",
       "2026-10-24T03:50:00.000Z",
@@ -149,7 +162,14 @@ function seedCorpus(db: CveDatabase): void {
     title: "CVE-2099-0001",
     description: LONG_DESC,
     published: "2026-10-20T14:02:00.000Z",
-    metrics: [{ origin: "CNA", version: "4.0", baseScore: "9.2", vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" }],
+    metrics: [
+      {
+        origin: "CNA",
+        version: "4.0",
+        baseScore: "9.2",
+        vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+      },
+    ],
     kev: "2026-10-23",
     epss: [{ date: SCORE_DATE, value: "0.1162", percentile: "0.96047" }],
   });
@@ -160,7 +180,9 @@ function seedCorpus(db: CveDatabase): void {
   });
   seedRecord(db, "CVE-2099-0003", {
     published: "2026-10-18T07:45:00.000Z",
-    metrics: [{ origin: "CNA", version: "2.0", baseScore: "10.0", vector: "AV:N/AC:L/Au:N/C:C/I:C/A:C" }],
+    metrics: [
+      { origin: "CNA", version: "2.0", baseScore: "10.0", vector: "AV:N/AC:L/Au:N/C:C/I:C/A:C" },
+    ],
     epss: [{ date: SCORE_DATE, value: "0", percentile: "0.08100" }],
   });
   seedRecord(db, "CVE-2099-0004", { state: "REJECTED" });
@@ -268,13 +290,19 @@ describe("v1 cve list and detail routes", () => {
     expectProvenance(firstBody);
     const firstData = firstBody.data as Array<{ cveId: string }>;
     expect(firstData.map((row) => row.cveId)).toEqual(["CVE-2099-0001", "CVE-2099-0006"]);
-    const pagination = firstBody.pagination as { limit: number; hasMore: boolean; nextCursor: string };
+    const pagination = firstBody.pagination as {
+      limit: number;
+      hasMore: boolean;
+      nextCursor: string;
+    };
     expect(pagination.limit).toBe(2);
     expect(pagination.hasMore).toBe(true);
     expect(typeof pagination.nextCursor).toBe("string");
 
     const second = await getCves(
-      new Request(`https://radar.test/api/v1/cves?limit=2&cursor=${encodeURIComponent(pagination.nextCursor)}`),
+      new Request(
+        `https://radar.test/api/v1/cves?limit=2&cursor=${encodeURIComponent(pagination.nextCursor)}`,
+      ),
     );
     expect(second.status).toBe(200);
     const secondBody = await bodyOf(second);
@@ -358,6 +386,63 @@ describe("v1 cve list and detail routes", () => {
   });
 });
 
+describe("epss history trend (detail-only)", () => {
+  it("loads latest-model observations per date, oldest first, capped", () => {
+    const db = makeDb();
+    seedCorpus(db);
+    void db;
+    db.runBoundedWrite(() => {
+      // Same-date second model must lose to the higher model version.
+      db.handle
+        .prepare(
+          "INSERT OR REPLACE INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run("CVE-2099-0006", SCORE_DATE, "v2026.06.99", "0.42", "0.99000");
+    });
+
+    const history = loadEpssHistory(db, ["CVE-2099-0006", "CVE-2099-0002", "CVE-2099-9999"]);
+    const series = history.get("CVE-2099-0006") ?? [];
+    expect(series.map((point) => point.scoreDate)).toEqual([PREV_DATE, SCORE_DATE]);
+    expect(series[1]).toMatchObject({
+      scoreDate: SCORE_DATE,
+      epss: "0.42",
+      modelVersion: "v2026.06.99",
+    });
+    expect(history.has("CVE-2099-0002"), "unscored ids stay absent").toBe(false);
+    expect(history.has("CVE-2099-9999"), "unknown ids stay absent").toBe(false);
+
+    const capped = loadEpssHistory(db, ["CVE-2099-0006"], 1);
+    expect(capped.get("CVE-2099-0006")?.map((point) => point.scoreDate)).toEqual([SCORE_DATE]);
+    expect(loadEpssHistory(db, []).size).toBe(0);
+  });
+
+  it("serves the trend on the detail route and null when unknown", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    void db;
+
+    const known = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0006"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0006" }),
+    });
+    expect(known.status).toBe(200);
+    const data = ((await bodyOf(known)).data ?? {}) as Record<string, unknown>;
+    const history = data.epssHistory as Array<Record<string, string>>;
+    expect(history.map((point) => point.scoreDate)).toEqual([PREV_DATE, SCORE_DATE]);
+    expect(history[0]).toEqual({ scoreDate: PREV_DATE, epss: "0.10", modelVersion: MODEL });
+
+    const unknown = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0002"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0002" }),
+    });
+    const unknownData = ((await bodyOf(unknown)).data ?? {}) as Record<string, unknown>;
+    expect(unknownData.epssHistory).toBeNull();
+
+    // Lists stay compact: the trend is detail-only by documented design.
+    const list = await getCves(new Request("https://radar.test/api/v1/cves?limit=5"));
+    const rows = ((await bodyOf(list)).data ?? []) as Array<Record<string, unknown>>;
+    for (const row of rows) expect("epssHistory" in row).toBe(false);
+  });
+});
+
 describe("v1 search route", () => {
   it("requires q and returns excerpts with official links", async () => {
     const db = makeDb();
@@ -401,9 +486,12 @@ describe("v1 priority routes", () => {
     void db;
 
     for (const list of ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"]) {
-      const response = await getPriority(new Request(`https://radar.test/api/v1/priority/${list}`), {
-        params: Promise.resolve({ listName: list }),
-      });
+      const response = await getPriority(
+        new Request(`https://radar.test/api/v1/priority/${list}`),
+        {
+          params: Promise.resolve({ listName: list }),
+        },
+      );
       expect(response.status, list).toBe(200);
       expectRateHeaders(response);
       const body = await bodyOf(response);
@@ -418,9 +506,9 @@ describe("v1 priority routes", () => {
     );
     const exploitedBody = await bodyOf(exploited);
     expect(exploitedBody.ordering).toEqual(["kev-dateAdded-desc", "cveId-asc"]);
-    expect(
-      (exploitedBody.data as Array<{ cveId: string }>).map((row) => row.cveId),
-    ).toEqual(["CVE-2099-0001"]);
+    expect((exploitedBody.data as Array<{ cveId: string }>).map((row) => row.cveId)).toEqual([
+      "CVE-2099-0001",
+    ]);
     expect(exploitedBody.deltaPp).toBeNull();
 
     const rising = await getPriority(
@@ -478,7 +566,9 @@ describe("v1 radar and replay routes", () => {
     seedRadarHistory(db);
     void db;
 
-    const listed = await getCheckpoints(new Request("https://radar.test/api/v1/replay/checkpoints"));
+    const listed = await getCheckpoints(
+      new Request("https://radar.test/api/v1/replay/checkpoints"),
+    );
     expect(listed.status).toBe(200);
     const listedBody = await bodyOf(listed);
     expectProvenance(listedBody);
@@ -524,7 +614,9 @@ describe("v1 overview, status, and health routes", () => {
     seedCorpus(db);
     void db;
 
-    const response = await getOverview(new Request("https://radar.test/api/v1/overview?bucket=month&months=2"));
+    const response = await getOverview(
+      new Request("https://radar.test/api/v1/overview?bucket=month&months=2"),
+    );
     expect(response.status).toBe(200);
     expectRateHeaders(response);
     const body = await bodyOf(response);
@@ -535,7 +627,9 @@ describe("v1 overview, status, and health routes", () => {
     const buckets = body.buckets as Array<{ bucketStart: string; count: number }>;
     expect(buckets.length).toBe(2);
 
-    const badBucket = await getOverview(new Request("https://radar.test/api/v1/overview?bucket=year"));
+    const badBucket = await getOverview(
+      new Request("https://radar.test/api/v1/overview?bucket=year"),
+    );
     expect(badBucket.status).toBe(400);
   });
 

@@ -99,3 +99,12 @@ Unknown EPSS is explicit null, never 0; a real zero is `"status": "known",
 (`adp-only`, `legacy`) instead of a promoted number. Unknown dates are null and
 excluded from dated views. Every response carries `provenance` and the
 rate-limit headers from the [README](README.md#limits).
+
+## EPSS history (detail only)
+
+`GET /api/v1/cves/{cveId}` adds `epssHistory`: retained observations as
+`{scoreDate, epss, modelVersion}`, oldest first, capped at the most recent
+90, latest model per date. `null` means no observations were retained, never
+zero. List and search items omit the key: history rides one bulk query per
+rendered row set on the site, and per-record cost does not belong on
+unbounded pages.

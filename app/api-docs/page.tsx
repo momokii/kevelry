@@ -253,6 +253,10 @@ function exampleResponse(endpoint: { path: string }): string {
           references: [
             { url: "https://example.org/advisory/42", container: "cna", provider: null },
           ],
+          epssHistory: [
+            { scoreDate: "2026-10-21", epss: "0.01402", modelVersion: "v2026.06.15" },
+            { scoreDate: "2026-10-27", epss: "0.02285", modelVersion: "v2026.06.15" },
+          ],
         },
         provenance,
       },

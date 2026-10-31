@@ -32,6 +32,12 @@ export const PRIORITY_MODE_LABELS: Record<PriorityMode, string> = {
   "rising-forecast": "Rising forecast",
 };
 
+export interface EpssTrendPoint {
+  scoreDate: string;
+  epss: string;
+  modelVersion: string;
+}
+
 export interface PriorityRowData {
   id: string;
   title: string;
@@ -44,6 +50,7 @@ export interface PriorityRowData {
   epssPercent: string | null;
   epssModel: string | null;
   epssDate: string | null;
+  epssHistory: EpssTrendPoint[] | null;
   primaryKnown: boolean;
   primaryLegacy: boolean;
   primaryAdpOnly: boolean;
@@ -364,6 +371,51 @@ function KevSignal({ row }: { row: PriorityRowData }) {
   );
 }
 
+/** Dated EPSS trend sparkline: linear 0..1 probability plot, oldest left.
+ * Display geometry only (pixel positions); never a comparison or a score. */
+function EpssTrend({ points }: { points: EpssTrendPoint[] }) {
+  const values = points.map((point) => {
+    const parsed = Number(point.epss);
+    return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : null;
+  });
+  if (values.length < 2 || values.some((value) => value === null)) return null;
+  const nums = values as number[];
+  const coords = nums.map((value, index) => {
+    const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+    return `${x.toFixed(1)},${(34 - value * 32).toFixed(1)}`;
+  });
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first === undefined || last === undefined) return null;
+  const lastX = points.length === 1 ? 50 : 100;
+  const lastY = 34 - (nums[nums.length - 1] ?? 0) * 32;
+  return (
+    <figure style={{ margin: 0 }}>
+      <svg
+        className={styles.trend}
+        viewBox="0 0 100 36"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`EPSS trend over ${points.length} dated observations, ${first.scoreDate} to ${last.scoreDate}.`}
+        data-testid="priority-row-epss-trend"
+      >
+        <polyline
+          points={coords.join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+        />
+        <circle cx={lastX} cy={lastY} r={2.5} fill="currentColor" />
+      </svg>
+      <figcaption className={styles.trendCaption}>
+        {points.length} dated observations, {first.scoreDate} to {last.scoreDate}
+        {last.modelVersion !== "" ? ` · model ${last.modelVersion}` : ""}; latest point marked.
+      </figcaption>
+    </figure>
+  );
+}
+
 function EpssSignal({ row }: { row: PriorityRowData }) {
   const width = row.epssKnown ? epssBarWidthPercent(row.epssPercent) : null;
   return (
@@ -392,6 +444,9 @@ function EpssSignal({ row }: { row: PriorityRowData }) {
             <span className={styles.barFill} style={{ width: `${width}%` }} />
           </div>
           <span className={styles.srOnly}>EPSS probability {row.epssPercent} percent.</span>
+          {row.epssHistory !== null && row.epssHistory.length >= 2 ? (
+            <EpssTrend points={row.epssHistory} />
+          ) : null}
         </>
       ) : (
         <p>
