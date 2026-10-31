@@ -123,8 +123,76 @@ describe("KEV snapshot importer (todo 9)", () => {
       name: string;
     }>;
     expect(columns.map((c) => c.name).sort()).toEqual(
-      ["catalog_date", "cve_id", "date_added", "product", "recorded_at", "vendor_project"].sort(),
+      [
+        "catalog_date",
+        "cve_id",
+        "date_added",
+        "due_date",
+        "product",
+        "ransomware_known",
+        "recorded_at",
+        "required_action",
+        "vendor_project",
+        "vulnerability_name",
+      ].sort(),
     );
+  });
+
+  it("stores enrichment evidence and degrades malformed fields to null", () => {
+    const db = makeDb();
+    seedCve(db, "CVE-2099-0001");
+    seedCve(db, "CVE-2099-0002");
+    const result = importKevCatalog(
+      db,
+      catalog("2026.10.20", STAMP_A, [
+        {
+          ...kevEntry("CVE-2099-0001"),
+          dueDate: "2026-11-10",
+          requiredAction: "Apply mitigations per vendor instructions.",
+          vulnerabilityName: "Edge gateway overflow",
+          knownRansomwareCampaignUse: "Known",
+          cwes: ["CWE-78", "CWE-78", "bogus", 42],
+        },
+        {
+          ...kevEntry("CVE-2099-0002"),
+          dueDate: "tomorrow-ish",
+          knownRansomwareCampaignUse: "Unknown",
+        },
+      ]),
+      { now: NOW_A },
+    );
+    expect(result.ok).toBe(true);
+    const rows = db.handle
+      .prepare(
+        "SELECT cve_id, due_date, required_action, vulnerability_name, ransomware_known FROM kev_entries ORDER BY cve_id ASC",
+      )
+      .all() as Array<{
+      cve_id: string;
+      due_date: string | null;
+      required_action: string | null;
+      vulnerability_name: string | null;
+      ransomware_known: number | null;
+    }>;
+    expect(rows).toEqual([
+      {
+        cve_id: "CVE-2099-0001",
+        due_date: "2026-11-10",
+        required_action: "Apply mitigations per vendor instructions.",
+        vulnerability_name: "Edge gateway overflow",
+        ransomware_known: 1,
+      },
+      {
+        cve_id: "CVE-2099-0002",
+        due_date: null,
+        required_action: null,
+        vulnerability_name: null,
+        ransomware_known: 0,
+      },
+    ]);
+    const cwes = db.handle
+      .prepare("SELECT cve_id, cwe_id FROM kev_cwes ORDER BY cve_id ASC, cwe_id ASC")
+      .all() as Array<{ cve_id: string; cwe_id: string }>;
+    expect(cwes).toEqual([{ cve_id: "CVE-2099-0001", cwe_id: "CWE-78" }]);
   });
 
   it("aborts on a tampered declared count with last-known-good intact", () => {

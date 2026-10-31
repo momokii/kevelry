@@ -2,6 +2,7 @@ import {
   getAcceptedEpssDate,
   getDefaultPriority,
   getHighestForecast,
+  getKevDueSoon,
   getKnownExploited,
   getNewCritical,
   getRisingForecast,
@@ -32,7 +33,13 @@ export async function OPTIONS(request: Request): Promise<Response> {
   return preflightResponse(request);
 }
 
-const LISTS = ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"] as const;
+const LISTS = [
+  "known-exploited",
+  "highest-forecast",
+  "new-critical",
+  "rising-forecast",
+  "kev-due-soon",
+] as const;
 type ListName = (typeof LISTS)[number];
 
 const ORDERINGS: Record<ListName, string[]> = {
@@ -40,6 +47,7 @@ const ORDERINGS: Record<ListName, string[]> = {
   "highest-forecast": ["epss-raw-desc", "published-desc", "cveId-asc"],
   "new-critical": ["published-desc", "cveId-asc"],
   "rising-forecast": ["delta-pp-desc", "epss-raw-desc", "cveId-asc"],
+  "kev-due-soon": ["kev-duedate-asc", "cveId-asc"],
 };
 
 export async function GET(
@@ -121,7 +129,9 @@ export async function GET(
           ? getHighestForecast(db, cap)
           : list === "new-critical"
             ? getNewCritical(db, nowIso, cap)
-            : getDefaultPriority(db, cap);
+            : list === "kev-due-soon"
+              ? getKevDueSoon(db, cap)
+              : getDefaultPriority(db, cap);
     const { page, hasMore, nextCursor } = paginateCapped(items, offset, limit);
     const records = loadFullRecords(
       db,

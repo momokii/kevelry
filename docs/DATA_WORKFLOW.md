@@ -207,6 +207,14 @@ descending, current raw probability descending, ID ASCII ascending. Missing date
 and model transitions are ineligible, not zero or interpolated data. This is a
 forecast movement list, not social popularity or observed exploitation telemetry.
 
+**KEV due soon:** KEV members with a valid catalog remediation `dueDate` only.
+Sort due ascending (overdue first, no upper cutoff), ID ASCII ascending.
+Missing or malformed due dates are ineligible, never defaulted. Due dates are
+federal remediation deadlines from the catalog (`requiredAction` names the
+directive; `knownRansomwareCampaignUse` flags stated ransomware use), not
+exploit predictions. Live-only: retained checkpoints keep their five-view
+contract, so replay never serves this view.
+
 Stale source data retains its dated values and stale label; it is never relabeled
 as a current-day forecast. A headline CVE is not guaranteed to rank first. Optional
 editorial spotlighting must be labeled and separate from this automated ordering.

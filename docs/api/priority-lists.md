@@ -1,15 +1,18 @@
 # Priority lists
 
-Site views covered: known-exploited, highest-forecast, new-critical, and
-rising-forecast. Separate signals, deterministic ordering, no invented score.
+Site views covered: known-exploited, highest-forecast, new-critical,
+rising-forecast, and kev-due-soon. Separate signals, deterministic ordering,
+no invented score.
 
 ## Endpoints
 
     GET /api/v1/priority/{listName}
 
 `{listName}` is one of `known-exploited`, `highest-forecast`, `new-critical`,
-`rising-forecast`. Unknown names return `LIST_NOT_FOUND`. Only `cursor` and
-`limit` paginate; the cohorts are fixed by the ranking contract.
+`rising-forecast`, `kev-due-soon`. Unknown names return `LIST_NOT_FOUND`.
+Only `cursor` and `limit` paginate; the cohorts are fixed by the ranking
+contract. `kev-due-soon` is live-only: retained checkpoints keep their
+five-view contract, so replay never serves it.
 
 ## Ordering (also returned per response in `ordering`)
 
@@ -26,6 +29,10 @@ rising-forecast. Separate signals, deterministic ordering, no invented score.
   `deltaPp = 100 * (epss[d] - epss[d-7])` only; delta descending, current raw
   probability descending, ID ascending. Missing dates and model transitions are
   ineligible, never interpolated. Aligned deltas arrive in `deltaPp`.
+- `kev-due-soon`: KEV members with a valid catalog remediation `dueDate`;
+  due ascending (overdue first, no upper cutoff), ID ascending. Missing or
+  malformed due dates are ineligible, never defaulted. Due dates are federal
+  remediation deadlines, not exploit predictions.
 
 ## Examples
 
@@ -49,7 +56,15 @@ curl "https://radar.example.org/api/v1/priority/rising-forecast?limit=2"
       "excerptTruncated": true,
       "excerptLanguage": "en",
       "excerptStatus": "present",
-      "kev": { "listed": true, "dateAdded": "2026-10-23" },
+      "kev": {
+        "listed": true,
+        "dateAdded": "2026-10-23",
+        "dueDate": "2026-11-13",
+        "requiredAction": "Apply mitigations per vendor instructions.",
+        "vulnerabilityName": null,
+        "ransomwareKnown": null,
+        "cwes": ["CWE-78"]
+      },
       "epss": {
         "status": "known",
         "value": 0.1162,

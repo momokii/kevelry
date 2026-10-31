@@ -24,7 +24,7 @@ import {
 const NAV = [
   { href: "/", label: "Overview", icon: OverviewIcon },
   { href: "/explore", label: "Search", icon: SearchIcon },
-  { href: "/priority", label: "Priority", icon: PriorityIcon, count: "4 views" },
+  { href: "/priority", label: "Priority", icon: PriorityIcon, count: "5 views" },
   { href: "/radar", label: "Radar", icon: RadarIcon },
   { href: "/replay", label: "Replay", icon: ReplayIcon },
   { href: "/methodology", label: "Method", icon: MethodIcon },

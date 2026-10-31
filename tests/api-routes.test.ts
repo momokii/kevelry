@@ -480,12 +480,18 @@ describe("v1 search route", () => {
 });
 
 describe("v1 priority routes", () => {
-  it("serves the four named views with ordering, deltas, and 404s unknown lists", async () => {
+  it("serves the five named views with ordering, deltas, and 404s unknown lists", async () => {
     const db = makeDb();
     seedCorpus(db);
     void db;
 
-    for (const list of ["known-exploited", "highest-forecast", "new-critical", "rising-forecast"]) {
+    for (const list of [
+      "known-exploited",
+      "highest-forecast",
+      "new-critical",
+      "rising-forecast",
+      "kev-due-soon",
+    ]) {
       const response = await getPriority(
         new Request(`https://radar.test/api/v1/priority/${list}`),
         {
@@ -519,6 +525,18 @@ describe("v1 priority routes", () => {
     const risingData = risingBody.data as Array<{ cveId: string }>;
     expect(risingData.map((row) => row.cveId)).toEqual(["CVE-2099-0006"]);
     expect(risingBody.deltaPp).toEqual([8]);
+
+    // Fixture KEV rows carry no due dates, so the view is honestly empty;
+    // ordering keys still hold. Content ordering is proved in priority.test.ts.
+    const dueSoon = await getPriority(
+      new Request("https://radar.test/api/v1/priority/kev-due-soon"),
+      { params: Promise.resolve({ listName: "kev-due-soon" }) },
+    );
+    expect(dueSoon.status).toBe(200);
+    const dueSoonBody = await bodyOf(dueSoon);
+    expect(dueSoonBody.list).toBe("kev-due-soon");
+    expect(dueSoonBody.ordering).toEqual(["kev-duedate-asc", "cveId-asc"]);
+    expect(dueSoonBody.data).toEqual([]);
 
     const missing = await getPriority(
       new Request("https://radar.test/api/v1/priority/most-discussed"),

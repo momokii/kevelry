@@ -225,12 +225,12 @@ describe("task 43 aggregate cache (50k fixture)", () => {
       ].sort(),
     );
     const reverted = db.revertTo(1);
-    expect(reverted).toEqual([2]);
+    expect(reverted).toEqual([3, 2]);
     const after = db.handle
       .prepare("SELECT name FROM sqlite_master WHERE name = 'aggregate_cache'")
       .all();
     expect(after).toHaveLength(0);
-    expect(db.migrate()).toEqual([2]);
+    expect(db.migrate()).toEqual([2, 3]);
   });
 
   it("refresh matches direct-SQL truth for every aggregate section", { timeout: 180_000 }, () => {

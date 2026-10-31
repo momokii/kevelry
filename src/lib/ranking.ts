@@ -249,6 +249,38 @@ export function orderDefaultPriority<T>(items: readonly T[]): T[] {
 }
 
 // ---------------------------------------------------------------------------
+// KEV due-soon: KEV members with a valid calendar remediation due date.
+// Due date ascending (overdue first; no upper cutoff — a real deadline six
+// months out still outranks no deadline at all), then ASCII ID. Day strings
+// in YYYY-MM-DD shape compare lexicographically; malformed or missing due
+// dates are ineligible, never throw. Non-members are excluded.
+// ---------------------------------------------------------------------------
+
+const DUE_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isDueDay(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = DUE_DAY_RE.exec(value);
+  if (match === null) return false;
+  const ms = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(ms)) return false;
+  return new Date(ms).toISOString().slice(0, 10) === value;
+}
+
+export function orderKevDueSoon<T>(items: readonly T[]): T[] {
+  const rows = ((Array.isArray(items) ? items : []) as unknown[]).filter((row) =>
+    kevOf(row) ? isDueDay(asRecord(row).kevDueDate) : false,
+  ) as T[];
+  rows.sort((ra, rb) => {
+    const da = asRecord(ra as unknown).kevDueDate as string;
+    const db = asRecord(rb as unknown).kevDueDate as string;
+    if (da !== db) return da < db ? -1 : 1;
+    return asciiCompare(idOf(ra), idOf(rb));
+  });
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
 // Known exploited: KEV members only, dateAdded desc then ASCII ID.
 // Invalid dateAdded sorts after valid dates (unknown), never throws.
 // ---------------------------------------------------------------------------

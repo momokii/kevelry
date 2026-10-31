@@ -1,8 +1,8 @@
 // Priority list views (plan todo 20). Server component reading the accepted
 // local snapshots through the deterministic priority services in
-// `src/lib/priority` — the same code the versioned API reads. Four named
+// `src/lib/priority` — the same code the versioned API reads. Five named
 // modes only: known-exploited, highest-forecast, new-critical,
-// rising-forecast. No "Popular" tab, no blended or composite score anywhere:
+// rising-forecast, kev-due-soon. No "Popular" tab, no blended or composite score anywhere:
 // each mode states its exact ordering inputs beside the list it explains.
 // Unknown and stale values are labeled in place, never zeroed or hidden.
 
@@ -25,6 +25,7 @@ import { Panel } from "@/components/shell/Panel";
 import {
   getAcceptedEpssDate,
   getHighestForecast,
+  getKevDueSoon,
   getKnownExploited,
   getNewCritical,
   getRisingForecast,
@@ -64,7 +65,7 @@ export function resolvePriorityPageLimit(env: NodeJS.ProcessEnv = process.env): 
 export const metadata = {
   title: "Priority — Kevelry",
   description:
-    "Four named CVE priority views with exact ordering rules, score dates, and coverage. No composite score.",
+    "Five named CVE priority views with exact ordering rules, score dates, and coverage. No composite score.",
 };
 
 function isPriorityMode(value: unknown): value is PriorityMode {
@@ -72,7 +73,8 @@ function isPriorityMode(value: unknown): value is PriorityMode {
     value === "known-exploited" ||
     value === "highest-forecast" ||
     value === "new-critical" ||
-    value === "rising-forecast"
+    value === "rising-forecast" ||
+    value === "kev-due-soon"
   );
 }
 
@@ -116,6 +118,8 @@ function toRow(
     publishedAt: record.publishedAt,
     kevListed: record.kevDateAdded !== null,
     kevDateAdded: record.kevDateAdded,
+    kevDueDate: record.kevDueDate,
+    kevRansomwareKnown: record.kevRansomwareKnown,
     epssKnown: record.epssText !== null,
     epssPercent:
       record.epssText !== null
@@ -188,7 +192,9 @@ export function loadSnapshot(
         ? getHighestForecast(db, limit)
         : mode === "new-critical"
           ? getNewCritical(db, nowIso, limit)
-          : rising.map((row) => row.item);
+          : mode === "kev-due-soon"
+            ? getKevDueSoon(db, limit)
+            : rising.map((row) => row.item);
   const corpusCoverage = unfilteredCohortCoverage(db, Math.min(limit, items.length));
 
   const previousDate = scoreDate === null ? null : minus7Days(scoreDate);
@@ -239,6 +245,8 @@ const ORDERING_EXTRAS: Record<PriorityMode, string> = {
     "Unknown, legacy-only (v2), and ADP-only primary cases are ineligible, not low severity. No mixed-version numeric severity ordering is implied.",
   "rising-forecast":
     "Missing dates and model transitions are ineligible, never interpolated or zeroed. This is a forecast movement list, not social popularity or observed exploitation telemetry.",
+  "kev-due-soon":
+    "Only KEV members with a valid catalog remediation due date; overdue first, no upper cutoff. Missing or malformed due dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not exploit predictions.",
 };
 
 export default async function PriorityPage({
@@ -268,7 +276,7 @@ export default async function PriorityPage({
             <span className="dot" aria-hidden="true" />
             <span>Policy {RANKING_POLICY_VERSION}</span>
             <span className="dot" aria-hidden="true" />
-            <span>four named views</span>
+            <span>five named views</span>
           </>
         }
         title="What deserves attention now?"

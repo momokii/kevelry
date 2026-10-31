@@ -18,6 +18,7 @@ import {
   getAcceptedEpssDate,
   getDefaultPriority,
   getHighestForecast,
+  getKevDueSoon,
   getKnownExploited,
   getNewCritical,
   getRisingForecast,
@@ -186,6 +187,28 @@ describe("priority services on SQLite (todo 11)", () => {
       "CVE-2099-0001",
       "CVE-2099-0004",
     ]);
+  });
+
+  it("kev-due-soon: due ascending with overdue first; missing/malformed excluded", () => {
+    const db = makeDb();
+    for (const id of ["CVE-2099-0001", "CVE-2099-0002", "CVE-2099-0003", "CVE-2099-0004"]) {
+      seedRecord(db, id);
+    }
+    const stamp = "2026-10-24T00:00:00.000Z";
+    db.runBoundedWrite(() => {
+      const insert = db.handle.prepare(
+        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, due_date, recorded_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      insert.run("CVE-2099-0001", "2026-10-20", stamp, "2026-10-25", stamp);
+      insert.run("CVE-2099-0002", "2026-10-21", stamp, "2027-01-15", stamp);
+      insert.run("CVE-2099-0003", "2026-10-22", stamp, null, stamp);
+      insert.run("CVE-2099-0004", "2026-10-23", stamp, "not-a-date", stamp);
+    });
+    const items = getKevDueSoon(db);
+    expect(items.map((row) => row.id)).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
+    expect(items[0]?.kevDueDate).toBe("2026-10-25");
+    expect(getKevDueSoon(db, 1).map((row) => row.id)).toEqual(["CVE-2099-0001"]);
+    expect(getKevDueSoon(db, 0)).toEqual([]);
   });
 
   it("highest-forecast: raw probability desc; unknown excluded; KEV is not a sort key", () => {

@@ -5,6 +5,7 @@ import {
   displayProbabilityPercent,
   orderDefaultPriority,
   orderHighestForecast,
+  orderKevDueSoon,
   orderKnownExploited,
   risingDeltaPp,
   selectNewCritical,
@@ -342,6 +343,49 @@ describe("boundary cases: default priority", () => {
       def("CVE-2099-0001", { epss: "0.5", publishedAt: "2026-10-23T10:00:00.123Z" }),
     ];
     expect(ids(orderDefaultPriority(rows))).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
+  });
+});
+
+describe("boundary cases: kev-due-soon", () => {
+  const due = (id: string, kevDueDate: unknown, kevMember = true) => ({
+    id,
+    kevMember,
+    kevDueDate,
+  });
+
+  it("due dates ascend with overdue first and no upper cutoff", () => {
+    const rows = [
+      due("CVE-2099-0003", "2027-06-01"),
+      due("CVE-2099-0001", "2026-10-20"),
+      due("CVE-2099-0002", "2026-11-15"),
+    ];
+    expect(ids(orderKevDueSoon(rows))).toEqual([
+      "CVE-2099-0001",
+      "CVE-2099-0002",
+      "CVE-2099-0003",
+    ]);
+  });
+
+  it("due-date ties fall back to ASCII ID", () => {
+    const rows = [due("CVE-2099-0002", "2026-11-01"), due("CVE-2099-0001", "2026-11-01")];
+    expect(ids(orderKevDueSoon(rows))).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
+  });
+
+  it("excludes non-members and malformed or missing due dates", () => {
+    const rows = [
+      due("CVE-2099-0004", "2026-10-20", false),
+      due("CVE-2099-0005", null),
+      due("CVE-2099-0006", "next Friday"),
+      due("CVE-2099-0007", "2026-13-40"),
+      due("CVE-2099-0001", "2026-10-20"),
+    ];
+    expect(ids(orderKevDueSoon(rows))).toEqual(["CVE-2099-0001"]);
+  });
+
+  it("never throws on hostile rows", () => {
+    const garbage = [null, 42, "due", { id: 7, kevMember: "yes", kevDueDate: {} }];
+    expect(() => orderKevDueSoon(garbage)).not.toThrow();
+    expect(orderKevDueSoon(garbage)).toEqual([]);
   });
 });
 

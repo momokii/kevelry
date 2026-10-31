@@ -853,6 +853,11 @@ export interface FullRecord {
   descriptionLang: string | null;
   rawJson: string | null;
   kevDateAdded: string | null;
+  kevDueDate: string | null;
+  kevRequiredAction: string | null;
+  kevVulnerabilityName: string | null;
+  kevRansomwareKnown: boolean | null;
+  kevCwes: string[];
   epssText: string | null;
   epssPercentile: string | null;
   epssModel: string | null;
@@ -874,6 +879,10 @@ interface RecordRow {
 interface KevRow {
   cve_id: string;
   date_added: string;
+  due_date: string | null;
+  required_action: string | null;
+  vulnerability_name: string | null;
+  ransomware_known: number | null;
 }
 
 interface EpssRow {
@@ -906,6 +915,16 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
   const unique = [...new Set(ids)];
   const records = new Map<string, RecordRow>();
   const kevDates = new Map<string, string>();
+  const kevEnrichment = new Map<
+    string,
+    {
+      dueDate: string | null;
+      requiredAction: string | null;
+      vulnerabilityName: string | null;
+      ransomwareKnown: boolean | null;
+    }
+  >();
+  const kevCwes = new Map<string, string[]>();
   const epssById = new Map<string, EpssRow>();
   const metricsById = new Map<string, MetricRow[]>();
   const acceptedDate = getAcceptedEpssDate(db);
@@ -919,9 +938,27 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       .all(...group) as RecordRow[];
     for (const row of rows) records.set(row.cve_id, row);
     const kevRows = db.handle
-      .prepare(`SELECT cve_id, date_added FROM kev_entries WHERE cve_id IN (${placeholders})`)
+      .prepare(
+        `SELECT cve_id, date_added, due_date, required_action, vulnerability_name, ransomware_known FROM kev_entries WHERE cve_id IN (${placeholders})`,
+      )
       .all(...group) as KevRow[];
-    for (const row of kevRows) kevDates.set(row.cve_id, row.date_added);
+    for (const row of kevRows) {
+      kevDates.set(row.cve_id, row.date_added);
+      kevEnrichment.set(row.cve_id, {
+        dueDate: row.due_date,
+        requiredAction: row.required_action,
+        vulnerabilityName: row.vulnerability_name,
+        ransomwareKnown: row.ransomware_known === null ? null : row.ransomware_known !== 0,
+      });
+    }
+    const cweRows = db.handle
+      .prepare(`SELECT cve_id, cwe_id FROM kev_cwes WHERE cve_id IN (${placeholders}) ORDER BY cve_id ASC, cwe_id ASC`)
+      .all(...group) as Array<{ cve_id: string; cwe_id: string }>;
+    for (const row of cweRows) {
+      const list = kevCwes.get(row.cve_id);
+      if (list === undefined) kevCwes.set(row.cve_id, [row.cwe_id]);
+      else list.push(row.cwe_id);
+    }
     if (acceptedDate !== null) {
       const epssRows = db.handle
         .prepare(
@@ -972,6 +1009,11 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       descriptionLang: row.description_lang,
       rawJson: row.raw_json,
       kevDateAdded: kevDates.get(cveId) ?? null,
+      kevDueDate: kevEnrichment.get(cveId)?.dueDate ?? null,
+      kevRequiredAction: kevEnrichment.get(cveId)?.requiredAction ?? null,
+      kevVulnerabilityName: kevEnrichment.get(cveId)?.vulnerabilityName ?? null,
+      kevRansomwareKnown: kevEnrichment.get(cveId)?.ransomwareKnown ?? null,
+      kevCwes: kevCwes.get(cveId) ?? [],
       epssText: epss?.epss ?? null,
       epssPercentile: epss?.percentile ?? null,
       epssModel: epss?.model_version ?? null,
@@ -1088,7 +1130,15 @@ export function toCveItem(
     excerptTruncated: excerpt.excerptTruncated,
     excerptLanguage: excerpt.excerptLanguage,
     excerptStatus: excerpt.excerptStatus,
-    kev: { listed: record.kevDateAdded !== null, dateAdded: record.kevDateAdded },
+    kev: {
+      listed: record.kevDateAdded !== null,
+      dateAdded: record.kevDateAdded,
+      dueDate: record.kevDueDate,
+      requiredAction: record.kevRequiredAction,
+      vulnerabilityName: record.kevVulnerabilityName,
+      ransomwareKnown: record.kevRansomwareKnown,
+      cwes: record.kevCwes,
+    },
     epss,
     cvssPrimary,
   };

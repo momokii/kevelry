@@ -350,6 +350,7 @@ function hydrateTopIds(
     epss: epssById.get(id) ?? null,
     publishedAt: publishedById.get(id) ?? null,
     dateAdded: kevDates.get(id) ?? null,
+    kevDueDate: null,
     primary: selectPrimaryCvss(metricsById.get(id) ?? []) ?? null,
   }));
 }

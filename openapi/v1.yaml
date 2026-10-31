@@ -31,7 +31,7 @@ tags:
   - name: Overview
     description: Publication-volume aggregates behind the overview charts.
   - name: Priority
-    description: The four named explainable orderings. Distinct signals, no composite score.
+    description: The five named explainable orderings. Distinct signals, no composite score.
   - name: Radar
     description: Observed change feed with before/after evidence.
   - name: Replay
@@ -956,6 +956,11 @@ components:
       required:
         - listed
         - dateAdded
+        - dueDate
+        - requiredAction
+        - vulnerabilityName
+        - ransomwareKnown
+        - cwes
       description: Membership in the accepted KEV snapshot. Absence means not listed, not proof of no exploitation.
       properties:
         listed:
@@ -966,6 +971,33 @@ components:
           nullable: true
           description: Catalog-entry date (YYYY-MM-DD), not first-exploit date. Null when not listed.
           example: null
+        dueDate:
+          type: string
+          nullable: true
+          description: Federal remediation deadline (YYYY-MM-DD) from the catalog. Null when absent or not listed.
+          example: "2026-11-13"
+        requiredAction:
+          type: string
+          nullable: true
+          description: Catalog remediation directive. Null when absent or not listed.
+          example: "Apply mitigations per vendor instructions."
+        vulnerabilityName:
+          type: string
+          nullable: true
+          description: Catalog short name. Null when absent or not listed.
+          example: null
+        ransomwareKnown:
+          type: boolean
+          nullable: true
+          description: True when the catalog states ransomware use is Known, false when Unknown, null when unstated or not listed.
+          example: null
+        cwes:
+          type: array
+          description: Catalog-advertised CWE identifiers, ascending. Empty when none advertised.
+          items:
+            type: string
+          example:
+            - CWE-78
     CvssPrimary:
       type: object
       required:
@@ -1196,6 +1228,7 @@ components:
         - highest-forecast
         - new-critical
         - rising-forecast
+        - kev-due-soon
       example: known-exploited
     PriorityListResponse:
       type: object

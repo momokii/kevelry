@@ -23,6 +23,7 @@ import {
 } from "./a11y-audit";
 import {
   getHighestForecast,
+  getKevDueSoon,
   getKnownExploited,
   getNewCritical,
   getRisingForecast,
@@ -155,12 +156,12 @@ function seedPriorityFixtures(db: CveDatabase, scoreDate: string, prevDate: stri
     );
 
     const kev = db.handle.prepare(
-      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
+      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, due_date, ransomware_known, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
     );
-    kev.run(IDS[0], day(-2), nowIso, nowIso);
-    kev.run(IDS[1], day(-1), nowIso, nowIso);
-    kev.run(IDS[3], day(-3), nowIso, nowIso);
-    kev.run(IDS[6], day(-1), nowIso, nowIso);
+    kev.run(IDS[0], day(-2), nowIso, day(5), 1, nowIso);
+    kev.run(IDS[1], day(-1), nowIso, day(40), 0, nowIso);
+    kev.run(IDS[3], day(-3), nowIso, null, null, nowIso);
+    kev.run(IDS[6], day(-1), nowIso, day(-4), null, nowIso);
 
     const epss = db.handle.prepare(
       "INSERT OR REPLACE INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
@@ -212,6 +213,7 @@ interface ExpectedOrders {
   newCritical: string[];
   risingForecast: string[];
   risingDeltas: string[];
+  kevDueSoon: string[];
 }
 
 function expectedFromServices(scoreDate: string, prevDate: string): ExpectedOrders {
@@ -222,6 +224,7 @@ function expectedFromServices(scoreDate: string, prevDate: string): ExpectedOrde
     const rising = getRisingForecast(db);
     return {
       knownExploited: getKnownExploited(db).map((row) => row.id),
+      kevDueSoon: getKevDueSoon(db).map((row) => row.id),
       highestForecast: getHighestForecast(db).map((row) => row.id),
       newCritical: getNewCritical(db, new Date().toISOString()).map((row) => row.id),
       risingForecast: rising.map((row) => row.item.id),
@@ -290,7 +293,7 @@ test.describe.serial("priority list views", () => {
       "aria-current",
       "page",
     );
-    await expect(page.locator('[data-testid^="priority-tab-"]')).toHaveCount(4);
+    await expect(page.locator('[data-testid^="priority-tab-"]')).toHaveCount(5);
     await expect(page.getByTestId("priority-ordering-known-exploited")).toContainText(
       "dateAdded descending",
     );
@@ -316,6 +319,28 @@ test.describe.serial("priority list views", () => {
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
+  });
+
+  test("kev-due-soon renders due-ascending order with overdue first", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=kev-due-soon");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+    await expect(page.getByTestId("priority-tab-kev-due-soon")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(page.getByTestId("priority-ordering-kev-due-soon")).toContainText(
+      "due date ascending",
+    );
+    await expect(renderedIds(page, "kev-due-soon")).resolves.toEqual(expected.kevDueSoon);
+    await expect(page.getByTestId("priority-coverage-kev-due-soon")).toContainText(
+      "2 eligible of 7 published records.",
+    );
+    const firstRow = page
+      .locator('[data-testid="priority-list-kev-due-soon"] [data-testid="priority-row"]')
+      .first();
+    await expect(firstRow.getByTestId("priority-row-kev-due")).toBeVisible();
+    await expect(firstRow).toContainText("known ransomware use");
   });
 
   test("highest-forecast renders raw-probability order with score date and model", async ({

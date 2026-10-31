@@ -181,6 +181,9 @@ for (const width of [360, 768, 1280]) {
     await expect(page.getByTestId("methodology-ordering-rising-forecast")).toContainText(
       "delta percentage-points descending",
     );
+    await expect(page.getByTestId("methodology-ordering-kev-due-soon")).toContainText(
+      "due date ascending",
+    );
     await expect(page.getByTestId("methodology-sources")).toContainText(
       "accepted local snapshots only",
     );

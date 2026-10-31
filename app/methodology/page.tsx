@@ -376,6 +376,16 @@ export default function MethodologyPage() {
             popularity or observed exploitation telemetry.
           </p>
         </div>
+        <div data-testid="methodology-ordering-kev-due-soon">
+          <h3>KEV due soon</h3>
+          <p>
+            KEV members with a valid catalog remediation due date only. Order due date ascending
+            (overdue first, no upper cutoff), then CVE ID ASCII ascending. Missing or malformed due
+            dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not
+            exploit predictions. Live-only: retained checkpoints keep their five-view contract, so
+            replay never serves this view.
+          </p>
+        </div>
         <h3>
           Default priority as a decision flow{" "}
           <HelpTip term="default priority flow" testId="methodology-ordering-flow-helptip">

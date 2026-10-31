@@ -23,11 +23,21 @@ export class KevImportError extends Error {
   readonly name = "KevImportError";
 }
 
+export const KEV_MAX_CWES = 16;
+const CWE_ID_PATTERN = /^CWE-\d{1,5}$/;
+
 export interface KevValidatedEntry {
   cveId: string;
   dateAdded: string;
   vendorProject: string | null;
   product: string | null;
+  /** Federal remediation deadline (calendar date) or null when absent/malformed. */
+  dueDate: string | null;
+  requiredAction: string | null;
+  vulnerabilityName: string | null;
+  /** 1 = catalog says ransomware use is Known, 0 = Unknown, null = unstated. */
+  ransomwareKnown: number | null;
+  cwes: string[];
 }
 
 export interface KevValidatedCatalog {
@@ -146,11 +156,31 @@ export function parseKevCatalog(raw: unknown): KevValidatedCatalog {
     }
     if (seen.has(cveId as string)) fail(`KEV catalog contains a duplicate ID "${cveId}".`);
     seen.add(cveId as string);
+    // Enrichment degrades to null/empty, never to an import failure: these
+    // fields inform displays, never membership.
+    const dueRaw = entry.dueDate;
+    const dueDate = typeof dueRaw === "string" && isWellFormedDateOnly(dueRaw) ? dueRaw : null;
+    const ransomwareRaw = entry.knownRansomwareCampaignUse;
+    const ransomwareKnown = ransomwareRaw === "Known" ? 1 : ransomwareRaw === "Unknown" ? 0 : null;
+    const cwes: string[] = [];
+    if (Array.isArray(entry.cwes)) {
+      for (const candidate of entry.cwes) {
+        if (typeof candidate === "string" && CWE_ID_PATTERN.test(candidate)) {
+          if (!cwes.includes(candidate)) cwes.push(candidate);
+          if (cwes.length >= KEV_MAX_CWES) break;
+        }
+      }
+    }
     entries.push({
       cveId: cveId as string,
       dateAdded: dateAdded as string,
       vendorProject: optionalBoundedString(entry.vendorProject),
       product: optionalBoundedString(entry.product),
+      dueDate,
+      requiredAction: optionalBoundedString(entry.requiredAction),
+      vulnerabilityName: optionalBoundedString(entry.vulnerabilityName),
+      ransomwareKnown,
+      cwes,
     });
   }
 
@@ -214,8 +244,12 @@ export function importKevCatalog(
 
   db.runBoundedWrite(() => {
     db.handle.prepare("DELETE FROM kev_entries").run();
+    db.handle.prepare("DELETE FROM kev_cwes").run();
+    const insertCwe = db.handle.prepare(
+      "INSERT OR IGNORE INTO kev_cwes (cve_id, cwe_id) VALUES (?, ?)",
+    );
     const insertEntry = db.handle.prepare(
-      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, vendor_project, product, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, vendor_project, product, due_date, required_action, vulnerability_name, ransomware_known, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     for (const entry of catalog.entries) {
       insertEntry.run(
@@ -224,8 +258,13 @@ export function importKevCatalog(
         catalog.catalogDate,
         entry.vendorProject,
         entry.product,
+        entry.dueDate,
+        entry.requiredAction,
+        entry.vulnerabilityName,
+        entry.ransomwareKnown,
         now,
       );
+      for (const cwe of entry.cwes) insertCwe.run(entry.cveId, cwe);
     }
     const insertHistory = db.handle.prepare(
       "INSERT INTO kev_history (cve_id, date_added, catalog_date, removed_in_catalog, recorded_at) VALUES (?, ?, ?, ?, ?)",

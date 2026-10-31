@@ -16,13 +16,14 @@ import { TimeText } from "../ledger/TimeText";
 import styles from "./PrioritySignals.module.css";
 
 export type PriorityMode =
-  "known-exploited" | "highest-forecast" | "new-critical" | "rising-forecast";
+  "known-exploited" | "highest-forecast" | "new-critical" | "rising-forecast" | "kev-due-soon";
 
 export const PRIORITY_MODES: readonly PriorityMode[] = [
   "known-exploited",
   "highest-forecast",
   "new-critical",
   "rising-forecast",
+  "kev-due-soon",
 ];
 
 export const PRIORITY_MODE_LABELS: Record<PriorityMode, string> = {
@@ -30,6 +31,7 @@ export const PRIORITY_MODE_LABELS: Record<PriorityMode, string> = {
   "highest-forecast": "Highest forecast",
   "new-critical": "New critical",
   "rising-forecast": "Rising forecast",
+  "kev-due-soon": "KEV due soon",
 };
 
 export interface EpssTrendPoint {
@@ -46,6 +48,8 @@ export interface PriorityRowData {
   publishedAt: string | null;
   kevListed: boolean;
   kevDateAdded: string | null;
+  kevDueDate: string | null;
+  kevRansomwareKnown: boolean | null;
   epssKnown: boolean;
   epssPercent: string | null;
   epssModel: string | null;
@@ -205,6 +209,8 @@ export function PriorityOrdering({
       "New critical: publication in [T - 30d, T) with primary modern (v3/v4) CNA CVSS base 9.0 or higher. Order publication descending, then CVE ID ASCII ascending.",
     "rising-forecast":
       "Rising forecast: same-model EPSS observations on exactly d and d-7 with a positive delta. Order delta percentage-points descending, current raw probability descending, then CVE ID ASCII ascending.",
+    "kev-due-soon":
+      "KEV due soon: KEV members with a valid catalog remediation due date. Order due date ascending (overdue first, no upper cutoff), then CVE ID ASCII ascending.",
   };
   return (
     <div className="ledger-ordering" data-testid={`priority-ordering-${mode}`}>
@@ -358,6 +364,18 @@ function KevSignal({ row }: { row: PriorityRowData }) {
             <>
               {" on "}
               <TimeText value={row.kevDateAdded} testId="priority-row-kev-date" />
+            </>
+          ) : null}
+          {row.kevDueDate !== null ? (
+            <>
+              {"; remediation due "}
+              <TimeText value={row.kevDueDate} testId="priority-row-kev-due" />
+            </>
+          ) : null}
+          {row.kevRansomwareKnown === true ? (
+            <>
+              {" · "}
+              <strong className="ledger-emphasis">known ransomware use</strong>
             </>
           ) : null}
         </p>

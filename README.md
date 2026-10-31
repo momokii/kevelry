@@ -33,8 +33,8 @@ can consume the same data.
 - **Search:** explained filters that auto-apply, quick UTC date presets, a cohort
   composition panel (severity, month, signal coverage), and compact result rows
   with severity, KEV, EPSS, and official-record links.
-- **Priority lists:** known-exploited, highest forecast, new critical, rising forecast
-  as a compact expandable table. KEV, EPSS, and CVSS remain separate signals with
+- **Priority lists:** known-exploited, highest forecast, new critical, rising forecast,
+  KEV due soon as a compact expandable table. KEV, EPSS, and CVSS remain separate signals with
   definitions, real bars, and timezone-aware dates; no composite score.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
@@ -430,18 +430,18 @@ dependencies. Both are tracked under TASK-002.
 
 Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/` and a browsable reference at [`/api-docs`](/api-docs) (rendered from the spec on each request, so it cannot drift).
 
-| Method + path                     | Purpose                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `GET /api/v1/health`              | Liveness plus readiness state                                            |
-| `GET /api/v1/status`              | Per-source freshness and warnings                                        |
-| `GET /api/v1/overview`            | Published-CVE volume buckets with date basis                             |
-| `GET /api/v1/cves`                | Paginated CVE records                                                    |
-| `GET /api/v1/cves/{cveId}`        | One CVE record with references                                           |
-| `GET /api/v1/search?q=...`        | CVE ID and description search                                            |
-| `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast` |
-| `GET /api/v1/radar`               | Change feed with before/after evidence                                   |
-| `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                         |
-| `GET /api/v1/replay/checkpoints`  | List available checkpoints                                               |
+| Method + path                     | Purpose                                                                                  |
+| --------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GET /api/v1/health`              | Liveness plus readiness state                                                            |
+| `GET /api/v1/status`              | Per-source freshness and warnings                                                        |
+| `GET /api/v1/overview`            | Published-CVE volume buckets with date basis                                             |
+| `GET /api/v1/cves`                | Paginated CVE records                                                                    |
+| `GET /api/v1/cves/{cveId}`        | One CVE record with references                                                           |
+| `GET /api/v1/search?q=...`        | CVE ID and description search                                                            |
+| `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast`, `kev-due-soon` |
+| `GET /api/v1/radar`               | Change feed with before/after evidence                                                   |
+| `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                                         |
+| `GET /api/v1/replay/checkpoints`  | List available checkpoints                                                               |
 
 GET only, no auth, rate limited. Unknown EPSS renders as explicit `null`, never zero. `GET /api/v1/status` reports per-source stale and warning states.
 

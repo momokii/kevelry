@@ -12,6 +12,7 @@ import type { CveDatabase } from "./db";
 import {
   orderDefaultPriority,
   orderHighestForecast,
+  orderKevDueSoon,
   orderKnownExploited,
   selectNewCritical,
   selectPrimaryCvss,
@@ -29,6 +30,7 @@ export interface PriorityItem {
   epss: string | null;
   publishedAt: string | null;
   dateAdded: string | null;
+  kevDueDate: string | null;
   primary: PrimaryCvss | null;
 }
 
@@ -105,15 +107,19 @@ function hydrateOverviewItems(
 ): PriorityItem[] {
   if (bases.length === 0) return [];
   const ids = bases.map((base) => base.id);
-  const kevDates = new Map<string, string>();
+  const kevDates = new Map<string, { dateAdded: string; dueDate: string | null }>();
   const epssById = new Map<string, string>();
   const metricsById = new Map<string, CvssMetricInput[]>();
   for (const group of chunkIds(ids)) {
     const placeholders = group.map(() => "?").join(", ");
     const kevRows = db.handle
-      .prepare(`SELECT cve_id, date_added FROM kev_entries WHERE cve_id IN (${placeholders})`)
-      .all(...group) as Array<{ cve_id: string; date_added: string }>;
-    for (const row of kevRows) kevDates.set(row.cve_id, row.date_added);
+      .prepare(
+        `SELECT cve_id, date_added, due_date FROM kev_entries WHERE cve_id IN (${placeholders})`,
+      )
+      .all(...group) as Array<{ cve_id: string; date_added: string; due_date: string | null }>;
+    for (const row of kevRows) {
+      kevDates.set(row.cve_id, { dateAdded: row.date_added, dueDate: row.due_date });
+    }
     if (epssDate !== null) {
       const epssRows = db.handle
         .prepare(
@@ -158,7 +164,8 @@ function hydrateOverviewItems(
     kevMember: kevDates.has(base.id),
     epss: base.epss ?? epssById.get(base.id) ?? null,
     publishedAt: base.publishedAt,
-    dateAdded: kevDates.get(base.id) ?? null,
+    dateAdded: kevDates.get(base.id)?.dateAdded ?? null,
+    kevDueDate: kevDates.get(base.id)?.dueDate ?? null,
     primary: selectPrimaryCvss(metricsById.get(base.id) ?? []) ?? null,
   }));
 }
@@ -178,12 +185,17 @@ function publishedRecords(db: CveDatabase): Array<{ cveId: string; publishedAt: 
   return rows.map((row) => ({ cveId: row.cve_id, publishedAt: row.date_published }));
 }
 
-function kevDateMap(db: CveDatabase): Map<string, string> {
-  const rows = db.handle.prepare("SELECT cve_id, date_added FROM kev_entries").all() as Array<{
+function kevDateMap(db: CveDatabase): Map<string, { dateAdded: string; dueDate: string | null }> {
+  const rows = db.handle
+    .prepare("SELECT cve_id, date_added, due_date FROM kev_entries")
+    .all() as Array<{
     cve_id: string;
     date_added: string;
+    due_date: string | null;
   }>;
-  return new Map(rows.map((row) => [row.cve_id, row.date_added]));
+  return new Map(
+    rows.map((row) => [row.cve_id, { dateAdded: row.date_added, dueDate: row.due_date }]),
+  );
 }
 
 /**
@@ -317,6 +329,7 @@ function getRisingForecastTop(
       epss: item.epss,
       publishedAt: item.publishedAt,
       dateAdded: item.dateAdded,
+      kevDueDate: item.kevDueDate,
       primary: item.primary,
     },
     deltaPp,
@@ -334,7 +347,8 @@ function loadItems(db: CveDatabase, epssDate: string | null): PriorityItem[] {
     kevMember: kevDates.has(record.cveId),
     epss: epssTexts.get(record.cveId) ?? null,
     publishedAt: record.publishedAt,
-    dateAdded: kevDates.get(record.cveId) ?? null,
+    dateAdded: kevDates.get(record.cveId)?.dateAdded ?? null,
+    kevDueDate: kevDates.get(record.cveId)?.dueDate ?? null,
     primary: primaries.get(record.cveId) ?? null,
   }));
 }
@@ -377,6 +391,31 @@ export function getDefaultPriority(db: CveDatabase, limit?: number): PriorityIte
     null,
     rows.map((row) => ({ id: row.id, publishedAt: row.publishedAt, epss: row.epss })),
   );
+}
+
+/** KEV members with a valid remediation due date, due ascending (overdue
+ * first, no upper cutoff), then ID. Malformed or missing due dates are
+ * ineligible. Live-only list: retained checkpoints keep their five-view
+ * contract, so replay never serves this view. */
+export function getKevDueSoon(db: CveDatabase, limit?: number): PriorityItem[] {
+  if (!hasLimit(limit)) {
+    return orderKevDueSoon(loadItems(db, getAcceptedEpssDate(db)));
+  }
+  if (limit === 0) return [];
+  const rows = db.handle
+    .prepare(
+      "SELECT k.cve_id AS id, r.date_published AS publishedAt FROM kev_entries k " +
+        "JOIN cve_records r ON r.cve_id = k.cve_id AND r.state = 'PUBLISHED' " +
+        "WHERE k.due_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' " +
+        "ORDER BY k.due_date ASC, k.cve_id ASC",
+    )
+    .all() as Array<{ id: string; publishedAt: string | null }>;
+  const items = hydrateOverviewItems(
+    db,
+    getAcceptedEpssDate(db),
+    rows.map((row) => ({ id: row.id, publishedAt: row.publishedAt, epss: null })),
+  );
+  return take(orderKevDueSoon(items), limit);
 }
 
 /** Known-exploited members ordered by catalog dateAdded desc, then ID. */
@@ -500,7 +539,8 @@ export function getRisingForecast(
     kevMember: kevDates.has(record.cveId),
     epss: currentEpss.get(record.cveId) ?? null,
     publishedAt: record.publishedAt,
-    dateAdded: kevDates.get(record.cveId) ?? null,
+    dateAdded: kevDates.get(record.cveId)?.dateAdded ?? null,
+    kevDueDate: kevDates.get(record.cveId)?.dueDate ?? null,
     primary: primaries.get(record.cveId) ?? null,
     currentEpss: currentEpss.get(record.cveId) ?? null,
     currentDate: current,
@@ -517,6 +557,7 @@ export function getRisingForecast(
         epss: item.epss,
         publishedAt: item.publishedAt,
         dateAdded: item.dateAdded,
+        kevDueDate: item.kevDueDate,
         primary: item.primary,
       },
       deltaPp,
