@@ -7,7 +7,8 @@ export function FilterPanel({ initial }: { initial: ExploreInitial }) {
     (initial.dateStart !== "" || initial.dateEnd !== "" ? 1 : 0) +
     (initial.severity.length > 0 ? 1 : 0) +
     (initial.kev !== "all" ? 1 : 0) +
-    (initial.epss !== "all" ? 1 : 0);
+    (initial.epss !== "all" ? 1 : 0) +
+    (initial.vendor !== "" ? 1 : 0);
 
   return (
     <details className="explore-filter-details" open>

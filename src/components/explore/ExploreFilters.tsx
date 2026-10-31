@@ -185,6 +185,29 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <fieldset className="ledger-explore-fieldset">
         <legend className="ledger-meta">
+          Vendor or product, KEV catalog labels{" "}
+          <HelpTip term="vendor filter" testId="explore-help-vendor">
+            Substring over KEV catalog vendor and product labels. Only KEV-listed records carry
+            these labels, so this filter implies KEV membership by construction.
+          </HelpTip>
+        </legend>
+        <div>
+          <input
+            id="explore-vendor"
+            className="ledger-search-input"
+            type="search"
+            name="vendor"
+            defaultValue={initial.vendor}
+            placeholder="e.g. microsoft, cisco, openssl"
+            aria-label="Vendor or product substring"
+            maxLength={100}
+            data-testid="explore-vendor"
+          />
+        </div>
+      </fieldset>
+
+      <fieldset className="ledger-explore-fieldset">
+        <legend className="ledger-meta">
           Severity bands, primary CNA metric with version labels{" "}
           <HelpTip term="severity filter" testId="explore-help-severity">
             Bands come from the primary CNA CVSS only. ADP-only and metric-less records land in

@@ -241,6 +241,8 @@ function insertFixture(
   version: string,
   kev: boolean,
   epss: string | null,
+  vendor: string | null = null,
+  product: string | null = null,
 ): void {
   db.handle
     .prepare(
@@ -272,9 +274,9 @@ function insertFixture(
   if (kev) {
     db.handle
       .prepare(
-        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, vendor_project, product, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(id, `${fixtureDay(8)}T00:00:00.000Z`, fixtureDay(9), FIXTURE_STAMP);
+      .run(id, `${fixtureDay(8)}T00:00:00.000Z`, fixtureDay(9), vendor, product, FIXTURE_STAMP);
   }
   if (epss !== null) {
     db.handle
@@ -299,6 +301,8 @@ function buildExploreSeedDbFile(): string {
       "3.1",
       true,
       "0.7200",
+      "DemoVendor",
+      "DemoOS",
     );
     insertFixture(
       db,
@@ -434,6 +438,23 @@ test.describe("cohort visualization", () => {
 
     const panelText = await page.getByTestId("explore-help-severity-panel").textContent();
     expect(panelText ?? "").toContain("primary CNA");
+  });
+
+  test("vendor filter narrows the cohort to KEV-labeled records", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/explore");
+    await expect(page.getByTestId("explore-filters")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("explore-vendor").fill("demovendor");
+    await page.getByTestId("explore-vendor").press("Enter");
+    await expect(page).toHaveURL(/vendor=demovendor/);
+    await expect(page.getByTestId("explore-cohort-headline")).toContainText(
+      "1 matching published records",
+    );
+    const ids = await page
+      .getByTestId("explore-row")
+      .getByTestId("explore-row-id")
+      .allTextContents();
+    expect(ids).toEqual(["CVE-2099-1001"]);
   });
 
   test("changing a severity checkbox updates the URL and the cohort chart", async ({ page }) => {

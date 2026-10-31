@@ -171,6 +171,72 @@ function tableNames(db: CveDatabase): string[] {
   return rows.map((row) => row.name);
 }
 
+describe("vendor/product filter over KEV catalog labels", () => {
+  function seedVendorDb(db: CveDatabase): void {
+    seed(db, baseFixtures());
+    db.runBoundedWrite(() => {
+      db.handle
+        .prepare("UPDATE kev_entries SET vendor_project = ?, product = ? WHERE cve_id = ?")
+        .run("Microsoft", "Windows Kernel", "CVE-2099-0001");
+      db.handle
+        .prepare("UPDATE kev_entries SET vendor_project = ?, product = ? WHERE cve_id = ?")
+        .run("Cisco", "100% Switch", "CVE-2099-0004");
+    });
+  }
+
+  it("matches vendor and product substrings case-insensitively", () => {
+    const db = makeDb();
+    try {
+      seedVendorDb(db);
+      expect(searchCves(db, { vendor: "micro" }).items.map((item) => item.cveId)).toEqual([
+        "CVE-2099-0001",
+      ]);
+      expect(searchCves(db, { vendor: "KERNEL" }).items.map((item) => item.cveId)).toEqual([
+        "CVE-2099-0001",
+      ]);
+      expect(searchCves(db, { vendor: "cisco" }).items.map((item) => item.cveId)).toEqual([
+        "CVE-2099-0004",
+      ]);
+      expect(searchCves(db, { vendor: "no-such-vendor-xyz" }).items).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("keeps LIKE wildcards literal and scopes to KEV-listed records", () => {
+    const db = makeDb();
+    try {
+      seedVendorDb(db);
+      // % and _ match literally, never as wildcards (100% Switch is found
+      // by "100%", not by everything).
+      expect(searchCves(db, { vendor: "100%" }).items.map((item) => item.cveId)).toEqual([
+        "CVE-2099-0004",
+      ]);
+      expect(searchCves(db, { vendor: "%%" }).items).toEqual([]);
+      // CVE-2099-0002 is PUBLISHED but not KEV-listed: no vendor labels exist.
+      expect(searchCves(db, { vendor: "renderer" }).items).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("combines with text search and rejects bad input", () => {
+    const db = makeDb();
+    try {
+      seedVendorDb(db);
+      expect(
+        searchCves(db, { q: "parser", vendor: "microsoft" }).items.map((item) => item.cveId),
+      ).toEqual(["CVE-2099-0001"]);
+      expect(searchCves(db, { q: "renderer", vendor: "microsoft" }).items).toEqual([]);
+      expect(() => searchCves(db, { vendor: "x" })).toThrowError(/2 to 100/);
+      expect(() => searchCves(db, { vendor: "a".repeat(101) })).toThrowError(/100/);
+      expect(() => searchCves(db, { vendor: 42 as unknown as string })).toThrowError(/string/);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe("local FTS5 search (todo 13)", () => {
   it("lists PUBLISHED records and excludes REJECTED rows", () => {
     const db = makeDb();

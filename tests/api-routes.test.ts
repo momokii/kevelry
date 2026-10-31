@@ -477,6 +477,37 @@ describe("v1 search route", () => {
     );
     expect(typeof data[0]?.excerptStatus).toBe("string");
   });
+
+  it("filters by vendor labels without q and echoes both inputs", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    void db;
+    db.runBoundedWrite(() => {
+      db.handle
+        .prepare("UPDATE kev_entries SET vendor_project = ?, product = ? WHERE cve_id = ?")
+        .run("Microsoft", "Windows", "CVE-2099-0001");
+    });
+
+    const vendorOnly = await getSearch(
+      new Request("https://radar.test/api/v1/search?vendor=micro&limit=5"),
+    );
+    expect(vendorOnly.status).toBe(200);
+    const vendorBody = await bodyOf(vendorOnly);
+    expect(vendorBody.q).toBe("");
+    expect(vendorBody.vendor).toBe("micro");
+    expect((vendorBody.data as Array<{ cveId: string }>).map((row) => row.cveId)).toEqual([
+      "CVE-2099-0001",
+    ]);
+
+    const combined = await getSearch(
+      new Request("https://radar.test/api/v1/search?q=nomatchxyz&vendor=micro&limit=5"),
+    );
+    expect(((await bodyOf(combined)).data as Array<unknown>).length).toBe(0);
+
+    const short = await getSearch(new Request("https://radar.test/api/v1/search?vendor=x"));
+    expect(short.status).toBe(400);
+    expect((await bodyOf(short)).code).toBe("BAD_FILTER");
+  });
 });
 
 describe("v1 priority routes", () => {

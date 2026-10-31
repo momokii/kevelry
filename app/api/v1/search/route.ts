@@ -17,6 +17,7 @@ import {
   parseLimit,
   parseQuery,
   parseSeverity,
+  parseVendor,
   preflightResponse,
   releaseConcurrencySlot,
   reserveRateLimit,
@@ -52,7 +53,14 @@ export async function GET(request: Request): Promise<Response> {
   try {
     assertRequestBounds(request);
     const params = new URL(request.url).searchParams;
-    const q = parseQuery(params.get("q"));
+    const vendor = parseVendor(params.get("vendor"));
+    // q stays required for text search, but a vendor-only filter cohort is
+    // a valid search: at least one of q/vendor must shape the query.
+    const qRaw = params.get("q");
+    if (qRaw === null && vendor === null) {
+      throw new ApiError("BAD_QUERY", 400, "q is required and must be 2 to 200 characters.");
+    }
+    const q = qRaw === null ? "" : parseQuery(qRaw);
     const limit = parseLimit(params.get("limit"));
     const offset = parseCursor(params.get("cursor"));
     const severity = parseSeverity(params.get("severity"));
@@ -85,6 +93,7 @@ export async function GET(request: Request): Promise<Response> {
       severity: severity === null ? undefined : [severity],
       kev: kev === "listed" ? "only" : kev === "not-listed" ? "excluded" : "all",
       epss: epss === "scored" ? "present" : epss === "unscored" ? "absent" : "all",
+      vendor: vendor ?? undefined,
       limit,
       cursor: offset === 0 ? null : encodeCursor(offset),
     });
@@ -109,6 +118,7 @@ export async function GET(request: Request): Promise<Response> {
       db,
       {
         q,
+        vendor,
         data: data.filter((row) => row !== null),
         pagination: { limit, hasMore, nextCursor },
         coverage: {

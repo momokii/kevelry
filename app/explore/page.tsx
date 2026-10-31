@@ -74,6 +74,19 @@ function parseEpss(raw: string | undefined): EpssFilter {
   throw new SearchValidationError('Search "epss" must be "present", "absent", or "all".');
 }
 
+function parseVendorParam(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === "") return "";
+  const trimmed = raw.trim();
+  if (trimmed.length < 2 || trimmed.length > 100) {
+    throw new SearchValidationError('Search "vendor" must be 2 to 100 characters.');
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+    throw new SearchValidationError('Search "vendor" contains unsupported control characters.');
+  }
+  return trimmed;
+}
+
 function parseSeverity(raw: string[]): SeverityBand[] {
   const bands: SeverityBand[] = [];
   for (const chunk of raw) {
@@ -112,6 +125,7 @@ const cachedExploreSearch = unstable_cache(
       severity: SeverityBand[];
       kev: KevFilter;
       epss: EpssFilter;
+      vendor: string;
       limit: number;
       cursor: string | null;
       dbSignature: string;
@@ -124,6 +138,7 @@ const cachedExploreSearch = unstable_cache(
       severity: args.severity.length === 0 ? undefined : args.severity,
       kev: args.kev,
       epss: args.epss,
+      vendor: args.vendor === "" ? undefined : args.vendor,
       limit: args.limit,
     };
     const response = searchCves(db, { ...shared, cursor: args.cursor ?? undefined });
@@ -149,6 +164,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
   const dateEnd = firstValue(params.dateEnd) ?? "";
   const cursor = firstValue(params.cursor) ?? undefined;
 
+  const vendor = parseVendorParam(firstValue(params.vendor));
   const initial: ExploreInitial = {
     q,
     dateStart,
@@ -156,6 +172,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
     severity: [],
     kev: "all",
     epss: "all",
+    vendor,
     limit: EXPLORE_DEFAULT_LIMIT,
   };
 
@@ -182,6 +199,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
           severity,
           kev,
           epss,
+          vendor,
           limit,
           cursor: cursor ?? null,
           dbSignature: readDatabaseSignature(dataDir),
@@ -202,7 +220,8 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
         dateEnd !== "" ||
         severity.length > 0 ||
         kev !== "all" ||
-        epss !== "all";
+        epss !== "all" ||
+        vendor !== "";
       const kept = new URLSearchParams();
       if (q !== "") kept.set("q", q);
       if (dateStart !== "") kept.set("dateStart", dateStart);
@@ -210,6 +229,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
       for (const band of severity) kept.append("severity", band);
       if (kev !== "all") kept.set("kev", kev);
       if (epss !== "all") kept.set("epss", epss);
+      if (vendor !== "") kept.set("vendor", vendor);
       if (limit !== EXPLORE_DEFAULT_LIMIT) kept.set("limit", String(limit));
       const nextHref =
         response.nextCursor === null
@@ -220,7 +240,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
         kind: "results",
         response,
         facets,
-        linkParams: { q, dateStart, dateEnd, severity, kev, epss, limit },
+        linkParams: { q, dateStart, dateEnd, severity, kev, epss, vendor, limit },
         filtered,
         nextHref,
         firstHref,

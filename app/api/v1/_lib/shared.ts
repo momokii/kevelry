@@ -784,6 +784,32 @@ export function parseQuery(raw: string | null): string {
   return trimmed;
 }
 
+/** Optional vendor/product substring filter (KEV catalog labels only).
+ * Same hostile-input discipline as q: LIKE is parameterized with ESCAPE so
+ * wildcards stay literal, but control characters and overlong values are
+ * rejected at the boundary. Null/empty means unfiltered. */
+export function parseVendor(raw: string | null): string | null {
+  if (raw === null || raw.trim() === "") return null;
+  const trimmed = raw.trim();
+  if (trimmed.length < 2 || trimmed.length > 100) {
+    throw new ApiError("BAD_FILTER", 400, "vendor must be 2 to 100 characters.");
+  }
+  if (hasControlChars(trimmed)) {
+    throw new ApiError("BAD_FILTER", 400, "vendor contains unsupported control characters.");
+  }
+  const lowered = trimmed.toLowerCase();
+  for (const token of HOSTILE_QUERY_TOKENS) {
+    if (lowered.includes(token)) {
+      throw new ApiError(
+        "BAD_FILTER",
+        400,
+        "vendor looks like an injection attempt and was rejected.",
+      );
+    }
+  }
+  return trimmed;
+}
+
 // ---------------------------------------------------------------------------
 // Full record loading over the accepted tables.
 // ---------------------------------------------------------------------------

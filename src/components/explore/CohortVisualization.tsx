@@ -11,6 +11,7 @@ export interface CohortLinkParams {
   severity: readonly SeverityBand[];
   kev: KevFilter;
   epss: EpssFilter;
+  vendor: string;
   limit: number;
 }
 
@@ -28,6 +29,7 @@ function baseKept(params: CohortLinkParams, defaultLimit: number): URLSearchPara
   for (const band of params.severity) next.append("severity", band);
   if (params.kev !== "all") next.set("kev", params.kev);
   if (params.epss !== "all") next.set("epss", params.epss);
+  if (params.vendor !== "") next.set("vendor", params.vendor);
   if (params.limit !== defaultLimit) next.set("limit", String(params.limit));
   return next;
 }

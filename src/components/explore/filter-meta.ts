@@ -43,6 +43,8 @@ export interface ExploreInitial {
   severity: readonly SeverityBand[];
   kev: KevFilter;
   epss: EpssFilter;
+  /** Vendor/product substring over KEV catalog labels; "" means unfiltered. */
+  vendor: string;
   limit: number;
 }
 

@@ -21,6 +21,7 @@ Default search and all ranked views include only current `PUBLISHED` CVE records
 | Published-volume chart | Publication timestamp and current state, not year encoded in ID; UTC calendar buckets                                                                            |
 | KEV and EPSS views     | Exact-ID joins, with source dates, model and join coverage shown                                                                                                 |
 | Severity filters       | Primary CNA metric policy below; unknown/legacy explicitly separate                                                                                              |
+| Vendor filter          | Substring over KEV catalog vendor/product labels (KEV-listed records only); parameterized LIKE with ESCAPE, wildcards literal                                    |
 | Rising forecast        | Two dated EPSS probabilities from the same model; not social attention                                                                                           |
 
 Descriptions remain original upstream text. A display excerpt is at most 320 Unicode

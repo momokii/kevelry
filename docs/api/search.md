@@ -8,23 +8,30 @@ official links, missing and language states).
     GET /api/v1/search
 
 Local FTS-backed search over accepted snapshots only. No nickname index is
-promised and no upstream fetch occurs. `q` (2–200 chars) is required; results
-mirror the explore view row for row.
+promised and no upstream fetch occurs. Either `q` (2–200 chars) or `vendor`
+(2–100 chars) must shape the query; results mirror the explore view row
+for row.
 
 ## Parameters
 
 `q` plus `cursor`, `limit`, and the shared filters (`severity`, `kev`, `epss`,
-`publishedStart`, `publishedEnd`); see [README](README.md#filters).
+`publishedStart`, `publishedEnd`, `vendor`); see [README](README.md#filters).
+`vendor` is a substring over KEV catalog vendor/product labels: only
+KEV-listed records carry these labels, so it implies KEV membership. The
+response echoes both `q` (empty for vendor-only searches) and `vendor`
+(null when unfiltered).
 
 ## Example
 
 ```bash
 curl "https://radar.example.org/api/v1/search?q=openssl%20denial%20of%20service&limit=2"
+curl "https://radar.example.org/api/v1/search?vendor=microsoft&limit=2"
 ```
 
 ```json
 {
   "q": "openssl denial of service",
+  "vendor": null,
   "data": [
     {
       "cveId": "CVE-2026-109618",

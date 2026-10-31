@@ -128,13 +128,27 @@ paths:
       parameters:
         - name: q
           in: query
-          required: true
-          description: Search text or CVE ID. Minimum 2 characters, maximum 200.
+          required: false
+          description: >-
+            Search text or CVE ID. Minimum 2 characters, maximum 200. May be
+            omitted only when `vendor` shapes the query instead.
           schema:
             type: string
             minLength: 2
             maxLength: 200
             example: openssl denial of service
+        - name: vendor
+          in: query
+          required: false
+          description: >-
+            Vendor/product substring over KEV catalog labels (2-100
+            characters). Only KEV-listed records carry these labels, so this
+            filter implies KEV membership. Either `q` or `vendor` is required.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+            example: microsoft
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Severity"
@@ -1202,6 +1216,7 @@ components:
       type: object
       required:
         - q
+        - vendor
         - data
         - pagination
         - coverage
@@ -1209,8 +1224,13 @@ components:
       properties:
         q:
           type: string
-          description: Echo of the validated query.
+          description: Echo of the validated query (empty for vendor-only searches).
           example: openssl denial of service
+        vendor:
+          type: string
+          nullable: true
+          description: Echo of the validated vendor filter, null when unfiltered.
+          example: microsoft
         data:
           type: array
           items:

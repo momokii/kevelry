@@ -43,6 +43,8 @@ export interface SearchFilters {
   severity?: readonly SeverityBand[];
   kev?: KevFilter;
   epss?: EpssFilter;
+  /** Vendor/product substring over KEV catalog labels; KEV-listed records only. */
+  vendor?: string;
   limit?: number;
   cursor?: string | null;
 }
@@ -244,6 +246,17 @@ function normalizeQuery(value: unknown): string {
   return trimmed;
 }
 
+function normalizeVendor(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string") fail('Search "vendor" must be a string.');
+  const trimmed = (value as string).trim();
+  if (trimmed !== "" && trimmed.length < 2) {
+    fail('Search "vendor" must be 2 to 100 characters.');
+  }
+  if (trimmed.length > 100) fail('Search "vendor" exceeds 100 characters.');
+  return trimmed;
+}
+
 function normalizeSeverity(value: unknown): ReadonlySet<SeverityBand> | null {
   if (value === undefined) return null;
   if (!Array.isArray(value)) fail('Search "severity" must be an array of band names.');
@@ -353,6 +366,18 @@ function prepareCohortPredicate(filters: SearchFilters): CohortPredicate {
     where.push("EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id)");
   } else if (epss === "absent") {
     where.push("NOT EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id)");
+  }
+  const vendor = normalizeVendor(normalized.vendor);
+  if (vendor !== "") {
+    // Substring over KEV catalog labels only: non-listed records carry no
+    // vendor labels, so this filter implies KEV membership by construction.
+    // Parameterized LIKE with ESCAPE keeps % and _ literal.
+    where.push(
+      "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id AND " +
+        "(k.vendor_project LIKE ? ESCAPE '\\' COLLATE NOCASE OR k.product LIKE ? ESCAPE '\\' COLLATE NOCASE))",
+    );
+    const pattern = `%${escapeLikePattern(vendor)}%`;
+    params.push(pattern, pattern);
   }
 
   const fromSql =
