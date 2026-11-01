@@ -22,7 +22,7 @@ const SVG_W = 940;
 const COL_CENTER = 96;
 const COL_ATTR = 372;
 const COL_LEAF = 668;
-const ATTR_CAP = 8;
+const ATTR_CAP = 6;
 /** Vertical budget so the drawing fits a normal viewport without clipping. */
 const MAX_HEIGHT = 680;
 const ROW_UNIT = 22;
@@ -46,7 +46,8 @@ function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
   // Child budget per attribute from the available height, so the center and
   // every edge stay inside the viewBox instead of being clipped.
   const perRow = shown.length === 0 ? ROW_UNIT : MAX_HEIGHT / shown.length;
-  const childCap = Math.max(1, Math.min(5, Math.floor((perRow - 14) / ROW_UNIT)));
+  // Reserve one slot for the "+N more" line so the last row never clips.
+  const childCap = Math.max(1, Math.min(5, Math.floor((perRow - 14) / ROW_UNIT) - 1));
   const rows: AttrRow[] = shown.map((group) => {
     const children = group.cves.slice(0, childCap);
     const hidden = Math.max(0, group.cves.length - children.length);
@@ -401,6 +402,10 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
       ) : (
         <>
           <EgoGraph cohort={cohort} limit={limit} />
+          <p className="chart-note" data-testid="graph-scope">
+            Graph shows the {Math.min(cohort.groups.length, 6)} strongest shared attributes; the
+            grouped lists below cover all {cohort.groups.length}.
+          </p>
           <ul className="graph-legend" data-testid="graph-legend">
             {GROUP_ORDER.map((kind) => (
               <li key={kind}>
