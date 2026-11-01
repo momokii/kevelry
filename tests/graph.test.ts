@@ -168,6 +168,51 @@ describe("bounded KEV relationship graph", () => {
     expect(graph.truncated).toBe(false);
   });
 
+  it("prunes advisory-aggregator hosts that say nothing about relatedness", () => {
+    const db = makeDb();
+    const ids = Array.from(
+      { length: 25 },
+      (_, index) => `CVE-2099-01${String(index).padStart(2, "0")}`,
+    );
+    for (const id of ids) {
+      db.runBoundedWrite(() => {
+        db.handle
+          .prepare(
+            "INSERT INTO cve_records (cve_id, data_version, state, date_published, raw_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(
+            id,
+            "5.1",
+            "PUBLISHED",
+            "2026-10-20T00:00:00.000Z",
+            JSON.stringify({
+              containers: {
+                cna: {
+                  references: [
+                    { url: "http://www.securityfocus.com/bid/1" },
+                    { url: `https://advisory.example/${id}` },
+                  ],
+                },
+              },
+            }),
+            STAMP,
+            STAMP,
+          );
+        db.handle
+          .prepare(
+            "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
+          )
+          .run(id, "2026-10-20", STAMP, STAMP);
+      });
+    }
+    // securityfocus appears in all 25 (>15% of 25 and > floor): pruned.
+    const graph = buildKevGraph(db, { focus: ids[0], nodeLimit: 30 });
+    for (const edge of graph.edges) {
+      expect(edge.evidence.domains).not.toContain("www.securityfocus.com");
+    }
+    expect(graph.nodes.length).toBe(1);
+  });
+
   it("ignores malformed references and empty cohorts without throwing", () => {
     const db = makeDb();
     const empty = buildKevGraph(db, {});

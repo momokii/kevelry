@@ -47,6 +47,13 @@ export interface GraphCohort {
 }
 
 export const GRAPH_DEFAULT_NODE_LIMIT = 120;
+
+/** A host referenced by more than this share of the cohort is an advisory
+ * aggregator (securityfocus, exploit-db, ...), not a relationship. */
+export const GRAPH_GENERIC_HOST_SHARE = 0.15;
+
+/** Host floor so tiny cohorts do not prune every shared host. */
+export const GRAPH_GENERIC_HOST_MIN = 20;
 export const GRAPH_MAX_NODE_LIMIT = 300;
 export const GRAPH_MAX_EDGES = 1500;
 
@@ -97,6 +104,35 @@ interface CohortRow {
   id: string;
   title: string | null;
   dueDate: string | null;
+}
+
+/**
+ * Drop advisory-aggregator hosts from the domain dimension. A host that most
+ * of the corpus references says nothing about relatedness: on the live cohort
+ * securityfocus/exploit-db/osvdb otherwise produce ~99 of 119 links for any
+ * center. Kept hosts stay exact; nothing is reweighted.
+ */
+function pruneGenericHosts(
+  map: Map<string, Set<string>>,
+  cohortSize: number,
+): Map<string, Set<string>> {
+  const usage = new Map<string, number>();
+  for (const set of map.values()) {
+    for (const host of set) usage.set(host, (usage.get(host) ?? 0) + 1);
+  }
+  const limit = Math.max(GRAPH_GENERIC_HOST_MIN, cohortSize * GRAPH_GENERIC_HOST_SHARE);
+  const generic = new Set<string>();
+  for (const [host, count] of usage) {
+    if (count > limit) generic.add(host);
+  }
+  if (generic.size === 0) return map;
+  const out = new Map<string, Set<string>>();
+  for (const [id, set] of map) {
+    const kept = new Set<string>();
+    for (const host of set) if (!generic.has(host)) kept.add(host);
+    out.set(id, kept);
+  }
+  return out;
 }
 
 function cweBuckets(map: Map<string, Set<string>>): Map<string, string[]> {
@@ -234,7 +270,7 @@ export function buildKevGraph(
   const byId = new Map(cohort.map((row) => [row.id, row]));
   const cwes = cweMap(db, ids);
   const vendors = vendorMap(db, ids);
-  const domains = domainMap(db, ids);
+  const domains = pruneGenericHosts(domainMap(db, ids), ids.length);
   const bands = bandMap(db, ids);
   const epssById = epssMap(db, ids);
 
