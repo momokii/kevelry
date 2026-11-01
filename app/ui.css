@@ -339,10 +339,6 @@ a {
   border-top: 1px solid var(--ui-rule);
 }
 
-.app-rail-section .ledger-timezone + .ledger-timezone {
-  margin-top: 10px;
-}
-
 .app-rail-label {
   font-family: var(--ui-font-mono);
   font-size: 9.5px;
@@ -1922,6 +1918,10 @@ a {
   font-size: 9px;
   color: var(--ui-ink);
   mix-blend-mode: multiply;
+}
+
+[data-theme="dark"] .matrix-count {
+  mix-blend-mode: screen;
 }
 
 .matrix-kev {

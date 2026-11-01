@@ -29,11 +29,14 @@ test("rail data-status rows match nav rows and dropdowns are themed", async ({ p
     "page",
   );
 
-  await page.getByTestId("global-theme-dark").click();
+  const toggle = page.getByTestId("theme-toggle");
+  await expect(toggle).toHaveAttribute("aria-label", "Switch to dark theme");
+  await toggle.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(toggle).toHaveAttribute("aria-label", "Switch to light theme");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByTestId("global-theme-light").click();
+  await page.getByTestId("theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
   const timezone = page.getByTestId("global-timezone");

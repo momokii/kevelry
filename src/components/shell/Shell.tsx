@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
-import { ThemeToggle } from "@/components/ledger/ThemeToggle";
+import { useDisplayPrefs } from "@/components/ledger/DisplayPrefs";
 import { TimeZoneSelect } from "@/components/ledger/TimeZoneSelect";
 
 import {
@@ -15,6 +15,7 @@ import {
   ExpandIcon,
   MenuIcon,
   MethodIcon,
+  MoonIcon,
   OverviewIcon,
   PriorityIcon,
   RadarIcon,
@@ -22,6 +23,7 @@ import {
   ReplayIcon,
   SearchIcon,
   StarIcon,
+  SunIcon,
 } from "./icons";
 
 const NAV = [
@@ -56,6 +58,7 @@ function currentLabel(pathname: string): string {
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
+  const { theme, setTheme } = useDisplayPrefs();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -183,7 +186,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="app-rail-section">
           <div className="app-rail-label">Display</div>
           <TimeZoneSelect testId="global-timezone" />
-          <ThemeToggle testId="global-theme" />
         </div>
       </aside>
 
@@ -225,6 +227,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Link className="btn btn-sm" href="/explore">
               Explore
             </Link>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-pressed={theme === "dark"}
+              title={theme === "dark" ? "Light mode" : "Dark mode"}
+              data-testid="theme-toggle"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+            </button>
           </div>
         </header>
         <div className="app-content">{children}</div>
