@@ -54,6 +54,38 @@ export const GRAPH_GENERIC_HOST_SHARE = 0.15;
 
 /** Host floor so tiny cohorts do not prune every shared host. */
 export const GRAPH_GENERIC_HOST_MIN = 20;
+
+/**
+ * Known advisory aggregators: CVE records cite these the way papers cite the
+ * same journal, so sharing one says nothing about relatedness. Matched on the
+ * host or any parent domain, so `exchange.xforce.ibmcloud.com` matches
+ * `xforce.ibmcloud.com` style entries and subdomains of listed hosts.
+ */
+export const GRAPH_GENERIC_HOSTS: readonly string[] = [
+  "securityfocus.com",
+  "securitytracker.com",
+  "exploit-db.com",
+  "secunia.com",
+  "oval.cisecurity.org",
+  "xforce.ibmcloud.com",
+  "vupen.com",
+  "osvdb.org",
+  "cvedetails.com",
+  "nvd.nist.gov",
+  "cve.mitre.org",
+  "cve.org",
+  "kb.cert.org",
+  "us-cert.gov",
+  "cisa.gov",
+  "github.com",
+];
+
+function isAggregatorHost(host: string): boolean {
+  for (const entry of GRAPH_GENERIC_HOSTS) {
+    if (host === entry || host.endsWith(`.${entry}`)) return true;
+  }
+  return false;
+}
 export const GRAPH_MAX_NODE_LIMIT = 300;
 export const GRAPH_MAX_EDGES = 1500;
 
@@ -123,7 +155,7 @@ function pruneGenericHosts(
   const limit = Math.max(GRAPH_GENERIC_HOST_MIN, cohortSize * GRAPH_GENERIC_HOST_SHARE);
   const generic = new Set<string>();
   for (const [host, count] of usage) {
-    if (count > limit) generic.add(host);
+    if (count > limit || isAggregatorHost(host)) generic.add(host);
   }
   if (generic.size === 0) return map;
   const out = new Map<string, Set<string>>();
