@@ -58,6 +58,9 @@ function wipeGraph(db: CveDatabase): void {
 test.beforeAll(() => {
   const db = openDatabase({ dataDir: serverDataDir() });
   try {
+    // Idempotent: fixture IDs are shared with other suites, which may leave
+    // rows behind when a run aborts before their afterAll wipe.
+    wipeGraph(db);
     seedGraph(db);
   } finally {
     db.close();

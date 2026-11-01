@@ -51,6 +51,9 @@ function wipeWatchRecord(db: CveDatabase): void {
 test.beforeAll(() => {
   const db = openDatabase({ dataDir: serverDataDir() });
   try {
+    // Idempotent: other suites share these fixture IDs and may leave rows
+    // behind when a run aborts before their afterAll wipe.
+    wipeWatchRecord(db);
     seedWatchRecord(db);
   } finally {
     db.close();
