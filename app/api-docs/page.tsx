@@ -186,6 +186,11 @@ function exampleResponse(endpoint: { path: string }): string {
             evidence: { cwes: ["CWE-94"], vendor: "microsoft", domains: ["docs.microsoft.com"] },
           },
         ],
+        groups: [
+          { kind: "cwe", value: "CWE-94", cves: ["CVE-2026-110447"] },
+          { kind: "vendor", value: "microsoft", cves: ["CVE-2026-110447"] },
+        ],
+        hubs: [],
         coverage: { eligibleCohort: 1762, returned: 2, edgeCount: 1 },
         truncated: true,
         provenance,

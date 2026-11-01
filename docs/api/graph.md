@@ -7,10 +7,19 @@ catalog CWEs, normalized vendor labels, reference hostnames).
 
     GET /api/v1/graph?focus=CVE-2026-109618&limit=120
 
-`focus` is optional: without it the graph centers on the highest-EPSS KEV
-record. With it the response is that record's ego neighborhood (the focus
-plus every directly linked record). `limit` (1–300, default 120) caps the
-neighborhood. Unknown or non-KEV focus returns `CVE_NOT_FOUND`.
+`focus` is optional, and **no center is chosen for the reader**. Without it the
+response is landing mode: `hubs` ranks the most-connected records (with their
+strongest shared attributes) and `nodes`/`edges`/`groups` are empty. With
+`focus` the response is that record's neighborhood, expressed twice:
+
+- `groups`: bipartite buckets — one per shared attribute value, each listing
+  the neighbor CVE ids that carry it. This is the readable view ("shared
+  CWE-94 · 14 records") and the one the site renders.
+- `nodes` + `edges`: the same neighborhood as a node-link set, for clients
+  that want to draw it.
+
+`limit` (1–300, default 120) caps the neighborhood. Unknown or non-KEV focus
+returns `CVE_NOT_FOUND`.
 
 ## Edges
 
@@ -26,11 +35,9 @@ relations:
 
 Each edge also carries `evidence` naming the concrete shared attributes:
 `cwes` (identifiers, escapable to MITRE), `vendor` (label or null), and
-`domains` (hosts, sorted). Line style names the kind on the site (solid,
-dashed, dotted); the API names every kind in `kinds`, sorted. The default
-center is the most-connected hub in the cohort (ties: EPSS, then ID), so the
-page answers before any search. Node and edge caps ride in the response
-(`coverage` + `truncated`); nothing is sampled silently.
+`domains` (hosts, sorted). The API names every kind in `kinds`, sorted. Node
+and edge caps ride in the response (`coverage` + `truncated`); nothing is
+sampled silently.
 
 ## Example
 

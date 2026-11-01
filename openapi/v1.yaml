@@ -1392,12 +1392,63 @@ components:
             - vendor
         evidence:
           $ref: "#/components/schemas/GraphEdgeEvidence"
+    GraphGroup:
+      type: object
+      description: One shared-attribute bucket for a centered record.
+      required:
+        - kind
+        - value
+        - cves
+      properties:
+        kind:
+          type: string
+          enum:
+            - cwe
+            - vendor
+            - domain
+        value:
+          type: string
+          example: CWE-94
+        cves:
+          type: array
+          description: Neighbor CVE ids sharing this value with the center.
+          items:
+            type: string
+    GraphHub:
+      type: object
+      description: One most-connected record on the landing view.
+      required:
+        - id
+        - title
+        - degree
+        - epss
+        - kevDueDate
+        - topAttributes
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        degree:
+          type: integer
+        epss:
+          type: string
+          nullable: true
+        kevDueDate:
+          type: string
+          nullable: true
+        topAttributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphGroup"
     GraphResponse:
       type: object
       required:
         - focus
         - nodes
         - edges
+        - groups
+        - hubs
         - coverage
         - truncated
         - provenance
@@ -1405,7 +1456,7 @@ components:
         focus:
           type: string
           nullable: true
-          description: Ego center (requested, or the highest-EPSS record by default). Null only when the cohort is empty.
+          description: Requested ego center. Null means landing mode (hub leaderboard); no center is chosen for the reader.
           example: CVE-2026-109618
         nodes:
           type: array
@@ -1415,6 +1466,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GraphEdge"
+        groups:
+          type: array
+          description: Centered only. Shared attributes and the records carrying them.
+          items:
+            $ref: "#/components/schemas/GraphGroup"
+        hubs:
+          type: array
+          description: Landing only (no focus). Most-connected records with top attributes.
+          items:
+            $ref: "#/components/schemas/GraphHub"
         coverage:
           type: object
           required:

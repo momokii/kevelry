@@ -595,11 +595,24 @@ describe("v1 graph route", () => {
     expectRateHeaders(response);
     const body = await bodyOf(response);
     expectProvenance(body);
-    expect(body.focus).toBe("CVE-2099-0001");
+    // No implicit center: the landing payload ranks hubs instead.
+    expect(body.focus).toBeNull();
     expect(typeof body.truncated).toBe("boolean");
     const coverage = body.coverage as Record<string, number>;
     expect(coverage.eligibleCohort).toBe(1);
     expect(Array.isArray(body.nodes) && Array.isArray(body.edges)).toBe(true);
+    const hubs = body.hubs as Array<Record<string, unknown>>;
+    expect(hubs).toHaveLength(1);
+    expect(hubs[0]?.id).toBe("CVE-2099-0001");
+
+    const centered = await getGraph(
+      new Request("https://radar.test/api/v1/graph?focus=CVE-2099-0001&limit=50"),
+    );
+    expect(centered.status).toBe(200);
+    const centeredBody = await bodyOf(centered);
+    expect(centeredBody.focus).toBe("CVE-2099-0001");
+    expect(Array.isArray(centeredBody.groups)).toBe(true);
+    expect(Array.isArray(centeredBody.hubs) && centeredBody.hubs.length === 0).toBe(true);
 
     const badFocus = await getGraph(
       new Request("https://radar.test/api/v1/graph?focus=CVE-2099-9999"),
