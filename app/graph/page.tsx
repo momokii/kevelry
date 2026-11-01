@@ -92,9 +92,9 @@ export default async function GraphPage({ searchParams }: { searchParams?: Promi
         title="What links these records?"
         lede={
           <>
-            KEV-listed records joined by shared catalog CWEs, normalized vendor labels, and
-            reference hostnames. The center is the most-connected record in the cohort (the hub), so
-            the page always answers something before you search. Bounds are stated, never silent
+            KEV-listed records joined by shared catalog CWEs, normalized vendor labels, and advisory
+            hostnames. The landing ranks the most-connected records; centering on one shows every
+            attribute it shares and exactly which records carry it. Bounds are stated, never silent
             sampling.
           </>
         }

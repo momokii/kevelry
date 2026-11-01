@@ -26,7 +26,6 @@ function GroupColumn({
   return (
     <section className="graph-group" data-testid={`graph-group-${group.kind}-${group.value}`}>
       <header className="graph-group-head">
-        <span className="eyebrow">{meta.label}</span>
         <strong className="graph-group-value">
           {cweNumber === null ? (
             group.value
