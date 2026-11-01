@@ -7,10 +7,10 @@ catalog CWEs, normalized vendor labels, reference hostnames).
 
     GET /api/v1/graph?focus=CVE-2026-109618&limit=120
 
-`focus` is optional: without it the cohort is the top-EPSS KEV-listed
-published records up to `limit` (1–300, default 120). With it the response
-is the ego neighborhood (the focus plus every directly linked record).
-Unknown or non-KEV focus returns `CVE_NOT_FOUND`.
+`focus` is optional: without it the graph centers on the highest-EPSS KEV
+record. With it the response is that record's ego neighborhood (the focus
+plus every directly linked record). `limit` (1–300, default 120) caps the
+neighborhood. Unknown or non-KEV focus returns `CVE_NOT_FOUND`.
 
 ## Edges
 

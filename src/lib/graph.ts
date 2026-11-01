@@ -90,17 +90,17 @@ interface CohortRow {
 }
 
 /**
- * Build the bounded relationship graph. `focus` selects an ego neighborhood
- * (the focus plus every directly linked record); without it the cohort is
- * the top-EPSS KEV members up to the node limit. Throws RangeError on a
- * focus outside the KEV-listed PUBLISHED cohort so routes map it to 404.
+ * Build the bounded relationship graph, always ego-centered: an explicit
+ * `focus` selects its neighborhood, otherwise the center is the highest-EPSS
+ * KEV record. A centerless hairball reads as noise, so there is no uncentered
+ * mode. Throws RangeError on a focus outside the KEV-listed PUBLISHED cohort
+ * so routes map it to 404.
  */
 export function buildKevGraph(
   db: CveDatabase,
   options: { focus?: string | null; nodeLimit?: number } = {},
 ): GraphCohort {
   const nodeLimit = options.nodeLimit ?? GRAPH_DEFAULT_NODE_LIMIT;
-  const focus = options.focus ?? null;
 
   const cohort = db.handle
     .prepare(
@@ -110,8 +110,8 @@ export function buildKevGraph(
     )
     .all() as CohortRow[];
   const member = new Set(cohort.map((row) => row.id));
-  if (focus !== null && !member.has(focus)) {
-    throw new RangeError(`Focus ${focus} is not a KEV-listed PUBLISHED record.`);
+  if (options.focus !== undefined && options.focus !== null && !member.has(options.focus)) {
+    throw new RangeError(`Focus ${options.focus} is not a KEV-listed PUBLISHED record.`);
   }
 
   const ids = cohort.map((row) => row.id);
@@ -136,6 +136,16 @@ export function buildKevGraph(
     return out;
   };
 
+  const topEpss = [...ids].sort((a, b) => {
+    const ea = epssById.get(a) ?? null;
+    const eb = epssById.get(b) ?? null;
+    if (ea === null && eb === null) return a < b ? -1 : 1;
+    if (ea === null) return 1;
+    if (eb === null) return -1;
+    const cmp = compareDecimalStrings(eb, ea) ?? 0;
+    return cmp !== 0 ? cmp : a < b ? -1 : 1;
+  });
+  const focus = options.focus ?? topEpss[0] ?? null;
   let kept: string[];
   let truncated = false;
   if (focus !== null) {
@@ -143,19 +153,8 @@ export function buildKevGraph(
     kept = [focus, ...neighborhood].slice(0, nodeLimit);
     truncated = neighborhood.length + 1 > nodeLimit;
   } else {
-    const ranked = [...ids].sort((a, b) => {
-      const ea = epssById.get(a) ?? null;
-      const eb = epssById.get(b) ?? null;
-      if (ea === null && eb === null) return a < b ? -1 : 1;
-      if (ea === null) return 1;
-      if (eb === null) return -1;
-      const cmp = compareDecimalStrings(eb, ea) ?? 0;
-      return cmp !== 0 ? cmp : a < b ? -1 : 1;
-    });
-    kept = ranked.slice(0, nodeLimit);
-    truncated = ranked.length > nodeLimit;
+    kept = [];
   }
-  const keptSet = new Set(kept);
 
   const edges: GraphEdge[] = [];
   const sorted = [...kept].sort();

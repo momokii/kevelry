@@ -338,9 +338,9 @@ paths:
       description: |
         KEV-listed published records joined by shared catalog CWEs, normalized
         vendor labels, and reference hostnames. Labeled edge kinds only, never
-        inferred relations. `focus` selects an ego neighborhood; without it the
-        cohort is the top-EPSS KEV members up to the node limit. Node and edge
-        caps are part of the response, never silent sampling.
+        inferred relations. Always ego-centered: `focus` selects the center,
+        otherwise the highest-EPSS KEV record centers. Node and edge caps are
+        part of the response, never silent sampling.
       tags:
         - Graph
       parameters:
@@ -1373,8 +1373,8 @@ components:
         focus:
           type: string
           nullable: true
-          description: Ego center, or null for the default top-EPSS cohort.
-          example: null
+          description: Ego center (requested, or the highest-EPSS record by default). Null only when the cohort is empty.
+          example: CVE-2026-109618
         nodes:
           type: array
           items:

@@ -97,7 +97,7 @@ describe("bounded KEV relationship graph", () => {
     seedEpss(db, "CVE-2099-0002", "0.10");
 
     const graph = buildKevGraph(db, { nodeLimit: 10 });
-    expect(graph.focus).toBeNull();
+    expect(graph.focus).toBe("CVE-2099-0001");
     expect(graph.eligibleCohort).toBe(3);
     expect(graph.truncated).toBe(false);
     expect(graph.nodes.map((node) => node.id)).toContain("CVE-2099-0001");
@@ -133,8 +133,8 @@ describe("bounded KEV relationship graph", () => {
     const db = makeDb();
     seedRecord(db, "CVE-2099-0001");
     seedRecord(db, "CVE-2099-0002");
-    seedKev(db, "CVE-2099-0001", {});
-    seedKev(db, "CVE-2099-0002", {});
+    seedKev(db, "CVE-2099-0001", { cwes: ["CWE-78"] });
+    seedKev(db, "CVE-2099-0002", { cwes: ["CWE-78"] });
     expect(() => buildKevGraph(db, { focus: "CVE-2099-9999" })).toThrowError(RangeError);
     expect(() => buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 0 })).not.toThrow();
 
@@ -148,22 +148,23 @@ describe("bounded KEV relationship graph", () => {
     expect(GRAPH_MAX_EDGES).toBe(1500);
   });
 
-  it("orders the default cohort by EPSS descending, unknown last", () => {
+  it("centers the default ego on the top-EPSS record", () => {
     const db = makeDb();
     seedRecord(db, "CVE-2099-0001");
     seedRecord(db, "CVE-2099-0002");
     seedRecord(db, "CVE-2099-0003");
-    seedKev(db, "CVE-2099-0001", {});
-    seedKev(db, "CVE-2099-0002", {});
+    seedKev(db, "CVE-2099-0001", { cwes: ["CWE-78"] });
+    seedKev(db, "CVE-2099-0002", { cwes: ["CWE-78"] });
     seedKev(db, "CVE-2099-0003", {});
     seedEpss(db, "CVE-2099-0002", "0.10");
     seedEpss(db, "CVE-2099-0001", "0.50");
     const graph = buildKevGraph(db, { nodeLimit: 10 });
-    expect(graph.nodes.map((node) => node.id)).toEqual([
+    expect(graph.focus).toBe("CVE-2099-0001");
+    expect(graph.nodes.map((node) => node.id).sort()).toEqual([
       "CVE-2099-0001",
       "CVE-2099-0002",
-      "CVE-2099-0003",
     ]);
+    expect(graph.truncated).toBe(false);
   });
 
   it("ignores malformed references and empty cohorts without throwing", () => {

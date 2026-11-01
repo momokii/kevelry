@@ -159,7 +159,7 @@ function exampleResponse(endpoint: { path: string }): string {
   if (endpoint.path.includes("/graph")) {
     return JSON.stringify(
       {
-        focus: null,
+        focus: "CVE-2026-109618",
         nodes: [
           {
             id: "CVE-2026-109618",
