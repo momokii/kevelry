@@ -45,10 +45,27 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
     selected === null
       ? []
       : cohort.edges.filter((edge) => edge.from === selected || edge.to === selected);
-  const kindCounts = new Map<GraphEdgeKind, number>();
+  // Aggregate the actual shared attributes behind every incident link so the
+  // inspector answers "linked by WHAT", not just "how many".
+  const sharedCwes = new Map<string, number>();
+  const sharedDomains = new Map<string, number>();
+  const sharedVendors = new Map<string, number>();
   for (const edge of selectedEdges) {
-    for (const kind of edge.kinds) kindCounts.set(kind, (kindCounts.get(kind) ?? 0) + 1);
+    for (const cwe of edge.evidence.cwes) sharedCwes.set(cwe, (sharedCwes.get(cwe) ?? 0) + 1);
+    for (const host of edge.evidence.domains) {
+      sharedDomains.set(host, (sharedDomains.get(host) ?? 0) + 1);
+    }
+    if (edge.evidence.vendor !== null) {
+      sharedVendors.set(edge.evidence.vendor, (sharedVendors.get(edge.evidence.vendor) ?? 0) + 1);
+    }
   }
+  const topCwes = [...sharedCwes].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 6);
+  const topDomains = [...sharedDomains]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 5);
+  const topVendors = [...sharedVendors]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 3);
 
   return (
     <div>
@@ -76,7 +93,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
       </form>
       <p className="chart-note" data-testid="graph-coverage">
         {cohort.nodes.length} of {cohort.eligibleCohort} KEV-listed records
-        {cohort.focus === null ? "" : ` · centered on ${cohort.focus}`}
+        {cohort.focus === null ? "" : ` · centered on ${cohort.focus} (most-connected hub)`}
         {cohort.truncated ? " · bounded, not complete" : ""} · {cohort.edges.length} labeled links.
       </p>
       {cohort.nodes.length === 0 ? (
@@ -203,13 +220,48 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
                     <dt>Remediation due</dt>
                     <dd>{selectedNode.kevDueDate ?? "none stated"}</dd>
                   </div>
-                  {([...kindCounts] as Array<[GraphEdgeKind, number]>).map(([kind, count]) => (
-                    <div key={kind}>
-                      <dt>{EDGE_STYLE[kind].label}</dt>
-                      <dd>{count}</dd>
-                    </div>
-                  ))}
                 </dl>
+                {selectedEdges.length > 0 ? (
+                  <div className="graph-evidence" data-testid="graph-inspector-evidence">
+                    <div className="eyebrow">Linked by</div>
+                    {topCwes.length > 0 ? (
+                      <p className="graph-evidence-line">
+                        <span className="graph-evidence-kind">CWE</span>
+                        {topCwes.map(([cwe, count]) => (
+                          <a
+                            key={cwe}
+                            className="graph-evidence-chip"
+                            href={`https://cwe.mitre.org/data/definitions/${cwe.replace("CWE-", "")}.html`}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            {cwe} · {count}
+                          </a>
+                        ))}
+                      </p>
+                    ) : null}
+                    {topVendors.length > 0 ? (
+                      <p className="graph-evidence-line">
+                        <span className="graph-evidence-kind">Vendor</span>
+                        {topVendors.map(([vendor, count]) => (
+                          <span key={vendor} className="graph-evidence-chip">
+                            {vendor} · {count}
+                          </span>
+                        ))}
+                      </p>
+                    ) : null}
+                    {topDomains.length > 0 ? (
+                      <p className="graph-evidence-line">
+                        <span className="graph-evidence-kind">Host</span>
+                        {topDomains.map(([host, count]) => (
+                          <span key={host} className="graph-evidence-chip">
+                            {host} · {count}
+                          </span>
+                        ))}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="stack" style={{ gap: 8 }}>
                   <Link
                     className="btn btn-sm"

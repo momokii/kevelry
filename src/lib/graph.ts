@@ -22,10 +22,20 @@ export interface GraphNode {
   degree: number;
 }
 
+export interface GraphEdgeEvidence {
+  /** Shared catalog CWE identifiers, sorted. */
+  cwes: string[];
+  /** Shared normalized vendor label, or null. */
+  vendor: string | null;
+  /** Shared reference hostnames, sorted. */
+  domains: string[];
+}
+
 export interface GraphEdge {
   from: string;
   to: string;
   kinds: GraphEdgeKind[];
+  evidence: GraphEdgeEvidence;
 }
 
 export interface GraphCohort {
@@ -89,6 +99,112 @@ interface CohortRow {
   dueDate: string | null;
 }
 
+function cweBuckets(map: Map<string, Set<string>>): Map<string, string[]> {
+  const buckets = new Map<string, string[]>();
+  for (const [id, set] of map) {
+    for (const value of set) {
+      const list = buckets.get(value);
+      if (list === undefined) buckets.set(value, [id]);
+      else list.push(id);
+    }
+  }
+  return buckets;
+}
+
+function vendorBuckets(map: Map<string, string | null>): Map<string, string[]> {
+  const buckets = new Map<string, string[]>();
+  for (const [id, label] of map) {
+    if (label === null || label === undefined) continue;
+    const list = buckets.get(label);
+    if (list === undefined) buckets.set(label, [id]);
+    else list.push(id);
+  }
+  return buckets;
+}
+
+function domainBuckets(map: Map<string, Set<string>>): Map<string, string[]> {
+  const buckets = new Map<string, string[]>();
+  for (const [id, set] of map) {
+    for (const value of set) {
+      const list = buckets.get(value);
+      if (list === undefined) buckets.set(value, [id]);
+      else list.push(id);
+    }
+  }
+  return buckets;
+}
+
+/** Highest full-cohort degree; ties fall back to EPSS then ASCII ID. */
+function topHub(
+  ids: readonly string[],
+  degreeAll: Map<string, number>,
+  epssById: Map<string, string>,
+): string | null {
+  const ranked = [...ids].sort((a, b) => {
+    const da = degreeAll.get(a) ?? 0;
+    const db = degreeAll.get(b) ?? 0;
+    if (da !== db) return db - da;
+    const ea = epssById.get(a) ?? null;
+    const eb = epssById.get(b) ?? null;
+    if (ea === null && eb === null) return a < b ? -1 : 1;
+    if (ea === null) return 1;
+    if (eb === null) return -1;
+    const cmp = compareDecimalStrings(eb, ea) ?? 0;
+    return cmp !== 0 ? cmp : a < b ? -1 : 1;
+  });
+  return ranked[0] ?? null;
+}
+
+function neighborsOf(
+  id: string,
+  cwes: Map<string, Set<string>>,
+  vendors: Map<string, string | null>,
+  domains: Map<string, Set<string>>,
+): string[] {
+  const out = new Set<string>();
+  for (const [other, set] of cwes) {
+    if (other !== id && intersects(cwes.get(id), set)) out.add(other);
+  }
+  const vendor = vendors.get(id);
+  if (vendor !== null && vendor !== undefined) {
+    for (const [other, label] of vendors) {
+      if (other !== id && label === vendor) out.add(other);
+    }
+  }
+  for (const [other, set] of domains) {
+    if (other !== id && intersects(domains.get(id), set)) out.add(other);
+  }
+  return [...out];
+}
+
+function evidenceBetween(
+  a: string,
+  b: string,
+  cwes: Map<string, Set<string>>,
+  vendors: Map<string, string | null>,
+  domains: Map<string, Set<string>>,
+): GraphEdgeEvidence {
+  const sharedCwes: string[] = [];
+  const setA = cwes.get(a);
+  const setB = cwes.get(b);
+  if (setA !== undefined && setB !== undefined) {
+    for (const value of setA) if (setB.has(value)) sharedCwes.push(value);
+  }
+  const vendorA = vendors.get(a) ?? null;
+  const vendorB = vendors.get(b) ?? null;
+  const sharedDomains: string[] = [];
+  const domA = domains.get(a);
+  const domB = domains.get(b);
+  if (domA !== undefined && domB !== undefined) {
+    for (const value of domA) if (domB.has(value)) sharedDomains.push(value);
+  }
+  return {
+    cwes: sharedCwes.sort(),
+    vendor: vendorA !== null && vendorA === vendorB ? vendorA : null,
+    domains: sharedDomains.sort(),
+  };
+}
+
 /**
  * Build the bounded relationship graph, always ego-centered: an explicit
  * `focus` selects its neighborhood, otherwise the center is the highest-EPSS
@@ -122,70 +238,57 @@ export function buildKevGraph(
   const bands = bandMap(db, ids);
   const epssById = epssMap(db, ids);
 
-  const linked = (id: string): Set<string> => {
-    const out = new Set<string>();
-    for (const [other, set] of cwes) {
-      if (other !== id && intersects(cwes.get(id), set)) out.add(other);
-    }
-    for (const [other, label] of vendors) {
-      if (other !== id && label !== null && label === vendors.get(id)) out.add(other);
-    }
-    for (const [other, set] of domains) {
-      if (other !== id && intersects(domains.get(id), set)) out.add(other);
-    }
-    return out;
+  // Full-cohort degree per record, computed from attribute membership counts
+  // (sum of groupSize-1 per shared attribute) instead of O(n^2) pairing. This
+  // ranks hubs honestly across all KEV records, not just a rendered subset.
+  const degreeAll = new Map<string, number>();
+  const bump = (id: string, by: number): void => {
+    if (by <= 0) return;
+    degreeAll.set(id, (degreeAll.get(id) ?? 0) + by);
   };
+  for (const bucket of [cweBuckets(cwes), vendorBuckets(vendors), domainBuckets(domains)]) {
+    for (const members of bucket.values()) {
+      const by = members.length - 1;
+      for (const id of members) bump(id, by);
+    }
+  }
 
-  const topEpss = [...ids].sort((a, b) => {
-    const ea = epssById.get(a) ?? null;
-    const eb = epssById.get(b) ?? null;
-    if (ea === null && eb === null) return a < b ? -1 : 1;
-    if (ea === null) return 1;
-    if (eb === null) return -1;
-    const cmp = compareDecimalStrings(eb, ea) ?? 0;
-    return cmp !== 0 ? cmp : a < b ? -1 : 1;
-  });
-  const focus = options.focus ?? topEpss[0] ?? null;
+  const focus = options.focus ?? topHub(ids, degreeAll, epssById);
   let kept: string[];
   let truncated = false;
   if (focus !== null) {
-    const neighborhood = [...linked(focus)].sort();
-    kept = [focus, ...neighborhood].slice(0, nodeLimit);
-    truncated = neighborhood.length + 1 > nodeLimit;
+    const neighbors = neighborsOf(focus, cwes, vendors, domains);
+    // Strongest links first: more shared attributes, then higher degree.
+    neighbors.sort((a, b) => {
+      const ea = evidenceBetween(a, focus, cwes, vendors, domains);
+      const eb = evidenceBetween(b, focus, cwes, vendors, domains);
+      const sa = ea.cwes.length + ea.domains.length + (ea.vendor === null ? 0 : 1);
+      const sb = eb.cwes.length + eb.domains.length + (eb.vendor === null ? 0 : 1);
+      if (sa !== sb) return sb - sa;
+      const da = degreeAll.get(b) ?? 0;
+      const db2 = degreeAll.get(a) ?? 0;
+      if (da !== db2) return da - db2;
+      return a < b ? -1 : 1;
+    });
+    kept = [focus, ...neighbors].slice(0, nodeLimit);
+    truncated = neighbors.length + 1 > nodeLimit;
   } else {
     kept = [];
   }
 
-  const kindBetween = (from: string, to: string): GraphEdgeKind[] => {
-    const kinds: GraphEdgeKind[] = [];
-    if (intersects(cwes.get(from), cwes.get(to))) kinds.push("cwe");
-    const vendor = vendors.get(from);
-    if (vendor !== null && vendor !== undefined && vendor === vendors.get(to)) {
-      kinds.push("vendor");
-    }
-    if (intersects(domains.get(from), domains.get(to))) kinds.push("domain");
-    return kinds;
-  };
   const edges: GraphEdge[] = [];
   if (focus !== null) {
-    // Ego star: only center-to-neighbor links, so the view stays readable
-    // no matter how interlinked the neighborhood is behind the scenes.
-    for (const other of [...kept].sort()) {
+    // Ego star with explicit evidence per link, so "what links them" is
+    // answerable without guessing from line style.
+    for (const other of kept) {
       if (other === focus) continue;
-      const kinds = kindBetween(focus, other);
-      if (kinds.length > 0) edges.push({ from: focus, to: other, kinds });
-      if (edges.length >= GRAPH_MAX_EDGES) break;
-    }
-  } else {
-    const sorted = [...kept].sort();
-    for (let i = 0; i < sorted.length; i += 1) {
-      const from = sorted[i] as string;
-      for (let j = i + 1; j < sorted.length; j += 1) {
-        const to = sorted[j] as string;
-        const kinds = kindBetween(from, to);
-        if (kinds.length > 0) edges.push({ from, to, kinds });
-        if (edges.length >= GRAPH_MAX_EDGES) break;
-      }
+      const evidence = evidenceBetween(focus, other, cwes, vendors, domains);
+      const kinds: GraphEdgeKind[] = [];
+      if (evidence.cwes.length > 0) kinds.push("cwe");
+      if (evidence.vendor !== null) kinds.push("vendor");
+      if (evidence.domains.length > 0) kinds.push("domain");
+      if (kinds.length === 0) continue;
+      edges.push({ from: focus, to: other, kinds, evidence });
       if (edges.length >= GRAPH_MAX_EDGES) break;
     }
   }

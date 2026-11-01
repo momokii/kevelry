@@ -90,7 +90,9 @@ test("graph renders labeled nodes with an inspector", async ({ page }) => {
   await page.getByTestId("graph-node-CVE-2099-1001").click();
   await expect(page.getByTestId("graph-inspector-id")).toContainText("CVE-2099-1001");
   await expect(page.getByTestId("graph-inspector-degree")).toContainText("1");
-  await expect(page.getByTestId("graph-inspector")).toContainText("shared vendor label");
+  // Evidence names the actual shared attributes, not just a line style.
+  await expect(page.getByTestId("graph-inspector-evidence")).toContainText("CWE-78");
+  await expect(page.getByTestId("graph-inspector-evidence")).toContainText("graphvendor");
   await expect(page.getByTestId("graph-inspector")).toContainText("Open in Search");
 });
 

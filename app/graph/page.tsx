@@ -90,7 +90,14 @@ export default async function GraphPage({ searchParams }: { searchParams?: Promi
           </>
         }
         title="What links these records?"
-        lede="KEV-listed records joined by shared catalog CWEs, normalized vendor labels, and reference hostnames. Every edge kind is inspectable; bounds are stated, never silent sampling."
+        lede={
+          <>
+            KEV-listed records joined by shared catalog CWEs, normalized vendor labels, and
+            reference hostnames. The center is the most-connected record in the cohort (the hub), so
+            the page always answers something before you search. Bounds are stated, never silent
+            sampling.
+          </>
+        }
       />
       {outcome.kind === "unavailable" ? (
         <div className="notice" data-testid="graph-unavailable">
