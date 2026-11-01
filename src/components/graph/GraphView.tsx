@@ -22,8 +22,10 @@ const SVG_W = 940;
 const COL_CENTER = 96;
 const COL_ATTR = 372;
 const COL_LEAF = 668;
-const CHILD_CAP = 5;
-const ATTR_CAP = 10;
+const ATTR_CAP = 8;
+/** Vertical budget so the drawing fits a normal viewport without clipping. */
+const MAX_HEIGHT = 680;
+const ROW_UNIT = 22;
 
 interface AttrRow {
   group: GraphGroup;
@@ -40,12 +42,27 @@ interface AttrRow {
  */
 function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
   const center = cohort.focus ?? "";
-  const rows: AttrRow[] = cohort.groups.slice(0, ATTR_CAP).map((group) => {
-    const children = group.cves.slice(0, CHILD_CAP);
+  const shown = cohort.groups.slice(0, ATTR_CAP);
+  // Child budget per attribute from the available height, so the center and
+  // every edge stay inside the viewBox instead of being clipped.
+  const perRow = shown.length === 0 ? ROW_UNIT : MAX_HEIGHT / shown.length;
+  const childCap = Math.max(1, Math.min(5, Math.floor((perRow - 14) / ROW_UNIT)));
+  const rows: AttrRow[] = shown.map((group) => {
+    const children = group.cves.slice(0, childCap);
     const hidden = Math.max(0, group.cves.length - children.length);
-    return { group, children, hidden, height: (children.length + (hidden > 0 ? 1 : 0)) * 22 + 14 };
+    return {
+      group,
+      children,
+      hidden,
+      height: (children.length + (hidden > 0 ? 1 : 0)) * ROW_UNIT + 14,
+    };
   });
-  const totalHeight = Math.max(320, rows.reduce((sum, row) => sum + row.height, 0) + 24);
+  // Keep the whole drawing inside a normal viewport: the center must be
+  // visible without scrolling, or the graph reads as a fragment.
+  const totalHeight = Math.max(
+    320,
+    Math.min(620, rows.reduce((sum, row) => sum + row.height, 0) + 24),
+  );
   const centerY = totalHeight / 2;
 
   let cursor = 12;
@@ -80,7 +97,7 @@ function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
                 strokeOpacity={0.55}
               />
               {row.children.map((childId, index) => {
-                const y = row.top + 16 + index * 22;
+                const y = row.top + 16 + index * ROW_UNIT;
                 return (
                   <g key={childId}>
                     <line
@@ -113,7 +130,7 @@ function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
               {row.hidden > 0 ? (
                 <text
                   x={COL_LEAF}
-                  y={row.top + 16 + row.children.length * 22 + 4}
+                  y={row.top + 16 + row.children.length * ROW_UNIT + 4}
                   fontSize={9.5}
                   fontFamily="var(--ui-font-mono)"
                   fill="var(--ui-ink-3)"
