@@ -595,7 +595,7 @@ describe("v1 graph route", () => {
     expectRateHeaders(response);
     const body = await bodyOf(response);
     expectProvenance(body);
-    expect(body.focus).toBeNull();
+    expect(body.focus).toBe("CVE-2099-0001");
     expect(typeof body.truncated).toBe("boolean");
     const coverage = body.coverage as Record<string, number>;
     expect(coverage.eligibleCohort).toBe(1);

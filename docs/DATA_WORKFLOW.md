@@ -256,6 +256,17 @@ Do not flag an old vulnerability merely because its record has not changed.
 Flag EPSS when its accepted score date is **older than 2 UTC calendar days**.
 Keep last-known-good data with visible per-source timestamps and errors during outages.
 
+## Relation Graph Contract (v2)
+
+The graph is a view over retained rows, not a new snapshot: nodes are
+KEV-listed PUBLISHED records; edges join shared catalog CWEs, normalized
+vendor labels, and reference hostnames only. Always ego-centered (explicit
+focus, else the highest-EPSS record); node cap default 120 (max 300), edge
+cap 1500, both ridden in the response with a `truncated` flag. No
+text-similarity edges, no silent sampling. Watch lists and the display theme
+are browser-private preferences (localStorage, never cookies or server
+state) and carry no data contract.
+
 ## Aggregate Cache (read-path performance)
 
 Hot paths (overview page, `/api/v1/overview`, `/api/v1/status`,
