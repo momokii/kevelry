@@ -178,7 +178,14 @@ function exampleResponse(endpoint: { path: string }): string {
             degree: 1,
           },
         ],
-        edges: [{ from: "CVE-2026-109618", to: "CVE-2026-110447", kinds: ["cwe"] }],
+        edges: [
+          {
+            from: "CVE-2026-109618",
+            to: "CVE-2026-110447",
+            kinds: ["cwe", "vendor"],
+            evidence: { cwes: ["CWE-94"], vendor: "microsoft", domains: ["docs.microsoft.com"] },
+          },
+        ],
         coverage: { eligibleCohort: 1762, returned: 2, edgeCount: 1 },
         truncated: true,
         provenance,

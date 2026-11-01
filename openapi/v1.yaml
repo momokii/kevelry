@@ -1335,12 +1335,42 @@ components:
           type: integer
           description: Labeled links incident to this node in this response.
           example: 3
+    GraphEdgeEvidence:
+      type: object
+      required:
+        - cwes
+        - vendor
+        - domains
+      description: The concrete shared attributes behind one link.
+      properties:
+        cwes:
+          type: array
+          description: Shared catalog CWE identifiers, sorted.
+          items:
+            type: string
+          example:
+            - CWE-94
+        vendor:
+          type: string
+          nullable: true
+          description: Shared normalized vendor label, or null.
+          example: microsoft
+        domains:
+          type: array
+          description: >-
+            Shared reference hostnames, sorted. Advisory aggregators (hosts in
+            more than 15% of the cohort) are excluded.
+          items:
+            type: string
+          example:
+            - docs.microsoft.com
     GraphEdge:
       type: object
       required:
         - from
         - to
         - kinds
+        - evidence
       properties:
         from:
           type: string
@@ -1360,6 +1390,8 @@ components:
           example:
             - cwe
             - vendor
+        evidence:
+          $ref: "#/components/schemas/GraphEdgeEvidence"
     GraphResponse:
       type: object
       required:

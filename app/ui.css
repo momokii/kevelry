@@ -567,6 +567,12 @@ a {
   .app-topbar .timezone-compact {
     display: none;
   }
+
+  /* Narrow topbar keeps the icon controls (theme, menu) and drops the
+     labelled shortcut; Explore stays reachable from the rail. */
+  .app-topbar-actions .btn:not(.btn-icon) {
+    display: none;
+  }
 }
 
 /* ---------- page composition ---------- */
@@ -931,7 +937,8 @@ a {
 }
 
 .btn-icon {
-  width: 40px;
+  width: 44px;
+  min-width: 44px;
   padding: 0;
 }
 
