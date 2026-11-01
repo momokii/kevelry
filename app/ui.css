@@ -3074,6 +3074,19 @@ a {
   }
 }
 
+.due-group-heading {
+  font-family: var(--ui-font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-ink-2);
+  margin: var(--ui-sp-5) 0 var(--ui-sp-2);
+}
+
+.priority-table > section:first-child > .due-group-heading {
+  margin-top: var(--ui-sp-2);
+}
+
 /* severity rows: full-width meter under the label/value */
 .severity-row {
   grid-template-columns: 1fr auto;

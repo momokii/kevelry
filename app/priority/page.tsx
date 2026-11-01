@@ -246,7 +246,7 @@ const ORDERING_EXTRAS: Record<PriorityMode, string> = {
   "rising-forecast":
     "Missing dates and model transitions are ineligible, never interpolated or zeroed. This is a forecast movement list, not social popularity or observed exploitation telemetry.",
   "kev-due-soon":
-    "Only KEV members with a valid catalog remediation due date; overdue first, no upper cutoff. Missing or malformed due dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not exploit predictions.",
+    "Only KEV members with a valid catalog remediation due date; overdue first, no upper cutoff. Missing or malformed due dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not exploit predictions. An overdue deadline means the remediation is late and therefore most urgent, not that the data is stale.",
 };
 
 export default async function PriorityPage({

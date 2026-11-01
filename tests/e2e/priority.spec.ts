@@ -160,7 +160,7 @@ function seedPriorityFixtures(db: CveDatabase, scoreDate: string, prevDate: stri
     );
     kev.run(IDS[0], day(-2), nowIso, day(5), 1, nowIso);
     kev.run(IDS[1], day(-1), nowIso, day(40), 0, nowIso);
-    kev.run(IDS[3], day(-3), nowIso, null, null, nowIso);
+    kev.run(IDS[3], day(-3), nowIso, day(-10), null, nowIso);
     kev.run(IDS[6], day(-1), nowIso, day(-4), null, nowIso);
 
     const epss = db.handle.prepare(
@@ -334,13 +334,18 @@ test.describe.serial("priority list views", () => {
     );
     await expect(renderedIds(page, "kev-due-soon")).resolves.toEqual(expected.kevDueSoon);
     await expect(page.getByTestId("priority-coverage-kev-due-soon")).toContainText(
-      "2 eligible of 7 published records.",
+      "3 eligible of 7 published records.",
     );
-    const firstRow = page
-      .locator('[data-testid="priority-list-kev-due-soon"] [data-testid="priority-row"]')
-      .first();
-    await expect(firstRow.getByTestId("priority-row-kev-due")).toBeVisible();
-    await expect(firstRow).toContainText("known ransomware use");
+    await expect(page.getByTestId("priority-due-group-overdue")).toContainText("Overdue");
+    await expect(page.getByTestId("priority-due-group-due-30d")).toContainText("within 30 days");
+    await expect(page.getByTestId("priority-due-group-due-later")).toContainText("Due later");
+    const rows = page.locator(
+      '[data-testid="priority-list-kev-due-soon"] [data-testid="priority-row"]',
+    );
+    await expect(rows.first()).toContainText("CVE-2099-1004");
+    const secondRow = rows.nth(1);
+    await expect(secondRow.getByTestId("priority-row-kev-due")).toBeVisible();
+    await expect(secondRow).toContainText("known ransomware use");
   });
 
   test("highest-forecast renders raw-probability order with score date and model", async ({

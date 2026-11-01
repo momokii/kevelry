@@ -641,6 +641,50 @@ export function PriorityRow({
   );
 }
 
+/** Day bucket for the due-soon groups: overdue deadlines first, explained
+ * in place so a 2021 due date reads as missed-and-urgent, not stale data. */
+export type DueGroup = "overdue" | "due-30d" | "due-later";
+
+export const DUE_GROUP_LABELS: Record<DueGroup, string> = {
+  overdue: "Overdue — deadline missed, most urgent first",
+  "due-30d": "Due within 30 days",
+  "due-later": "Due later",
+};
+
+export function dueGroupFor(dueDate: string | null, todayDay: string): DueGroup | null {
+  if (dueDate === null || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return null;
+  if (dueDate < todayDay) return "overdue";
+  const ms = Date.parse(`${todayDay}T00:00:00.000Z`);
+  if (!Number.isFinite(ms)) return "due-later";
+  const limit = new Date(ms + 30 * 86_400_000).toISOString().slice(0, 10);
+  return dueDate <= limit ? "due-30d" : "due-later";
+}
+
+/** Partition rows into due groups, preserving server order inside each.
+ * Rows without a usable due date (impossible from the server filter, kept
+ * for defense) render unlabeled after the groups, never under a wrong one. */
+export function groupDueRows(
+  rows: readonly PriorityRowData[],
+  todayDay: string,
+): { groups: Array<{ group: DueGroup; rows: PriorityRowData[] }>; ungrouped: PriorityRowData[] } {
+  const buckets: Record<DueGroup, PriorityRowData[]> = {
+    overdue: [],
+    "due-30d": [],
+    "due-later": [],
+  };
+  const ungrouped: PriorityRowData[] = [];
+  for (const row of rows) {
+    const group = dueGroupFor(row.kevDueDate, todayDay);
+    if (group === null) ungrouped.push(row);
+    else buckets[group].push(row);
+  }
+  const groups: Array<{ group: DueGroup; rows: PriorityRowData[] }> = [];
+  for (const group of ["overdue", "due-30d", "due-later"] as const) {
+    if (buckets[group].length > 0) groups.push({ group, rows: buckets[group] });
+  }
+  return { groups, ungrouped };
+}
+
 export function PriorityList({
   rows,
   mode,
@@ -650,6 +694,7 @@ export function PriorityList({
 }) {
   const [visible, setVisible] = useState(25);
   const [openCount, setOpenCount] = useState(5);
+  const [todayDay] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 700px)").matches) setOpenCount(1);
@@ -666,11 +711,35 @@ export function PriorityList({
       </div>
     );
   }
+  const dueSections = mode === "kev-due-soon" ? groupDueRows(rows, todayDay) : null;
+  let openIndex = 0;
+  const renderRow = (row: PriorityRowData): ReactNode => {
+    const index = openIndex;
+    openIndex += 1;
+    if (index >= visible) return null;
+    return <PriorityRow key={row.id} row={row} defaultOpen={index < openCount} />;
+  };
   return (
     <div data-testid={`priority-list-${mode}`} className="priority-table">
-      {rows.slice(0, visible).map((row, index) => (
-        <PriorityRow key={row.id} row={row} defaultOpen={index < openCount} />
-      ))}
+      {dueSections === null ? (
+        rows
+          .slice(0, visible)
+          .map((row, index) => (
+            <PriorityRow key={row.id} row={row} defaultOpen={index < openCount} />
+          ))
+      ) : (
+        <>
+          {dueSections.groups.map((section) => (
+            <section key={section.group} aria-label={DUE_GROUP_LABELS[section.group]}>
+              <h3 className="due-group-heading" data-testid={`priority-due-group-${section.group}`}>
+                {DUE_GROUP_LABELS[section.group]} ({section.rows.length})
+              </h3>
+              {section.rows.map((row) => renderRow(row))}
+            </section>
+          ))}
+          {dueSections.ungrouped.map((row) => renderRow(row))}
+        </>
+      )}
       {rows.length > visible ? (
         <button
           type="button"
