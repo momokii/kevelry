@@ -4441,3 +4441,51 @@ a.graph-evidence-chip:hover {
   color: var(--ui-ink-3);
   font-size: 11px;
 }
+
+.graph-svg-wrap {
+  margin: var(--ui-sp-4) 0 0;
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+  overflow-x: auto;
+  padding: 4px 8px;
+}
+
+.graph-svg {
+  display: block;
+  min-width: 720px;
+}
+
+.graph-svg a:focus-visible circle {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.graph-svg a:hover text {
+  fill: var(--ui-accent);
+  text-decoration: underline;
+}
+
+.graph-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--ui-ink-2);
+}
+
+.graph-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}

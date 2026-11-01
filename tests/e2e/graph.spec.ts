@@ -43,6 +43,10 @@ test("centering a hub shows grouped shared attributes", async ({ page }) => {
   await expect(page.getByTestId("graph-focus-input")).toHaveValue("");
   await expect(page.getByTestId("graph-clear")).toBeVisible();
 
+  // A real drawing is present, not just lists.
+  await expect(page.getByTestId("graph-svg")).toBeVisible();
+  await expect(page.getByTestId("graph-legend")).toContainText("Shared CWE");
+
   const columns = page.getByTestId("graph-columns");
   const noLinks = page.getByTestId("graph-no-links");
   if (await columns.isVisible()) {

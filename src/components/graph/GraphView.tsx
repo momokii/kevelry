@@ -12,6 +12,160 @@ const GROUP_META: Record<GraphEdgeKind, { label: string; hint: string }> = {
 
 const GROUP_ORDER: readonly GraphEdgeKind[] = ["cwe", "vendor", "domain"];
 
+const KIND_COLOR: Record<GraphEdgeKind, string> = {
+  cwe: "var(--ui-critical)",
+  vendor: "var(--ui-accent)",
+  domain: "var(--ui-ink-3)",
+};
+
+const SVG_W = 940;
+const COL_CENTER = 96;
+const COL_ATTR = 372;
+const COL_LEAF = 668;
+const CHILD_CAP = 5;
+const ATTR_CAP = 10;
+
+interface AttrRow {
+  group: GraphGroup;
+  children: string[];
+  hidden: number;
+  height: number;
+}
+
+/**
+ * Layered ego graph: center CVE -> shared attribute -> the records carrying
+ * it. Deterministic layout (no force simulation), so the same data always
+ * draws the same picture and every node keeps a stable position for
+ * keyboard users. Labels are always rendered; nothing is inferred.
+ */
+function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
+  const center = cohort.focus ?? "";
+  const rows: AttrRow[] = cohort.groups.slice(0, ATTR_CAP).map((group) => {
+    const children = group.cves.slice(0, CHILD_CAP);
+    const hidden = Math.max(0, group.cves.length - children.length);
+    return { group, children, hidden, height: (children.length + (hidden > 0 ? 1 : 0)) * 22 + 14 };
+  });
+  const totalHeight = Math.max(320, rows.reduce((sum, row) => sum + row.height, 0) + 24);
+  const centerY = totalHeight / 2;
+
+  let cursor = 12;
+  const laid = rows.map((row) => {
+    const top = cursor;
+    cursor += row.height;
+    return { ...row, top, mid: top + row.height / 2 };
+  });
+
+  return (
+    <div className="graph-svg-wrap">
+      <svg
+        className="graph-svg"
+        viewBox={`0 0 ${SVG_W} ${totalHeight}`}
+        width="100%"
+        height={totalHeight}
+        role="img"
+        aria-label={`Relationship graph for ${center}: ${laid.length} shared attributes and ${laid.reduce((n, row) => n + row.children.length, 0)} linked records.`}
+        data-testid="graph-svg"
+      >
+        {laid.map((row) => {
+          const color = KIND_COLOR[row.group.kind];
+          return (
+            <g key={`${row.group.kind}:${row.group.value}`}>
+              <line
+                x1={COL_CENTER + 14}
+                y1={centerY}
+                x2={COL_ATTR - 10}
+                y2={row.mid}
+                stroke={color}
+                strokeWidth={1.4}
+                strokeOpacity={0.55}
+              />
+              {row.children.map((childId, index) => {
+                const y = row.top + 16 + index * 22;
+                return (
+                  <g key={childId}>
+                    <line
+                      x1={COL_ATTR + 10}
+                      y1={row.mid}
+                      x2={COL_LEAF - 8}
+                      y2={y}
+                      stroke={color}
+                      strokeWidth={1}
+                      strokeOpacity={0.32}
+                    />
+                    <a
+                      href={`/graph?focus=${encodeURIComponent(childId)}&limit=${limit}`}
+                      aria-label={`Center on ${childId}`}
+                    >
+                      <circle cx={COL_LEAF} cy={y} r={3.5} fill={color} fillOpacity={0.85} />
+                      <text
+                        x={COL_LEAF + 10}
+                        y={y + 3.5}
+                        fontSize={10}
+                        fontFamily="var(--ui-font-mono)"
+                        fill="var(--ui-ink-2)"
+                      >
+                        {childId}
+                      </text>
+                    </a>
+                  </g>
+                );
+              })}
+              {row.hidden > 0 ? (
+                <text
+                  x={COL_LEAF}
+                  y={row.top + 16 + row.children.length * 22 + 4}
+                  fontSize={9.5}
+                  fontFamily="var(--ui-font-mono)"
+                  fill="var(--ui-ink-3)"
+                >
+                  +{row.hidden} more
+                </text>
+              ) : null}
+              <circle
+                cx={COL_ATTR}
+                cy={row.mid}
+                r={Math.min(11, 5 + Math.log2(row.group.cves.length + 1))}
+                fill={color}
+                fillOpacity={0.9}
+              />
+              <text
+                x={COL_ATTR - 18}
+                y={row.mid + 4}
+                fontSize={10.5}
+                textAnchor="end"
+                fontFamily="var(--ui-font-mono)"
+                fill="var(--ui-ink)"
+              >
+                {row.group.value.length > 26 ? `${row.group.value.slice(0, 25)}…` : row.group.value}
+              </text>
+              <text
+                x={COL_ATTR + 16}
+                y={row.mid + 3.5}
+                fontSize={9}
+                fontFamily="var(--ui-font-mono)"
+                fill="var(--ui-ink-3)"
+              >
+                {row.group.cves.length}
+              </text>
+            </g>
+          );
+        })}
+        <circle cx={COL_CENTER} cy={centerY} r={13} fill="var(--ui-ink)" />
+        <text
+          x={COL_CENTER}
+          y={centerY + 30}
+          fontSize={10.5}
+          textAnchor="middle"
+          fontFamily="var(--ui-font-mono)"
+          fill="var(--ui-ink)"
+        >
+          {center}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 function GroupColumn({
   group,
   centerId,
@@ -228,21 +382,32 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
           a fact about the retained data, not a missing feature.
         </div>
       ) : (
-        <div className="graph-columns" data-testid="graph-columns">
-          {groupsByKind.map((entry) => (
-            <div key={entry.kind} className="graph-column">
-              <h3 className="graph-column-head">{GROUP_META[entry.kind].label}</h3>
-              {entry.groups.map((group) => (
-                <GroupColumn
-                  key={`${group.kind}:${group.value}`}
-                  group={group}
-                  centerId={cohort.focus ?? ""}
-                  limit={limit}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+        <>
+          <EgoGraph cohort={cohort} limit={limit} />
+          <ul className="graph-legend" data-testid="graph-legend">
+            {GROUP_ORDER.map((kind) => (
+              <li key={kind}>
+                <span className="graph-legend-swatch" style={{ background: KIND_COLOR[kind] }} />
+                {GROUP_META[kind].label}
+              </li>
+            ))}
+          </ul>
+          <div className="graph-columns" data-testid="graph-columns">
+            {groupsByKind.map((entry) => (
+              <div key={entry.kind} className="graph-column">
+                <h3 className="graph-column-head">{GROUP_META[entry.kind].label}</h3>
+                {entry.groups.map((group) => (
+                  <GroupColumn
+                    key={`${group.kind}:${group.value}`}
+                    group={group}
+                    centerId={cohort.focus ?? ""}
+                    limit={limit}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       <details className="chart-table">
