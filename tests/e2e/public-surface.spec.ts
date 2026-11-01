@@ -13,7 +13,15 @@ test("sitemap lists the public pages", async ({ request }) => {
   const response = await request.get("/sitemap.xml");
   expect(response).toBeOK();
   const body = await response.text();
-  for (const path of ["/", "/explore", "/priority", "/methodology", "/api-docs"]) {
+  for (const path of [
+    "/",
+    "/explore",
+    "/priority",
+    "/methodology",
+    "/api-docs",
+    "/graph",
+    "/watch",
+  ]) {
     expect(body).toContain(path);
   }
   expect(body).not.toContain("/showcase");

@@ -51,6 +51,17 @@ export function RadarIcon({ className }: IconProps) {
   );
 }
 
+export function GraphIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="18" cy="8" r="2.5" />
+      <circle cx="12" cy="18" r="2.5" />
+      <path d="M8 7l7.5.7M7 8.2l3.6 7.3M16.9 10l-3.4 6" />
+    </svg>
+  );
+}
+
 export function ReplayIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

@@ -331,6 +331,56 @@ paths:
           $ref: "#/components/responses/ReplayUnavailable"
         "429":
           $ref: "#/components/responses/RateLimited"
+  /api/v1/graph:
+    get:
+      operationId: getRelationGraph
+      summary: KEV-cohort relationship graph
+      description: |
+        KEV-listed published records joined by shared catalog CWEs, normalized
+        vendor labels, and reference hostnames. Labeled edge kinds only, never
+        inferred relations. `focus` selects an ego neighborhood; without it the
+        cohort is the top-EPSS KEV members up to the node limit. Node and edge
+        caps are part of the response, never silent sampling.
+      tags:
+        - Graph
+      parameters:
+        - name: focus
+          in: query
+          required: false
+          description: Center the graph on one KEV-listed CVE ID.
+          schema:
+            type: string
+            example: CVE-2026-109618
+        - name: limit
+          in: query
+          required: false
+          description: Node cap, 1 to 300 (default 120).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 300
+            default: 120
+            example: 120
+      responses:
+        "200":
+          description: Bounded nodes and labeled edges with provenance.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/v1/replay/checkpoints:
     get:
       operationId: listReplayCheckpoints
@@ -1250,6 +1300,114 @@ components:
         - rising-forecast
         - kev-due-soon
       example: known-exploited
+    GraphNode:
+      type: object
+      required:
+        - id
+        - title
+        - band
+        - epss
+        - kevDueDate
+        - degree
+      properties:
+        id:
+          type: string
+          example: CVE-2026-109618
+        title:
+          type: string
+          example: Edge gateway overflow
+        band:
+          type: string
+          nullable: true
+          description: Primary-CNA severity band, or null when unscored.
+          example: critical
+        epss:
+          type: string
+          nullable: true
+          description: Accepted-date raw probability decimal, or null when unknown.
+          example: "0.02285"
+        kevDueDate:
+          type: string
+          nullable: true
+          description: Catalog remediation deadline, or null when unstated.
+          example: "2026-11-13"
+        degree:
+          type: integer
+          description: Labeled links incident to this node in this response.
+          example: 3
+    GraphEdge:
+      type: object
+      required:
+        - from
+        - to
+        - kinds
+      properties:
+        from:
+          type: string
+          example: CVE-2026-109618
+        to:
+          type: string
+          example: CVE-2026-110447
+        kinds:
+          type: array
+          description: Shared-attribute kinds, sorted. Line style names the kind.
+          items:
+            type: string
+            enum:
+              - cwe
+              - vendor
+              - domain
+          example:
+            - cwe
+            - vendor
+    GraphResponse:
+      type: object
+      required:
+        - focus
+        - nodes
+        - edges
+        - coverage
+        - truncated
+        - provenance
+      properties:
+        focus:
+          type: string
+          nullable: true
+          description: Ego center, or null for the default top-EPSS cohort.
+          example: null
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+        coverage:
+          type: object
+          required:
+            - eligibleCohort
+            - returned
+            - edgeCount
+          properties:
+            eligibleCohort:
+              type: integer
+              description: KEV-listed published records available to graph.
+              example: 1762
+            returned:
+              type: integer
+              description: Nodes in this response.
+              example: 120
+            edgeCount:
+              type: integer
+              description: Edges in this response.
+              example: 214
+        truncated:
+          type: boolean
+          description: True when node or edge caps cut the cohort.
+          example: true
+        provenance:
+          $ref: "#/components/schemas/Provenance"
     PriorityListResponse:
       type: object
       required:

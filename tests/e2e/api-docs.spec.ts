@@ -14,6 +14,7 @@ const EXPECTED_ROWS = [
   "get-api-v1-search",
   "get-api-v1-priority-listname",
   "get-api-v1-radar",
+  "get-api-v1-graph",
   "get-api-v1-replay",
   "get-api-v1-replay-checkpoints",
   "get-api-v1-overview",
@@ -36,7 +37,7 @@ test("api-docs renders the endpoints table with an example per endpoint", async 
     page.getByTestId("api-docs-toc").getByRole("link", { name: "Errors" }),
   ).toBeVisible();
   const responseExamples = page.locator('[data-testid^="api-docs-response-"]');
-  await expect(responseExamples).toHaveCount(10);
+  await expect(responseExamples).toHaveCount(11);
   const firstEndpoint = page.locator('[data-testid^="api-docs-endpoint-"]').first();
   await firstEndpoint.locator("summary").click();
   await expect(firstEndpoint.locator("pre").last()).toContainText("provenance");

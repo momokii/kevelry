@@ -156,6 +156,37 @@ function exampleResponse(endpoint: { path: string }): string {
       2,
     );
   }
+  if (endpoint.path.includes("/graph")) {
+    return JSON.stringify(
+      {
+        focus: null,
+        nodes: [
+          {
+            id: "CVE-2026-109618",
+            title: "Edge gateway overflow",
+            band: "critical",
+            epss: "0.02285",
+            kevDueDate: "2026-11-13",
+            degree: 2,
+          },
+          {
+            id: "CVE-2026-110447",
+            title: "Second overflow",
+            band: "high",
+            epss: "0.01402",
+            kevDueDate: null,
+            degree: 1,
+          },
+        ],
+        edges: [{ from: "CVE-2026-109618", to: "CVE-2026-110447", kinds: ["cwe"] }],
+        coverage: { eligibleCohort: 1762, returned: 2, edgeCount: 1 },
+        truncated: true,
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
   if (endpoint.path.includes("/radar")) {
     return JSON.stringify(
       {

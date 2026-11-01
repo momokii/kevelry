@@ -35,9 +35,14 @@ can consume the same data.
   with severity, KEV, EPSS, and official-record links.
 - **Priority lists:** known-exploited, highest forecast, new critical, rising forecast,
   KEV due soon as a compact expandable table. KEV, EPSS, and CVSS remain separate signals with
-  definitions, real bars, and timezone-aware dates; no composite score.
+  definitions, real bars, EPSS sparklines, record timelines, and timezone-aware dates; no composite score.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
+- **Relation graph:** KEV-listed records linked by shared CWEs, vendor labels, and
+  reference hosts — labeled edges, ego focus, bounded cohort, keyboard inspector.
+- **Watch:** browser-private starred records with a hydrating view. No account,
+  no server record.
+- **Dark console:** persisted light/dark theme across every surface.
 - **Snapshot replay:** a retained daily checkpoint plus policy version shows
   what the site displayed and why (bounded observed history, no fabricated past).
 - **Public read-only API + docs:** the same local snapshots the website reads,
@@ -440,6 +445,7 @@ Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml
 | `GET /api/v1/search?q=...`        | CVE ID and description search                                                            |
 | `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast`, `kev-due-soon` |
 | `GET /api/v1/radar`               | Change feed with before/after evidence                                                   |
+| `GET /api/v1/graph`               | Bounded KEV-cohort relation graph with labeled links                                     |
 | `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                                         |
 | `GET /api/v1/replay/checkpoints`  | List available checkpoints                                                               |
 

@@ -500,7 +500,13 @@ export const HUMAN_GUIDES: { file: string; title: string; anchor: string; blurb:
     file: "priority-lists.md",
     title: "The five named explainable orderings",
     anchor: "getPriorityList",
-    blurb: "known-exploited, highest-forecast, new-critical, rising-forecast.",
+    blurb: "known-exploited, highest-forecast, new-critical, rising-forecast, kev-due-soon.",
+  },
+  {
+    file: "graph.md",
+    title: "KEV-cohort relationship graph",
+    anchor: "getRelationGraph",
+    blurb: "Shared CWE, vendor, and reference-host links with caps stated.",
   },
   {
     file: "radar.md",

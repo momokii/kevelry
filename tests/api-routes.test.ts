@@ -25,6 +25,7 @@ import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
 import { GET as getPriority } from "../app/api/v1/priority/[listName]/route";
+import { GET as getGraph } from "../app/api/v1/graph/route";
 import { GET as getRadar } from "../app/api/v1/radar/route";
 import { GET as getReplay } from "../app/api/v1/replay/route";
 import { GET as getCheckpoints } from "../app/api/v1/replay/checkpoints/route";
@@ -575,6 +576,43 @@ describe("v1 priority routes", () => {
     );
     expect(missing.status).toBe(404);
     expect((await bodyOf(missing)).code).toBe("LIST_NOT_FOUND");
+  });
+});
+
+describe("v1 graph route", () => {
+  it("serves bounded nodes and labeled edges with focus and limit handling", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    void db;
+    db.runBoundedWrite(() => {
+      db.handle
+        .prepare("UPDATE kev_entries SET vendor_project = ?, due_date = ? WHERE cve_id = ?")
+        .run("Acme", "2026-11-10", "CVE-2099-0001");
+    });
+
+    const response = await getGraph(new Request("https://radar.test/api/v1/graph?limit=50"));
+    expect(response.status).toBe(200);
+    expectRateHeaders(response);
+    const body = await bodyOf(response);
+    expectProvenance(body);
+    expect(body.focus).toBeNull();
+    expect(typeof body.truncated).toBe("boolean");
+    const coverage = body.coverage as Record<string, number>;
+    expect(coverage.eligibleCohort).toBe(1);
+    expect(Array.isArray(body.nodes) && Array.isArray(body.edges)).toBe(true);
+
+    const badFocus = await getGraph(
+      new Request("https://radar.test/api/v1/graph?focus=CVE-2099-9999"),
+    );
+    expect(badFocus.status).toBe(404);
+    expect((await bodyOf(badFocus)).code).toBe("CVE_NOT_FOUND");
+
+    const malformed = await getGraph(new Request("https://radar.test/api/v1/graph?focus=nope"));
+    expect(malformed.status).toBe(400);
+
+    const oversized = await getGraph(new Request("https://radar.test/api/v1/graph?limit=301"));
+    expect(oversized.status).toBe(400);
+    expect((await bodyOf(oversized)).code).toBe("BAD_LIMIT");
   });
 });
 

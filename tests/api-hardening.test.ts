@@ -497,7 +497,7 @@ describe("no raw database routes", () => {
       }
     };
     walk(root);
-    expect(routeFiles.length).toBe(10);
+    expect(routeFiles.length).toBe(11);
     for (const file of routeFiles) {
       const text = readFileSync(file, "utf8");
       expect(text, file).not.toMatch(/DATA_DIR|dataDir|\.db\b|openDatabase/);
