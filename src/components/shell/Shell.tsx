@@ -20,6 +20,7 @@ import {
   RadarIcon,
   ReplayIcon,
   SearchIcon,
+  StarIcon,
 } from "./icons";
 
 const NAV = [
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/replay", label: "Replay", icon: ReplayIcon },
   { href: "/methodology", label: "Method", icon: MethodIcon },
   { href: "/api-docs", label: "API", icon: ApiIcon },
+  { href: "/watch", label: "Watch", icon: StarIcon },
 ] as const;
 
 const MASTHEAD_IDS: Record<string, string> = {
@@ -41,6 +43,7 @@ const MASTHEAD_IDS: Record<string, string> = {
   "/methodology": "methodology-masthead",
   "/api-docs": "api-docs-masthead",
   "/showcase": "showcase-masthead",
+  "/watch": "watch-masthead",
 };
 
 function currentLabel(pathname: string): string {

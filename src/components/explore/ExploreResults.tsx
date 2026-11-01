@@ -2,6 +2,7 @@ import type { CohortFacets, SearchResponse } from "@/lib/search";
 import { TimeText } from "@/components/ledger/TimeText";
 
 import { SEVERITY_META, formatInt } from "../charts/chartTokens";
+import { WatchStar } from "../ledger/WatchStar";
 import { CohortVisualization, type CohortLinkParams } from "./CohortVisualization";
 import {
   EXPLORE_DEFAULT_LIMIT,
@@ -55,8 +56,11 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
       </div>
       <div className="result-body">
         <div className="result-title-line">
-          <span className="mono result-id" data-testid="explore-row-id">
-            {item.cveId}
+          <span className="result-id-row">
+            <span className="mono result-id" data-testid="explore-row-id">
+              {item.cveId}
+            </span>
+            <WatchStar cveId={item.cveId} testId={`explore-watch-${item.cveId}`} />
           </span>
           <p className="result-title" data-testid="explore-row-title">
             {item.title}

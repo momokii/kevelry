@@ -12,6 +12,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { HelpTip } from "../ledger/HelpTip";
 import { TimeText } from "../ledger/TimeText";
+import { WatchStar } from "../ledger/WatchStar";
 
 import styles from "./PrioritySignals.module.css";
 
@@ -576,54 +577,57 @@ export function PriorityRow({
   const kevMeta = row.kevListed ? "KEV" : null;
   return (
     <article className="priority-row" data-testid="priority-row" data-cve-id={row.id}>
-      <button
-        type="button"
-        className="priority-row-main"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <span className="priority-row-ident">
-          <span className="mono" data-testid="priority-row-id">
-            {row.id}
-          </span>
-          {row.title !== row.id ? (
-            <span className="priority-row-title" data-testid="priority-row-title">
-              {row.title}
+      <div className="priority-row-top">
+        <button
+          type="button"
+          className="priority-row-main"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="priority-row-ident">
+            <span className="mono" data-testid="priority-row-id">
+              {row.id}
             </span>
-          ) : null}
-          <span className="priority-row-excerpt" data-testid="priority-row-excerpt">
-            {row.excerpt ?? "Description not supplied"}
-            {row.excerptTruncated ? " [truncated]" : ""}
-          </span>
-        </span>
-        <span className="priority-row-signals" data-testid="priority-row-signals">
-          {kevMeta !== null ? <span className="badge badge-kev">KEV</span> : null}
-          {row.epssKnown && row.epssPercent !== null ? (
-            <span className="badge badge-accent">EPSS {row.epssPercent}%</span>
-          ) : (
-            <span className="badge badge-unknown">EPSS unavailable</span>
-          )}
-          {row.primaryKnown && row.primaryScore !== null ? (
-            <span className={`badge badge-${cvssBandForScore(row.primaryScore)}`}>
-              CVSS {row.primaryScore}
+            {row.title !== row.id ? (
+              <span className="priority-row-title" data-testid="priority-row-title">
+                {row.title}
+              </span>
+            ) : null}
+            <span className="priority-row-excerpt" data-testid="priority-row-excerpt">
+              {row.excerpt ?? "Description not supplied"}
+              {row.excerptTruncated ? " [truncated]" : ""}
             </span>
-          ) : (
-            <span className="badge badge-unknown">
-              {row.primaryLegacy ? "Legacy v2" : row.primaryAdpOnly ? "ADP-only" : "Unscored"}
+          </span>
+          <span className="priority-row-signals" data-testid="priority-row-signals">
+            {kevMeta !== null ? <span className="badge badge-kev">KEV</span> : null}
+            {row.epssKnown && row.epssPercent !== null ? (
+              <span className="badge badge-accent">EPSS {row.epssPercent}%</span>
+            ) : (
+              <span className="badge badge-unknown">EPSS unavailable</span>
+            )}
+            {row.primaryKnown && row.primaryScore !== null ? (
+              <span className={`badge badge-${cvssBandForScore(row.primaryScore)}`}>
+                CVSS {row.primaryScore}
+              </span>
+            ) : (
+              <span className="badge badge-unknown">
+                {row.primaryLegacy ? "Legacy v2" : row.primaryAdpOnly ? "ADP-only" : "Unscored"}
+              </span>
+            )}
+            {row.deltaPp !== null ? (
+              <span className="badge badge-high">{formatSignedDeltaPp(row.deltaPp)}</span>
+            ) : null}
+            <span className="priority-row-published">
+              Published <TimeText value={row.publishedAt} testId="priority-row-published-date" />
             </span>
-          )}
-          {row.deltaPp !== null ? (
-            <span className="badge badge-high">{formatSignedDeltaPp(row.deltaPp)}</span>
-          ) : null}
-          <span className="priority-row-published">
-            Published <TimeText value={row.publishedAt} testId="priority-row-published-date" />
+            <span className="priority-chevron" aria-hidden="true">
+              {expanded ? "−" : "+"}
+            </span>
+            <span className="sr-only">{summaryText(row)}</span>
           </span>
-          <span className="priority-chevron" aria-hidden="true">
-            {expanded ? "−" : "+"}
-          </span>
-          <span className="sr-only">{summaryText(row)}</span>
-        </span>
-      </button>
+        </button>
+        <WatchStar cveId={row.id} testId={`priority-watch-${row.id}`} />
+      </div>
       {expanded ? (
         <div className="priority-row-detail">
           <div className="signal-grid">
