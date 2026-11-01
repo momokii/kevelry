@@ -2592,6 +2592,13 @@ a {
   align-items: flex-start;
 }
 
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .pagination {
   display: flex;
   flex-wrap: wrap;
