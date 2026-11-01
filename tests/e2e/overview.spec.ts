@@ -362,8 +362,8 @@ test("volume chart exposes tooltips, selection, and the window toggle", async ({
   // Segmented control: every option sits fully inside the track, and the
   // bars glide on window switches.
   const containment = await page.evaluate(() => {
-    const track = document.querySelector(".pill.segmented");
-    const options = [...document.querySelectorAll(".pill.segmented .btn")];
+    const track = document.querySelector(".chart-actions .pill.segmented");
+    const options = [...document.querySelectorAll(".chart-actions .pill.segmented .btn")];
     if (track === null || options.length !== 2) return { ok: false, reason: "missing" };
     const box = track.getBoundingClientRect();
     for (const option of options) {
