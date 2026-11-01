@@ -127,6 +127,10 @@ describe("bounded KEV relationship graph", () => {
     expect(graph.focus).toBe("CVE-2099-0001");
     expect(graph.nodes.map((node) => node.id).sort()).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
     expect(graph.truncated).toBe(false);
+    // Ego star: every edge touches the center, so the view stays readable.
+    for (const edge of graph.edges) {
+      expect(edge.from === "CVE-2099-0001" || edge.to === "CVE-2099-0001").toBe(true);
+    }
   });
 
   it("rejects a focus outside the cohort and caps deterministically", () => {
@@ -160,10 +164,7 @@ describe("bounded KEV relationship graph", () => {
     seedEpss(db, "CVE-2099-0001", "0.50");
     const graph = buildKevGraph(db, { nodeLimit: 10 });
     expect(graph.focus).toBe("CVE-2099-0001");
-    expect(graph.nodes.map((node) => node.id).sort()).toEqual([
-      "CVE-2099-0001",
-      "CVE-2099-0002",
-    ]);
+    expect(graph.nodes.map((node) => node.id).sort()).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
     expect(graph.truncated).toBe(false);
   });
 

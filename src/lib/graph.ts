@@ -156,23 +156,38 @@ export function buildKevGraph(
     kept = [];
   }
 
+  const kindBetween = (from: string, to: string): GraphEdgeKind[] => {
+    const kinds: GraphEdgeKind[] = [];
+    if (intersects(cwes.get(from), cwes.get(to))) kinds.push("cwe");
+    const vendor = vendors.get(from);
+    if (vendor !== null && vendor !== undefined && vendor === vendors.get(to)) {
+      kinds.push("vendor");
+    }
+    if (intersects(domains.get(from), domains.get(to))) kinds.push("domain");
+    return kinds;
+  };
   const edges: GraphEdge[] = [];
-  const sorted = [...kept].sort();
-  for (let i = 0; i < sorted.length; i += 1) {
-    const from = sorted[i] as string;
-    for (let j = i + 1; j < sorted.length; j += 1) {
-      const to = sorted[j] as string;
-      const kinds: GraphEdgeKind[] = [];
-      if (intersects(cwes.get(from), cwes.get(to))) kinds.push("cwe");
-      const vendor = vendors.get(from);
-      if (vendor !== null && vendor !== undefined && vendor === vendors.get(to)) {
-        kinds.push("vendor");
-      }
-      if (intersects(domains.get(from), domains.get(to))) kinds.push("domain");
-      if (kinds.length > 0) edges.push({ from, to, kinds });
+  if (focus !== null) {
+    // Ego star: only center-to-neighbor links, so the view stays readable
+    // no matter how interlinked the neighborhood is behind the scenes.
+    for (const other of [...kept].sort()) {
+      if (other === focus) continue;
+      const kinds = kindBetween(focus, other);
+      if (kinds.length > 0) edges.push({ from: focus, to: other, kinds });
       if (edges.length >= GRAPH_MAX_EDGES) break;
     }
-    if (edges.length >= GRAPH_MAX_EDGES) break;
+  } else {
+    const sorted = [...kept].sort();
+    for (let i = 0; i < sorted.length; i += 1) {
+      const from = sorted[i] as string;
+      for (let j = i + 1; j < sorted.length; j += 1) {
+        const to = sorted[j] as string;
+        const kinds = kindBetween(from, to);
+        if (kinds.length > 0) edges.push({ from, to, kinds });
+        if (edges.length >= GRAPH_MAX_EDGES) break;
+      }
+      if (edges.length >= GRAPH_MAX_EDGES) break;
+    }
   }
 
   const nodes: GraphNode[] = kept.map((id) => {

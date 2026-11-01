@@ -32,6 +32,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
   // must never toggle itself off via the focus it also triggers.
   const [pinned, setPinned] = useState<string | null>(cohort.focus);
   const [preview, setPreview] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const selected = pinned ?? preview;
   const positions = new Map(
     cohort.nodes.map((node, index) => [
@@ -121,6 +122,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
               const at = positions.get(node.id) ?? { x: CENTER_X, y: CENTER_Y };
               const isFocus = node.id === cohort.focus;
               const isSelected = node.id === selected;
+              const labeled = isFocus || isSelected || node.id === hovered;
               return (
                 <g
                   key={node.id}
@@ -133,6 +135,8 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
                   onClick={() => setPinned(pinned === node.id ? null : node.id)}
                   onFocus={() => setPreview(node.id)}
                   onBlur={() => setPreview(null)}
+                  onMouseEnter={() => setHovered(node.id)}
+                  onMouseLeave={() => setHovered(null)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
@@ -151,15 +155,17 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
                     stroke={isSelected ? "var(--ui-accent-deep)" : "var(--ui-ink-2)"}
                     strokeWidth={isSelected ? 3 : 1.5}
                   />
-                  <text
-                    textAnchor="middle"
-                    dy={isFocus ? 24 : 20}
-                    fontSize={9}
-                    fontFamily="var(--ui-font-mono)"
-                    fill="var(--ui-ink-2)"
-                  >
-                    {node.id.replace("CVE-", "")}
-                  </text>
+                  {labeled ? (
+                    <text
+                      textAnchor="middle"
+                      dy={isFocus ? 24 : 20}
+                      fontSize={9}
+                      fontFamily="var(--ui-font-mono)"
+                      fill="var(--ui-ink-2)"
+                    >
+                      {node.id.replace("CVE-", "")}
+                    </text>
+                  ) : null}
                 </g>
               );
             })}
