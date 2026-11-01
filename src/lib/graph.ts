@@ -38,10 +38,33 @@ export interface GraphEdge {
   evidence: GraphEdgeEvidence;
 }
 
+/** One shared-attribute bucket: the value plus the records carrying it. */
+export interface GraphGroup {
+  kind: GraphEdgeKind;
+  /** Attribute value: a CWE id, a vendor label, or a hostname. */
+  value: string;
+  /** Neighbor CVE ids sharing this value with the center, strongest first. */
+  cves: string[];
+}
+
+/** A most-connected record, for the cohort landing view. */
+export interface GraphHub {
+  id: string;
+  title: string;
+  degree: number;
+  epss: string | null;
+  kevDueDate: string | null;
+  topAttributes: GraphGroup[];
+}
+
 export interface GraphCohort {
   focus: string | null;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** Bipartite view of the center's neighborhood, grouped by link kind. */
+  groups: GraphGroup[];
+  /** Landing view when nothing is centered: the cohort's most connected. */
+  hubs: GraphHub[];
   eligibleCohort: number;
   truncated: boolean;
 }
@@ -202,27 +225,6 @@ function domainBuckets(map: Map<string, Set<string>>): Map<string, string[]> {
   return buckets;
 }
 
-/** Highest full-cohort degree; ties fall back to EPSS then ASCII ID. */
-function topHub(
-  ids: readonly string[],
-  degreeAll: Map<string, number>,
-  epssById: Map<string, string>,
-): string | null {
-  const ranked = [...ids].sort((a, b) => {
-    const da = degreeAll.get(a) ?? 0;
-    const db = degreeAll.get(b) ?? 0;
-    if (da !== db) return db - da;
-    const ea = epssById.get(a) ?? null;
-    const eb = epssById.get(b) ?? null;
-    if (ea === null && eb === null) return a < b ? -1 : 1;
-    if (ea === null) return 1;
-    if (eb === null) return -1;
-    const cmp = compareDecimalStrings(eb, ea) ?? 0;
-    return cmp !== 0 ? cmp : a < b ? -1 : 1;
-  });
-  return ranked[0] ?? null;
-}
-
 function neighborsOf(
   id: string,
   cwes: Map<string, Set<string>>,
@@ -321,7 +323,10 @@ export function buildKevGraph(
     }
   }
 
-  const focus = options.focus ?? topHub(ids, degreeAll, epssById);
+  // No implicit center: a page that silently picks a CVE for you reads as an
+  // unexplained default. Landing mode shows the hub leaderboard instead; the
+  // ego graph appears only when a center is requested.
+  const focus = options.focus ?? null;
   let kept: string[];
   let truncated = false;
   if (focus !== null) {
@@ -375,10 +380,94 @@ export function buildKevGraph(
     };
   });
 
+  // Bipartite groups: for the center, one bucket per shared attribute value,
+  // ordered by how many neighbors it explains. This is what actually answers
+  // "linked by what" without asking a reader to trace 119 lines.
+  const groups: GraphGroup[] = [];
+  if (focus !== null) {
+    const byCwe = new Map<string, string[]>();
+    const byVendor = new Map<string, string[]>();
+    const byHost = new Map<string, string[]>();
+    for (const edge of edges) {
+      const other = edge.from === focus ? edge.to : edge.from;
+      for (const cwe of edge.evidence.cwes) {
+        const list = byCwe.get(cwe);
+        if (list === undefined) byCwe.set(cwe, [other]);
+        else list.push(other);
+      }
+      if (edge.evidence.vendor !== null) {
+        const list = byVendor.get(edge.evidence.vendor);
+        if (list === undefined) byVendor.set(edge.evidence.vendor, [other]);
+        else list.push(other);
+      }
+      for (const host of edge.evidence.domains) {
+        const list = byHost.get(host);
+        if (list === undefined) byHost.set(host, [other]);
+        else list.push(other);
+      }
+    }
+    const push = (kind: GraphEdgeKind, map: Map<string, string[]>, cap: number): void => {
+      const ordered = [...map]
+        .sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1))
+        .slice(0, cap);
+      for (const [value, cves] of ordered) {
+        groups.push({ kind, value, cves: [...cves].sort() });
+      }
+    };
+    push("cwe", byCwe, 12);
+    push("vendor", byVendor, 3);
+    push("domain", byHost, 8);
+  }
+
+  // Landing hubs: the most-connected records in the whole cohort, each with
+  // its strongest shared attributes, so the page answers before any search.
+  const hubs: GraphHub[] =
+    focus !== null
+      ? []
+      : [...ids]
+          .sort((a, b) => (degreeAll.get(b) ?? 0) - (degreeAll.get(a) ?? 0) || (a < b ? -1 : 1))
+          .slice(0, 12)
+          .map((id) => {
+            const row = byId.get(id);
+            const trimmed = typeof row?.title === "string" ? row.title.trim() : "";
+            const neighbors = neighborsOf(id, cwes, vendors, domains);
+            const counts = new Map<string, { kind: GraphEdgeKind; cves: string[] }>();
+            for (const other of neighbors) {
+              const evidence = evidenceBetween(id, other, cwes, vendors, domains);
+              const add = (kind: GraphEdgeKind, value: string): void => {
+                const key = `${kind}:${value}`;
+                const entry = counts.get(key);
+                if (entry === undefined) counts.set(key, { kind, cves: [other] });
+                else entry.cves.push(other);
+              };
+              for (const cwe of evidence.cwes) add("cwe", cwe);
+              if (evidence.vendor !== null) add("vendor", evidence.vendor);
+              for (const host of evidence.domains) add("domain", host);
+            }
+            const topAttributes: GraphGroup[] = [...counts]
+              .sort((a, b) => b[1].cves.length - a[1].cves.length || (a[0] < b[0] ? -1 : 1))
+              .slice(0, 3)
+              .map(([key, entry]) => ({
+                kind: entry.kind,
+                value: key.slice(key.indexOf(":") + 1),
+                cves: [...entry.cves].sort(),
+              }));
+            return {
+              id,
+              title: trimmed !== "" ? trimmed : id,
+              degree: degreeAll.get(id) ?? 0,
+              epss: epssById.get(id) ?? null,
+              kevDueDate: row?.dueDate ?? null,
+              topAttributes,
+            };
+          });
+
   return {
     focus,
     nodes,
     edges,
+    groups,
+    hubs,
     eligibleCohort: cohort.length,
     truncated: truncated || edges.length >= GRAPH_MAX_EDGES,
   };

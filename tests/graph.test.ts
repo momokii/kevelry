@@ -96,7 +96,7 @@ describe("bounded KEV relationship graph", () => {
     seedEpss(db, "CVE-2099-0001", "0.50");
     seedEpss(db, "CVE-2099-0002", "0.10");
 
-    const graph = buildKevGraph(db, { nodeLimit: 10 });
+    const graph = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 10 });
     expect(graph.focus).toBe("CVE-2099-0001");
     expect(graph.eligibleCohort).toBe(3);
     expect(graph.truncated).toBe(false);
@@ -142,8 +142,8 @@ describe("bounded KEV relationship graph", () => {
     expect(() => buildKevGraph(db, { focus: "CVE-2099-9999" })).toThrowError(RangeError);
     expect(() => buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 0 })).not.toThrow();
 
-    const first = buildKevGraph(db, { nodeLimit: 1 });
-    const second = buildKevGraph(db, { nodeLimit: 1 });
+    const first = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 1 });
+    const second = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 1 });
     expect(first.nodes).toHaveLength(1);
     expect(first.truncated).toBe(true);
     expect(second).toEqual(first);
@@ -152,7 +152,7 @@ describe("bounded KEV relationship graph", () => {
     expect(GRAPH_MAX_EDGES).toBe(1500);
   });
 
-  it("centers the default ego on the top-EPSS record", () => {
+  it("lands on a hub leaderboard instead of an implicit center", () => {
     const db = makeDb();
     seedRecord(db, "CVE-2099-0001");
     seedRecord(db, "CVE-2099-0002");
@@ -163,9 +163,31 @@ describe("bounded KEV relationship graph", () => {
     seedEpss(db, "CVE-2099-0002", "0.10");
     seedEpss(db, "CVE-2099-0001", "0.50");
     const graph = buildKevGraph(db, { nodeLimit: 10 });
-    expect(graph.focus).toBe("CVE-2099-0001");
-    expect(graph.nodes.map((node) => node.id).sort()).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
-    expect(graph.truncated).toBe(false);
+    // No center is chosen for the reader: the landing lists the hubs.
+    expect(graph.focus).toBeNull();
+    expect(graph.nodes).toEqual([]);
+    expect(graph.edges).toEqual([]);
+    expect(graph.hubs.length).toBe(3);
+    expect(graph.hubs[0]?.degree).toBe(1);
+    expect(graph.hubs[0]?.topAttributes[0]).toMatchObject({ kind: "cwe", value: "CWE-78" });
+  });
+
+  it("groups the center's neighborhood by shared attribute", () => {
+    const db = makeDb();
+    seedRecord(db, "CVE-2099-0001");
+    seedRecord(db, "CVE-2099-0002");
+    seedRecord(db, "CVE-2099-0003");
+    seedKev(db, "CVE-2099-0001", { vendor: "Acme", cwes: ["CWE-78"] });
+    seedKev(db, "CVE-2099-0002", { vendor: "acme", cwes: ["CWE-78"] });
+    seedKev(db, "CVE-2099-0003", { vendor: "Acme" });
+
+    const graph = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 10 });
+    const vendorGroup = graph.groups.find((group) => group.kind === "vendor");
+    expect(vendorGroup?.value).toBe("acme");
+    expect(vendorGroup?.cves).toEqual(["CVE-2099-0002", "CVE-2099-0003"]);
+    const cweGroup = graph.groups.find((group) => group.kind === "cwe");
+    expect(cweGroup?.value).toBe("CWE-78");
+    expect(cweGroup?.cves).toEqual(["CVE-2099-0002"]);
   });
 
   it("prunes advisory-aggregator hosts that say nothing about relatedness", () => {

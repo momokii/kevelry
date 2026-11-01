@@ -1,105 +1,63 @@
 import { expect, test } from "@playwright/test";
-import path from "node:path";
 
-import { openDatabase, type CveDatabase } from "../../src/lib/db";
-
-// Relation graph journey: seeded KEV cohort with one shared CWE, rendered
-// as labeled SVG nodes with an inspector and a focus mode. Self-seeded so
-// no other suite's fixtures matter.
-function serverDataDir(): string {
-  const raw = process.env.DATA_DIR;
-  if (raw !== undefined && raw.trim() !== "") {
-    return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-  }
-  return path.join(process.cwd(), "data");
-}
-
-function seedGraph(db: CveDatabase): void {
-  const nowIso = new Date().toISOString();
-  db.runBoundedWrite(() => {
-    const record = db.handle.prepare(
-      "INSERT INTO cve_records (cve_id, data_version, state, date_published, title, description, description_lang, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    );
-    for (const id of ["CVE-2099-1001", "CVE-2099-1002", "CVE-2099-1003"]) {
-      record.run(
-        id,
-        "5.1",
-        "PUBLISHED",
-        "2026-10-20T00:00:00.000Z",
-        `Supplied CNA title for ${id}.`,
-        `Supplied description for ${id} with enough detail to render.`,
-        "en",
-        nowIso,
-        nowIso,
-      );
-    }
-    const kev = db.handle.prepare(
-      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, vendor_project, recorded_at) VALUES (?, ?, ?, ?, ?)",
-    );
-    kev.run("CVE-2099-1001", nowIso, nowIso, "GraphVendor", nowIso);
-    kev.run("CVE-2099-1002", nowIso, nowIso, "GraphVendor", nowIso);
-    kev.run("CVE-2099-1003", nowIso, nowIso, "OtherVendor", nowIso);
-    const cwe = db.handle.prepare("INSERT OR IGNORE INTO kev_cwes (cve_id, cwe_id) VALUES (?, ?)");
-    cwe.run("CVE-2099-1001", "CWE-78");
-    cwe.run("CVE-2099-1002", "CWE-78");
-  });
-}
-
-function wipeGraph(db: CveDatabase): void {
-  db.runBoundedWrite(() => {
-    for (const id of ["CVE-2099-1001", "CVE-2099-1002", "CVE-2099-1003"]) {
-      db.handle.prepare("DELETE FROM kev_cwes WHERE cve_id = ?").run(id);
-      db.handle.prepare("DELETE FROM kev_entries WHERE cve_id = ?").run(id);
-      db.handle.prepare("DELETE FROM cve_records WHERE cve_id = ?").run(id);
-    }
-  });
-}
-
-test.beforeAll(() => {
-  const db = openDatabase({ dataDir: serverDataDir() });
-  try {
-    // Idempotent: fixture IDs are shared with other suites, which may leave
-    // rows behind when a run aborts before their afterAll wipe.
-    wipeGraph(db);
-    seedGraph(db);
-  } finally {
-    db.close();
-  }
-});
-
-test.afterAll(() => {
-  const db = openDatabase({ dataDir: serverDataDir() });
-  try {
-    wipeGraph(db);
-  } finally {
-    db.close();
-  }
-});
-
-test("graph renders labeled nodes with an inspector", async ({ page }) => {
+// Relation graph journey. Deliberately fixture-free: the graph reads whatever
+// KEV cohort the shared dev database holds, and other suites swap that file
+// wholesale (the server keeps its own handle), so seeded rows are not durable
+// here. These tests assert the contract instead: no implicit center, a ranked
+// hub landing, and a bipartite attribute view once a record is centered.
+test("landing ranks hubs and never pre-fills a center", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  // Focused ego cohort: deterministic regardless of other suites' leftovers
-  // in the shared dev database (the default top-EPSS cohort is covered by
-  // unit tests on isolated temp DBs instead).
-  await page.goto("/graph?focus=CVE-2099-1001");
+  await page.goto("/graph");
   await expect(page.getByTestId("graph-root")).toBeVisible();
-  await expect(page.getByTestId("graph-svg")).toBeVisible();
-  await expect(page.getByTestId("graph-node-CVE-2099-1001")).toBeVisible();
-  await expect(page.getByTestId("graph-coverage")).toContainText("centered on CVE-2099-1001");
+  await expect(page.getByTestId("graph-landing")).toBeVisible();
+  // No phantom default: the input is empty until the reader chooses.
+  await expect(page.getByTestId("graph-focus-input")).toHaveValue("");
 
-  await page.getByTestId("graph-node-CVE-2099-1001").click();
-  await expect(page.getByTestId("graph-inspector-id")).toContainText("CVE-2099-1001");
-  await expect(page.getByTestId("graph-inspector-degree")).toContainText("1");
-  // Evidence names the actual shared attributes, not just a line style.
-  await expect(page.getByTestId("graph-inspector-evidence")).toContainText("CWE-78");
-  await expect(page.getByTestId("graph-inspector-evidence")).toContainText("graphvendor");
-  await expect(page.getByTestId("graph-inspector")).toContainText("Open in Search");
+  const hubs = page.getByTestId("graph-hubs");
+  const empty = page.getByTestId("graph-empty");
+  if (await hubs.isVisible()) {
+    const firstHub = hubs.locator("li").first();
+    await expect(firstHub).toContainText(/CVE-\d{4}-\d+/);
+    await expect(firstHub).toContainText("links");
+  } else {
+    // Honest empty state when the retained cohort has no KEV rows.
+    await expect(empty).toContainText("No KEV cohort");
+  }
 });
 
-test("graph focus centers an ego neighborhood", async ({ page }) => {
+test("centering a hub shows grouped shared attributes", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/graph?focus=CVE-2099-1003");
-  await expect(page.getByTestId("graph-coverage")).toContainText("centered on CVE-2099-1003");
-  await expect(page.getByTestId("graph-node-CVE-2099-1003")).toBeVisible();
-  await expect(page.getByTestId("graph-node-CVE-2099-1001")).toHaveCount(0);
+  await page.goto("/graph");
+  const hubs = page.getByTestId("graph-hubs");
+  if (!(await hubs.isVisible())) {
+    test.skip(true, "no KEV cohort in this database");
+    return;
+  }
+  const link = hubs.locator("li a.graph-hub-id").first();
+  const cveId = (await link.textContent())?.trim() ?? "";
+  expect(cveId).toMatch(/^CVE-\d{4}-\d+/);
+
+  await page.goto(`/graph?focus=${encodeURIComponent(cveId)}`);
+  await expect(page.getByTestId("graph-centered")).toBeVisible();
+  await expect(page.getByTestId("graph-center-id")).toContainText(cveId);
+  await expect(page.getByTestId("graph-focus-input")).toHaveValue("");
+  await expect(page.getByTestId("graph-clear")).toBeVisible();
+
+  const columns = page.getByTestId("graph-columns");
+  const noLinks = page.getByTestId("graph-no-links");
+  if (await columns.isVisible()) {
+    // Every group names one shared attribute and at least one other record.
+    const firstGroup = columns.locator(".graph-group").first();
+    await expect(firstGroup).toContainText(/CVE-\d{4}-\d+/);
+  } else {
+    await expect(noLinks).toContainText("No labeled links");
+  }
+});
+
+test("an unknown focus is refused with a message, not a broken graph", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/graph?focus=CVE-1999-0001");
+  await expect(page.getByTestId("graph-invalid")).toContainText(
+    "not a KEV-listed PUBLISHED record",
+  );
 });
