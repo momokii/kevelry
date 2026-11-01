@@ -60,6 +60,38 @@
   color: var(--ledger-ink-secondary);
 }
 
+.storyStrip {
+  list-style: none;
+  margin: 0 0 var(--ledger-space-3) 0;
+  padding: var(--ledger-space-2) var(--ledger-space-3);
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ledger-space-2) var(--ledger-space-4);
+}
+
+.storyMilestone {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--ledger-space-2);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.storyDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ledger-ink);
+  flex: none;
+  transform: translateY(1px);
+}
+
+.storyLabel {
+  font-weight: 600;
+}
+
 .band {
   display: inline-block;
   border: 1px solid var(--ledger-ink);

@@ -369,6 +369,17 @@ test.describe.serial("priority list views", () => {
     await expect(page.getByTestId("priority-evidence-highest-forecast")).toContainText("Current");
   });
 
+  test("expanded rows show a dated story strip", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=known-exploited");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+    const strip = page.getByTestId("priority-row-story").first();
+    await expect(strip).toBeVisible();
+    await expect(strip).toContainText("Published");
+    await expect(strip).toContainText("KEV listed");
+    await expect(page.getByTestId("priority-row-story-published").first()).toBeVisible();
+  });
+
   test("expanded rows sparkline the retained EPSS history", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/priority?view=highest-forecast");

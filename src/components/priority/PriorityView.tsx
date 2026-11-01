@@ -523,6 +523,64 @@ function CvssSignal({ row }: { row: PriorityRowData }) {
   );
 }
 
+/** Record timeline from retained dates only: publication, KEV listing,
+ * remediation deadline, forecast window. Missing dates leave no milestone;
+ * nothing is interpolated. Display only, never a comparison. */
+function StoryStrip({ row }: { row: PriorityRowData }) {
+  const milestones: Array<{ key: string; label: string; date: string; testId: string }> = [];
+  if (row.publishedAt !== null) {
+    milestones.push({
+      key: "published",
+      label: "Published",
+      date: row.publishedAt,
+      testId: "priority-row-story-published",
+    });
+  }
+  if (row.kevListed && row.kevDateAdded !== null) {
+    milestones.push({
+      key: "kev",
+      label: "KEV listed",
+      date: row.kevDateAdded,
+      testId: "priority-row-story-kev",
+    });
+  }
+  if (row.kevListed && row.kevDueDate !== null) {
+    milestones.push({
+      key: "due",
+      label: "Remediation due",
+      date: row.kevDueDate,
+      testId: "priority-row-story-due",
+    });
+  }
+  const history = row.epssHistory;
+  if (history !== null && history.length > 0) {
+    const first = history[0];
+    const last = history[history.length - 1];
+    if (first !== undefined && last !== undefined) {
+      milestones.push({
+        key: "epss",
+        label: `Forecast tracked ${first.scoreDate} to ${last.scoreDate}`,
+        date: last.scoreDate,
+        testId: "priority-row-story-epss",
+      });
+    }
+  }
+  if (milestones.length === 0) return null;
+  return (
+    <ol className={styles.storyStrip} aria-label="Record timeline" data-testid="priority-row-story">
+      {milestones.map((milestone) => (
+        <li key={milestone.key} className={styles.storyMilestone}>
+          <span className={styles.storyDot} aria-hidden="true" />
+          <span>
+            <span className={styles.storyLabel}>{milestone.label}</span>{" "}
+            <TimeText value={milestone.date} testId={milestone.testId} />
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function DeltaSignal({ row }: { row: PriorityRowData }) {
   const label = formatSignedDeltaPp(row.deltaPp);
   if (label === null || row.deltaPreviousDate === null || row.epssDate === null) {
@@ -630,6 +688,7 @@ export function PriorityRow({
       </div>
       {expanded ? (
         <div className="priority-row-detail">
+          <StoryStrip row={row} />
           <div className="signal-grid">
             <KevSignal row={row} />
             <EpssSignal row={row} />
