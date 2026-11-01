@@ -20,6 +20,20 @@ export const TIME_ZONE_STORAGE_KEY = "ledger-timezone";
 
 export const TIME_ZONE_COOKIE = "ledger-timezone";
 
+export const SUPPORTED_THEMES = ["light", "dark"] as const;
+
+export type SupportedTheme = (typeof SUPPORTED_THEMES)[number];
+
+export const DEFAULT_THEME: SupportedTheme = "light";
+
+export const THEME_STORAGE_KEY = "ui-theme";
+
+export const THEME_COOKIE = "ui-theme";
+
+export function isSupportedTheme(value: string): value is SupportedTheme {
+  return (SUPPORTED_THEMES as readonly string[]).includes(value);
+}
+
 export function isSupportedTimeZone(value: string): value is SupportedTimeZone {
   return (SUPPORTED_TIME_ZONES as readonly string[]).includes(value);
 }
@@ -27,6 +41,8 @@ export function isSupportedTimeZone(value: string): value is SupportedTimeZone {
 type DisplayPrefs = {
   timeZone: SupportedTimeZone;
   setTimeZone: (zone: SupportedTimeZone) => void;
+  theme: SupportedTheme;
+  setTheme: (theme: SupportedTheme) => void;
 };
 
 const DisplayPrefsContext = createContext<DisplayPrefs | null>(null);
@@ -34,11 +50,19 @@ const DisplayPrefsContext = createContext<DisplayPrefs | null>(null);
 type DisplayPrefsProviderProps = {
   children: ReactNode;
   initialTimeZone?: string;
+  initialTheme?: string;
 };
 
-export function DisplayPrefsProvider({ children, initialTimeZone }: DisplayPrefsProviderProps) {
+export function DisplayPrefsProvider({
+  children,
+  initialTimeZone,
+  initialTheme,
+}: DisplayPrefsProviderProps) {
   const [timeZone, setTimeZoneState] = useState<SupportedTimeZone>(() =>
     initialTimeZone && isSupportedTimeZone(initialTimeZone) ? initialTimeZone : DEFAULT_TIME_ZONE,
+  );
+  const [theme, setThemeState] = useState<SupportedTheme>(() =>
+    initialTheme && isSupportedTheme(initialTheme) ? initialTheme : DEFAULT_THEME,
   );
 
   // The stored choice wins over the server-rendered initial value so a
@@ -48,6 +72,11 @@ export function DisplayPrefsProvider({ children, initialTimeZone }: DisplayPrefs
       const stored = window.localStorage.getItem(TIME_ZONE_STORAGE_KEY);
       if (stored && isSupportedTimeZone(stored)) {
         setTimeZoneState((current) => (current === stored ? current : stored));
+      }
+      const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (storedTheme && isSupportedTheme(storedTheme)) {
+        setThemeState((current) => (current === storedTheme ? current : storedTheme));
+        document.documentElement.dataset.theme = storedTheme;
       }
     } catch {
       // Private-mode storage failure: keep the in-memory zone.
@@ -64,7 +93,21 @@ export function DisplayPrefsProvider({ children, initialTimeZone }: DisplayPrefs
     }
   }, []);
 
-  const value = useMemo(() => ({ timeZone, setTimeZone }), [timeZone, setTimeZone]);
+  const setTheme = useCallback((next: SupportedTheme) => {
+    setThemeState(next);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, next);
+      document.cookie = `${THEME_COOKIE}=${encodeURIComponent(next)}; path=/; max-age=31536000; SameSite=Lax`;
+      document.documentElement.dataset.theme = next;
+    } catch {
+      // Storage failure keeps the in-memory theme for this page view.
+    }
+  }, []);
+
+  const value = useMemo(
+    () => ({ timeZone, setTimeZone, theme, setTheme }),
+    [timeZone, setTimeZone, theme, setTheme],
+  );
 
   return <DisplayPrefsContext.Provider value={value}>{children}</DisplayPrefsContext.Provider>;
 }
@@ -79,4 +122,8 @@ export function useDisplayPrefs(): DisplayPrefs {
 
 export function useTimeZone(): SupportedTimeZone {
   return useDisplayPrefs().timeZone;
+}
+
+export function useTheme(): SupportedTheme {
+  return useDisplayPrefs().theme;
 }

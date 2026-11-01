@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
+import { ThemeToggle } from "@/components/ledger/ThemeToggle";
 import { TimeZoneSelect } from "@/components/ledger/TimeZoneSelect";
 
 import {
@@ -176,6 +177,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="app-rail-section">
           <div className="app-rail-label">Display</div>
           <TimeZoneSelect testId="global-timezone" />
+          <ThemeToggle testId="global-theme" />
         </div>
       </aside>
 

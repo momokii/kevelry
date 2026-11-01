@@ -29,6 +29,13 @@ test("rail data-status rows match nav rows and dropdowns are themed", async ({ p
     "page",
   );
 
+  await page.getByTestId("global-theme-dark").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByTestId("global-theme-light").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
   const timezone = page.getByTestId("global-timezone");
   await expect(timezone).toBeVisible();
   await expect(timezone).toHaveCSS("appearance", "none");

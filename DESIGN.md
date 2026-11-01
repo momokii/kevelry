@@ -51,6 +51,47 @@ Rules:
 - Text uses ink tokens; accent text must sit on paper or `--ui-accent-soft`.
 - New colors require a token and a contrast check.
 
+### Dark theme (`[data-theme="dark"]`)
+
+Warm charcoal carrying the same hue family; the accent and semantic hues are
+lifted for contrast on dark surfaces. Primary buttons invert (near-white fill,
+dark text). Every product surface flips by token assignment; showcase-only
+legacy styles outside the tokens intentionally stay light.
+
+| Token | Dark value | Note |
+| --- | --- | --- |
+| `--ui-paper` | `rgb(22,21,19)` | canvas |
+| `--ui-paper-deep` | `rgb(15,14,12)` | rail / recessed |
+| `--ui-surface` | `rgb(33,32,29)` | panels, tables |
+| `--ui-surface-raised` | `rgb(44,42,37)` | hover wells |
+| `--ui-ink` | `rgb(236,234,228)` | primary text, bars |
+| `--ui-ink-2` | `rgb(178,174,166)` | secondary prose |
+| `--ui-ink-3` | `rgb(138,134,125)` | labels, axes |
+| `--ui-rule` | `rgb(64,61,55)` | borders |
+| `--ui-rule-soft` | `rgb(46,44,40)` | rows, gridlines |
+| `--ui-rule-strong` | `rgb(100,96,87)` | strong borders |
+| `--ui-accent` | `rgb(104,186,228)` | links, selection, focus |
+| `--ui-accent-deep` | `rgb(150,210,245)` | accent text |
+| `--ui-accent-soft` | `rgb(20,48,62)` | selected surfaces |
+| `--ui-accent-line` | `rgb(52,112,142)` | selected borders |
+| `--ui-critical` | `rgb(228,115,124)` | critical band |
+| `--ui-high` | `rgb(236,150,88)` | high band |
+| `--ui-medium` | `rgb(222,176,66)` | medium band |
+| `--ui-low` | `rgb(112,182,146)` | low band |
+| `--ui-legacy` | `rgb(172,152,212)` | v2 only |
+| `--ui-unknown` | `rgb(150,146,138)` | unscored |
+| `--ui-positive` | `rgb(96,180,140)` | good states |
+| `--ui-caution` | `rgb(224,178,64)` | warnings |
+
+Supporting tokens (`--ui-ink-raise`, `--ui-nav-hover`, `--ui-topbar-veil`,
+`--ui-scrim`, `--ui-drawer-veil`, `--ui-pill-x`, `--ui-tooltip-label`,
+`--ui-{danger,critical,high,medium,low,legacy}-{bg,border}`) each carry a
+dark assignment in `app/ui.css`. The select chevron data-URI has a dark
+variant. `color-scheme: dark` keeps native controls (scrollbars, date
+inputs) legible. The theme persists via `ui-theme` localStorage + cookie
+(`DisplayPrefs`), applied pre-paint from the cookie so themed first paint
+never flashes.
+
 ## 3. Typography
 
 Self-hosted variable fonts in `public/fonts/` (OFL, copied with licenses):

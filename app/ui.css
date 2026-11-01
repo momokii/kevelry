@@ -20,6 +20,7 @@
 }
 
 :root {
+  color-scheme: light;
   --ui-paper: rgb(247, 246, 243);
   --ui-paper-deep: rgb(240, 238, 232);
   --ui-surface: rgb(255, 255, 255);
@@ -60,6 +61,25 @@
   --ui-radius-lg: 12px;
   --ui-shadow-pop: 0 1px 2px rgba(26, 26, 26, 0.08), 0 18px 48px rgba(26, 26, 26, 0.14);
   --ui-shadow-drawer: -18px 0 60px rgba(26, 26, 26, 0.16);
+  --ui-ink-raise: rgb(44, 44, 44);
+  --ui-nav-hover: rgba(255, 255, 255, 0.7);
+  --ui-topbar-veil: rgba(247, 246, 243, 0.86);
+  --ui-scrim: rgba(26, 26, 26, 0.32);
+  --ui-drawer-veil: rgba(26, 26, 26, 0.28);
+  --ui-pill-x: rgba(26, 26, 26, 0.08);
+  --ui-tooltip-label: rgb(196, 192, 184);
+  --ui-danger-bg: rgb(250, 235, 236);
+  --ui-danger-border: rgb(230, 190, 194);
+  --ui-critical-bg: rgb(250, 235, 236);
+  --ui-critical-border: rgb(230, 190, 194);
+  --ui-high-bg: rgb(252, 241, 231);
+  --ui-high-border: rgb(231, 205, 182);
+  --ui-medium-bg: rgb(250, 246, 226);
+  --ui-medium-border: rgb(226, 214, 172);
+  --ui-low-bg: rgb(234, 244, 238);
+  --ui-low-border: rgb(190, 216, 201);
+  --ui-legacy-bg: rgb(241, 237, 246);
+  --ui-legacy-border: rgb(207, 198, 218);
   --ui-rail: 232px;
   --ui-topbar: 58px;
   --ui-fast: 120ms;
@@ -76,6 +96,60 @@
   --ledger-font-display: var(--ui-font-sans);
   --ledger-font-body: var(--ui-font-sans);
   --ledger-font-mono: var(--ui-font-mono);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ui-paper: rgb(22, 21, 19);
+  --ui-paper-deep: rgb(15, 14, 12);
+  --ui-surface: rgb(33, 32, 29);
+  --ui-surface-raised: rgb(44, 42, 37);
+  --ui-ink: rgb(236, 234, 228);
+  --ui-ink-2: rgb(178, 174, 166);
+  --ui-ink-3: rgb(138, 134, 125);
+  --ui-rule: rgb(64, 61, 55);
+  --ui-rule-soft: rgb(46, 44, 40);
+  --ui-rule-strong: rgb(100, 96, 87);
+  --ui-accent: rgb(104, 186, 228);
+  --ui-accent-deep: rgb(150, 210, 245);
+  --ui-accent-soft: rgb(20, 48, 62);
+  --ui-accent-line: rgb(52, 112, 142);
+  --ui-critical: rgb(228, 115, 124);
+  --ui-high: rgb(236, 150, 88);
+  --ui-medium: rgb(222, 176, 66);
+  --ui-low: rgb(112, 182, 146);
+  --ui-legacy: rgb(172, 152, 212);
+  --ui-unknown: rgb(150, 146, 138);
+  --ui-positive: rgb(96, 180, 140);
+  --ui-caution: rgb(224, 178, 64);
+  --ui-shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.5);
+  --ui-shadow-drawer: -18px 0 60px rgba(0, 0, 0, 0.5);
+  --ui-ink-raise: rgb(96, 94, 87);
+  --ui-nav-hover: rgba(255, 255, 255, 0.07);
+  --ui-topbar-veil: rgba(22, 21, 19, 0.86);
+  --ui-scrim: rgba(0, 0, 0, 0.6);
+  --ui-drawer-veil: rgba(0, 0, 0, 0.5);
+  --ui-pill-x: rgba(255, 255, 255, 0.14);
+  --ui-tooltip-label: rgb(110, 106, 98);
+  --ui-danger-bg: rgb(66, 28, 32);
+  --ui-danger-border: rgb(122, 60, 66);
+  --ui-critical-bg: rgb(66, 28, 32);
+  --ui-critical-border: rgb(122, 60, 66);
+  --ui-high-bg: rgb(66, 40, 24);
+  --ui-high-border: rgb(128, 80, 44);
+  --ui-medium-bg: rgb(64, 52, 20);
+  --ui-medium-border: rgb(128, 104, 46);
+  --ui-low-bg: rgb(26, 52, 40);
+  --ui-low-border: rgb(56, 110, 84);
+  --ui-legacy-bg: rgb(46, 40, 62);
+  --ui-legacy-border: rgb(96, 84, 128);
+  --ledger-canvas: rgb(22, 21, 19);
+  --ledger-surface: rgb(33, 32, 29);
+  --ledger-ink: rgb(236, 234, 228);
+  --ledger-ink-secondary: rgb(178, 174, 166);
+  --ledger-rule: rgb(64, 61, 55);
+  --ledger-link: rgb(104, 186, 228);
+  --ledger-focus-ring: rgb(104, 186, 228);
 }
 
 body {
@@ -223,7 +297,7 @@ a {
 }
 
 .app-nav-link:hover {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--ui-nav-hover);
   color: var(--ui-ink);
 }
 
@@ -265,6 +339,10 @@ a {
   border-top: 1px solid var(--ui-rule);
 }
 
+.app-rail-section .ledger-timezone + .ledger-timezone {
+  margin-top: 10px;
+}
+
 .app-rail-label {
   font-family: var(--ui-font-mono);
   font-size: 9.5px;
@@ -289,7 +367,7 @@ a {
 }
 
 .app-rail-status:hover {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--ui-nav-hover);
   color: var(--ui-ink);
 }
 
@@ -335,7 +413,7 @@ a {
   align-items: center;
   gap: var(--ui-sp-3);
   padding: 0 var(--ui-sp-6);
-  background: rgba(247, 246, 243, 0.86);
+  background: var(--ui-topbar-veil);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--ui-rule);
 }
@@ -460,7 +538,7 @@ a {
     position: fixed;
     inset: 0;
     z-index: 35;
-    background: rgba(26, 26, 26, 0.32);
+    background: var(--ui-scrim);
     border: 0;
   }
 
@@ -830,8 +908,8 @@ a {
 }
 
 .btn-primary:hover {
-  background: rgb(44, 44, 44);
-  border-color: rgb(44, 44, 44);
+  background: var(--ui-ink-raise);
+  border-color: var(--ui-ink-raise);
 }
 
 .btn-accent {
@@ -924,8 +1002,8 @@ a {
 }
 
 .pill-danger {
-  background: rgb(250, 235, 236);
-  border-color: rgb(230, 190, 194);
+  background: var(--ui-danger-bg);
+  border-color: var(--ui-danger-border);
   color: var(--ui-critical);
 }
 
@@ -936,7 +1014,7 @@ a {
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: rgba(26, 26, 26, 0.08);
+  background: var(--ui-pill-x);
   color: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -959,28 +1037,28 @@ a {
 }
 
 .badge-critical {
-  background: rgb(250, 235, 236);
-  border-color: rgb(230, 190, 194);
+  background: var(--ui-critical-bg);
+  border-color: var(--ui-critical-border);
   color: var(--ui-critical);
 }
 .badge-high {
-  background: rgb(252, 241, 231);
-  border-color: rgb(231, 205, 182);
+  background: var(--ui-high-bg);
+  border-color: var(--ui-high-border);
   color: var(--ui-high);
 }
 .badge-medium {
-  background: rgb(250, 246, 226);
-  border-color: rgb(226, 214, 172);
+  background: var(--ui-medium-bg);
+  border-color: var(--ui-medium-border);
   color: var(--ui-medium);
 }
 .badge-low {
-  background: rgb(234, 244, 238);
-  border-color: rgb(190, 216, 201);
+  background: var(--ui-low-bg);
+  border-color: var(--ui-low-border);
   color: var(--ui-low);
 }
 .badge-legacy {
-  background: rgb(241, 237, 246);
-  border-color: rgb(207, 198, 218);
+  background: var(--ui-legacy-bg);
+  border-color: var(--ui-legacy-border);
   color: var(--ui-legacy);
 }
 .badge-unknown {
@@ -1120,7 +1198,7 @@ a {
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgb(196, 192, 184);
+  color: var(--ui-tooltip-label);
 }
 
 .chart-tooltip .tt-value {
@@ -1131,7 +1209,7 @@ a {
 }
 
 .chart-tooltip .tt-share {
-  color: rgb(214, 211, 205);
+  color: var(--ui-rule);
 }
 
 .chart-legend {
@@ -1221,7 +1299,7 @@ a {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(26, 26, 26, 0.28);
+  background: var(--ui-drawer-veil);
   border: 0;
 }
 
@@ -2090,6 +2168,13 @@ a {
     background-image: none;
     padding-right: 10px;
   }
+}
+
+/* Dark chevron: the data-uri stroke must lift with the theme. */
+[data-theme="dark"] .ledger-snapshot-select,
+[data-theme="dark"] .ledger-timezone-select,
+[data-theme="dark"] .ui-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgb(138,134,125)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* Explore */
@@ -3172,7 +3257,7 @@ a {
     position: fixed;
     inset: 0;
     z-index: 35;
-    background: rgba(26, 26, 26, 0.32);
+    background: var(--ui-scrim);
     border: 0;
   }
 
