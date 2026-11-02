@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import type { GraphCohort, GraphEdgeKind, GraphGroup } from "@/lib/graph";
+import type { GraphCohort, GraphEdgeKind, GraphGroup, GraphSummary } from "@/lib/graph";
 
 const GROUP_META: Record<GraphEdgeKind, { label: string; hint: string }> = {
   cwe: { label: "Shared CWE", hint: "Same catalog weakness class" },
@@ -32,6 +32,9 @@ interface AttrRow {
   group: GraphGroup;
   children: string[];
   hidden: number;
+  /** Preformatted "+N more · view all" label, sized with its own pill. */
+  label: string;
+  pillWidth: number;
   height: number;
 }
 
@@ -44,11 +47,13 @@ function MoreDialog({
   group,
   centerId,
   limit,
+  summaries,
   onClose,
 }: {
   group: GraphGroup | null;
   centerId: string;
   limit: number;
+  summaries: Record<string, GraphSummary>;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -95,17 +100,42 @@ function MoreDialog({
             </button>
           </header>
           <ul className="graph-dialog-list" data-testid="graph-more-list">
-            {group.cves.map((id) => (
-              <li key={id}>
-                <Link
-                  className="mono"
-                  href={`/graph?focus=${encodeURIComponent(id)}&limit=${limit}`}
-                  data-testid={`graph-more-item-${id}`}
-                >
-                  {id}
-                </Link>
-              </li>
-            ))}
+            {group.cves.map((id) => {
+              const summary = summaries[id];
+              const epss = summary?.epss == null ? null : (Number(summary.epss) * 100).toFixed(2);
+              return (
+                <li key={id} className="graph-dialog-row">
+                  <div className="graph-dialog-row-head">
+                    <Link
+                      className="mono graph-dialog-id"
+                      href={`/graph?focus=${encodeURIComponent(id)}&limit=${limit}`}
+                      data-testid={`graph-more-item-${id}`}
+                    >
+                      {id}
+                    </Link>
+                    <span className="graph-dialog-badges">
+                      {summary?.band !== null && summary?.band !== undefined ? (
+                        <span className={`badge badge-${summary.band}`}>{summary.band}</span>
+                      ) : (
+                        <span className="badge badge-unknown">unscored</span>
+                      )}
+                      {epss !== null ? (
+                        <span className="badge badge-accent">EPSS {epss}%</span>
+                      ) : (
+                        <span className="badge badge-unknown">EPSS ?</span>
+                      )}
+                    </span>
+                  </div>
+                  <p className="graph-dialog-title">{summary?.title ?? id}</p>
+                  <p className="graph-dialog-meta">
+                    {summary?.publishedAt !== null && summary?.publishedAt !== undefined
+                      ? `Published ${summary.publishedAt.slice(0, 10)}`
+                      : "Publication date unknown"}
+                    {summary?.kevDueDate != null ? ` · remediation due ${summary.kevDueDate}` : ""}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -138,10 +168,16 @@ function EgoGraph({
   const rows: AttrRow[] = shown.map((group) => {
     const children = group.cves.slice(0, childCap);
     const hidden = Math.max(0, group.cves.length - children.length);
+    const label = `+${hidden} more · view all`;
+    // Monospace at 9.5px measures ~5.75px per glyph; size the pill from the
+    // label so the text can never sit outside its box.
+    const pillWidth = Math.max(92, Math.round(label.length * 5.75) + 16);
     return {
       group,
       children,
       hidden,
+      label,
+      pillWidth,
       height: (children.length + (hidden > 0 ? 1 : 0)) * ROW_UNIT + 14,
     };
   });
@@ -231,22 +267,22 @@ function EgoGraph({
                   }}
                 >
                   <rect
-                    x={COL_LEAF - 6}
-                    y={row.top + 16 + row.children.length * ROW_UNIT - 6}
-                    width={110}
-                    height={18}
+                    x={COL_LEAF - 8}
+                    y={row.top + 16 + row.children.length * ROW_UNIT - 8}
+                    width={row.pillWidth}
+                    height={20}
                     rx={4}
                     fill="var(--ui-surface-raised)"
                     stroke="var(--ui-rule)"
                   />
                   <text
-                    x={COL_LEAF + 4}
+                    x={COL_LEAF}
                     y={row.top + 16 + row.children.length * ROW_UNIT + 6}
                     fontSize={9.5}
                     fontFamily="var(--ui-font-mono)"
                     fill="var(--ui-ink-2)"
                   >
-                    +{row.hidden} more · view all
+                    {row.label}
                   </text>
                 </g>
               ) : null}
@@ -670,6 +706,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
         group={more}
         centerId={cohort.focus ?? ""}
         limit={limit}
+        summaries={cohort.summaries}
         onClose={() => setMore(null)}
       />
       <p className="chart-note">

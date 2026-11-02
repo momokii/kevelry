@@ -1441,6 +1441,33 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GraphGroup"
+    GraphSummary:
+      type: object
+      description: Compact context for one record referenced by groups or hubs.
+      required:
+        - id
+        - title
+        - band
+        - epss
+        - publishedAt
+        - kevDueDate
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        band:
+          type: string
+          nullable: true
+        epss:
+          type: string
+          nullable: true
+        publishedAt:
+          type: string
+          nullable: true
+        kevDueDate:
+          type: string
+          nullable: true
     GraphResponse:
       type: object
       required:
@@ -1449,6 +1476,7 @@ components:
         - edges
         - groups
         - hubs
+        - summaries
         - coverage
         - truncated
         - provenance
@@ -1476,6 +1504,11 @@ components:
           description: Landing only (no focus). Most-connected records with top attributes.
           items:
             $ref: "#/components/schemas/GraphHub"
+        summaries:
+          type: object
+          description: Context keyed by CVE id for every record the groups or hubs reference.
+          additionalProperties:
+            $ref: "#/components/schemas/GraphSummary"
         coverage:
           type: object
           required:

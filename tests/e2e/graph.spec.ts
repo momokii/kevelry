@@ -115,6 +115,13 @@ test("+N more opens the complete attribute list in a dialog", async ({ page }) =
   expect(await items.count()).toBeGreaterThan(2);
   // Every listed record links back into the graph.
   await expect(items.first()).toHaveAttribute("href", /focus=CVE-/);
+  // Rows carry real context, not bare identifiers.
+  const firstRow = dialog.locator(".graph-dialog-row").first();
+  await expect(firstRow.locator(".graph-dialog-title")).not.toBeEmpty();
+  await expect(firstRow.locator(".graph-dialog-meta")).toContainText(/Published|unknown/);
+  await expect(firstRow.locator(".graph-dialog-badges")).toContainText(
+    /EPSS|unscored|critical|high|medium|low|legacy/,
+  );
 
   // Escape closes and returns focus to the page.
   await page.keyboard.press("Escape");

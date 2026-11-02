@@ -244,3 +244,29 @@ describe("bounded KEV relationship graph", () => {
     expect(empty.truncated).toBe(false);
   });
 });
+
+describe("graph summaries", () => {
+  it("provides context for every id the groups reference", () => {
+    const db = makeDb();
+    seedRecord(db, "CVE-2099-0001", "First title");
+    seedRecord(db, "CVE-2099-0002", "Second title");
+    seedKev(db, "CVE-2099-0001", { vendor: "Acme", cwes: ["CWE-78"], due: "2026-11-10" });
+    seedKev(db, "CVE-2099-0002", { vendor: "Acme", cwes: ["CWE-78"] });
+    seedEpss(db, "CVE-2099-0002", "0.42");
+
+    const graph = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 10 });
+    const referenced = graph.groups.flatMap((group) => group.cves);
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const id of referenced) {
+      expect(graph.summaries[id], `${id} summary`).toBeDefined();
+    }
+    const peer = graph.summaries["CVE-2099-0002"];
+    expect(peer).toMatchObject({
+      id: "CVE-2099-0002",
+      title: "Second title",
+      epss: "0.42",
+      kevDueDate: null,
+    });
+    expect(graph.summaries["CVE-2099-0001"]?.kevDueDate).toBe("2026-11-10");
+  });
+});

@@ -65,6 +65,8 @@ export interface GraphCohort {
   groups: GraphGroup[];
   /** Landing view when nothing is centered: the cohort's most connected. */
   hubs: GraphHub[];
+  /** Context for every id referenced by groups or hubs, keyed by CVE id. */
+  summaries: Record<string, GraphSummary>;
   eligibleCohort: number;
   truncated: boolean;
 }
@@ -158,7 +160,18 @@ function domainsOf(rawJson: string | null, cap: number): Set<string> {
 interface CohortRow {
   id: string;
   title: string | null;
+  publishedAt: string | null;
   dueDate: string | null;
+}
+
+/** Compact per-record context for the group drill-down and hub list. */
+export interface GraphSummary {
+  id: string;
+  title: string;
+  band: string | null;
+  epss: string | null;
+  publishedAt: string | null;
+  kevDueDate: string | null;
 }
 
 /**
@@ -290,7 +303,7 @@ export function buildKevGraph(
 
   const cohort = db.handle
     .prepare(
-      "SELECT r.cve_id AS id, r.title AS title, k.due_date AS dueDate " +
+      "SELECT r.cve_id AS id, r.title AS title, r.date_published AS publishedAt, k.due_date AS dueDate " +
         "FROM kev_entries k JOIN cve_records r ON r.cve_id = k.cve_id AND r.state = 'PUBLISHED' " +
         "ORDER BY k.cve_id ASC",
     )
@@ -462,12 +475,38 @@ export function buildKevGraph(
             };
           });
 
+  // One context record per referenced id, straight from the retained rows —
+  // the modal lists real titles and signals instead of bare identifiers.
+  const referenced = new Set<string>();
+  if (focus !== null) referenced.add(focus);
+  for (const group of groups) for (const id of group.cves) referenced.add(id);
+  for (const hub of hubs) {
+    referenced.add(hub.id);
+    for (const attribute of hub.topAttributes) {
+      for (const id of attribute.cves) referenced.add(id);
+    }
+  }
+  const summaries: Record<string, GraphSummary> = {};
+  for (const id of referenced) {
+    const row = byId.get(id);
+    const trimmed = typeof row?.title === "string" ? row.title.trim() : "";
+    summaries[id] = {
+      id,
+      title: trimmed !== "" ? trimmed : id,
+      band: bands.get(id) ?? null,
+      epss: epssById.get(id) ?? null,
+      publishedAt: row?.publishedAt ?? null,
+      kevDueDate: row?.dueDate ?? null,
+    };
+  }
+
   return {
     focus,
     nodes,
     edges,
     groups,
     hubs,
+    summaries,
     eligibleCohort: cohort.length,
     truncated: truncated || edges.length >= GRAPH_MAX_EDGES,
   };

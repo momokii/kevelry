@@ -4657,20 +4657,58 @@ a.graph-evidence-chip:hover {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 2px 12px;
+  display: flex;
+  flex-direction: column;
   font-size: 12px;
 }
 
-.graph-dialog-list a {
-  color: var(--ui-accent);
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
+.graph-dialog-row {
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--ui-rule-soft);
 }
 
-.graph-dialog-list a:hover {
+.graph-dialog-row:last-child {
+  border-bottom: 0;
+}
+
+.graph-dialog-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.graph-dialog-id {
+  color: var(--ui-accent);
+  text-decoration: none;
+  font-size: 12px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.graph-dialog-id:hover {
   text-decoration: underline;
+}
+
+.graph-dialog-badges {
+  display: inline-flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.graph-dialog-title {
+  margin: 2px 0 2px;
+  font-size: 13px;
+  color: var(--ui-ink);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.graph-dialog-meta {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 10.5px;
+  color: var(--ui-ink-3);
 }
