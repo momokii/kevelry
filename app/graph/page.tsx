@@ -10,7 +10,10 @@ import {
   type GraphCohort,
 } from "@/lib/graph";
 
-export const revalidate = 60;
+// Query-driven page: every `?focus=` is a different document, so it must not
+// be served from a pathname-level cache (that made a centered link show the
+// landing view). Same reasoning as /api-docs.
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Relation graph — Kevelry",

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 
 import type { GraphCohort, GraphEdgeKind, GraphGroup } from "@/lib/graph";
 
@@ -35,12 +36,98 @@ interface AttrRow {
 }
 
 /**
+ * Full list for one shared attribute. Native <dialog> gives focus trapping,
+ * Escape-to-close, and backdrop semantics for free; the trigger is always a
+ * real button, so keyboard users reach it without a pointer.
+ */
+function MoreDialog({
+  group,
+  centerId,
+  limit,
+  onClose,
+}: {
+  group: GraphGroup | null;
+  centerId: string;
+  limit: number;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog === null) return;
+    if (group !== null && !dialog.open) dialog.showModal();
+    if (group === null && dialog.open) dialog.close();
+  }, [group]);
+
+  return (
+    <dialog
+      ref={ref}
+      className="graph-dialog"
+      aria-labelledby="graph-dialog-title"
+      data-testid="graph-more-dialog"
+      onClose={onClose}
+      onClick={(event) => {
+        // Backdrop click: the dialog element itself is the backdrop area.
+        if (event.target === ref.current) onClose();
+      }}
+    >
+      {group === null ? null : (
+        <div className="graph-dialog-body">
+          <header className="graph-dialog-head">
+            <div>
+              <div className="eyebrow">{GROUP_META[group.kind].label}</div>
+              <h2 id="graph-dialog-title" className="mono">
+                {group.value}
+              </h2>
+              <p className="chart-note">
+                {group.cves.length} KEV-listed records share this with {centerId}.{" "}
+                {GROUP_META[group.kind].hint}.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={onClose}
+              data-testid="graph-more-close"
+            >
+              Close
+            </button>
+          </header>
+          <ul className="graph-dialog-list" data-testid="graph-more-list">
+            {group.cves.map((id) => (
+              <li key={id}>
+                <Link
+                  className="mono"
+                  href={`/graph?focus=${encodeURIComponent(id)}&limit=${limit}`}
+                  data-testid={`graph-more-item-${id}`}
+                >
+                  {id}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </dialog>
+  );
+}
+
+/**
  * Layered ego graph: center CVE -> shared attribute -> the records carrying
  * it. Deterministic layout (no force simulation), so the same data always
  * draws the same picture and every node keeps a stable position for
  * keyboard users. Labels are always rendered; nothing is inferred.
  */
-function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
+function EgoGraph({
+  cohort,
+  limit,
+  onMore,
+}: {
+  cohort: GraphCohort;
+  limit: number;
+  onMore: (group: GraphGroup) => void;
+}) {
   const center = cohort.focus ?? "";
   const shown = cohort.groups.slice(0, ATTR_CAP);
   // Child budget per attribute from the available height, so the center and
@@ -129,15 +216,39 @@ function EgoGraph({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
                 );
               })}
               {row.hidden > 0 ? (
-                <text
-                  x={COL_LEAF}
-                  y={row.top + 16 + row.children.length * ROW_UNIT + 4}
-                  fontSize={9.5}
-                  fontFamily="var(--ui-font-mono)"
-                  fill="var(--ui-ink-3)"
+                <g
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Show all ${row.group.cves.length} records sharing ${row.group.value}`}
+                  data-testid={`graph-more-${row.group.kind}-${row.group.value}`}
+                  className="graph-more-trigger"
+                  onClick={() => onMore(row.group)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onMore(row.group);
+                    }
+                  }}
                 >
-                  +{row.hidden} more
-                </text>
+                  <rect
+                    x={COL_LEAF - 6}
+                    y={row.top + 16 + row.children.length * ROW_UNIT - 6}
+                    width={110}
+                    height={18}
+                    rx={4}
+                    fill="var(--ui-surface-raised)"
+                    stroke="var(--ui-rule)"
+                  />
+                  <text
+                    x={COL_LEAF + 4}
+                    y={row.top + 16 + row.children.length * ROW_UNIT + 6}
+                    fontSize={9.5}
+                    fontFamily="var(--ui-font-mono)"
+                    fill="var(--ui-ink-2)"
+                  >
+                    +{row.hidden} more · view all
+                  </text>
+                </g>
               ) : null}
               <circle
                 cx={COL_ATTR}
@@ -234,13 +345,98 @@ function GroupColumn({
   );
 }
 
+/**
+ * Plain-language reading guide. The graph is only honest if a reader can tell
+ * what a node is, what a line means, and what it does NOT mean; this block is
+ * that contract in the product itself, not only in the docs.
+ */
+function GraphGuide({ centered }: { centered: boolean }) {
+  return (
+    <details className="graph-guide" data-testid="graph-guide" open={!centered}>
+      <summary>How to read this graph</summary>
+      <div className="graph-guide-body">
+        <section>
+          <h3>What a dot is</h3>
+          <p>
+            One <strong>KEV-listed CVE</strong> from the retained snapshot — a record CISA has
+            confirmed as exploited. Records that are not on the KEV catalog are not drawn, because
+            the cohort is defined by that catalog, not by popularity or by the CVE year.
+          </p>
+        </section>
+        <section>
+          <h3>What a line means</h3>
+          <p>
+            A line is a <strong>shared attribute</strong> between the two records, and it is always
+            one of exactly three kinds:
+          </p>
+          <ul>
+            <li>
+              <strong>Shared CWE</strong> (red) — both records carry the same catalog weakness
+              identifier, e.g. <code>CWE-94</code> (code injection). Same <em>class</em> of flaw,
+              not the same code.
+            </li>
+            <li>
+              <strong>Shared vendor</strong> (blue) — the KEV catalog names the same vendor label
+              for both, e.g. <code>microsoft</code>. Same publisher, not necessarily the same
+              product or version.
+            </li>
+            <li>
+              <strong>Shared reference host</strong> (grey) — both records cite an advisory on the
+              same hostname, e.g. <code>security.gentoo.org</code>. That usually means the same
+              package family was patched across distributions.
+            </li>
+          </ul>
+        </section>
+        <section>
+          <h3>What a line does not mean</h3>
+          <p>
+            No causality, no exploit chain, no &quot;affects the same system&quot;, no severity
+            equivalence. Two records sharing <code>CWE-787</code> are not more dangerous together;
+            they just share a weakness class. Nothing here is inferred from text similarity, machine
+            learning, or popularity — if there is no shared attribute, there is no line.
+          </p>
+        </section>
+        <section>
+          <h3>How the numbers work</h3>
+          <p>
+            The number beside an attribute is <strong>how many KEV records carry it</strong> — the
+            denominator is always stated. <code>+N more · view all</code> opens the complete list
+            for that attribute; the drawing shows only the first few so the shape stays readable.
+            The cohort caps are printed above the drawing; a capped view says so and is never
+            presented as complete.
+          </p>
+        </section>
+        <section>
+          <h3>How to move around</h3>
+          <p>
+            Click any CVE to <strong>center</strong> on it — the graph redraws around that record.
+            <strong> Graph overview</strong> (top left) returns to the ranked hub list. Every node
+            is keyboard reachable: Tab to it, Enter to open.
+          </p>
+        </section>
+        <section>
+          <h3>Why some hosts are missing</h3>
+          <p>
+            Advisory aggregators — <code>securityfocus.com</code>, <code>exploit-db.com</code>,
+            <code> nvd.nist.gov</code> and peers — are excluded. Almost every record cites them, so
+            sharing one says nothing about relatedness; keeping them would link everything to
+            everything and destroy the signal.
+          </p>
+        </section>
+      </div>
+    </details>
+  );
+}
+
 export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: number }) {
+  const [more, setMore] = useState<GraphGroup | null>(null);
   const centerNode =
     cohort.focus === null ? null : (cohort.nodes.find((node) => node.id === cohort.focus) ?? null);
 
   if (cohort.focus === null) {
     return (
       <div data-testid="graph-landing">
+        <GraphGuide centered={false} />
         <p className="chart-note" data-testid="graph-coverage">
           {cohort.eligibleCohort} KEV-listed records in the retained snapshot. These are the most
           connected: each shares an attribute with the most peers. Pick one to see exactly what
@@ -328,6 +524,15 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
 
   return (
     <div data-testid="graph-centered">
+      <nav className="graph-back" aria-label="Breadcrumb">
+        <Link href={`/graph?limit=${limit}`} data-testid="graph-back">
+          <span aria-hidden="true">←</span> Graph overview
+        </Link>
+        <span className="graph-back-sep" aria-hidden="true">
+          /
+        </span>
+        <Link href={`/explore?q=${encodeURIComponent(cohort.focus ?? "")}`}>Search records</Link>
+      </nav>
       <form
         className="ledger-search"
         method="get"
@@ -349,14 +554,17 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
           Center
         </button>
         <Link className="btn btn-sm" href={`/graph?limit=${limit}`} data-testid="graph-clear">
-          Back to hubs
+          Clear center
         </Link>
       </form>
 
+      <GraphGuide centered />
       <div className="graph-center" data-testid="graph-center">
         <div>
           <div className="eyebrow">Centered on</div>
-          <h2 className="graph-center-id mono">{cohort.focus}</h2>
+          <h2 className="graph-center-id mono" data-testid="graph-center-id">
+            {cohort.focus}
+          </h2>
           <p className="chart-note">{centerNode?.title ?? cohort.focus}</p>
         </div>
         <dl className="density-stats graph-center-stats">
@@ -401,7 +609,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
         </div>
       ) : (
         <>
-          <EgoGraph cohort={cohort} limit={limit} />
+          <EgoGraph cohort={cohort} limit={limit} onMore={setMore} />
           <p className="chart-note" data-testid="graph-scope">
             Graph shows the {Math.min(cohort.groups.length, 6)} strongest shared attributes; the
             grouped lists below cover all {cohort.groups.length}.
@@ -458,6 +666,12 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
           </table>
         </div>
       </details>
+      <MoreDialog
+        group={more}
+        centerId={cohort.focus ?? ""}
+        limit={limit}
+        onClose={() => setMore(null)}
+      />
       <p className="chart-note">
         Selection is a fact list, not a graph hairball: each group is one shared attribute and the
         KEV records that carry it. Advisory aggregator hosts (securityfocus, exploit-db and peers)

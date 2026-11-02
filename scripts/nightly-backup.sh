@@ -42,6 +42,12 @@ docker compose run --rm \
   -e BACKUP_DIR="/backups/$STAMP" \
   app node worker.mjs
 
+echo "--- compressing dump (measured ~10% of original size) ---"
+if [ -f "$DAY_DIR/cve-backup.db" ]; then
+  gzip -3 "$DAY_DIR/cve-backup.db"
+  echo "compressed: $DAY_DIR/cve-backup.db.gz $(stat -c%s "$DAY_DIR/cve-backup.db.gz") bytes"
+fi
+
 echo "--- pruning generations older than $RETAIN_DAYS days ---"
 find "$BACKUP_ROOT" -maxdepth 1 -mindepth 1 -type d -mtime +"$RETAIN_DAYS" -print -exec rm -rf {} +
 echo "=== backup done $(date -u +%FT%TZ) ==="
