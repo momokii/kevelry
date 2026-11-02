@@ -162,12 +162,15 @@ interface CohortRow {
   title: string | null;
   publishedAt: string | null;
   dueDate: string | null;
+  excerpt: string | null;
 }
 
 /** Compact per-record context for the group drill-down and hub list. */
 export interface GraphSummary {
   id: string;
   title: string;
+  /** First 400 characters of the supplied description, or null. */
+  excerpt: string | null;
   band: string | null;
   epss: string | null;
   publishedAt: string | null;
@@ -303,7 +306,8 @@ export function buildKevGraph(
 
   const cohort = db.handle
     .prepare(
-      "SELECT r.cve_id AS id, r.title AS title, r.date_published AS publishedAt, k.due_date AS dueDate " +
+      "SELECT r.cve_id AS id, r.title AS title, r.date_published AS publishedAt, k.due_date AS dueDate, " +
+        "substr(r.description, 1, 400) AS excerpt " +
         "FROM kev_entries k JOIN cve_records r ON r.cve_id = k.cve_id AND r.state = 'PUBLISHED' " +
         "ORDER BY k.cve_id ASC",
     )
@@ -490,9 +494,11 @@ export function buildKevGraph(
   for (const id of referenced) {
     const row = byId.get(id);
     const trimmed = typeof row?.title === "string" ? row.title.trim() : "";
+    const excerpt = typeof row?.excerpt === "string" ? row.excerpt.trim() : "";
     summaries[id] = {
       id,
       title: trimmed !== "" ? trimmed : id,
+      excerpt: excerpt === "" ? null : excerpt,
       band: bands.get(id) ?? null,
       epss: epssById.get(id) ?? null,
       publishedAt: row?.publishedAt ?? null,

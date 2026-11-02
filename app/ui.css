@@ -4712,3 +4712,15 @@ a.graph-evidence-chip:hover {
   font-size: 10.5px;
   color: var(--ui-ink-3);
 }
+
+.graph-dialog-excerpt {
+  margin: 2px 0 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ui-ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

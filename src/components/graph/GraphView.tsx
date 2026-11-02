@@ -126,7 +126,12 @@ function MoreDialog({
                       )}
                     </span>
                   </div>
-                  <p className="graph-dialog-title">{summary?.title ?? id}</p>
+                  {summary !== undefined && summary.title !== id ? (
+                    <p className="graph-dialog-title">{summary.title}</p>
+                  ) : null}
+                  {summary?.excerpt !== null && summary?.excerpt !== undefined ? (
+                    <p className="graph-dialog-excerpt">{summary.excerpt}</p>
+                  ) : null}
                   <p className="graph-dialog-meta">
                     {summary?.publishedAt !== null && summary?.publishedAt !== undefined
                       ? `Published ${summary.publishedAt.slice(0, 10)}`

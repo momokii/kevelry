@@ -1447,6 +1447,7 @@ components:
       required:
         - id
         - title
+        - excerpt
         - band
         - epss
         - publishedAt
@@ -1456,6 +1457,10 @@ components:
           type: string
         title:
           type: string
+        excerpt:
+          type: string
+          nullable: true
+          description: First 400 characters of the supplied description, or null.
         band:
           type: string
           nullable: true
