@@ -2,6 +2,30 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-03 - v2 console batch, graph rebuild, and CISA SSVC enrichment
+
+Shipped the owner's v2 batch and reconciled every doc: dark console with a
+topbar sun/moon toggle, browser-private watch list (`/watch`), CVE story strips,
+and a rebuilt relation graph. The graph went through three honest iterations:
+an uncentered hairball was rejected on a live screenshot; a phantom "most
+connected" default was replaced by a ranked hub landing; then the drawing itself
+(center → shared attribute → records) came back because lists alone were not the
+visualisation the owner asked for. Drill-down groups became a real result set
+(filter, sort, page size, pagination). 99 of 119 links turned out to be the
+`securityfocus.com` aggregator, so aggregator hosts are now pruned by share and
+by an explicit list.
+
+Then the headline: **CISA Vulnrichment SSVC as a fourth ingestion source**
+(CC0-1.0 git repo, no API quota, KEV-cohort scope, daily cadence). Migration 004
+adds `ssvc_records` and widens `sync_runs.source`; the scheduler gained a fourth
+source with its own interval, staleness and provenance while readiness still
+means "the three core feeds published". A sixth priority view, `ssvc-active`,
+orders by CISA's own published keys only. Live: revision `e7b4a38`, 201 active
+records. Production taught one bug the tests could not: `git checkout --detach
+FETCH_HEAD` is parsed as a path, so the SHA is resolved first now.
+
+Gates at close: 398 unit, 93 e2e, lint/typecheck/build green.
+
 ## 2026-10-26 - Handoff documentation reconciliation
 
 Audited the documentation and state files against the actual tree before handing

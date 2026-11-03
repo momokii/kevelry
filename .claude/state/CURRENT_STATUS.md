@@ -85,6 +85,13 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 - `npm audit` currently reports three dev-only Vitest-toolchain advisories; the production image excludes dev dependencies. Automated scanning/CI remains TASK-002.
 - `npm run format:check` reports pre-existing repository-wide formatting drift (66 files); touched files are formatted individually. Do not present it as a green gate.
 
+## Watch List, Graph, and SSVC (2026-11-03)
+
+- `/watch`: browser-only starred CVEs, hydrated through `/api/v1/cves/{id}`; no account, no server record, 200-id cap.
+- `/graph`: ranked hub landing (no implicit center) → centered ego drawing (CVE → shared attribute → records), grouped cards below, drill-down dialog with filter/sort/pagination, and a reading guide that states what a link does and does not mean.
+- `ssvc-active` priority view: CISA SSVC decision points stored verbatim (migration 004), fourth ingestion source at daily cadence, 201 active-exploitation records live.
+- Theme: topbar sun/moon toggle, `data-theme` pre-painted from cookie (no flash).
+
 ## Last Updated
 
 2026-10-26: Research Console UI quality pass shipped and handoff docs reconciled with the code; 365 unit + 68 Playwright tests green; warm pages 0.01-0.39s, explore 2–4s cold (up to ~4.5s after restart) then 0.03s warm; 0 restarts.
