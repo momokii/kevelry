@@ -11,7 +11,7 @@ Per-view pages:
 
 - [cves.md](cves.md) — current published records and one-record lookup
 - [search.md](search.md) — ID and description search behind the explore view
-- [priority-lists.md](priority-lists.md) — the five named explainable orderings
+- [priority-lists.md](priority-lists.md) — the six named explainable orderings
 - [graph.md](graph.md) — KEV-cohort relationship graph with labeled links
 - [radar.md](radar.md) — observed change feed with before/after evidence
 - [replay.md](replay.md) — retained-checkpoint replay and checkpoint listing

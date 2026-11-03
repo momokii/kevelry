@@ -250,8 +250,10 @@ Assume publication timestamps equal/known except where stated.
 ## Freshness Proposal
 
 Refresh targets: CVE hourly; KEV hourly with conditional requests where supported;
-EPSS daily after expected publication. These are our targets, not upstream SLAs.
+EPSS daily after expected publication; CISA Vulnrichment SSVC enrichment daily.
+These are our targets, not upstream SLAs.
 Flag CVE/KEV when last successful check is **more than 3 hours** old, even if unchanged.
+Flag SSVC enrichment when the last successful cycle is **more than 2 days** old.
 Do not flag an old vulnerability merely because its record has not changed.
 Flag EPSS when its accepted score date is **older than 2 UTC calendar days**.
 Keep last-known-good data with visible per-source timestamps and errors during outages.

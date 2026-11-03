@@ -34,8 +34,12 @@ can consume the same data.
   composition panel (severity, month, signal coverage), and compact result rows
   with severity, KEV, EPSS, and official-record links.
 - **Priority lists:** known-exploited, highest forecast, new critical, rising forecast,
-  KEV due soon, active exploitation (CISA SSVC) as a compact expandable table. KEV, EPSS, and CVSS remain separate signals with
-  definitions, real bars, EPSS sparklines, record timelines, and timezone-aware dates; no composite score.
+  KEV due soon, and **active exploitation (CISA SSVC)** as a compact expandable table. KEV,
+  EPSS, CVSS, and the published SSVC decision points remain separate signals with definitions,
+  real bars, EPSS sparklines, record timelines, and timezone-aware dates; no composite score.
+- **SSVC triage:** CISA's Vulnrichment decision points (Exploitation / Automatable / Technical
+  Impact) stored verbatim and shown beside the other signals. Never blended, never guessed: a
+  record without a published block says so.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
 - **Relation graph:** KEV-listed records linked by shared CWEs, vendor labels, and
@@ -96,6 +100,7 @@ flowchart LR
     V5[CVE List V5<br/>records, refs, dates]
     KEV[CISA KEV<br/>known-exploited catalog]
     EPSS[FIRST EPSS<br/>forecast + daily history]
+    VR[CISA Vulnrichment<br/>SSVC decision points]
   end
   subgraph Container["Single container (one image)"]
     ING[Ingestion worker<br/>validate, checkpoint, publish]
@@ -111,6 +116,7 @@ flowchart LR
   V5 --> ING
   KEV --> ING
   EPSS --> ING
+  VR --> ING
   WEB --> Visitor[Site visitor]
   API --> Ext[Other platforms / self-host API use]
 ```
@@ -422,8 +428,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (371 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (84 passing)
+npm test                # vitest suite (398 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (93 passing, 1 skipped)
 npx prettier --write <paths>  # format touched files
 
 `npm run format:check` currently reports pre-existing repository-wide Markdown/test

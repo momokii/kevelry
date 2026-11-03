@@ -498,9 +498,10 @@ export const HUMAN_GUIDES: { file: string; title: string; anchor: string; blurb:
   },
   {
     file: "priority-lists.md",
-    title: "The five named explainable orderings",
+    title: "The six named explainable orderings",
     anchor: "getPriorityList",
-    blurb: "known-exploited, highest-forecast, new-critical, rising-forecast, kev-due-soon.",
+    blurb:
+      "known-exploited, highest-forecast, new-critical, rising-forecast, kev-due-soon, ssvc-active.",
   },
   {
     file: "graph.md",
