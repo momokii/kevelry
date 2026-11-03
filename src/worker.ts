@@ -46,6 +46,7 @@ import {
   type CveImportOutcome,
 } from "./lib/cve-import";
 import { openDatabase, type CveDatabase } from "./lib/db";
+import { importSsvcFromCheckout, resolveSsvcCacheDir, syncSsvcCache } from "./lib/ssvc-import";
 import {
   EPSS_CURRENT_CSV_URL,
   fetchEpssCsvText,
@@ -115,6 +116,36 @@ export interface SourceJobDeps {
   kevFetcher?: typeof fetch;
   epssUrl?: string;
   epssFetcher?: typeof fetch;
+  /** SSVC enrichment: injectable for tests (avoids a 380 MB clone). */
+  ssvcImport?: (db: CveDatabase) => Promise<{ revision: string | null; parsed: number }>;
+  ssvcCacheDir?: string;
+}
+
+/**
+ * Default SSVC job: sync the vulnrichment checkout, then read only the rows
+ * for the KEV cohort we already hold. Daily cadence; failures keep the last
+ * accepted enrichment (the scheduler handles that, not this job).
+ */
+async function defaultSsvcImport(
+  db: CveDatabase,
+  cacheDirOverride?: string,
+): Promise<{ revision: string | null; parsed: number }> {
+  const cacheDir = cacheDirOverride ?? resolveSsvcCacheDir(dbDirOf(db));
+  const wanted = new Set(
+    (db.handle.prepare("SELECT cve_id FROM kev_entries").all() as Array<{ cve_id: string }>).map(
+      (row) => row.cve_id,
+    ),
+  );
+  if (wanted.size === 0) {
+    return { revision: null, parsed: 0 };
+  }
+  const sync = syncSsvcCache({ cacheDir });
+  const result = importSsvcFromCheckout(db, {
+    checkoutDir: cacheDir,
+    wanted,
+    revision: sync.revision,
+  });
+  return { revision: sync.revision, parsed: result.parsed };
 }
 
 function errorDetail(error: unknown): string {
@@ -262,7 +293,20 @@ export function createSourceJobs(db: CveDatabase, deps: SourceJobDeps = {}): Sou
     }
   };
 
-  return { cve, kev, epss };
+  const ssvc: SourceJob = async () => {
+    try {
+      if (deps.ssvcImport !== undefined) {
+        const injected = await deps.ssvcImport(db);
+        return { ok: true, version: injected.revision };
+      }
+      const result = await defaultSsvcImport(db, deps.ssvcCacheDir);
+      return { ok: true, version: result.revision };
+    } catch (error) {
+      return failure("ssvc", error);
+    }
+  };
+
+  return { cve, kev, epss, ssvc };
 }
 
 function dbDirOf(db: CveDatabase): string {
@@ -400,6 +444,10 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       log({ event: "source-start", source: "epss" });
       return jobs.epss(ctx);
     },
+    ssvc: async (ctx) => {
+      log({ event: "source-start", source: "ssvc" });
+      return jobs.ssvc(ctx);
+    },
   };
   const scheduler = createWorkerScheduler(
     db,
@@ -426,7 +474,7 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   if (ingestOnStart) {
     await scheduler.runCycle();
     const health = scheduler.getStatus();
-    for (const source of ["cve", "kev", "epss"] as const) {
+    for (const source of ["cve", "kev", "epss", "ssvc"] as const) {
       const status = health.sources[source];
       log({
         event: "ingest-cycle",
@@ -436,7 +484,7 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
         error: status.lastError,
       });
     }
-    const cycleOk = (["cve", "kev", "epss"] as const).every(
+    const cycleOk = (["cve", "kev", "epss", "ssvc"] as const).every(
       (source) => health.sources[source].lastError === null,
     );
     if (cycleOk) {

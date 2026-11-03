@@ -90,7 +90,7 @@ const EPSS_RESULT: EpssImportResult = {
 };
 
 function okDeps(): SourceJobDeps & { calls: Record<"cve" | "kev" | "epss", number> } {
-  const calls = { cve: 0, kev: 0, epss: 0 };
+  const calls = { cve: 0, kev: 0, epss: 0, ssvc: 0 };
   return {
     calls,
     cveImport: () => {
@@ -104,6 +104,11 @@ function okDeps(): SourceJobDeps & { calls: Record<"cve" | "kev" | "epss", numbe
     epssImport: async () => {
       calls.epss += 1;
       return EPSS_RESULT;
+    },
+    // Injected so no test ever syncs the real 380 MB vulnrichment checkout.
+    ssvcImport: async () => {
+      calls.ssvc += 1;
+      return { revision: "rev-ssvc", parsed: 1 };
     },
   };
 }
@@ -215,11 +220,14 @@ describe("runWorker", () => {
     openHandles.push(db);
     track(scheduler);
     expect(scheduleEnabled).toBe(false);
-    expect(deps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
+    expect(deps.calls).toMatchObject({ cve: 1, kev: 1, epss: 1, ssvc: 1 });
 
     const cycles = logs.filter((entry) => entry.event === "ingest-cycle");
-    expect(cycles).toHaveLength(3);
-    expect(new Set(cycles.map((entry) => entry.source))).toEqual(new Set(["cve", "kev", "epss"]));
+    // Four sources: cve, kev, epss, ssvc enrichment.
+    expect(cycles).toHaveLength(4);
+    expect(new Set(cycles.map((entry) => entry.source))).toEqual(
+      new Set(["cve", "kev", "epss", "ssvc"]),
+    );
     for (const entry of cycles) {
       expect(entry.ok).toBe(true);
     }
@@ -247,6 +255,10 @@ describe("runWorker", () => {
           events.push("job:epss");
           return EPSS_RESULT;
         },
+        ssvcImport: async () => {
+          events.push("job:ssvc");
+          return { revision: "rev-ssvc", parsed: 1 };
+        },
       },
       installHandlers: false,
       log: (entry) => {
@@ -260,8 +272,10 @@ describe("runWorker", () => {
     track(scheduler);
 
     const starts = logs.filter((entry) => entry.event === "source-start");
-    expect(starts).toHaveLength(3);
-    expect(new Set(starts.map((entry) => entry.source))).toEqual(new Set(["cve", "kev", "epss"]));
+    expect(starts).toHaveLength(4);
+    expect(new Set(starts.map((entry) => entry.source))).toEqual(
+      new Set(["cve", "kev", "epss", "ssvc"]),
+    );
     expect(events).toEqual([
       "start:cve",
       "job:cve",
@@ -269,6 +283,8 @@ describe("runWorker", () => {
       "job:kev",
       "start:epss",
       "job:epss",
+      "start:ssvc",
+      "job:ssvc",
     ]);
   });
 
@@ -278,7 +294,7 @@ describe("runWorker", () => {
     tempDirs.push(enabledDir, disabledDir);
     const enabledDeps = okDeps();
     const disabledDeps = okDeps();
-    const intervalsMs = { cve: 50, kev: 50, epss: 50 };
+    const intervalsMs = { cve: 50, kev: 50, epss: 50, ssvc: 50 };
 
     const enabled = await runWorker({
       dataDir: enabledDir,
@@ -302,15 +318,15 @@ describe("runWorker", () => {
     openHandles.push(disabled.db);
     track(disabled.scheduler);
 
-    expect(enabledDeps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
-    expect(disabledDeps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
+    expect(enabledDeps.calls).toMatchObject({ cve: 1, kev: 1, epss: 1 });
+    expect(disabledDeps.calls).toMatchObject({ cve: 1, kev: 1, epss: 1 });
 
     await sleep(350);
 
     expect(enabledDeps.calls.cve).toBeGreaterThan(1);
     expect(enabledDeps.calls.kev).toBeGreaterThan(1);
     expect(enabledDeps.calls.epss).toBeGreaterThan(1);
-    expect(disabledDeps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
+    expect(disabledDeps.calls).toMatchObject({ cve: 1, kev: 1, epss: 1 });
   });
 });
 
@@ -319,6 +335,7 @@ describe("lease-acquire retry (TASK-012)", () => {
     cve: () => Promise.resolve({ ok: true, version: null }),
     kev: () => Promise.resolve({ ok: true, version: null }),
     epss: () => Promise.resolve({ ok: true, version: null }),
+    ssvc: () => Promise.resolve({ ok: true, version: null }),
   };
 
   it("starts immediately when the lease is free", async () => {
@@ -420,7 +437,7 @@ describe("INGEST_ON_START boot gate (task 37)", () => {
     track(scheduler);
     expect(scheduleEnabled).toBe(false);
     expect(ingestOnStart).toBe(false);
-    expect(deps.calls).toEqual({ cve: 0, kev: 0, epss: 0 });
+    expect(deps.calls).toMatchObject({ cve: 0, kev: 0, epss: 0 });
     expect(logs.some((entry) => entry.event === "ingest-cycle")).toBe(false);
     const idle = logs.find((entry) => entry.event === "worker-idle");
     expect(idle).toBeDefined();
@@ -445,7 +462,7 @@ describe("INGEST_ON_START boot gate (task 37)", () => {
     openHandles.push(db);
     track(scheduler);
     expect(ingestOnStart).toBe(true);
-    expect(deps.calls).toEqual({ cve: 1, kev: 1, epss: 1 });
-    expect(logs.filter((entry) => entry.event === "ingest-cycle")).toHaveLength(3);
+    expect(deps.calls).toMatchObject({ cve: 1, kev: 1, epss: 1, ssvc: 1 });
+    expect(logs.filter((entry) => entry.event === "ingest-cycle")).toHaveLength(4);
   });
 });

@@ -19,13 +19,15 @@ import { randomUUID } from "node:crypto";
 
 import type { CveDatabase } from "./db";
 
-export type SourceName = "cve" | "kev" | "epss";
+export type SourceName = "cve" | "kev" | "epss" | "ssvc";
 
-export const CORE_SOURCES: readonly SourceName[] = ["cve", "kev", "epss"];
+export const CORE_SOURCES: readonly SourceName[] = ["cve", "kev", "epss", "ssvc"];
 
 /** Staleness bounds from docs/DATA_WORKFLOW.md Freshness Proposal. */
 export const CVE_KEV_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 export const EPSS_STALE_AFTER_CALENDAR_DAYS = 2;
+/** SSVC enrichment is daily; flag it stale after two days without a success. */
+export const SSVC_STALE_AFTER_CALENDAR_DAYS = 2;
 
 export interface SourceRefreshOutcome {
   ok: boolean;
@@ -47,6 +49,7 @@ export interface SourceIntervalsMs {
   cve: number;
   kev: number;
   epss: number;
+  ssvc: number;
 }
 
 export interface SchedulerOptions {
@@ -79,6 +82,7 @@ export interface PublicationManifest {
   cveRevision: string | null;
   kevVersion: string | null;
   epssDate: string | null;
+  ssvcRevision: string | null;
 }
 
 export interface SchedulerHealth {
@@ -97,6 +101,9 @@ const DEFAULT_INTERVALS_MS: SourceIntervalsMs = {
   cve: 60 * 60 * 1000,
   kev: 60 * 60 * 1000,
   epss: 24 * 60 * 60 * 1000,
+  // Enrichment rides the KEV cohort and changes slowly; daily is honest and
+  // keeps the 380 MB checkout fetch off the hourly path.
+  ssvc: 24 * 60 * 60 * 1000,
 };
 
 function isoNow(now: () => Date): string {
@@ -119,6 +126,13 @@ function isEpssScoreDateStale(acceptedDate: string | null, now: Date): boolean {
   return diffDays > EPSS_STALE_AFTER_CALENDAR_DAYS;
 }
 
+function isCheckStaleAfterDays(lastSuccessAt: string | null, now: Date, days: number): boolean {
+  if (lastSuccessAt === null) return true;
+  const successMs = Date.parse(lastSuccessAt);
+  if (Number.isNaN(successMs)) return true;
+  return now.getTime() - successMs > days * 86_400_000;
+}
+
 function isCheckStale(lastSuccessAt: string | null, now: Date): boolean {
   if (lastSuccessAt === null) {
     return true;
@@ -138,6 +152,10 @@ export function isSourceStale(
 ): boolean {
   if (source === "epss") {
     return isEpssScoreDateStale(status.acceptedVersion, now);
+  }
+  if (source === "ssvc") {
+    // Daily enrichment: three hours would flag every night's run as stale.
+    return isCheckStaleAfterDays(status.lastSuccessAt, now, SSVC_STALE_AFTER_CALENDAR_DAYS);
   }
   return isCheckStale(status.lastSuccessAt, now);
 }
@@ -169,6 +187,10 @@ export function buildPublicationManifest(args: {
       args.failed.epss !== null
         ? args.previous.epssDate
         : (args.updates.epssDate ?? args.previous.epssDate),
+    ssvcRevision:
+      args.failed.ssvc !== null
+        ? args.previous.ssvcRevision
+        : (args.updates.ssvcRevision ?? args.previous.ssvcRevision),
   };
   const published =
     manifest.cveRevision !== null && manifest.kevVersion !== null && manifest.epssDate !== null;
@@ -216,8 +238,14 @@ export class IngestionScheduler {
     cve: emptyStatus("cve"),
     kev: emptyStatus("kev"),
     epss: emptyStatus("epss"),
+    ssvc: emptyStatus("ssvc"),
   };
-  private manifest: PublicationManifest = { cveRevision: null, kevVersion: null, epssDate: null };
+  private manifest: PublicationManifest = {
+    cveRevision: null,
+    kevVersion: null,
+    epssDate: null,
+    ssvcRevision: null,
+  };
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -318,7 +346,9 @@ export class IngestionScheduler {
         .prepare("SELECT holder FROM scheduler_lease WHERE id = ?")
         .get(1) as { holder: string } | undefined;
       if (row?.holder === this.holderId) {
-        this.db.handle.prepare("UPDATE scheduler_lease SET expires_at = ? WHERE id = ?").run(expiresIso, 1);
+        this.db.handle
+          .prepare("UPDATE scheduler_lease SET expires_at = ? WHERE id = ?")
+          .run(expiresIso, 1);
       } else {
         this.leaseHeld = false;
       }
@@ -358,7 +388,12 @@ export class IngestionScheduler {
     this.aborter = new AbortController();
     const isShutdown = (): boolean => this.aborter?.signal.aborted ?? false;
     const run: Promise<void> = (async () => {
-      const failed: Record<SourceName, string | null> = { cve: null, kev: null, epss: null };
+      const failed: Record<SourceName, string | null> = {
+        cve: null,
+        kev: null,
+        epss: null,
+        ssvc: null,
+      };
       const updates: Partial<PublicationManifest> = {};
       for (const source of CORE_SOURCES) {
         if (isShutdown()) {
@@ -403,8 +438,10 @@ export class IngestionScheduler {
             updates.cveRevision = status.acceptedVersion;
           } else if (source === "kev") {
             updates.kevVersion = status.acceptedVersion;
-          } else {
+          } else if (source === "epss") {
             updates.epssDate = status.acceptedVersion;
+          } else {
+            updates.ssvcRevision = status.acceptedVersion;
           }
         } else {
           const message = (outcome.error ?? `${source} refresh failed`).slice(0, 2000);
@@ -445,14 +482,25 @@ export class IngestionScheduler {
         status.lastSuccessAt = attemptAt;
         status.lastError = null;
         status.consecutiveFailures = 0;
-        const failed: Record<SourceName, string | null> = { cve: null, kev: null, epss: null };
+        const failed: Record<SourceName, string | null> = {
+          cve: null,
+          kev: null,
+          epss: null,
+          ssvc: null,
+        };
         const updates: Partial<PublicationManifest> =
           source === "cve"
             ? { cveRevision: status.acceptedVersion }
             : source === "kev"
               ? { kevVersion: status.acceptedVersion }
-              : { epssDate: status.acceptedVersion };
-        this.manifest = buildPublicationManifest({ updates, previous: this.manifest, failed }).manifest;
+              : source === "epss"
+                ? { epssDate: status.acceptedVersion }
+                : { ssvcRevision: status.acceptedVersion };
+        this.manifest = buildPublicationManifest({
+          updates,
+          previous: this.manifest,
+          failed,
+        }).manifest;
       } else {
         const message = (outcome.error ?? `${source} refresh failed`).slice(0, 2000);
         status.lastError = message;
@@ -475,6 +523,9 @@ export class IngestionScheduler {
     for (const source of CORE_SOURCES) {
       this.statuses[source].stale = isSourceStale(source, this.statuses[source], now);
     }
+    // Readiness keeps its original meaning: the three core feeds published.
+    // SSVC is enrichment, so a missing enrichment cycle must not make the site
+    // "not ready" — it reports its own status instead.
     const ready =
       this.fatalError === null &&
       this.statuses.cve.acceptedVersion !== null &&
@@ -490,6 +541,7 @@ export class IngestionScheduler {
         cve: { ...this.statuses.cve },
         kev: { ...this.statuses.kev },
         epss: { ...this.statuses.epss },
+        ssvc: { ...this.statuses.ssvc },
       },
       manifest: { ...this.manifest },
     };

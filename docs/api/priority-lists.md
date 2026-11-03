@@ -1,7 +1,7 @@
 # Priority lists
 
 Site views covered: known-exploited, highest-forecast, new-critical,
-rising-forecast, and kev-due-soon. Separate signals, deterministic ordering,
+rising-forecast, kev-due-soon, and ssvc-active. Separate signals, deterministic ordering,
 no invented score.
 
 ## Endpoints
@@ -9,7 +9,7 @@ no invented score.
     GET /api/v1/priority/{listName}
 
 `{listName}` is one of `known-exploited`, `highest-forecast`, `new-critical`,
-`rising-forecast`, `kev-due-soon`. Unknown names return `LIST_NOT_FOUND`.
+`rising-forecast`, `kev-due-soon`, `ssvc-active`. Unknown names return `LIST_NOT_FOUND`.
 Only `cursor` and `limit` paginate; the cohorts are fixed by the ranking
 contract. `kev-due-soon` is live-only: retained checkpoints keep their
 five-view contract, so replay never serves it.
@@ -23,8 +23,8 @@ five-view contract, so replay never serves it.
   Display values are `100 * epss` and `100 * percentile`; a 96th percentile is
   not a 96 percent probability.
 - `new-critical`: publication in `[T - 30d, T)` with primary modern CVSS
-  >= 9.0, publication descending, ID ascending. Unknown, legacy-only, and
-  ADP-only cases are ineligible, not low severity.
+  > = 9.0, publication descending, ID ascending. Unknown, legacy-only, and
+  > ADP-only cases are ineligible, not low severity.
 - `rising-forecast`: same-model `d` and `d - 7` observations, positive
   `deltaPp = 100 * (epss[d] - epss[d-7])` only; delta descending, current raw
   probability descending, ID ascending. Missing dates and model transitions are
@@ -33,6 +33,12 @@ five-view contract, so replay never serves it.
   due ascending (overdue first, no upper cutoff), ID ascending. Missing or
   malformed due dates are ineligible, never defaulted. Due dates are federal
   remediation deadlines, not exploit predictions.
+- `ssvc-active`: records whose published CISA SSVC block says
+  `Exploitation = active`. Technical impact `total` before `partial`,
+  automatable `yes` before `no`, then raw EPSS probability descending, then ID
+  ascending. All three keys are published CISA values; a record with no
+  published SSVC block is ineligible, never assumed safe, and nothing is
+  blended into a score.
 
 ## Examples
 

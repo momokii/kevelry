@@ -4,6 +4,7 @@ import {
   getHighestForecast,
   getKevDueSoon,
   getKnownExploited,
+  getSsvcActive,
   getNewCritical,
   getRisingForecast,
 } from "../../../../../src/lib/priority";
@@ -39,6 +40,7 @@ const LISTS = [
   "new-critical",
   "rising-forecast",
   "kev-due-soon",
+  "ssvc-active",
 ] as const;
 type ListName = (typeof LISTS)[number];
 
@@ -48,6 +50,12 @@ const ORDERINGS: Record<ListName, string[]> = {
   "new-critical": ["published-desc", "cveId-asc"],
   "rising-forecast": ["delta-pp-desc", "epss-raw-desc", "cveId-asc"],
   "kev-due-soon": ["kev-duedate-asc", "cveId-asc"],
+  "ssvc-active": [
+    "ssvc-impact-total-first",
+    "ssvc-automatable-first",
+    "epss-raw-desc",
+    "cveId-asc",
+  ],
 };
 
 export async function GET(
@@ -131,7 +139,9 @@ export async function GET(
             ? getNewCritical(db, nowIso, cap)
             : list === "kev-due-soon"
               ? getKevDueSoon(db, cap)
-              : getDefaultPriority(db, cap);
+              : list === "ssvc-active"
+                ? getSsvcActive(db, cap)
+                : getDefaultPriority(db, cap);
     const { page, hasMore, nextCursor } = paginateCapped(items, offset, limit);
     const records = loadFullRecords(
       db,

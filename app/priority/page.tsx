@@ -27,6 +27,7 @@ import {
   getHighestForecast,
   getKevDueSoon,
   getKnownExploited,
+  getSsvcActive,
   getNewCritical,
   getRisingForecast,
   type PriorityItem,
@@ -65,7 +66,7 @@ export function resolvePriorityPageLimit(env: NodeJS.ProcessEnv = process.env): 
 export const metadata = {
   title: "Priority — Kevelry",
   description:
-    "Five named CVE priority views with exact ordering rules, score dates, and coverage. No composite score.",
+    "Six named CVE priority views with exact ordering rules, score dates, and coverage. No composite score.",
 };
 
 function isPriorityMode(value: unknown): value is PriorityMode {
@@ -74,7 +75,8 @@ function isPriorityMode(value: unknown): value is PriorityMode {
     value === "highest-forecast" ||
     value === "new-critical" ||
     value === "rising-forecast" ||
-    value === "kev-due-soon"
+    value === "kev-due-soon" ||
+    value === "ssvc-active"
   );
 }
 
@@ -120,6 +122,7 @@ function toRow(
     kevDateAdded: record.kevDateAdded,
     kevDueDate: record.kevDueDate,
     kevRansomwareKnown: record.kevRansomwareKnown,
+    ssvc: record.ssvc,
     epssKnown: record.epssText !== null,
     epssPercent:
       record.epssText !== null
@@ -194,7 +197,9 @@ export function loadSnapshot(
           ? getNewCritical(db, nowIso, limit)
           : mode === "kev-due-soon"
             ? getKevDueSoon(db, limit)
-            : rising.map((row) => row.item);
+            : mode === "ssvc-active"
+              ? getSsvcActive(db, limit)
+              : rising.map((row) => row.item);
   const corpusCoverage = unfilteredCohortCoverage(db, Math.min(limit, items.length));
 
   const previousDate = scoreDate === null ? null : minus7Days(scoreDate);
@@ -247,6 +252,8 @@ const ORDERING_EXTRAS: Record<PriorityMode, string> = {
     "Missing dates and model transitions are ineligible, never interpolated or zeroed. This is a forecast movement list, not social popularity or observed exploitation telemetry.",
   "kev-due-soon":
     "Only KEV members with a valid catalog remediation due date; overdue first, no upper cutoff. Missing or malformed due dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not exploit predictions. An overdue deadline means the remediation is late and therefore most urgent, not that the data is stale.",
+  "ssvc-active":
+    "Only records whose CISA SSVC block says Exploitation = active. Technical impact, automatable and EPSS are shown separately; nothing is blended. A record without a published SSVC block is ineligible, not assumed safe.",
 };
 
 export default async function PriorityPage({
@@ -276,7 +283,7 @@ export default async function PriorityPage({
             <span className="dot" aria-hidden="true" />
             <span>Policy {RANKING_POLICY_VERSION}</span>
             <span className="dot" aria-hidden="true" />
-            <span>five named views</span>
+            <span>six named views</span>
           </>
         }
         title="What deserves attention now?"

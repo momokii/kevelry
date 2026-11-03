@@ -91,6 +91,13 @@ function exampleResponse(endpoint: { path: string }): string {
       baseScore: 9.2,
       vector: "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
     },
+    ssvc: {
+      exploitation: "active",
+      automatable: "yes",
+      technicalImpact: "total",
+      version: "2.0.3",
+      timestamp: "2025-02-04T14:25:34.416117Z",
+    },
   };
   const pagination = { limit: 2, hasMore: true, nextCursor: "eyJvZmZzZXQiOjJ9" };
   const coverage = {

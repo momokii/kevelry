@@ -792,6 +792,36 @@ components:
                       stale: false
                       error: null
   schemas:
+    SsvcDecision:
+      type: object
+      description: >-
+        CISA SSVC decision points published in the Vulnrichment repository,
+        stored verbatim. Null on a record means no block is published for it —
+        not a judgement in either direction.
+      required:
+        - exploitation
+        - automatable
+        - technicalImpact
+        - version
+        - timestamp
+      properties:
+        exploitation:
+          type: string
+          enum: [none, poc, active]
+        automatable:
+          type: string
+          enum: [yes, no]
+        technicalImpact:
+          type: string
+          enum: [partial, total]
+        version:
+          type: string
+          nullable: true
+          example: "2.0.3"
+        timestamp:
+          type: string
+          nullable: true
+          example: "2025-02-04T14:25:34.416117Z"
     Provenance:
       type: object
       required:
@@ -1115,6 +1145,7 @@ components:
         - kev
         - epss
         - cvssPrimary
+        - ssvc
       properties:
         cveId:
           type: string
@@ -1164,6 +1195,14 @@ components:
           $ref: "#/components/schemas/EpssSignal"
         cvssPrimary:
           $ref: "#/components/schemas/CvssPrimary"
+        ssvc:
+          nullable: true
+          description: >-
+            CISA SSVC decision points for this record, or null when the source
+            publishes none. Present on every CveItem so a missing block is
+            explicit rather than absent.
+          allOf:
+            - $ref: "#/components/schemas/SsvcDecision"
     EpssHistoryPoint:
       type: object
       description: >-
@@ -1299,6 +1338,7 @@ components:
         - new-critical
         - rising-forecast
         - kev-due-soon
+        - ssvc-active
       example: known-exploited
     GraphNode:
       type: object

@@ -63,6 +63,7 @@ function goodJobs(): SourceJobs {
     cve: okJob("rev-a"),
     kev: okJob("2026.10.24"),
     epss: okJob("2026-10-24"),
+    ssvc: okJob("2026-11-01"),
   };
 }
 
@@ -177,6 +178,7 @@ describe("scheduler cycles: overlap and independence", () => {
       },
       kev: okJob("2026.10.24"),
       epss: okJob("2026-10-24"),
+      ssvc: okJob("2026-11-01"),
     };
     const scheduler = new IngestionScheduler({
       db: makeDb(),
@@ -202,6 +204,7 @@ describe("scheduler cycles: overlap and independence", () => {
     const jobs: SourceJobs = {
       cve: okJob("rev-b"),
       kev: okJob("2026.10.25"),
+      ssvc: okJob("2026-11-01"),
       epss: async () => {
         if (epssShouldFail) {
           return { ok: false, version: null, error: "truncated CSV: import aborted" };
@@ -230,6 +233,7 @@ describe("scheduler cycles: overlap and independence", () => {
       cveRevision: "rev-c",
       kevVersion: "2026.10.25",
       epssDate: "2026-10-24",
+      ssvcRevision: "2026-11-01",
     });
     expect(health.sources.epss.lastError).toMatch(/truncated CSV/);
     expect(health.sources.epss.acceptedVersion).toBe("2026-10-24");
@@ -279,6 +283,7 @@ describe("scheduler lifecycle: interruption, staleness, fatal failure", () => {
       },
       kev: okJob("2026.10.24"),
       epss: okJob("2026-10-24"),
+      ssvc: okJob("2026-11-01"),
     };
     const first = new IngestionScheduler({
       db: shared,
@@ -298,7 +303,12 @@ describe("scheduler lifecycle: interruption, staleness, fatal failure", () => {
     await stopping;
 
     const afterInterrupt = first.getStatus();
-    expect(afterInterrupt.manifest).toEqual({ cveRevision: null, kevVersion: null, epssDate: null });
+    expect(afterInterrupt.manifest).toEqual({
+      cveRevision: null,
+      kevVersion: null,
+      epssDate: null,
+      ssvcRevision: null,
+    });
     expect(afterInterrupt.ready).toBe(false);
     expect(afterInterrupt.sources.cve.acceptedVersion).toBe(null);
 
@@ -317,6 +327,7 @@ describe("scheduler lifecycle: interruption, staleness, fatal failure", () => {
       cveRevision: "rev-a",
       kevVersion: "2026.10.24",
       epssDate: "2026-10-24",
+      ssvcRevision: "2026-11-01",
     });
     await recovery.shutdown();
   });
@@ -355,6 +366,7 @@ describe("scheduler lifecycle: interruption, staleness, fatal failure", () => {
         throw new Error("worker segfault simulation");
       },
       epss: okJob("2026-10-24"),
+      ssvc: okJob("2026-11-01"),
     };
     const scheduler = new IngestionScheduler({
       db: makeDb(),
@@ -405,7 +417,12 @@ describe("scheduler lifecycle: interruption, staleness, fatal failure", () => {
     const clock = makeClock("2026-10-24T00:00:00.000Z");
     const scheduler = new IngestionScheduler({
       db: makeDb(),
-      jobs: { cve: failJob("network down"), kev: okJob("2026.10.24"), epss: okJob("2026-10-24") },
+      jobs: {
+        cve: failJob("network down"),
+        kev: okJob("2026.10.24"),
+        epss: okJob("2026-10-24"),
+        ssvc: okJob("2026-11-01"),
+      },
       manual: true,
       holderId: "ordinary-failure",
       now: clock.now,

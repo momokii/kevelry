@@ -261,6 +261,8 @@ export interface Provenance {
     cve: SourceProvenance;
     kev: SourceProvenance;
     epss: SourceProvenance;
+    /** CISA Vulnrichment SSVC enrichment (daily); absent until first success. */
+    ssvc: SourceProvenance;
   };
 }
 
@@ -347,6 +349,7 @@ export function buildProvenance(db: CveDatabase | null, nowIso: string): Provena
         cve: { revision: null, ...fallback },
         kev: { catalogVersion: null, ...fallback },
         epss: { scoreDate: null, modelVersion: null, ...fallback },
+        ssvc: { revision: null, ...fallback },
       },
     };
   }
@@ -356,6 +359,8 @@ export function buildProvenance(db: CveDatabase | null, nowIso: string): Provena
   const kevOk = latestSucceeded(db, "kev");
   const epssRun = latestRun(db, "epss");
   const epssOk = latestSucceeded(db, "epss");
+  const ssvcRun = latestRun(db, "ssvc");
+  const ssvcOk = latestSucceeded(db, "ssvc");
 
   const cveRevision =
     cveOk?.revision ?? singleText(db, "SELECT MAX(source_revision) FROM cve_records") ?? null;
@@ -378,6 +383,7 @@ export function buildProvenance(db: CveDatabase | null, nowIso: string): Provena
   const cveAccepted = cveOk?.finished_at ?? cveOk?.started_at ?? null;
   const kevAccepted = kevOk?.finished_at ?? kevOk?.started_at ?? null;
   const epssAccepted = epssOk?.finished_at ?? epssOk?.started_at ?? null;
+  const ssvcAccepted = ssvcOk?.finished_at ?? ssvcOk?.started_at ?? null;
   return {
     rankingPolicyVersion: RANKING_POLICY_VERSION,
     generatedAt: nowIso,
@@ -403,6 +409,15 @@ export function buildProvenance(db: CveDatabase | null, nowIso: string): Provena
         lastAcceptedAt: epssAccepted,
         stale: epssStale(epssScoreDate, nowIso),
         error: sourceError(epssRun),
+      },
+      ssvc: {
+        // Enrichment is daily, so staleness is measured against the last
+        // successful cycle rather than a score date.
+        revision: ssvcOk?.revision ?? null,
+        lastCheckedAt: ssvcRun?.finished_at ?? ssvcRun?.started_at ?? null,
+        lastAcceptedAt: ssvcAccepted,
+        stale: staleAfterHours(ssvcAccepted, safeNowMs, 48),
+        error: sourceError(ssvcRun),
       },
     },
   };
@@ -884,6 +899,14 @@ export interface FullRecord {
   kevVulnerabilityName: string | null;
   kevRansomwareKnown: boolean | null;
   kevCwes: string[];
+  /** CISA SSVC decision points, or null when the source publishes none. */
+  ssvc: {
+    exploitation: string;
+    automatable: string;
+    technicalImpact: string;
+    version: string | null;
+    timestamp: string | null;
+  } | null;
   epssText: string | null;
   epssPercentile: string | null;
   epssModel: string | null;
@@ -951,6 +974,16 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
     }
   >();
   const kevCwes = new Map<string, string[]>();
+  const ssvcById = new Map<
+    string,
+    {
+      exploitation: string;
+      automatable: string;
+      technicalImpact: string;
+      version: string | null;
+      timestamp: string | null;
+    }
+  >();
   const epssById = new Map<string, EpssRow>();
   const metricsById = new Map<string, MetricRow[]>();
   const acceptedDate = getAcceptedEpssDate(db);
@@ -977,8 +1010,31 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
         ransomwareKnown: row.ransomware_known === null ? null : row.ransomware_known !== 0,
       });
     }
+    const ssvcRows = db.handle
+      .prepare(
+        `SELECT cve_id, exploitation, automatable, technical_impact, ssvc_version, source_timestamp FROM ssvc_records WHERE cve_id IN (${placeholders})`,
+      )
+      .all(...group) as Array<{
+      cve_id: string;
+      exploitation: string;
+      automatable: string;
+      technical_impact: string;
+      ssvc_version: string | null;
+      source_timestamp: string | null;
+    }>;
+    for (const row of ssvcRows) {
+      ssvcById.set(row.cve_id, {
+        exploitation: row.exploitation,
+        automatable: row.automatable,
+        technicalImpact: row.technical_impact,
+        version: row.ssvc_version,
+        timestamp: row.source_timestamp,
+      });
+    }
     const cweRows = db.handle
-      .prepare(`SELECT cve_id, cwe_id FROM kev_cwes WHERE cve_id IN (${placeholders}) ORDER BY cve_id ASC, cwe_id ASC`)
+      .prepare(
+        `SELECT cve_id, cwe_id FROM kev_cwes WHERE cve_id IN (${placeholders}) ORDER BY cve_id ASC, cwe_id ASC`,
+      )
       .all(...group) as Array<{ cve_id: string; cwe_id: string }>;
     for (const row of cweRows) {
       const list = kevCwes.get(row.cve_id);
@@ -1040,6 +1096,7 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       kevVulnerabilityName: kevEnrichment.get(cveId)?.vulnerabilityName ?? null,
       kevRansomwareKnown: kevEnrichment.get(cveId)?.ransomwareKnown ?? null,
       kevCwes: kevCwes.get(cveId) ?? [],
+      ssvc: ssvcById.get(cveId) ?? null,
       epssText: epss?.epss ?? null,
       epssPercentile: epss?.percentile ?? null,
       epssModel: epss?.model_version ?? null,
@@ -1167,6 +1224,7 @@ export function toCveItem(
     },
     epss,
     cvssPrimary,
+    ssvc: record.ssvc,
   };
 }
 

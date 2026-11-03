@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import {
   getAcceptedEpssDate,
+  getSsvcActive,
   getDefaultPriority,
   getHighestForecast,
   getKevDueSoon,
@@ -182,11 +183,38 @@ describe("priority services on SQLite (todo 11)", () => {
     seedKev(db, "CVE-2099-0001", "2026-10-22");
     seedKev(db, "CVE-2099-0002", "2026-10-23");
     seedKevRaw(db, "CVE-2099-0004", "garbage-date");
-    expect(ids(getKnownExploited(db))).toEqual([
-      "CVE-2099-0002",
-      "CVE-2099-0001",
-      "CVE-2099-0004",
-    ]);
+    expect(ids(getKnownExploited(db))).toEqual(["CVE-2099-0002", "CVE-2099-0001", "CVE-2099-0004"]);
+  });
+
+  it("ssvc-active: only exploitation=active, ordered by impact then automatable then EPSS", () => {
+    const db = makeDb();
+    for (const id of ["CVE-2099-0001", "CVE-2099-0002", "CVE-2099-0003", "CVE-2099-0004"]) {
+      seedRecord(db, id);
+    }
+    db.runBoundedWrite(() => {
+      const insert = db.handle.prepare(
+        "INSERT INTO ssvc_records (cve_id, exploitation, automatable, technical_impact, ssvc_version, source_timestamp, catalog_date, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      // partial impact but higher EPSS
+      insert.run("CVE-2099-0001", "active", "yes", "partial", "2.0.3", STAMP, STAMP, STAMP);
+      // total impact, not automatable
+      insert.run("CVE-2099-0002", "active", "no", "total", "2.0.3", STAMP, STAMP, STAMP);
+      // total impact and automatable -> leads
+      insert.run("CVE-2099-0003", "active", "yes", "total", "2.0.3", STAMP, STAMP, STAMP);
+      // ineligible: not active
+      insert.run("CVE-2099-0004", "poc", "yes", "total", "2.0.3", STAMP, STAMP, STAMP);
+    });
+    seedEpss(db, "CVE-2099-0001", DAY, "0.90");
+    seedEpss(db, "CVE-2099-0002", DAY, "0.10");
+
+    const items = getSsvcActive(db);
+    expect(items.map((row) => row.id)).toEqual(["CVE-2099-0003", "CVE-2099-0002", "CVE-2099-0001"]);
+    expect(getSsvcActive(db, 1).map((row) => row.id)).toEqual(["CVE-2099-0003"]);
+    // No SSVC rows -> empty, never a fallback list.
+    db.runBoundedWrite(() => {
+      db.handle.prepare("DELETE FROM ssvc_records").run();
+    });
+    expect(getSsvcActive(db)).toEqual([]);
   });
 
   it("kev-due-soon: due ascending with overdue first; missing/malformed excluded", () => {

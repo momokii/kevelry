@@ -10,6 +10,7 @@
 
 import type { CveDatabase } from "./db";
 import {
+  compareDecimalStrings,
   orderDefaultPriority,
   orderHighestForecast,
   orderKevDueSoon,
@@ -416,6 +417,47 @@ export function getKevDueSoon(db: CveDatabase, limit?: number): PriorityItem[] {
     rows.map((row) => ({ id: row.id, publishedAt: row.publishedAt, epss: null })),
   );
   return take(orderKevDueSoon(items), limit);
+}
+
+/**
+ * Active-exploitation view over CISA's published SSVC decision points.
+ *
+ * Only records whose SSVC says `Exploitation = active` are eligible; the
+ * remaining two published points order them: `Technical Impact = total`
+ * before `partial`, `Automatable = yes` before `no`, then raw EPSS
+ * probability descending, then CVE ID. Every key is a published CISA value —
+ * this view never invents a severity or a blended score, and a record with no
+ * published SSVC is simply ineligible rather than assumed safe.
+ */
+export function getSsvcActive(db: CveDatabase, limit?: number): PriorityItem[] {
+  const rows = db.handle
+    .prepare(
+      "SELECT s.cve_id AS id, r.date_published AS publishedAt FROM ssvc_records s " +
+        "JOIN cve_records r ON r.cve_id = s.cve_id AND r.state = 'PUBLISHED' " +
+        "WHERE s.exploitation = 'active' " +
+        "ORDER BY (s.technical_impact = 'total') DESC, (s.automatable = 'yes') DESC, s.cve_id ASC",
+    )
+    .all() as Array<{ id: string; publishedAt: string | null }>;
+  if (rows.length === 0) return [];
+  const hydrated = hydrateOverviewItems(
+    db,
+    getAcceptedEpssDate(db),
+    rows.map((row) => ({ id: row.id, publishedAt: row.publishedAt, epss: null })),
+  );
+  const rank = new Map(rows.map((row, index) => [row.id, index]));
+  const ordered = [...hydrated].sort((a, b) => {
+    const ra = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const rb = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    const ea = a.epss ?? null;
+    const eb = b.epss ?? null;
+    if (ea === null && eb === null) return a.id < b.id ? -1 : 1;
+    if (ea === null) return 1;
+    if (eb === null) return -1;
+    const cmp = compareDecimalStrings(eb, ea) ?? 0;
+    return cmp !== 0 ? cmp : a.id < b.id ? -1 : 1;
+  });
+  return take(ordered, limit);
 }
 
 /** Known-exploited members ordered by catalog dateAdded desc, then ID. */

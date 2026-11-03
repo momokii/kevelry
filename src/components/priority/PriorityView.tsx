@@ -17,7 +17,12 @@ import { WatchStar } from "../ledger/WatchStar";
 import styles from "./PrioritySignals.module.css";
 
 export type PriorityMode =
-  "known-exploited" | "highest-forecast" | "new-critical" | "rising-forecast" | "kev-due-soon";
+  | "known-exploited"
+  | "highest-forecast"
+  | "new-critical"
+  | "rising-forecast"
+  | "kev-due-soon"
+  | "ssvc-active";
 
 export const PRIORITY_MODES: readonly PriorityMode[] = [
   "known-exploited",
@@ -25,6 +30,7 @@ export const PRIORITY_MODES: readonly PriorityMode[] = [
   "new-critical",
   "rising-forecast",
   "kev-due-soon",
+  "ssvc-active",
 ];
 
 export const PRIORITY_MODE_LABELS: Record<PriorityMode, string> = {
@@ -33,6 +39,7 @@ export const PRIORITY_MODE_LABELS: Record<PriorityMode, string> = {
   "new-critical": "New critical",
   "rising-forecast": "Rising forecast",
   "kev-due-soon": "KEV due soon",
+  "ssvc-active": "Active exploitation (SSVC)",
 };
 
 export interface EpssTrendPoint {
@@ -51,6 +58,13 @@ export interface PriorityRowData {
   kevDateAdded: string | null;
   kevDueDate: string | null;
   kevRansomwareKnown: boolean | null;
+  ssvc: {
+    exploitation: string;
+    automatable: string;
+    technicalImpact: string;
+    version: string | null;
+    timestamp: string | null;
+  } | null;
   epssKnown: boolean;
   epssPercent: string | null;
   epssModel: string | null;
@@ -212,6 +226,8 @@ export function PriorityOrdering({
       "Rising forecast: same-model EPSS observations on exactly d and d-7 with a positive delta. Order delta percentage-points descending, current raw probability descending, then CVE ID ASCII ascending.",
     "kev-due-soon":
       "KEV due soon: KEV members with a valid catalog remediation due date. Order due date ascending (overdue first, no upper cutoff), then CVE ID ASCII ascending.",
+    "ssvc-active":
+      "Active exploitation (SSVC): records whose published CISA SSVC block says Exploitation = active. Order technical impact total before partial, automatable yes before no, then raw EPSS probability descending, then CVE ID ASCII ascending. All three keys are published CISA values; no blended score is computed.",
   };
   return (
     <div className="ledger-ordering" data-testid={`priority-ordering-${mode}`}>
@@ -581,6 +597,48 @@ function StoryStrip({ row }: { row: PriorityRowData }) {
   );
 }
 
+/** CISA SSVC decision points, shown exactly as published. No derived score. */
+function SsvcSignal({ row }: { row: PriorityRowData }) {
+  if (row.ssvc === null) {
+    return (
+      <div className={styles.signal} aria-label="SSVC signal">
+        <div className={styles.signalHead}>
+          <span className="ledger-label">SSVC</span>
+          <HelpTip term="SSVC" testId="priority-row-ssvc-help">
+            CISA&apos;s Stakeholder-Specific Vulnerability Categorization decision points, published
+            in the Vulnrichment repository. Absence means no block is published for this record — it
+            is not a judgement either way.
+          </HelpTip>
+        </div>
+        <p>
+          <em className="ledger-caveat">No SSVC block published for this record.</em>
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.signal} aria-label="SSVC signal">
+      <div className={styles.signalHead}>
+        <span className="ledger-label">SSVC</span>
+        <HelpTip term="SSVC" testId="priority-row-ssvc-help">
+          CISA&apos;s Stakeholder-Specific Vulnerability Categorization decision points, published
+          in the Vulnrichment repository. The three points are shown verbatim; this site never
+          blends them into a score of its own.
+        </HelpTip>
+      </div>
+      <p>
+        <strong className="ledger-emphasis">{row.ssvc.exploitation}</strong> exploitation ·{" "}
+        <strong className="ledger-emphasis">{row.ssvc.technicalImpact}</strong> technical impact ·{" "}
+        automatable {row.ssvc.automatable}
+      </p>
+      <p className={styles.trendCaption} data-testid="priority-row-ssvc-source">
+        Published by CISA{row.ssvc.version !== null ? `, SSVC ${row.ssvc.version}` : ""}
+        {row.ssvc.timestamp !== null ? `, ${row.ssvc.timestamp.slice(0, 10)}` : ""}.
+      </p>
+    </div>
+  );
+}
+
 function DeltaSignal({ row }: { row: PriorityRowData }) {
   const label = formatSignedDeltaPp(row.deltaPp);
   if (label === null || row.deltaPreviousDate === null || row.epssDate === null) {
@@ -693,6 +751,7 @@ export function PriorityRow({
             <KevSignal row={row} />
             <EpssSignal row={row} />
             <CvssSignal row={row} />
+            <SsvcSignal row={row} />
             <DeltaSignal row={row} />
           </div>
           <a className="btn btn-sm" href={row.officialUrl} data-testid="priority-row-action">
