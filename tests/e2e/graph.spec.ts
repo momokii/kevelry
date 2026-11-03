@@ -123,6 +123,20 @@ test("+N more opens the complete attribute list in a dialog", async ({ page }) =
     /EPSS|unscored|critical|high|medium|low|legacy/,
   );
 
+  // A long group gets real affordances, not an endless scroll.
+  await expect(dialog.getByTestId("graph-more-count")).toContainText("group holds");
+  await expect(dialog.getByTestId("graph-more-list").locator("li")).toHaveCount(10);
+  await dialog.getByTestId("graph-more-next").click();
+  await expect(dialog.getByTestId("graph-more-page")).toContainText("Page 2 of");
+  await dialog.getByTestId("graph-more-prev").click();
+  await expect(dialog.getByTestId("graph-more-page")).toContainText("Page 1 of");
+
+  // Filtering narrows the set and resets to page 1.
+  const firstId =
+    (await dialog.locator("[data-testid^='graph-more-item-']").first().textContent())?.trim() ?? "";
+  await dialog.getByTestId("graph-more-filter").fill(firstId);
+  await expect(dialog.getByTestId("graph-more-list").locator("li")).toHaveCount(1);
+
   // Escape closes and returns focus to the page.
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

@@ -43,6 +43,249 @@ interface AttrRow {
  * Escape-to-close, and backdrop semantics for free; the trigger is always a
  * real button, so keyboard users reach it without a pointer.
  */
+
+const PAGE_SIZES = [10, 25, 50] as const;
+const DEFAULT_PAGE_SIZE = 10;
+
+type SortKey = "epss" | "published" | "id" | "signal";
+
+const SORTS: Array<{ key: SortKey; label: string }> = [
+  { key: "epss", label: "Highest EPSS" },
+  { key: "published", label: "Newest published" },
+  { key: "signal", label: "Most signals first" },
+  { key: "id", label: "CVE ID" },
+];
+
+/**
+ * Body of the drill-down: filter, sort and paginate inside the dialog. A
+ * group can hold 50+ records, so the list gets the same affordances as any
+ * other result set rather than being an endless scroll.
+ */
+function DialogBody({
+  group,
+  centerId,
+  limit,
+  summaries,
+  onClose,
+}: {
+  group: GraphGroup;
+  centerId: string;
+  limit: number;
+  summaries: Record<string, GraphSummary>;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("epss");
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [page, setPage] = useState(0);
+
+  const rows: GraphSummary[] = group.cves.map(
+    (id) =>
+      summaries[id] ?? {
+        id,
+        title: id,
+        excerpt: null,
+        band: null,
+        epss: null,
+        publishedAt: null,
+        kevDueDate: null,
+      },
+  );
+  const needle = query.trim().toLowerCase();
+  const filtered =
+    needle === ""
+      ? rows
+      : rows.filter((row) =>
+          `${row.id} ${row.title ?? ""} ${row.excerpt ?? ""}`.toLowerCase().includes(needle),
+        );
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sort) {
+      case "id":
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      case "published": {
+        const pa = a.publishedAt ?? "";
+        const pb = b.publishedAt ?? "";
+        if (pa === pb) return a.id < b.id ? -1 : 1;
+        return pb.localeCompare(pa);
+      }
+      case "signal": {
+        const sa = (a.band === null || a.band === undefined ? 0 : 1) + (a.epss === null ? 0 : 1);
+        const sb = (b.band === null || b.band === undefined ? 0 : 1) + (b.epss === null ? 0 : 1);
+        if (sa !== sb) return sb - sa;
+        return a.id < b.id ? -1 : 1;
+      }
+      case "epss":
+      default: {
+        const ea = a.epss === null ? -1 : Number(a.epss);
+        const eb = b.epss === null ? -1 : Number(b.epss);
+        if (ea !== eb) return eb - ea;
+        return a.id < b.id ? -1 : 1;
+      }
+    }
+  });
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const start = currentPage * pageSize;
+  const visible = sorted.slice(start, start + pageSize);
+
+  return (
+    <div className="graph-dialog-body">
+      <header className="graph-dialog-head">
+        <div>
+          <div className="eyebrow">{GROUP_META[group.kind].label}</div>
+          <h2 id="graph-dialog-title" className="mono">
+            {group.value}
+          </h2>
+          <p className="chart-note">
+            {group.cves.length} KEV-listed records share this with {centerId}.{" "}
+            {GROUP_META[group.kind].hint}.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={onClose}
+          data-testid="graph-more-close"
+        >
+          Close
+        </button>
+      </header>
+
+      <div className="graph-dialog-tools">
+        <input
+          className="ledger-search-input"
+          type="search"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(0);
+          }}
+          placeholder="Filter by CVE ID, title, or description"
+          aria-label="Filter these records"
+          data-testid="graph-more-filter"
+        />
+        <label className="graph-dialog-tool">
+          <span>Sort</span>
+          <select
+            className="ledger-snapshot-select"
+            value={sort}
+            onChange={(event) => {
+              setSort(event.target.value as SortKey);
+              setPage(0);
+            }}
+            data-testid="graph-more-sort"
+          >
+            {SORTS.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="graph-dialog-tool">
+          <span>Per page</span>
+          <select
+            className="ledger-snapshot-select"
+            value={String(pageSize)}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setPage(0);
+            }}
+            data-testid="graph-more-page-size"
+          >
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <p className="chart-note graph-dialog-count" data-testid="graph-more-count">
+        {sorted.length === 0
+          ? "No record matches this filter."
+          : `Showing ${start + 1}–${start + visible.length} of ${sorted.length}` +
+            (needle === "" ? "" : ` matching “${query.trim()}”`) +
+            ` (group holds ${group.cves.length})`}
+      </p>
+
+      <ul className="graph-dialog-list" data-testid="graph-more-list">
+        {visible.map((summary) => {
+          const id = summary.id;
+          const epss = summary.epss == null ? null : (Number(summary.epss) * 100).toFixed(2);
+          return (
+            <li key={id} className="graph-dialog-row">
+              <div className="graph-dialog-row-head">
+                <Link
+                  className="mono graph-dialog-id"
+                  href={`/graph?focus=${encodeURIComponent(id)}&limit=${limit}`}
+                  data-testid={`graph-more-item-${id}`}
+                >
+                  {id}
+                </Link>
+                <span className="graph-dialog-badges">
+                  {summary.band !== null && summary.band !== undefined ? (
+                    <span className={`badge badge-${summary.band}`}>{summary.band}</span>
+                  ) : (
+                    <span className="badge badge-unknown">unscored</span>
+                  )}
+                  {epss !== null ? (
+                    <span className="badge badge-accent">EPSS {epss}%</span>
+                  ) : (
+                    <span className="badge badge-unknown">EPSS ?</span>
+                  )}
+                </span>
+              </div>
+              {summary.title !== id ? <p className="graph-dialog-title">{summary.title}</p> : null}
+              {summary.excerpt != null ? (
+                <p className="graph-dialog-excerpt">{summary.excerpt}</p>
+              ) : null}
+              <p className="graph-dialog-meta">
+                {summary.publishedAt != null
+                  ? `Published ${summary.publishedAt.slice(0, 10)}`
+                  : "Publication date unknown"}
+                {summary.kevDueDate != null ? ` · remediation due ${summary.kevDueDate}` : ""}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+
+      {pageCount > 1 ? (
+        <nav
+          className="graph-dialog-pager"
+          aria-label="Record pages"
+          data-testid="graph-more-pager"
+        >
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={currentPage === 0}
+            onClick={() => setPage(currentPage - 1)}
+            data-testid="graph-more-prev"
+          >
+            Previous
+          </button>
+          <span className="chart-note" data-testid="graph-more-page">
+            Page {currentPage + 1} of {pageCount}
+          </span>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={currentPage >= pageCount - 1}
+            onClick={() => setPage(currentPage + 1)}
+            data-testid="graph-more-next"
+          >
+            Next
+          </button>
+        </nav>
+      ) : null}
+    </div>
+  );
+}
+
 function MoreDialog({
   group,
   centerId,
@@ -78,71 +321,13 @@ function MoreDialog({
       }}
     >
       {group === null ? null : (
-        <div className="graph-dialog-body">
-          <header className="graph-dialog-head">
-            <div>
-              <div className="eyebrow">{GROUP_META[group.kind].label}</div>
-              <h2 id="graph-dialog-title" className="mono">
-                {group.value}
-              </h2>
-              <p className="chart-note">
-                {group.cves.length} KEV-listed records share this with {centerId}.{" "}
-                {GROUP_META[group.kind].hint}.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={onClose}
-              data-testid="graph-more-close"
-            >
-              Close
-            </button>
-          </header>
-          <ul className="graph-dialog-list" data-testid="graph-more-list">
-            {group.cves.map((id) => {
-              const summary = summaries[id];
-              const epss = summary?.epss == null ? null : (Number(summary.epss) * 100).toFixed(2);
-              return (
-                <li key={id} className="graph-dialog-row">
-                  <div className="graph-dialog-row-head">
-                    <Link
-                      className="mono graph-dialog-id"
-                      href={`/graph?focus=${encodeURIComponent(id)}&limit=${limit}`}
-                      data-testid={`graph-more-item-${id}`}
-                    >
-                      {id}
-                    </Link>
-                    <span className="graph-dialog-badges">
-                      {summary?.band !== null && summary?.band !== undefined ? (
-                        <span className={`badge badge-${summary.band}`}>{summary.band}</span>
-                      ) : (
-                        <span className="badge badge-unknown">unscored</span>
-                      )}
-                      {epss !== null ? (
-                        <span className="badge badge-accent">EPSS {epss}%</span>
-                      ) : (
-                        <span className="badge badge-unknown">EPSS ?</span>
-                      )}
-                    </span>
-                  </div>
-                  {summary !== undefined && summary.title !== id ? (
-                    <p className="graph-dialog-title">{summary.title}</p>
-                  ) : null}
-                  {summary?.excerpt !== null && summary?.excerpt !== undefined ? (
-                    <p className="graph-dialog-excerpt">{summary.excerpt}</p>
-                  ) : null}
-                  <p className="graph-dialog-meta">
-                    {summary?.publishedAt !== null && summary?.publishedAt !== undefined
-                      ? `Published ${summary.publishedAt.slice(0, 10)}`
-                      : "Publication date unknown"}
-                    {summary?.kevDueDate != null ? ` · remediation due ${summary.kevDueDate}` : ""}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+        <DialogBody
+          group={group}
+          centerId={centerId}
+          limit={limit}
+          summaries={summaries}
+          onClose={onClose}
+        />
       )}
     </dialog>
   );

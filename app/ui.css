@@ -4724,3 +4724,49 @@ a.graph-evidence-chip:hover {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+
+.graph-dialog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-rule-soft);
+}
+
+.graph-dialog-tools .ledger-search-input {
+  flex: 1 1 240px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.graph-dialog-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  font-family: var(--ui-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-ink-3);
+}
+
+.graph-dialog-count {
+  margin: 8px 0 4px;
+}
+
+.graph-dialog-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--ui-rule-soft);
+  padding-top: 10px;
+  margin-top: 6px;
+}
