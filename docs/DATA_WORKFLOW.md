@@ -256,6 +256,27 @@ Do not flag an old vulnerability merely because its record has not changed.
 Flag EPSS when its accepted score date is **older than 2 UTC calendar days**.
 Keep last-known-good data with visible per-source timestamps and errors during outages.
 
+## SSVC Enrichment (CISA Vulnrichment)
+
+Source: `github.com/cisagov/vulnrichment`, CC0-1.0, cloned into
+`<DATA_DIR>/vulnrichment-repo` (shallow, incremental fetch, same cache
+discipline as the CVE checkout). Only rows for KEV-listed CVE ids are read:
+the filename carries the id, so the walk never opens an unwanted record.
+
+Stored verbatim per record, in `ssvc_records`:
+
+- `Exploitation`: `none` | `poc` | `active`
+- `Automatable`: `yes` | `no`
+- `Technical Impact`: `partial` | `total`
+
+Rules: a record without a published SSVC block stays **absent** (explicit
+"no SSVC block published"), never defaulted and never treated as safe. The
+`ssvc-active` view is defined only over `Exploitation = active`, ordered by
+technical impact total-first, automatable yes-first, then raw EPSS descending,
+then ID. All three ordering keys are CISA's own published values — this
+project still computes no composite score. Refresh is daily; staleness is
+measured against the last successful cycle (2 days), not a score date.
+
 ## Relation Graph Contract (v2)
 
 The graph is a view over retained rows, not a new snapshot: nodes are

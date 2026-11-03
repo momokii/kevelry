@@ -376,6 +376,16 @@ export default function MethodologyPage() {
             popularity or observed exploitation telemetry.
           </p>
         </div>
+        <div data-testid="methodology-ordering-ssvc-active">
+          <h3>Active exploitation (SSVC)</h3>
+          <p>
+            Only records whose published CISA SSVC block says Exploitation = active. Order technical
+            impact total before partial, automatable yes before no, then raw EPSS probability
+            descending, then CVE ID ASCII ascending. All three keys are CISA&apos;s published
+            values; the site computes no blended score. A record without a published SSVC block is
+            ineligible, not assumed safe.
+          </p>
+        </div>
         <div data-testid="methodology-ordering-kev-due-soon">
           <h3>KEV due soon</h3>
           <p>
