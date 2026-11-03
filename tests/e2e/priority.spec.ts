@@ -293,7 +293,7 @@ test.describe.serial("priority list views", () => {
       "aria-current",
       "page",
     );
-    await expect(page.locator('[data-testid^="priority-tab-"]')).toHaveCount(5);
+    await expect(page.locator('[data-testid^="priority-tab-"]')).toHaveCount(6);
     await expect(page.getByTestId("priority-ordering-known-exploited")).toContainText(
       "dateAdded descending",
     );
