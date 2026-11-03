@@ -332,6 +332,36 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns | No data deleted; volume preserved (`down` without `-v`); verified backups from the nightly cron exist through 2026-10-31. |
 | Notes | Data survived intact. Nightly backups proved their worth as the safety net. |
 
+## TASK-024 — Graph drill-down: filter, sort, pagination
+
+| Field    | Value                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID  | TASK-024                                                                                                                                       |
+| Name     | Give the attribute drill-down real result-set affordances                                                                                      |
+| Priority | Medium                                                                                                                                         |
+| Status   | DONE                                                                                                                                           |
+| Complexity | S                                                                                                                                            |
+| Depends On | TASK-022                                                                                                                                     |
+| Scope    | Modal rows carry title, excerpt, severity/EPSS badges and dates; filter by ID/title/description, sort (EPSS, published, signal count, ID), page size 10/25/50, Previous/Next with "Page N of M" and an explicit denominator. |
+| Acceptance Criteria | e2e asserts paging, filter narrowing, and context fields; 398 unit green; live verified by screenshot. |
+| Security Concerns | Client-side only over already-fetched summaries. |
+| Notes | Commit 68c130c (and 6a56553 for the row context). |
+
+## TASK-025 — CISA SSVC enrichment as a fourth feed
+
+| Field    | Value                                                                                                                                                                                                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Task ID  | TASK-025                                                                                                                                                                                                                                                                       |
+| Name     | Ingest CISA Vulnrichment SSVC decision points and ship an explainable triage view                                                                                                                                                                                              |
+| Priority | High                                                                                                                                                                                                                                                                           |
+| Status   | DONE                                                                                                                                                                                                                                                                           |
+| Complexity | L                                                                                                                                                                                                                                                                            |
+| Depends On | Owner approval (granted 2026-11-03)                                                                                                                                                                                                                                          |
+| Scope    | Migration 004 (`ssvc_records`) incl. widening `sync_runs.source`; `src/lib/ssvc-import.ts` (parse, walk-only-wanted-ids, cached git sync); SSVC as a 4th scheduler source (own interval, staleness, provenance); `ssvc` block on every CveItem; `ssvc-active` priority view; SSVC panel in expanded rows; openapi + guides + workflow + methodology + README + .env.example. |
+| Acceptance Criteria | 398 unit + 93 e2e green; live import accepted (revision e7b4a38) with 201 SSVC-active records; all pages 200; docs current. |
+| Security Concerns | CC0-1.0 source, fixed URL, shallow clone, only KEV-cohort files read, unknown stays absent (never "safe"). |
+| Notes | Commits 7119a02 / e8f1786 / 08f59f7 / a6fb3f5. Bug found live: `git checkout --detach FETCH_HEAD` is rejected — resolve the SHA first. |
+
 ## Task Template
 
 ```markdown
