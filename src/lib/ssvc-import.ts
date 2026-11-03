@@ -271,8 +271,10 @@ export function syncSsvcCache(options: {
     if (existsSync(cacheDir)) rmSync(cacheDir, { recursive: true, force: true });
     runner(buildCloneArgs(VULNRICHMENT_REPO_URL, cacheDir, 1), path.dirname(cacheDir), timeoutMs);
   }
-  runner(["checkout", "--force", "--detach", "FETCH_HEAD"], cacheDir, timeoutMs);
-  const sha = runner(["rev-parse", "HEAD"], cacheDir, timeoutMs).trim();
+  // Resolve first, then detach onto the commit: `git checkout --detach <ref>`
+  // rejects a ref that git parses as a path, so the SHA form is unambiguous.
+  const sha = runner(["rev-parse", "FETCH_HEAD"], cacheDir, timeoutMs).trim();
+  runner(["checkout", "--force", "--quiet", sha], cacheDir, timeoutMs);
   return { revision: sha, cacheReused, cacheSizeBytes: getCacheSizeBytes(cacheDir) };
 }
 
