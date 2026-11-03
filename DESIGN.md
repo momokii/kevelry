@@ -24,24 +24,24 @@ direction; the joint-distribution inspector comes from the scientific direction.
 
 ## 2. Palette
 
-| Token | Value | Role |
-| --- | --- | --- |
-| `--ui-paper` | `rgb(247,246,243)` | page canvas |
-| `--ui-paper-deep` | `rgb(240,238,232)` | rail / recessed chrome |
-| `--ui-surface` | `rgb(255,255,255)` | panels, tables |
-| `--ui-ink` | `rgb(26,26,26)` | primary text, bars, primary button |
-| `--ui-ink-2` | `rgb(89,89,89)` | secondary prose |
-| `--ui-ink-3` | `rgb(132,129,123)` | labels, axes, metadata |
-| `--ui-rule` | `rgb(214,211,205)` | section rules, borders |
-| `--ui-rule-soft` | `rgb(232,229,223)` | table rows, gridlines |
-| `--ui-accent` | `rgb(0,106,159)` | links, selection, focus |
-| `--ui-accent-soft` | `rgb(230,243,249)` | selected surfaces |
-| `--ui-critical` | `rgb(170,40,52)` | critical CVSS band |
-| `--ui-high` | `rgb(188,88,20)` | high band |
-| `--ui-medium` | `rgb(142,104,0)` | medium band |
-| `--ui-low` | `rgb(52,102,80)` | low band |
-| `--ui-legacy` | `rgb(104,88,128)` | CVSS v2 only |
-| `--ui-unknown` | `rgb(130,127,121)` | unscored / no data |
+| Token              | Value              | Role                               |
+| ------------------ | ------------------ | ---------------------------------- |
+| `--ui-paper`       | `rgb(247,246,243)` | page canvas                        |
+| `--ui-paper-deep`  | `rgb(240,238,232)` | rail / recessed chrome             |
+| `--ui-surface`     | `rgb(255,255,255)` | panels, tables                     |
+| `--ui-ink`         | `rgb(26,26,26)`    | primary text, bars, primary button |
+| `--ui-ink-2`       | `rgb(89,89,89)`    | secondary prose                    |
+| `--ui-ink-3`       | `rgb(132,129,123)` | labels, axes, metadata             |
+| `--ui-rule`        | `rgb(214,211,205)` | section rules, borders             |
+| `--ui-rule-soft`   | `rgb(232,229,223)` | table rows, gridlines              |
+| `--ui-accent`      | `rgb(0,106,159)`   | links, selection, focus            |
+| `--ui-accent-soft` | `rgb(230,243,249)` | selected surfaces                  |
+| `--ui-critical`    | `rgb(170,40,52)`   | critical CVSS band                 |
+| `--ui-high`        | `rgb(188,88,20)`   | high band                          |
+| `--ui-medium`      | `rgb(142,104,0)`   | medium band                        |
+| `--ui-low`         | `rgb(52,102,80)`   | low band                           |
+| `--ui-legacy`      | `rgb(104,88,128)`  | CVSS v2 only                       |
+| `--ui-unknown`     | `rgb(130,127,121)` | unscored / no data                 |
 
 Rules:
 
@@ -58,30 +58,30 @@ lifted for contrast on dark surfaces. Primary buttons invert (near-white fill,
 dark text). Every product surface flips by token assignment; showcase-only
 legacy styles outside the tokens intentionally stay light.
 
-| Token | Dark value | Note |
-| --- | --- | --- |
-| `--ui-paper` | `rgb(22,21,19)` | canvas |
-| `--ui-paper-deep` | `rgb(15,14,12)` | rail / recessed |
-| `--ui-surface` | `rgb(33,32,29)` | panels, tables |
-| `--ui-surface-raised` | `rgb(44,42,37)` | hover wells |
-| `--ui-ink` | `rgb(236,234,228)` | primary text, bars |
-| `--ui-ink-2` | `rgb(178,174,166)` | secondary prose |
-| `--ui-ink-3` | `rgb(138,134,125)` | labels, axes |
-| `--ui-rule` | `rgb(64,61,55)` | borders |
-| `--ui-rule-soft` | `rgb(46,44,40)` | rows, gridlines |
-| `--ui-rule-strong` | `rgb(100,96,87)` | strong borders |
-| `--ui-accent` | `rgb(104,186,228)` | links, selection, focus |
-| `--ui-accent-deep` | `rgb(150,210,245)` | accent text |
-| `--ui-accent-soft` | `rgb(20,48,62)` | selected surfaces |
-| `--ui-accent-line` | `rgb(52,112,142)` | selected borders |
-| `--ui-critical` | `rgb(228,115,124)` | critical band |
-| `--ui-high` | `rgb(236,150,88)` | high band |
-| `--ui-medium` | `rgb(222,176,66)` | medium band |
-| `--ui-low` | `rgb(112,182,146)` | low band |
-| `--ui-legacy` | `rgb(172,152,212)` | v2 only |
-| `--ui-unknown` | `rgb(150,146,138)` | unscored |
-| `--ui-positive` | `rgb(96,180,140)` | good states |
-| `--ui-caution` | `rgb(224,178,64)` | warnings |
+| Token                 | Dark value         | Note                    |
+| --------------------- | ------------------ | ----------------------- |
+| `--ui-paper`          | `rgb(22,21,19)`    | canvas                  |
+| `--ui-paper-deep`     | `rgb(15,14,12)`    | rail / recessed         |
+| `--ui-surface`        | `rgb(33,32,29)`    | panels, tables          |
+| `--ui-surface-raised` | `rgb(44,42,37)`    | hover wells             |
+| `--ui-ink`            | `rgb(236,234,228)` | primary text, bars      |
+| `--ui-ink-2`          | `rgb(178,174,166)` | secondary prose         |
+| `--ui-ink-3`          | `rgb(138,134,125)` | labels, axes            |
+| `--ui-rule`           | `rgb(64,61,55)`    | borders                 |
+| `--ui-rule-soft`      | `rgb(46,44,40)`    | rows, gridlines         |
+| `--ui-rule-strong`    | `rgb(100,96,87)`   | strong borders          |
+| `--ui-accent`         | `rgb(104,186,228)` | links, selection, focus |
+| `--ui-accent-deep`    | `rgb(150,210,245)` | accent text             |
+| `--ui-accent-soft`    | `rgb(20,48,62)`    | selected surfaces       |
+| `--ui-accent-line`    | `rgb(52,112,142)`  | selected borders        |
+| `--ui-critical`       | `rgb(228,115,124)` | critical band           |
+| `--ui-high`           | `rgb(236,150,88)`  | high band               |
+| `--ui-medium`         | `rgb(222,176,66)`  | medium band             |
+| `--ui-low`            | `rgb(112,182,146)` | low band                |
+| `--ui-legacy`         | `rgb(172,152,212)` | v2 only                 |
+| `--ui-unknown`        | `rgb(150,146,138)` | unscored                |
+| `--ui-positive`       | `rgb(96,180,140)`  | good states             |
+| `--ui-caution`        | `rgb(224,178,64)`  | warnings                |
 
 Supporting tokens (`--ui-ink-raise`, `--ui-nav-hover`, `--ui-topbar-veil`,
 `--ui-scrim`, `--ui-drawer-veil`, `--ui-pill-x`, `--ui-tooltip-label`,
@@ -101,14 +101,14 @@ Self-hosted variable fonts in `public/fonts/` (OFL, copied with licenses):
 
 Scale:
 
-| Role | Size / treatment |
-| --- | --- |
-| hero number | `clamp(52px, 8vw, 104px)`, 600, `-0.055em`, tabular |
-| h1 | `clamp(30px, 3.6vw, 44px)`, 600, `-0.035em` |
-| h2 / panel title | 19–23px / 15px, 600 |
-| body | 15px / 1.5, max 68ch |
-| data / table | 13px, tabular numerals |
-| eyebrow / label | 10–11px mono, uppercase, `0.08em` |
+| Role             | Size / treatment                                    |
+| ---------------- | --------------------------------------------------- |
+| hero number      | `clamp(52px, 8vw, 104px)`, 600, `-0.055em`, tabular |
+| h1               | `clamp(30px, 3.6vw, 44px)`, 600, `-0.035em`         |
+| h2 / panel title | 19–23px / 15px, 600                                 |
+| body             | 15px / 1.5, max 68ch                                |
+| data / table     | 13px, tabular numerals                              |
+| eyebrow / label  | 10–11px mono, uppercase, `0.08em`                   |
 
 `font-variant-numeric: tabular-nums` is global. Do not use the retired Newsreader
 serif stack for product headings.
@@ -240,6 +240,36 @@ EPSS-scored share, KEV count, and KEV rate, plus explicit links. Counts come fro
 aggregate cache v3 and are exact for the accepted snapshot. The matrix scrolls
 horizontally on narrow screens with a visible hint.
 
+### Relation graph
+
+A layered ego drawing, never a node-link hairball: **center CVE → shared
+attribute → the records carrying it**, three fixed columns, deterministic
+layout (same data always draws the same picture, so positions are stable for
+keyboard users). Rules:
+
+- The middle column is always labelled with the attribute value and its
+  record count; a count without its denominator is a defect.
+- Line colour encodes the link kind (shared CWE / vendor / reference host) and a
+  legend names all three; the drawing never relies on colour alone.
+- Only the first few leaves per attribute are drawn; the remainder collapses
+  into a `+N more · view all` control whose pill is sized from its own label so
+  text can never overflow its box.
+- No implicit center: the landing view ranks the most-connected records and the
+  center input stays empty until the reader picks one.
+- A "How to read this graph" disclosure names what a dot is, what a line means,
+  what a line does **not** mean, how the counts work, and why advisory
+  aggregator hosts are excluded.
+
+### Drill-down dialog
+
+Attribute groups can hold 50+ records, so the full list is a result set, not a
+scroll: filter by ID/title/description, sort (EPSS, published, signal count,
+ID), page size 10/25/50, and Previous/Next with "Page N of M". The count line
+names both the filtered total and the group total so a filter never reads as a
+shrunken cohort. The dialog is a native `<dialog>` (focus trap, `Escape`,
+backdrop) and every row carries the CVE id, severity and EPSS badges, title,
+description excerpt, publication date and remediation due.
+
 ## 8. Interaction
 
 - Global `⌘K` / `Ctrl+K` focuses search. `Escape` closes menus/tooltips.
@@ -248,6 +278,10 @@ horizontally on narrow screens with a visible hint.
 - Every chart tooltip has a focus path. Hover-only values are a defect.
 - Selection is reversible: `Escape` or a clear control restores the default.
 - No hover-only required information; no motion that conceals values.
+- Graph nodes are links: `Tab` reaches each one, `Enter` re-centers, `+N more`
+  is a real button that opens the dialog, and `Escape` closes it.
+- Theme is a topbar sun/moon toggle (44px) that flips `data-theme` on `<html>`
+  and persists via cookie + localStorage, so the first paint is already themed.
 
 ## 9. Accessibility
 
