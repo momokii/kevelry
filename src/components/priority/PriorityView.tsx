@@ -728,6 +728,15 @@ export function PriorityRow({
             <span className="priority-row-published">
               Published <TimeText value={row.publishedAt} testId="priority-row-published-date" />
             </span>
+            {row.kevDateAdded !== null ? (
+              <span
+                className="priority-row-published"
+                data-testid="priority-row-kev-added"
+                title="KEV catalog date: when CISA confirmed exploitation"
+              >
+                KEV <TimeText value={row.kevDateAdded} />
+              </span>
+            ) : null}
             <span className="priority-chevron" aria-hidden="true">
               {expanded ? "−" : "+"}
             </span>
