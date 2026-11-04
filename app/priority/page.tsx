@@ -258,7 +258,7 @@ const ORDERING_EXTRAS: Record<PriorityMode, string> = {
   "kev-due-soon":
     "Only KEV members with a valid catalog remediation due date; overdue first, no upper cutoff. Missing or malformed due dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not exploit predictions. An overdue deadline means the remediation is late and therefore most urgent, not that the data is stale.",
   "ssvc-active":
-    "Only records whose CISA SSVC block says Exploitation = active. Order technical impact total before partial, automatable yes before no, then the KEV catalog date descending (newest exploitation confirmation first), then raw EPSS, then CVE ID. A record without a published SSVC block is ineligible, not assumed safe, and nothing is blended into a score.",
+    "Only records with a published Exploitation = active block. Recency is the KEV catalog date, so the newest exploitation confirmation leads; a record without a block is ineligible, never assumed safe. The explainer above has the full reading guide.",
 };
 
 export default async function PriorityPage({
