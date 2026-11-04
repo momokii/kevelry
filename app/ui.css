@@ -4863,3 +4863,9 @@ a.graph-evidence-chip:hover {
 .priority-table > section:last-child {
   border-bottom: 0;
 }
+
+.priority-row-kev-added {
+  border-left: 1px solid var(--ui-rule);
+  padding-left: 8px;
+  margin-left: 2px;
+}

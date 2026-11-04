@@ -227,7 +227,7 @@ export function PriorityOrdering({
     "kev-due-soon":
       "KEV due soon: KEV members with a valid catalog remediation due date. Order due date ascending (overdue first, no upper cutoff), then CVE ID ASCII ascending.",
     "ssvc-active":
-      "Active exploitation (SSVC): records whose published CISA SSVC block says Exploitation = active. Order technical impact total before partial, automatable yes before no, then raw EPSS probability descending, then CVE ID ASCII ascending. All three keys are published CISA values; no blended score is computed.",
+      "Active exploitation (SSVC): Exploitation = active only. Order: technical impact (total first), automatable (yes first), KEV catalog date descending, raw EPSS descending, CVE ID ascending.",
   };
   return (
     <div className="ledger-ordering" data-testid={`priority-ordering-${mode}`}>
@@ -730,11 +730,11 @@ export function PriorityRow({
             </span>
             {row.kevDateAdded !== null ? (
               <span
-                className="priority-row-published"
+                className="priority-row-published priority-row-kev-added"
                 data-testid="priority-row-kev-added"
                 title="KEV catalog date: when CISA confirmed exploitation"
               >
-                KEV <TimeText value={row.kevDateAdded} />
+                · KEV added <TimeText value={row.kevDateAdded} />
               </span>
             ) : null}
             <span className="priority-chevron" aria-hidden="true">
