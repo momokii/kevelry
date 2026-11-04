@@ -217,6 +217,28 @@ describe("priority services on SQLite (todo 11)", () => {
     expect(getSsvcActive(db)).toEqual([]);
   });
 
+  it("ssvc-active: equal decision points order by newest KEV confirmation", () => {
+    const db = makeDb();
+    for (const id of ["CVE-2099-0001", "CVE-2099-0002"]) seedRecord(db, id);
+    db.runBoundedWrite(() => {
+      const insert = db.handle.prepare(
+        "INSERT INTO ssvc_records (cve_id, exploitation, automatable, technical_impact, ssvc_version, source_timestamp, catalog_date, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      insert.run("CVE-2099-0001", "active", "yes", "total", "2.0.3", STAMP, STAMP, STAMP);
+      insert.run("CVE-2099-0002", "active", "yes", "total", "2.0.3", STAMP, STAMP, STAMP);
+      const kev = db.handle.prepare(
+        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
+      );
+      // 0002 listed much later: it is the fresher confirmation.
+      kev.run("CVE-2099-0001", "2015-03-01", STAMP, STAMP);
+      kev.run("CVE-2099-0002", "2026-02-01", STAMP, STAMP);
+    });
+    expect(getSsvcActive(db).map((row) => row.id)).toEqual(["CVE-2099-0002", "CVE-2099-0001"]);
+    // A window that only covers the newer record excludes the old one.
+    const recent = getSsvcActive(db, undefined, 3650);
+    expect(recent.map((row) => row.id)).toEqual(["CVE-2099-0002"]);
+  });
+
   it("kev-due-soon: due ascending with overdue first; missing/malformed excluded", () => {
     const db = makeDb();
     for (const id of ["CVE-2099-0001", "CVE-2099-0002", "CVE-2099-0003", "CVE-2099-0004"]) {

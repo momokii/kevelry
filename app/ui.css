@@ -4770,3 +4770,96 @@ a.graph-evidence-chip:hover {
   padding-top: 10px;
   margin-top: 6px;
 }
+
+/* ---------- SSVC explainer ---------- */
+
+.ssvc-explainer {
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+  padding: 14px 16px;
+  margin: 0 0 var(--ui-sp-5);
+}
+
+.ssvc-explainer h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  border: 0;
+  padding: 0;
+}
+
+.ssvc-points {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 6px 22px;
+  margin: 12px 0;
+  padding: 0;
+}
+
+.ssvc-points > div {
+  border-top: 1px solid var(--ui-rule-soft);
+  padding-top: 8px;
+}
+
+.ssvc-points dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--ui-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ui-ink-3);
+  margin-bottom: 4px;
+}
+
+.ssvc-points dd {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-2);
+}
+
+.ssvc-points code {
+  font-family: var(--ui-font-mono);
+  font-size: 11.5px;
+  color: var(--ui-ink);
+  background: var(--ui-paper);
+  border: 1px solid var(--ui-rule-soft);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.ssvc-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--ui-rule-soft);
+  padding-top: 10px;
+}
+
+.ssvc-order > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.ssvc-windows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ssvc-windows .ledger-filter-chip {
+  font-size: 11.5px;
+}
+
+/* Clearer record boundary: expanded rows must not read as one continuous wall. */
+.priority-table > section {
+  border-bottom: 1px solid var(--ui-rule);
+}
+
+.priority-table > section:last-child {
+  border-bottom: 0;
+}

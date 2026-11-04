@@ -544,14 +544,6 @@ function CvssSignal({ row }: { row: PriorityRowData }) {
  * nothing is interpolated. Display only, never a comparison. */
 function StoryStrip({ row }: { row: PriorityRowData }) {
   const milestones: Array<{ key: string; label: string; date: string; testId: string }> = [];
-  if (row.publishedAt !== null) {
-    milestones.push({
-      key: "published",
-      label: "Published",
-      date: row.publishedAt,
-      testId: "priority-row-story-published",
-    });
-  }
   if (row.kevListed && row.kevDateAdded !== null) {
     milestones.push({
       key: "kev",
@@ -815,7 +807,9 @@ export function PriorityList({
   mode: PriorityMode;
 }) {
   const [visible, setVisible] = useState(25);
-  const [openCount, setOpenCount] = useState(5);
+  // One row opens by default: five expanded rows turned the list into a wall
+  // of panels and blurred where one record ended and the next began.
+  const [openCount, setOpenCount] = useState(1);
   const [todayDay] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {

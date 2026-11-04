@@ -21,6 +21,7 @@ import {
 } from "@/components/priority/PriorityView";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { SsvcExplainer } from "@/components/priority/SsvcExplainer";
 import { Panel } from "@/components/shell/Panel";
 import {
   getAcceptedEpssDate,
@@ -149,6 +150,8 @@ interface PrioritySnapshot {
   publishedCount: number;
   cutoffT: string;
   displayLimit: number;
+  /** Recency window in days for the SSVC view; null means all of the cohort. */
+  sinceDays: number | null;
   mode: PriorityMode;
   rows: PriorityRowData[];
   eligibleCohort: number;
@@ -163,6 +166,7 @@ export function loadSnapshot(
   nowIso: string,
   mode: PriorityMode,
   limit: number = resolvePriorityPageLimit(),
+  sinceDays: number | null = null,
 ): PrioritySnapshot {
   const scoreDate = getAcceptedEpssDate(db);
   const scoreModel =
@@ -198,7 +202,7 @@ export function loadSnapshot(
           : mode === "kev-due-soon"
             ? getKevDueSoon(db, limit)
             : mode === "ssvc-active"
-              ? getSsvcActive(db, limit)
+              ? getSsvcActive(db, limit, sinceDays)
               : rising.map((row) => row.item);
   const corpusCoverage = unfilteredCohortCoverage(db, Math.min(limit, items.length));
 
@@ -227,6 +231,7 @@ export function loadSnapshot(
     publishedCount: publishedRow.n,
     cutoffT: nowIso,
     displayLimit: limit,
+    sinceDays,
     mode,
     rows,
     eligibleCohort: items.length,
@@ -253,23 +258,32 @@ const ORDERING_EXTRAS: Record<PriorityMode, string> = {
   "kev-due-soon":
     "Only KEV members with a valid catalog remediation due date; overdue first, no upper cutoff. Missing or malformed due dates are ineligible, never defaulted. Due dates are federal remediation deadlines, not exploit predictions. An overdue deadline means the remediation is late and therefore most urgent, not that the data is stale.",
   "ssvc-active":
-    "Only records whose CISA SSVC block says Exploitation = active. Technical impact, automatable and EPSS are shown separately; nothing is blended. A record without a published SSVC block is ineligible, not assumed safe.",
+    "Only records whose CISA SSVC block says Exploitation = active. Order technical impact total before partial, automatable yes before no, then the KEV catalog date descending (newest exploitation confirmation first), then raw EPSS, then CVE ID. A record without a published SSVC block is ineligible, not assumed safe, and nothing is blended into a score.",
 };
 
 export default async function PriorityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; since?: string }>;
 }) {
   const params = await searchParams;
   const requested = Array.isArray(params.view) ? params.view[0] : params.view;
+  const firstParam = (value: string | string[] | undefined): string | undefined =>
+    Array.isArray(value) ? value[0] : value;
   const mode: PriorityMode = isPriorityMode(requested) ? requested : "known-exploited";
+  const sinceRaw = firstParam(params.since);
+  const sinceDays =
+    sinceRaw === undefined || sinceRaw === "" || sinceRaw === "0"
+      ? null
+      : Number.isFinite(Number(sinceRaw)) && Number(sinceRaw) > 0
+        ? Number(sinceRaw)
+        : null;
 
   let snapshot: PrioritySnapshot | null = null;
   let loadError: string | null = null;
   try {
     const db = openReadDatabase(resolveDataDir());
-    snapshot = loadSnapshot(db, new Date().toISOString(), mode);
+    snapshot = loadSnapshot(db, new Date().toISOString(), mode, undefined, sinceDays);
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);
   }
@@ -311,6 +325,9 @@ export default async function PriorityPage({
       ) : (
         <>
           <PriorityModeNav current={mode} />
+          {mode === "ssvc-active" ? (
+            <SsvcExplainer sinceDays={snapshot?.sinceDays ?? null} />
+          ) : null}
           <div className="priority-layout" data-testid={`priority-section-${mode}`}>
             <div className="priority-main">
               <div className="priority-list-head">

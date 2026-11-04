@@ -429,15 +429,35 @@ export function getKevDueSoon(db: CveDatabase, limit?: number): PriorityItem[] {
  * this view never invents a severity or a blended score, and a record with no
  * published SSVC is simply ineligible rather than assumed safe.
  */
-export function getSsvcActive(db: CveDatabase, limit?: number): PriorityItem[] {
+export function getSsvcActive(
+  db: CveDatabase,
+  limit?: number,
+  sinceDays: number | null = null,
+): PriorityItem[] {
+  // Recency key is the KEV catalog date: it is the freshest evidence that
+  // exploitation is confirmed as current, and it is published (never inferred).
+  // Without it an ancient record with a high forecast outranks a fresh one,
+  // which is technically defensible and practically useless.
+  const since =
+    sinceDays !== null && sinceDays > 0
+      ? new Date(Date.now() - sinceDays * 86_400_000).toISOString().slice(0, 10)
+      : null;
   const rows = db.handle
     .prepare(
-      "SELECT s.cve_id AS id, r.date_published AS publishedAt FROM ssvc_records s " +
+      "SELECT s.cve_id AS id, r.date_published AS publishedAt, k.date_added AS kevDateAdded " +
+        "FROM ssvc_records s " +
         "JOIN cve_records r ON r.cve_id = s.cve_id AND r.state = 'PUBLISHED' " +
+        "LEFT JOIN kev_entries k ON k.cve_id = s.cve_id " +
         "WHERE s.exploitation = 'active' " +
-        "ORDER BY (s.technical_impact = 'total') DESC, (s.automatable = 'yes') DESC, s.cve_id ASC",
+        (since === null ? "" : "AND k.date_added >= ? ") +
+        "ORDER BY (s.technical_impact = 'total') DESC, (s.automatable = 'yes') DESC, " +
+        "(k.date_added IS NULL) ASC, k.date_added DESC, s.cve_id ASC",
     )
-    .all() as Array<{ id: string; publishedAt: string | null }>;
+    .all(...(since === null ? [] : [since])) as Array<{
+    id: string;
+    publishedAt: string | null;
+    kevDateAdded: string | null;
+  }>;
   if (rows.length === 0) return [];
   const hydrated = hydrateOverviewItems(
     db,

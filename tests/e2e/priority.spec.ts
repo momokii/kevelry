@@ -375,9 +375,11 @@ test.describe.serial("priority list views", () => {
     await expect(page.getByTestId("priority-root")).toBeVisible();
     const strip = page.getByTestId("priority-row-story").first();
     await expect(strip).toBeVisible();
-    await expect(strip).toContainText("Published");
+    // The header already carries the publication date; the strip adds the
+    // signal dates (KEV listing, deadline, forecast window) without repeating it.
     await expect(strip).toContainText("KEV listed");
-    await expect(page.getByTestId("priority-row-story-published").first()).toBeVisible();
+    await expect(strip).toContainText("Remediation due");
+    await expect(page.getByTestId("priority-row-story-kev").first()).toBeVisible();
   });
 
   test("expanded rows sparkline the retained EPSS history", async ({ page }) => {
