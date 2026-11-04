@@ -560,6 +560,14 @@ describe("v1 priority routes", () => {
 
     // Fixture KEV rows carry no due dates, so the view is honestly empty;
     // ordering keys still hold. Content ordering is proved in priority.test.ts.
+    // ssvc-active rejects a malformed recency window rather than ignoring it.
+    const badSince = await getPriority(
+      new Request("https://radar.test/api/v1/priority/ssvc-active?since=abc"),
+      { params: Promise.resolve({ listName: "ssvc-active" }) },
+    );
+    expect(badSince.status).toBe(400);
+    expect((await bodyOf(badSince)).code).toBe("BAD_FILTER");
+
     const dueSoon = await getPriority(
       new Request("https://radar.test/api/v1/priority/kev-due-soon"),
       { params: Promise.resolve({ listName: "kev-due-soon" }) },

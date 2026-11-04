@@ -4864,8 +4864,8 @@ a.graph-evidence-chip:hover {
   border-bottom: 0;
 }
 
+/* The two dates stack: publication is context, KEV confirmation is recency. */
 .priority-row-kev-added {
-  border-left: 1px solid var(--ui-rule);
-  padding-left: 8px;
-  margin-left: 2px;
+  display: block;
+  margin-top: 2px;
 }

@@ -274,10 +274,15 @@ Stored verbatim per record, in `ssvc_records`:
 Rules: a record without a published SSVC block stays **absent** (explicit
 "no SSVC block published"), never defaulted and never treated as safe. The
 `ssvc-active` view is defined only over `Exploitation = active`, ordered by
-technical impact total-first, automatable yes-first, then raw EPSS descending,
-then ID. All three ordering keys are CISA's own published values — this
-project still computes no composite score. Refresh is daily; staleness is
-measured against the last successful cycle (2 days), not a score date.
+technical impact total-first, automatable yes-first, then the **KEV catalog
+date descending** (newest exploitation confirmation first), then raw EPSS
+descending, then ID. Recency is a published date, never an estimate: without
+it an ancient record with a high forecast outranks a fresh confirmation, which
+is defensible on paper and useless in practice. The view also accepts a
+recency window (`since` = 30/90/365 days, absent = all time) applied to the KEV
+catalog date. All ordering keys are published values — this project still
+computes no composite score. Refresh is daily; staleness is measured against
+the last successful cycle (2 days), not a score date.
 
 ## Relation Graph Contract (v2)
 

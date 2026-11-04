@@ -91,6 +91,15 @@ export async function GET(
     const params = new URL(request.url).searchParams;
     const limit = parseLimit(params.get("limit"));
     const offset = parseCursor(params.get("cursor"));
+    // Recency window for ssvc-active only: a published KEV catalog date bound.
+    const sinceRaw = params.get("since");
+    let sinceDays: number | null = null;
+    if (sinceRaw !== null && sinceRaw !== "") {
+      if (!/^[0-9]+$/.test(sinceRaw) || Number(sinceRaw) < 1 || Number(sinceRaw) > 3650) {
+        throw new ApiError("BAD_FILTER", 400, "since must be an integer between 1 and 3650 days.");
+      }
+      sinceDays = Number(sinceRaw);
+    }
     const nowIso = new Date().toISOString();
     const scoreDate = getAcceptedEpssDate(db);
     // Bounded fetch: one extra row probes whether a next page exists, so the
@@ -140,7 +149,7 @@ export async function GET(
             : list === "kev-due-soon"
               ? getKevDueSoon(db, cap)
               : list === "ssvc-active"
-                ? getSsvcActive(db, cap)
+                ? getSsvcActive(db, cap, sinceDays)
                 : getDefaultPriority(db, cap);
     const { page, hasMore, nextCursor } = paginateCapped(items, offset, limit);
     const records = loadFullRecords(

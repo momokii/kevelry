@@ -734,7 +734,7 @@ export function PriorityRow({
                 data-testid="priority-row-kev-added"
                 title="KEV catalog date: when CISA confirmed exploitation"
               >
-                · KEV added <TimeText value={row.kevDateAdded} />
+                KEV added <TimeText value={row.kevDateAdded} />
               </span>
             ) : null}
             <span className="priority-chevron" aria-hidden="true">

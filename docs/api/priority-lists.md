@@ -35,8 +35,9 @@ five-view contract, so replay never serves it.
   remediation deadlines, not exploit predictions.
 - `ssvc-active`: records whose published CISA SSVC block says
   `Exploitation = active`. Technical impact `total` before `partial`,
-  automatable `yes` before `no`, then raw EPSS probability descending, then ID
-  ascending. All three keys are published CISA values; a record with no
+  automatable `yes` before `no`, then the KEV catalog date descending (newest
+  exploitation confirmation first), then raw EPSS probability descending, then
+  ID ascending. All three keys are published CISA values; a record with no
   published SSVC block is ineligible, never assumed safe, and nothing is
   blended into a score.
 

@@ -182,7 +182,7 @@ paths:
       operationId: getPriorityList
       summary: Get one named priority list
       description: |
-        One of the four explainable orderings. Each view states its exact ordering
+        One of the six explainable orderings. Each view states its exact ordering
         inputs in `ordering`; signals stay distinct and are never multiplied into a
         composite score. Stale snapshots keep their dated values with a stale label.
       tags:
@@ -196,6 +196,16 @@ paths:
             $ref: "#/components/schemas/PriorityListName"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: since
+          in: query
+          required: false
+          description: >-
+            ssvc-active only. Recency window in days over the KEV catalog date;
+            omit or 0 for all time.
+          schema:
+            type: integer
+            enum: [30, 90, 365]
+          example: 90
       responses:
         "200":
           description: Ordered view with ordering rules, coverage, and provenance.
