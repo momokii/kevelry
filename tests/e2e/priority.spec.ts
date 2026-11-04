@@ -343,7 +343,9 @@ test.describe.serial("priority list views", () => {
       '[data-testid="priority-list-kev-due-soon"] [data-testid="priority-row"]',
     );
     await expect(rows.first()).toContainText("CVE-2099-1004");
+    // Rows open one at a time by default, so expand before reading detail.
     const secondRow = rows.nth(1);
+    await secondRow.getByRole("button").first().click();
     await expect(secondRow.getByTestId("priority-row-kev-due")).toBeVisible();
     await expect(secondRow).toContainText("known ransomware use");
   });
@@ -486,6 +488,10 @@ test.describe.serial("priority list views", () => {
     await page.goto("/priority?view=known-exploited");
     const row = page.locator('[data-cve-id="CVE-2099-1001"]');
     await expect(row.getByTestId("priority-row-signals")).toBeVisible();
+    // Detail panels (and their help triggers) exist only on an expanded row.
+    if ((await row.getByTestId("priority-row-kev-help-trigger").count()) === 0) {
+      await row.getByRole("button").first().click();
+    }
     const kevTrigger = row.getByTestId("priority-row-kev-help-trigger");
     await kevTrigger.focus();
     await expect(kevTrigger).toBeFocused();

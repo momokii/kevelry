@@ -30,10 +30,7 @@ const DAY_MINUS_7 = "2026-10-17";
 const MODEL = "v2026.06.15";
 const ROWS = 50_000;
 
-const PAGE_SOURCE = readFileSync(
-  path.join(__dirname, "..", "app", "priority", "page.tsx"),
-  "utf8",
-);
+const PAGE_SOURCE = readFileSync(path.join(__dirname, "..", "app", "priority", "page.tsx"), "utf8");
 const PAGE_LIMIT = Number(/export const PRIORITY_PAGE_LIMIT = (\d+);/.exec(PAGE_SOURCE)?.[1]);
 
 function epssFor(index: number): string {
@@ -138,7 +135,9 @@ describe("priority page at production scale (display-limit regression)", () => {
     // bounded SQL (multi-join sort over the full corpus) cost ~2s per request.
     expect(PAGE_SOURCE).not.toMatch(/getDefaultPriority\(/);
     expect(PAGE_SOURCE).toMatch(/unfilteredCohortCoverage\(/);
-    expect(PAGE_SOURCE).toMatch(/loadSnapshot\(\s*db\s*,\s*new Date\(\)\.toISOString\(\)\s*,\s*mode\s*\)/);
+    expect(PAGE_SOURCE).toMatch(
+      /loadSnapshot\(\s*db\s*,\s*new Date\(\)\.toISOString\(\)\s*,\s*mode\s*,/,
+    );
     expect(PAGE_SOURCE).toMatch(/showing top/i);
   });
 
