@@ -38,8 +38,9 @@ can consume the same data.
   EPSS, CVSS, and the published SSVC decision points remain separate signals with definitions,
   real bars, EPSS sparklines, record timelines, and timezone-aware dates; no composite score.
 - **SSVC triage:** CISA's Vulnrichment decision points (Exploitation / Automatable / Technical
-  Impact) stored verbatim and shown beside the other signals. Never blended, never guessed: a
-  record without a published block says so.
+  Impact) stored verbatim and shown beside the other signals, with an in-page explainer, a
+  recency window (30/90/365 days over the KEV catalog date), and newest-confirmation-first
+  ordering. Never blended, never guessed: a record without a published block says so.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
 - **Relation graph:** KEV-listed records linked by shared CWEs, vendor labels, and

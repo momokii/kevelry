@@ -270,6 +270,17 @@ shrunken cohort. The dialog is a native `<dialog>` (focus trap, `Escape`,
 backdrop) and every row carries the CVE id, severity and EPSS badges, title,
 description excerpt, publication date and remediation due.
 
+### Priority rows
+
+A record row is a **list item first**: one row opens by default, each record is
+separated by a rule, and the collapsed header carries the facts needed to
+decide whether to open it (id, title, excerpt, KEV/EPSS/CVSS badges, publication
+date, and the KEV catalog date when listed). Expanding shows the signal panels,
+whose dates never repeat the header's publication date. The SSVC view adds an
+explainer above the list (what the three decision points mean, how the order is
+formed, the coverage caveat) and a recency window control; the right-hand rail
+keeps a short ordering summary rather than repeating the explainer.
+
 ## 8. Interaction
 
 - Global `⌘K` / `Ctrl+K` focuses search. `Escape` closes menus/tooltips.

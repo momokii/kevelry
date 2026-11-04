@@ -89,7 +89,7 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 
 - `/watch`: browser-only starred CVEs, hydrated through `/api/v1/cves/{id}`; no account, no server record, 200-id cap.
 - `/graph`: ranked hub landing (no implicit center) → centered ego drawing (CVE → shared attribute → records), grouped cards below, drill-down dialog with filter/sort/pagination, and a reading guide that states what a link does and does not mean.
-- `ssvc-active` priority view: CISA SSVC decision points stored verbatim (migration 004), fourth ingestion source at daily cadence, 201 active-exploitation records live.
+- `ssvc-active` priority view: CISA SSVC decision points stored verbatim (migration 004), fourth ingestion source at daily cadence, 201 active-exploitation records live. Ordered by impact → automatable → **KEV catalog date descending** (newest confirmation first), with a 30/90/365-day recency window in UI and API, plus an in-page explainer of what SSVC means and how to read it.
 - Theme: topbar sun/moon toggle, `data-theme` pre-painted from cookie (no flash).
 
 ## Last Updated
