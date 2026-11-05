@@ -379,6 +379,20 @@ test("volume chart exposes tooltips, selection, and the window toggle", async ({
   expect(containment, "segmented options overflow the track").toEqual({ ok: true, reason: "ok" });
 });
 
+test("time-to-KEV flow draws cohorts, bands, stats and a data table", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const panel = page.getByTestId("overview-time-to-kev");
+  if (!(await panel.isVisible())) return;
+  await expect(page.getByTestId("overview-time-to-kev-svg")).toBeVisible();
+  await expect(page.getByTestId("overview-time-to-kev-note")).toContainText("excluded");
+  await expect(page.getByTestId("overview-time-to-kev-stats")).toContainText("Median delay");
+  await expect(page.getByTestId("overview-time-to-kev-stats")).toContainText("Within 30 days");
+  // The same series is available as a table (chart contract).
+  await panel.getByText("Data table").click();
+  await expect(panel.locator("table tbody tr").first()).toBeVisible();
+});
+
 test("matrix inspector links navigate client-side without a full reload", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");

@@ -3,6 +3,7 @@ import { EpssDistribution } from "@/components/charts/EpssDistribution";
 import { KevRhythm } from "@/components/charts/KevRhythm";
 import { SeverityDonut } from "@/components/charts/SeverityDonut";
 import { CumulativeChart } from "@/components/charts/CumulativeChart";
+import { TimeToKevSankey } from "@/components/charts/TimeToKevSankey";
 import { VolumeChart } from "@/components/charts/VolumeChart";
 import { ChartInfo } from "@/components/charts/ChartInfo";
 import { formatInt, monthLong, sharePercent } from "@/components/charts/chartTokens";
@@ -220,6 +221,64 @@ export default function OverviewPage() {
             publishedTotal={data.publishedTotal}
             epssScored={epssTotal}
           />
+        </Panel>
+
+        <Panel
+          title="How fast does publication become exploitation?"
+          sub="Publication date to KEV confirmation date, for the records where CISA has both. Widths are record counts; missing dates are excluded and counted."
+          className="span-8"
+          testId="overview-time-to-kev"
+          actions={
+            <ChartInfo>
+              Flow from the publication year cohort (left) to the delay until the KEV catalog
+              confirmed exploitation (right). Both dates are published values; nothing is
+              interpolated. Records confirmed on or before their publication date form their own
+              bucket instead of being clamped to zero, and the median only counts confirmations that
+              happened after publication.
+            </ChartInfo>
+          }
+        >
+          <TimeToKevSankey flow={data.timeToKev} />
+        </Panel>
+
+        <Panel
+          title="Fastest confirmations"
+          sub="Shortest publication-to-confirmation delays in the retained snapshot."
+          className="span-4"
+          testId="overview-fastest"
+        >
+          <dl className="priority-summary" data-testid="overview-time-to-kev-stats">
+            <div>
+              <dt>Median delay</dt>
+              <dd>
+                {data.timeToKev.medianDays === null ? "—" : `${data.timeToKev.medianDays} days`}
+              </dd>
+            </div>
+            <div>
+              <dt>Within 30 days</dt>
+              <dd>
+                {formatInt(data.timeToKev.within30)} of {formatInt(data.timeToKev.eligible)} (
+                {data.timeToKev.within30Share})
+              </dd>
+            </div>
+            <div>
+              <dt>Excluded, no date</dt>
+              <dd>{formatInt(data.timeToKev.excluded)}</dd>
+            </div>
+          </dl>
+          <ul className="plain-list" data-testid="overview-fastest-list">
+            {data.timeToKev.fastest.map((entry) => (
+              <li key={entry.cveId}>
+                <a className="mono" href={`/explore?q=${encodeURIComponent(entry.cveId)}`}>
+                  {entry.cveId}
+                </a>{" "}
+                — {entry.days} day{entry.days === 1 ? "" : "s"} from publication to KEV
+              </li>
+            ))}
+            {data.timeToKev.fastest.length === 0 ? (
+              <li>No confirmation-after-publication record is retained.</li>
+            ) : null}
+          </ul>
         </Panel>
 
         <Panel

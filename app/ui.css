@@ -4777,8 +4777,10 @@ a.graph-evidence-chip:hover {
   border: 1px solid var(--ui-rule);
   border-radius: var(--ui-radius-sm);
   background: var(--ui-surface);
-  padding: 14px 16px;
-  margin: 0 0 var(--ui-sp-5);
+  padding: 18px 20px;
+  /* Breathing room from the view tabs above: the panel used to sit flush
+     against them, which read as one merged block. */
+  margin: var(--ui-sp-5) 0 var(--ui-sp-5);
 }
 
 .ssvc-explainer h2 {

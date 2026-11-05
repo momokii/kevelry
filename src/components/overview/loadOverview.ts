@@ -20,6 +20,7 @@ import {
 } from "../../lib/priority";
 import { selectPrimaryCvss, type CvssMetricInput } from "../../lib/ranking";
 import { officialCveLink } from "../../lib/search";
+import { buildTimeToKev, type TimeToKev } from "../../lib/time-to-kev";
 
 export const OVERVIEW_CHART_DAYS = 14;
 export const OVERVIEW_VOLUME_DAYS = 30;
@@ -81,6 +82,8 @@ export interface OverviewData {
   correctionNotes: string[];
   provenance: Provenance;
   summaries: PrioritySummary[];
+  /** Publication → KEV confirmation flow over the retained dates. */
+  timeToKev: TimeToKev;
 }
 
 function trailingDays(anchorDay: string, count: number): string[] {
@@ -536,6 +539,9 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       correctionNotes,
       provenance: buildProvenance(db, nowIso),
       summaries: buildSummaries(db, nowIso, epssDate, cached),
+      // Bounded to the KEV cohort (~1.7k rows): cheap, and refreshed with the
+      // page rather than stored, so it can never go stale against the tables.
+      timeToKev: buildTimeToKev(db),
     };
   } finally {
     // Shared read handle stays open for the process; never close per request.
