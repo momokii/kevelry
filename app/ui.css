@@ -4778,9 +4778,9 @@ a.graph-evidence-chip:hover {
   border-radius: var(--ui-radius-sm);
   background: var(--ui-surface);
   padding: 18px 20px;
-  /* Breathing room from the view tabs above: the panel used to sit flush
-     against them, which read as one merged block. */
-  margin: var(--ui-sp-5) 0 var(--ui-sp-5);
+  /* The panel needs to read as its own block: a wider gap above (under the
+     pill row) than below (to the list it introduces). */
+  margin: var(--ui-sp-8) 0 var(--ui-sp-6);
 }
 
 .ssvc-explainer h2 {
