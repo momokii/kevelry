@@ -5,9 +5,10 @@ import { useMemo, useState } from "react";
 import { formatInt, sharePercent } from "./chartTokens";
 import type { SankeyLink, TimeToKev } from "@/lib/time-to-kev";
 
-const WIDTH = 720;
+const WIDTH = 760;
 const HEIGHT = 360;
-const COL_LEFT = 12;
+// Labels sit outside the flow area so a band can never run under them.
+const COL_LEFT = 132;
 const COL_RIGHT = 470;
 const NODE_WIDTH = 14;
 const PAD = 10;
@@ -152,20 +153,20 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
                 fill={active ? "var(--ui-accent-deep)" : "var(--ui-ink)"}
               />
               <text
-                x={node.column === "cohort" ? node.x + NODE_WIDTH + 8 : node.x - 8}
+                x={node.column === "cohort" ? node.x - 8 : node.x + NODE_WIDTH + 8}
                 y={node.y + Math.min(node.height, 14) / 2 + 3.5}
                 fontSize={10.5}
-                textAnchor={node.column === "cohort" ? "start" : "end"}
+                textAnchor={node.column === "cohort" ? "end" : "start"}
                 fontFamily="var(--ui-font-mono)"
                 fill={active ? "var(--ui-accent-deep)" : "var(--ui-ink-2)"}
               >
                 {node.label}
               </text>
               <text
-                x={node.column === "cohort" ? node.x + NODE_WIDTH + 8 : node.x - 8}
+                x={node.column === "cohort" ? node.x - 8 : node.x + NODE_WIDTH + 8}
                 y={node.y + Math.min(node.height, 14) / 2 + 15}
                 fontSize={9}
-                textAnchor={node.column === "cohort" ? "start" : "end"}
+                textAnchor={node.column === "cohort" ? "end" : "start"}
                 fontFamily="var(--ui-font-mono)"
                 fill="var(--ui-ink-3)"
               >

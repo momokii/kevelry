@@ -258,6 +258,24 @@ Do not flag an old vulnerability merely because its record has not changed.
 Flag EPSS when its accepted score date is **older than 2 UTC calendar days**.
 Keep last-known-good data with visible per-source timestamps and errors during outages.
 
+## Time-to-Exploitation (publication → KEV confirmation)
+
+Derived entirely from two retained columns: `cve_records.date_published` and
+`kev_entries.date_added`. No feed, no estimate.
+
+- Delay = whole days from publication to catalog confirmation.
+- Buckets: `listed on/before publication` (a real case: CISA sometimes lists a
+  vulnerability before its CVE record is published), `0–30d`, `31–90d`,
+  `91–365d`, `1–5y`, `over 5y`. Nothing is clamped to zero.
+- The Sankey flows publication-year cohorts (newest first; years at or below
+  2021 collapse into one labelled "2021 or earlier" node) into those buckets.
+- **Median** delay counts only confirmations that happened _after_
+  publication; the pre-publication bucket is reported separately.
+- Records missing either date are excluded and counted in the caption
+  (`excluded`), so the denominator is always visible.
+- Computed per request over the KEV cohort (~1.8k rows) rather than cached, so
+  it can never disagree with the tables it reads.
+
 ## SSVC Enrichment (CISA Vulnrichment)
 
 Source: `github.com/cisagov/vulnrichment`, CC0-1.0, cloned into

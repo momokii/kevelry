@@ -30,8 +30,9 @@ circle — explainable prioritisation without a composite score.
 - Labelling rules: only on records Vulnrichment covers; everything else says
   "no SSVC published", never "Track".
 
-**Status 2026-11-03:** items 1 and the `ssvc-active` view are now shipped in
-this codebase (see `docs/DATA_WORKFLOW.md`). Coverage observed live: 201
+**Status 2026-11-03:** item 1 (`ssvc-active` + SSVC feed) and item 3
+(time-to-exploitation, shipped as a Sankey from publication cohort to KEV
+confirmation) are now shipped in this codebase (see `docs/DATA_WORKFLOW.md`). Coverage observed live: 201
 KEV-listed records with `Exploitation = active` out of 1,766 KEV rows — partial
 by design, and reported as such in the UI.
 

@@ -37,6 +37,9 @@ can consume the same data.
   KEV due soon, and **active exploitation (CISA SSVC)** as a compact expandable table. KEV,
   EPSS, CVSS, and the published SSVC decision points remain separate signals with definitions,
   real bars, EPSS sparklines, record timelines, and timezone-aware dates; no composite score.
+- **Time to exploitation:** a Sankey from publication cohort to days-until-KEV-confirmation,
+  with median delay, the within-30-days share, the excluded count, and the fastest confirmations.
+  Built only from dates we already retain — no new feed.
 - **SSVC triage:** CISA's Vulnrichment decision points (Exploitation / Automatable / Technical
   Impact) stored verbatim and shown beside the other signals, with an in-page explainer, a
   recency window (30/90/365 days over the KEV catalog date), and newest-confirmation-first

@@ -240,6 +240,15 @@ EPSS-scored share, KEV count, and KEV rate, plus explicit links. Counts come fro
 aggregate cache v3 and are exact for the accepted snapshot. The matrix scrolls
 horizontally on narrow screens with a visible hint.
 
+### Sankey (time-to-exploitation)
+
+Two columns, deterministic layout: publication cohort → delay bucket. Node
+heights and band thickness are record counts; labels sit **outside** the flow
+area so no band ever runs under text. Hover or keyboard focus on a node
+isolates its bands, and every band carries the exact count and its share of the
+eligible denominator. The caption states the excluded count, and the identical
+series is available as a data table.
+
 ### Relation graph
 
 A layered ego drawing, never a node-link hairball: **center CVE → shared

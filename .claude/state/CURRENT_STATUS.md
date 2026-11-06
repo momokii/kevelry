@@ -85,6 +85,13 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 - `npm audit` currently reports three dev-only Vitest-toolchain advisories; the production image excludes dev dependencies. Automated scanning/CI remains TASK-002.
 - `npm run format:check` reports pre-existing repository-wide formatting drift (66 files); touched files are formatted individually. Do not present it as a green gate.
 
+## Time-to-Exploitation Sankey (2026-11-03)
+
+Overview gained a two-column Sankey: publication-year cohort → days until KEV confirmation,
+with median delay, within-30-days share, excluded count and the fastest confirmations. It is
+derived from `date_published` + `date_added` only (no new feed) and computed per request over
+the KEV cohort. Live: 1,765 eligible, median 480 days, 292 (16.5%) confirmed within 30 days.
+
 ## Watch List, Graph, and SSVC (2026-11-03)
 
 - `/watch`: browser-only starred CVEs, hydrated through `/api/v1/cves/{id}`; no account, no server record, 200-id cap.
