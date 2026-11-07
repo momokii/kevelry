@@ -85,6 +85,15 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
 - `npm audit` currently reports three dev-only Vitest-toolchain advisories; the production image excludes dev dependencies. Automated scanning/CI remains TASK-002.
 - `npm run format:check` reports pre-existing repository-wide formatting drift (66 files); touched files are formatted individually. Do not present it as a green gate.
 
+## Incident 2026-11-07 — homepage 25–31s stall
+
+Symptom: `/` appeared unreachable in the browser while every other page was fine. Causes: the
+ingestion worker was running a **full** 395k-record import each cycle (`cve-diff-path: full-first`),
+which grew the SQLite WAL to 491 MB and left the precomputed aggregate cache stale, so the
+overview fell back to full-corpus scans per request. Fixed without data loss: WAL checkpoint
+(491 MB → 20 KB) and `REFRESH_AGGREGATES_ONCE=true node worker.mjs`. Verified `/` at 0.26–0.31s,
+`/priority` 0.30s. **Open:** the repeated full-import path is the root cause and is not yet fixed.
+
 ## Time-to-Exploitation Sankey (2026-11-03)
 
 Overview gained a two-column Sankey: publication-year cohort → days until KEV confirmation,
