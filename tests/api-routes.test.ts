@@ -20,7 +20,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
-import { loadEpssHistory, resetDbOverride, setDbOverride } from "../app/api/v1/_lib/shared";
+import {
+  exploitReferencesOf,
+  loadEpssHistory,
+  resetDbOverride,
+  setDbOverride,
+} from "../app/api/v1/_lib/shared";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
@@ -770,5 +775,42 @@ describe("v1 overview, status, and health routes", () => {
     const health = await getHealth(new Request("https://radar.test/api/v1/health"));
     expect(health.status).toBe(200);
     expect((await bodyOf(health)).status).toBe("initializing");
+  });
+});
+
+describe("exploit reference extraction", () => {
+  it("keeps only http(s) references tagged as exploit material", () => {
+    const raw = JSON.stringify({
+      containers: {
+        cna: {
+          references: [
+            { url: "https://example.org/poc", tags: ["exploit", "third-party-advisory"] },
+            { url: "https://example.org/patch", tags: ["patch"] },
+            { url: "ftp://example.org/poc", tags: ["exploit"] },
+          ],
+        },
+        adp: { references: [{ url: "https://example.org/second-poc", tags: ["exploit"] }] },
+      },
+    });
+    expect(exploitReferencesOf(raw)).toEqual([
+      { url: "https://example.org/poc" },
+      { url: "https://example.org/second-poc" },
+    ]);
+    // No tag, no raw payload, or unparseable payload -> no claim.
+    expect(exploitReferencesOf(null)).toEqual([]);
+    expect(exploitReferencesOf("{not json")).toEqual([]);
+    expect(exploitReferencesOf(JSON.stringify({ containers: {} }))).toEqual([]);
+    // The cap bounds how many links a row can render.
+    const many = JSON.stringify({
+      containers: {
+        cna: {
+          references: Array.from({ length: 9 }, (_, index) => ({
+            url: `https://example.org/p${index}`,
+            tags: ["exploit"],
+          })),
+        },
+      },
+    });
+    expect(exploitReferencesOf(many)).toHaveLength(5);
   });
 });

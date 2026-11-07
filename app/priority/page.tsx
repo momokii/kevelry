@@ -124,6 +124,7 @@ function toRow(
     kevDueDate: record.kevDueDate,
     kevRansomwareKnown: record.kevRansomwareKnown,
     ssvc: record.ssvc,
+    exploitReferences: record.exploitReferences,
     epssKnown: record.epssText !== null,
     epssPercent:
       record.epssText !== null

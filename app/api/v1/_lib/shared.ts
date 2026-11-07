@@ -829,6 +829,41 @@ export function parseVendor(raw: string | null): string | null {
 // Full record loading over the accepted tables.
 // ---------------------------------------------------------------------------
 
+/**
+ * References the record itself tags as exploit material.
+ *
+ * Source: the CVE record's own `references[].tags` (CNA or ADP). A tag is the
+ * publisher's classification, not proof that a working exploit exists, so the
+ * UI always says "tagged", never "verified". Only http(s) URLs are kept.
+ */
+export function exploitReferencesOf(rawJson: string | null, cap = 5): Array<{ url: string }> {
+  if (rawJson === null || rawJson === "") return [];
+  const out: Array<{ url: string }> = [];
+  try {
+    const root = JSON.parse(rawJson) as {
+      containers?: Record<string, { references?: unknown[] }>;
+    };
+    const containers = root.containers ?? {};
+    for (const container of ["cna", "adp"]) {
+      const refs = containers[container]?.references;
+      if (!Array.isArray(refs)) continue;
+      for (const entry of refs) {
+        const row = entry as { url?: unknown; tags?: unknown };
+        if (typeof row.url !== "string") continue;
+        const tags = Array.isArray(row.tags) ? row.tags : [];
+        if (!tags.includes("exploit")) continue;
+        if (!row.url.startsWith("https://") && !row.url.startsWith("http://")) continue;
+        if (out.some((existing) => existing.url === row.url)) continue;
+        out.push({ url: row.url });
+        if (out.length >= cap) return out;
+      }
+    }
+  } catch {
+    // Unparseable payloads carry no tagged references, never a throw.
+  }
+  return out;
+}
+
 /** One dated EPSS observation for the per-record trend series. Values are
  * the stored decimal strings (exact, never floats); unknown dates have no
  * point at all, never a zero. */
@@ -899,6 +934,8 @@ export interface FullRecord {
   kevVulnerabilityName: string | null;
   kevRansomwareKnown: boolean | null;
   kevCwes: string[];
+  /** References the record tags as exploit material (never "verified PoC"). */
+  exploitReferences: Array<{ url: string }>;
   /** CISA SSVC decision points, or null when the source publishes none. */
   ssvc: {
     exploitation: string;
@@ -1096,6 +1133,7 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       kevVulnerabilityName: kevEnrichment.get(cveId)?.vulnerabilityName ?? null,
       kevRansomwareKnown: kevEnrichment.get(cveId)?.ransomwareKnown ?? null,
       kevCwes: kevCwes.get(cveId) ?? [],
+      exploitReferences: exploitReferencesOf(row.raw_json),
       ssvc: ssvcById.get(cveId) ?? null,
       epssText: epss?.epss ?? null,
       epssPercentile: epss?.percentile ?? null,
@@ -1225,6 +1263,8 @@ export function toCveItem(
     epss,
     cvssPrimary,
     ssvc: record.ssvc,
+    exploitReferenceStatus: record.exploitReferences.length > 0 ? "tagged" : "none",
+    exploitReferences: record.exploitReferences,
   };
 }
 

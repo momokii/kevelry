@@ -65,6 +65,8 @@ export interface PriorityRowData {
     version: string | null;
     timestamp: string | null;
   } | null;
+  /** References the record tags as exploit material (never "verified PoC"). */
+  exploitReferences: Array<{ url: string }>;
   epssKnown: boolean;
   epssPercent: string | null;
   epssModel: string | null;
@@ -631,6 +633,37 @@ function SsvcSignal({ row }: { row: PriorityRowData }) {
   );
 }
 
+/** CNA/ADP-tagged exploit references, linked, with the honest caveat. */
+function ExploitSignal({ row }: { row: PriorityRowData }) {
+  return (
+    <div className={styles.signal} aria-label="Exploit references">
+      <div className={styles.signalHead}>
+        <span className="ledger-label">Exploit refs</span>
+        <HelpTip term="exploit references" testId="priority-row-exploit-help">
+          Links the CVE record itself tags as exploit material. A tag is the publisher&apos;s
+          classification; it is not proof of a working exploit and this site never fetches or runs
+          one.
+        </HelpTip>
+      </div>
+      {row.exploitReferences.length === 0 ? (
+        <p>
+          <em className="ledger-caveat">No reference tagged as exploit material in this record.</em>
+        </p>
+      ) : (
+        <ul className="plain-list" data-testid="priority-row-exploit-list">
+          {row.exploitReferences.map((reference) => (
+            <li key={reference.url}>
+              <a href={reference.url} target="_blank" rel="noreferrer noopener">
+                {reference.url.length > 64 ? `${reference.url.slice(0, 63)}…` : reference.url}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function DeltaSignal({ row }: { row: PriorityRowData }) {
   const label = formatSignedDeltaPp(row.deltaPp);
   if (label === null || row.deltaPreviousDate === null || row.epssDate === null) {
@@ -753,6 +786,7 @@ export function PriorityRow({
             <EpssSignal row={row} />
             <CvssSignal row={row} />
             <SsvcSignal row={row} />
+            <ExploitSignal row={row} />
             <DeltaSignal row={row} />
           </div>
           <a className="btn btn-sm" href={row.officialUrl} data-testid="priority-row-action">
