@@ -344,6 +344,11 @@ test("volume chart exposes tooltips, selection, and the window toggle", async ({
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText("%");
   await expect(tooltip).toContainText("UTC calendar month");
+  // Switching granularity relabels the tooltip, never the data.
+  await page.getByTestId("overview-volume-granularity-week").click();
+  await page.locator('[data-testid^="overview-volume-bar-"]').nth(3).hover();
+  await expect(tooltip).toContainText("UTC calendar week");
+  await page.getByTestId("overview-volume-granularity-month").click();
 
   await bar.focus();
   await page.keyboard.press("Enter");
@@ -432,7 +437,18 @@ test("volume chart switches between month, week and day buckets", async ({ page 
 test("clicking a Sankey band opens the records inside that flow", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  const band = page.locator('[data-testid^="overview-time-to-kev-band-"]').first();
+  // The narrowest flows render as zero-height slivers; open the widest one.
+  const bandId = await page.evaluate(() => {
+    const bands = [...document.querySelectorAll('[data-testid^="overview-time-to-kev-band-"]')];
+    const scored = bands.map((node) => ({
+      id: node.getAttribute("data-testid") ?? "",
+      area: (node as SVGPathElement).getBBox().height,
+    }));
+    scored.sort((a, b) => b.area - a.area);
+    return scored[0]?.id ?? "";
+  });
+  expect(bandId).not.toBe("");
+  const band = page.locator(`[data-testid="${bandId}"]`);
   if ((await band.count()) === 0) return;
   await band.click({ force: true });
   const dialog = page.getByTestId("overview-time-to-kev-dialog");

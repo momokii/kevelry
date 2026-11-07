@@ -144,13 +144,14 @@ export default function OverviewPage() {
         <Panel
           title="Publication volume"
           className="span-8"
-          sub="Monthly CVE publications in the retained snapshot. Select a month to inspect it; the chart window switches without changing the corpus."
+          sub="CVE publications by month, week, or day. The granularity and window change the view only, never the corpus. Select a bucket to inspect it or open it in Explore."
           testId="overview-chart"
           actions={
             <ChartInfo>
-              Bars are UTC calendar months, not smoothed. Select a bar with click or Enter, clear
-              with Escape. The peak is marked. The y-axis is count; the x-axis is month. Unknown
-              publication dates are excluded from this chart, not plotted as zero.
+              Bars are UTC calendar buckets (month, week starting Monday, or day), never smoothed.
+              Select a bar with click or Enter, clear with Escape. The peak is marked. The y-axis is
+              count; the x-axis is the bucket start. Unknown publication dates are excluded from
+              this chart, not plotted as zero.
             </ChartInfo>
           }
         >
@@ -253,27 +254,18 @@ export default function OverviewPage() {
         >
           <dl className="stat-grid stat-grid-inline" data-testid="overview-time-to-kev-stats">
             <div className="stat">
-              <div className="stat-label">Median delay</div>
+              <div className="stat-label">Median delay, days</div>
               <div className="stat-value">
                 {data.timeToKev.medianDays === null ? "—" : formatInt(data.timeToKev.medianDays)}
               </div>
-              <div className="stat-note">
-                {data.timeToKev.medianDays === null
-                  ? "no confirmed record"
-                  : "days, after publication"}
-              </div>
+              <div className="stat-note">publication → KEV listing</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Within 30 days</div>
+              <div className="stat-label">Confirmed within 30 days</div>
               <div className="stat-value">{formatInt(data.timeToKev.within30)}</div>
               <div className="stat-note">
                 of {formatInt(data.timeToKev.eligible)} ({data.timeToKev.within30Share})
               </div>
-            </div>
-            <div className="stat">
-              <div className="stat-label">Excluded</div>
-              <div className="stat-value">{formatInt(data.timeToKev.excluded)}</div>
-              <div className="stat-note">no publication date retained</div>
             </div>
           </dl>
           <ul className="fastest-list" data-testid="overview-fastest-list">
@@ -301,8 +293,11 @@ export default function OverviewPage() {
             ) : null}
           </ul>
           <p className="chart-note">
-            A delay of zero or less (CISA listing the record before its publication date) is counted
-            in its own bucket above, never as a fast confirmation.
+            Delay is the KEV listing date minus the publication date. Records with no retained
+            publication date are excluded
+            {data.timeToKev.excluded > 0 ? ` (${formatInt(data.timeToKev.excluded)} here)` : ""},
+            never assumed fast. A delay of zero or less means CISA listed the record before
+            publication, which is shown in the Sankey above, not as a fast confirmation.
           </p>
         </Panel>
 

@@ -159,8 +159,9 @@ Spacing uses the 4/8/12/16/20/24/32/40/48/64 scale.
 1. Page header with snapshot instant and data-status action.
 2. Hero: factual statement, corpus number, KEV/forecast coverage.
 3. Four stats: unknown dates, KEV-listed, EPSS-scored, unscored severity.
-4. Volume panel (24/12 months, focus-month select, hover/focus tooltip, click
-   selection with KEV additions and an Explore link) + cumulative growth line.
+4. Volume panel (month/week/day buckets, matching windows, focus-bucket select,
+   hover/focus tooltip, click selection with KEV additions and an Explore link)
+   - cumulative growth line.
 5. Severity donut with an interactive legend and log-EPSS distribution.
 6. Joint severity×EPSS matrix with KEV rings and a cohort inspector.
 7. KEV rhythm, freshness, and honesty notes.
@@ -208,9 +209,25 @@ values. Every chart must provide:
 
 ### Volume
 
-UTC month bars, 24 or 12 months, y-axis count. Selecting a bar opens a strip with
-the month total and an Explore link. Peak is directly labeled. Arrow/Enter/Escape
-work on focused bars.
+UTC buckets at three granularities, each with its own honest window: month
+(12/24), week (26/52, Monday-anchored) and day (30/90). The loader ships a
+400-day daily series so the week view is never silently truncated to the 90 days
+the day view needs; buckets are aggregated from that one series, so granularity
+changes the view and never the corpus. Y-axis is count, the x-axis is the bucket
+start, and tick labels thin out to ~8 so day labels never collide.
+
+Every bucket carries a full-height transparent hit target in front of its visible
+bar: an empty day draws a 1px bar, and a 1px target would be impossible to hover
+or focus. The visible bar is `pointer-events: none` and `aria-hidden`, so the
+accessible element is always a 44px-wide column rather than an arbitrary bar
+height.
+
+Selecting a bucket opens a strip with the total, its corpus share and an Explore
+link; the KEV-additions clause appears only for months, because KEV additions are
+not bucketed weekly or daily. Peak is directly labeled, the y-axis is count, and
+Arrow/Enter/Escape work on focused buckets. The plot grows into the panel height
+when a taller sibling stretches the grid row, with the resize observer pinned to
+a zero flex basis and integer heights so it can never feed back into itself.
 
 ### EPSS distribution
 
@@ -244,10 +261,37 @@ horizontally on narrow screens with a visible hint.
 
 Two columns, deterministic layout: publication cohort → delay bucket. Node
 heights and band thickness are record counts; labels sit **outside** the flow
-area so no band ever runs under text. Hover or keyboard focus on a node
-isolates its bands, and every band carries the exact count and its share of the
-eligible denominator. The caption states the excluded count, and the identical
-series is available as a data table.
+area so no band ever runs under text, in symmetric gutters (no dead margin on
+either side). Hover or keyboard focus on a node isolates its bands, and every
+band carries the exact count and its share of the eligible denominator.
+
+Bands are controls, not decoration: click, Enter or Space pins a flow (stronger
+fill plus an accent stroke) and Escape clears it. Pinning opens the same flow
+drill-down dialog the relation graph uses: from→to labels, the exact count with a
+"first N by CVE id" caveat when the sample is capped, an ID filter, a paged list
+of links into Explore, and an official cve.org chip. Escape closes it from
+anywhere in the dialog, including the search field (a `type="search"` input eats
+the first Escape to clear its own text, so the close is handled explicitly).
+
+The caption states the excluded count, and the identical series is available as
+a data table.
+
+### Fastest confirmations
+
+The Sankey answers "how long does confirmation take"; this card answers "which
+records were confirmed fastest, and how fast is typical". It never repeats the
+chart as a bare sentence list:
+
+- Two stats only — median delay in days and the count confirmed within 30 days
+  with its eligible denominator and share. The excluded count (no retained
+  publication date) is stated in the footnote, and only shown as a number when it
+  is non-zero; a `0` stat would be noise, not information.
+- Each row is a linked CVE id, a delay badge in whole days, then the publication
+  and KEV-listing instants in the reader's timezone. Dates wrap under the id
+  rather than forcing the id to truncate.
+- The footnote defines the metric (KEV listing date − publication date) and says
+  plainly that a zero-or-negative delay is a pre-publication listing, not a fast
+  confirmation. No record is ever labelled fast on a missing date.
 
 ### Relation graph
 

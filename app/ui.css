@@ -4921,3 +4921,25 @@ a.graph-evidence-chip:hover {
   font-size: 10px;
   color: var(--ui-ink-3);
 }
+
+/* The volume panel shares a grid row with a taller sibling; let the plot grow
+   into that space instead of leaving a dead band above the data table. */
+[data-testid="overview-chart"] {
+  display: flex;
+  flex-direction: column;
+}
+
+[data-testid="overview-chart"] .panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* VolumeChart renders one wrapper div; make it the growing flex column. */
+[data-testid="overview-chart"] .panel-body > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}

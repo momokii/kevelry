@@ -70,7 +70,10 @@ export interface OverviewData {
   volume30: DayBucket[];
   volumeTotal30: number;
   volumeMonths: DayBucket[];
-  /** Daily counts for the trailing 90 days, enabling week/day granularity. */
+  /**
+   * Daily counts for the trailing window: long enough for 52 week buckets,
+   * which the day view simply takes the tail of.
+   */
   volumeDaily: DayBucket[];
   volumeTotalMonths: number;
   severityBands: Record<string, number>;
@@ -529,7 +532,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       volume30,
       volumeTotal30: volume30.reduce((sum, bucket) => sum + bucket.count, 0),
       volumeMonths,
-      volumeDaily: dailyWindow(counts, anchorDay, 90),
+      volumeDaily: dailyWindow(counts, anchorDay, 400),
       volumeTotalMonths: volumeMonths.reduce((sum, bucket) => sum + bucket.count, 0),
       severityBands,
       epssHistogram,

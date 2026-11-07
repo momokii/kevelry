@@ -4,7 +4,7 @@
 
 **Purpose:** Public CVE intelligence console (wordmark CVE Intel; package/image cve-change-radar), with explainable prioritization, searchable descriptions, Change Radar, and a versioned read-only API.
 **Stack:** Next.js 16 App Router, React 19, TypeScript, SQLite/FTS5, visx SVG primitives, one Docker image and container.
-**Phase:** Implemented, verified, and deployed at `http://100.124.184.116:3100` (Tailscale) with scheduled refresh ON (CVE + KEV hourly, EPSS + CISA SSVC enrichment daily). Research Console UI, relation graph, browser-private watch list, and an explainable SSVC triage view shipped; 398 unit and 93 Playwright tests pass.
+**Phase:** Implemented, verified, and deployed at `http://100.124.184.116:3100` (Tailscale) with scheduled refresh ON (CVE + KEV hourly, EPSS + CISA SSVC enrichment daily). Research Console UI, relation graph, browser-private watch list, and an explainable SSVC triage view shipped; 406 unit and 97 Playwright tests pass.
 **Environments:** `development`, `staging`, `production`, selected by `APP_ENV`.
 
 ## Always-Loaded Context

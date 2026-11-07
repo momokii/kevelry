@@ -69,6 +69,7 @@ const HEIGHT = 286;
 
 function VolumeSvg({
   width,
+  height,
   months,
   publishedTotal,
   selected,
@@ -76,6 +77,7 @@ function VolumeSvg({
   granularity,
 }: {
   width: number;
+  height: number;
   months: VolumeDatum[];
   publishedTotal: number;
   selected: string | null;
@@ -84,7 +86,7 @@ function VolumeSvg({
 }) {
   const [hover, setHover] = useState<{ month: string; x: number; y: number } | null>(null);
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
-  const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
+  const innerHeight = Math.max(120, height - MARGIN.top - MARGIN.bottom);
 
   const xScale = useMemo(
     () =>
@@ -110,7 +112,10 @@ function VolumeSvg({
     (best, entry) => (entry.count > best.count ? entry : best),
     months[0] ?? { month: "", count: 0 },
   );
-  const tickValues = months.filter((_, index) => index % 3 === 0).map((entry) => entry.month);
+  const tickValues = useMemo(() => {
+    const stride = Math.max(1, Math.ceil(months.length / 8));
+    return months.filter((_, index) => index % stride === 0).map((entry) => entry.month);
+  }, [months]);
   const active =
     hover === null ? null : (months.find((entry) => entry.month === hover.month) ?? null);
   const bandwidth = xScale.bandwidth();
@@ -138,8 +143,8 @@ function VolumeSvg({
       <svg
         className="chart-svg"
         width={width}
-        height={HEIGHT}
-        viewBox={`0 0 ${width} ${HEIGHT}`}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`Published CVE volume by UTC ${granularity}. ${months.length} buckets, peak ${formatInt(peak.count)} in ${labelFor(granularity, peak.month)}.`}
@@ -175,11 +180,23 @@ function VolumeSvg({
                         : "var(--ui-ink)"
                   }
                   fillOpacity={isSelected || isHover ? 1 : entry.month === peak.month ? 0.9 : 0.68}
+                  pointerEvents="none"
+                  aria-hidden="true"
+                />
+                {/* Full-height hit target: an empty bucket draws a 1px bar, which
+                    would be impossible to hover or focus without this. */}
+                <rect
+                  className="volume-hit"
+                  x={barX}
+                  y={0}
+                  width={bandwidth}
+                  height={innerHeight}
+                  fill="transparent"
                   role="button"
                   tabIndex={0}
                   data-testid={`overview-volume-bar-${entry.month}`}
                   aria-pressed={isSelected}
-                  aria-label={`${monthLong(entry.month)}: ${formatInt(entry.count)} published, ${sharePercent(entry.count, publishedTotal)} of all. Select to inspect.`}
+                  aria-label={`${labelFor(granularity, entry.month)}: ${formatInt(entry.count)} published, ${sharePercent(entry.count, publishedTotal)} of all. Select to inspect.`}
                   onMouseEnter={() =>
                     setHover({
                       month: entry.month,
@@ -312,6 +329,14 @@ export function VolumeChart({
     first !== undefined && last !== undefined && first.count > 0
       ? (last.count / first.count).toFixed(1)
       : null;
+  const peakEntry = visible.reduce<VolumeDatum | null>(
+    (best, entry) => (best === null || entry.count > best.count ? entry : best),
+    null,
+  );
+  const peakLabel =
+    peakEntry === null
+      ? "—"
+      : `${formatInt(peakEntry.count)} in ${labelFor(granularity, peakEntry.month)}`;
 
   return (
     <div>
@@ -363,7 +388,9 @@ export function VolumeChart({
         </label>
         <span className="faint" style={{ fontSize: 12 }}>
           {formatInt(total)} in view
-          {growth !== null ? ` · latest is ${growth}× the first ${granularity}` : ""}
+          {granularity === "month" && growth !== null
+            ? ` · latest is ${growth}× the first month`
+            : ` · peak ${peakLabel}`}
         </span>
       </div>
       {selectedEntry !== null && href !== null ? (
@@ -390,11 +417,12 @@ export function VolumeChart({
           </button>
         </div>
       ) : null}
-      <ParentSize parentSizeStyles={{ width: "100%", height: HEIGHT }}>
-        {({ width }) =>
+      <ParentSize parentSizeStyles={{ width: "100%", flex: "1 1 auto", minHeight: HEIGHT }}>
+        {({ width, height }) =>
           width > 0 ? (
             <VolumeSvg
               width={width}
+              height={Math.max(HEIGHT, Math.floor(height))}
               months={visible}
               publishedTotal={publishedTotal}
               selected={selected}

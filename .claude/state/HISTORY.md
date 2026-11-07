@@ -2,6 +2,34 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-07 - Owner feedback batch: import cost, exploit signal, Sankey, volume, confirmation card
+
+Owner delivered six work items. Five shipped, one (retention) queued as TASK-031.
+
+1. **Import cost (TASK-026).** Diagnosed the hourly ingest: when the upstream
+   revision was unchanged, `importCveRevision` fell through to a full reconcile
+   and re-hashed ~394k record files every hour. It now short-circuits on the
+   accepted revision and reports `diffPath: "unchanged"`. The worker also
+   truncates the WAL after each cycle, so readers never race a multi-hundred-MB
+   journal (the 2026-11-07 stall was a 491 MB WAL).
+2. **Exploit signal (TASK-027).** Researched free PoC sources; CVE V5 records
+   already carry reference `tags: ["exploit"]` on ~7% of records. Surfaced as a
+   publisher-tagged reference with links, explicitly not a verified PoC.
+3. **Sankey (TASK-028).** Symmetric label gutters, bands as real controls
+   (click/Enter/Space pin, Escape clears) and a flow dialog with ID filter and
+   paging. Live bug: a `type="search"` field eats Escape, so closing is handled
+   explicitly.
+4. **Volume (TASK-029).** Month/week/day granularity with honest windows
+   (12/24, 26/52, 30/90), a 400-day daily series in the loader, adaptive tick
+   stride, and a full-height hit rect per bucket. Two live defects fixed during
+   verification: a sub-pixel resize feedback loop, and 1px bars being impossible
+   to hover or focus.
+5. **Confirmation card (TASK-030).** Replaced the plain sentence list with two
+   explained stats plus linked rows carrying the delay badge and both dates.
+
+Gates at close: 406 unit, 97 e2e (1 skipped), lint/typecheck green, container
+rebuilt and recreated, live screenshots verified.
+
 ## 2026-11-03 - v2 console batch, graph rebuild, and CISA SSVC enrichment
 
 Shipped the owner's v2 batch and reconciled every doc: dark console with a

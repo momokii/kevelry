@@ -280,6 +280,34 @@ and explicitly selected `compose.dev.yaml`; retained as historical rationale onl
 
 ---
 
+## 2026-11-07 - PoC signal: publisher tags, not scraped exploits
+
+---
+
+**Decision:** Indicate exploit availability only through the CVE record's own `tags: ["exploit"]` references, labelled "publisher-tagged reference", and never as a verified PoC.
+**Date:** 2026-11-07
+**Context:** The owner asked for a per-CVE "has proven PoC or not" signal with links, from free and valid sources.
+**Rationale:** The tag is first-party, already stored with every record, free, and requires no scraper or API quota. It is honest about provenance: CISA or the CNA classified the reference, the app does not execute or verify exploits.
+**Alternatives Rejected:** Scraping Exploit-DB/Nuclei/PoC-in-GitHub (rate limits, licensing, link rot, and we would be asserting a proof we did not test); a paid feed (no budget, no terms review); a derived "has PoC" score (blends unverified signals into a number a reader cannot audit).
+**Security Implications:** Only http(s) URLs are surfaced, capped at five per record, and rendered as plain links. No exploit code, payload, or usage instructions are ever displayed.
+**Impact:** The priority row shows an `exploit ref` badge; the expanded row shows the linked references plus a help tip stating the signal is a publisher classification, not proof of a working exploit.
+
+---
+
+## 2026-11-07 - Volume buckets: three granularities, one series
+
+---
+
+**Decision:** Serve month, week (Monday-anchored) and day buckets from a single 400-day daily series, with per-granularity windows (12/24, 26/52, 30/90).
+**Date:** 2026-11-07
+**Context:** Monthly-only bars hid the publication rhythm; the owner asked for a finer timeline with filters.
+**Rationale:** One series means the tooltip, the data table, the selection strip and the drawing can never disagree about a bucket. A 400-day window covers 52 weeks, so the week view is not silently truncated to the 90 days the day view needs.
+**Alternatives Rejected:** Separate aggregations per granularity (three sources of truth and three chances to drift); SQL-side bucketing per request (extra query cost for data the loader already holds); padding empty buckets (fabricated zeros).
+**Security Implications:** None; the series is derived from the same snapshot and adds no new data path.
+**Impact:** Buckets carry a full-height transparent hit target so empty days remain hoverable and focusable, and the plot grows into the panel height with an integer-height resize observer to avoid feedback loops.
+
+---
+
 ## Entry Template
 
 Copy this block for each new decision; newest entry at the top.

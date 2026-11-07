@@ -46,6 +46,13 @@ revamp shipped. Local `main` only: no remote.
 
 ## In Progress
 
+- [x] TASK-026 import short-circuit + WAL checkpoint (2026-11-07): an unchanged CVE revision no longer re-hashes the tree hourly, and the worker truncates the WAL each cycle. Commit `1c64b2f`.
+- [x] TASK-027 exploit-tagged references (2026-11-07): publisher `exploit` tags surfaced as a labelled signal with links, never as a verified PoC. Commit `20668da`.
+- [x] TASK-028 Sankey interactions + flow dialog (2026-11-07): clickable bands, pinned selection, drill-down dialog with filter/paging. Commit `5a8f001`.
+- [x] TASK-029 volume granularity (2026-11-07): month/week/day buckets with matching windows and full-height hit targets. Commit `ab78540`.
+- [x] TASK-030 fastest-confirmations card (2026-11-07): explained metric, two stats, linked rows. Commit `bfea56d` + refinement.
+- [ ] TASK-031 retention verification (owner request, TODO): confirm the retention window actually trims, and measure index/WAL size under the live volume.
+
 - [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green. Committed as 7b70a63, rebuilt, live at 100.124.184.116:3100 (healthy, same volume, screenshot-verified).
 - [x] TASK-009 console polish batch (2026-10-27): 8 owner-reported UI fixes across overview/explore/replay; committed as 27b5f93, rebuilt, live and screenshot-verified. One focus-outline regression caught and fixed mid-task.
 - [x] TASK-010 tooltip bubble + accepted times (2026-10-28): committed as 011df29, rebuilt, live and screenshot-verified.
