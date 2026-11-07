@@ -88,6 +88,42 @@ function history(db: CveDatabase) {
 }
 
 describe("KEV snapshot importer (todo 9)", () => {
+  it("scans the CVE corpus once per import, not once per catalog entry", () => {
+    const db = makeDb();
+    try {
+      // 400 entries with no matching CVE records: the pathological case for a
+      // predicate that re-reads the corpus per entry.
+      const entries = Array.from({ length: 400 }, (_, index) => ({
+        cveID: `CVE-2099-${String(index + 1).padStart(4, "0")}`,
+        dateAdded: "2026-10-01",
+        vendorProject: "Acme",
+        product: "Widget",
+        vulnerabilityName: `Issue ${index}`,
+      }));
+      const raw = {
+        title: "Known Exploited Vulnerabilities Catalog",
+        catalogVersion: "2026.10.01",
+        dateReleased: "2026-10-01T00:00:00.000Z",
+        count: entries.length,
+        vulnerabilities: entries,
+      };
+
+      let corpusScans = 0;
+      const prepare = db.handle.prepare.bind(db.handle);
+      db.handle.prepare = ((sql: string) => {
+        if (/FROM\s+cve_records/i.test(sql)) corpusScans += 1;
+        return prepare(sql);
+      }) as typeof db.handle.prepare;
+
+      const result = importKevCatalog(db, raw, { now: "2026-10-01T00:00:00.000Z" });
+      expect(result.total).toBe(400);
+      expect(result.unmatched).toHaveLength(400);
+      expect(corpusScans).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
   it("publishes a first catalog and diffs a second one with history preserved", () => {
     const db = makeDb();
     seedCve(db, "CVE-2099-0001");

@@ -53,6 +53,7 @@ import {
   importEpssCsv,
   type EpssImportResult,
 } from "./lib/epss-import";
+import { resolveEpssRetentionDays } from "./lib/retention";
 import { importKevFromUrl, type KevImportResult } from "./lib/kev-import";
 import {
   IngestionScheduler,
@@ -116,6 +117,16 @@ export interface SourceJobDeps {
   kevFetcher?: typeof fetch;
   epssUrl?: string;
   epssFetcher?: typeof fetch;
+  /** Override for the EPSS history window; defaults to `EPSS_RETENTION_DAYS`. */
+  epssRetentionDays?: number;
+  /** Called after an EPSS import pruned history, so the cycle can log it. */
+  onEpssReport?: (report: {
+    scoreDate: string;
+    alreadyCurrent: boolean;
+    prunedRows: number;
+    oldestKept: string | null;
+    keepDays: number;
+  }) => void;
   /** SSVC enrichment: injectable for tests (avoids a 380 MB clone). */
   ssvcImport?: (db: CveDatabase) => Promise<{ revision: string | null; parsed: number }>;
   ssvcCacheDir?: string;
@@ -225,6 +236,8 @@ export function createSourceJobs(db: CveDatabase, deps: SourceJobDeps = {}): Sou
   const workDir = deps.workDir;
   const kevFetcher = deps.kevFetcher;
   const epssUrl = deps.epssUrl ?? EPSS_CURRENT_CSV_URL;
+  const epssRetentionDays = deps.epssRetentionDays ?? resolveEpssRetentionDays(process.env);
+  const onEpssReport = deps.onEpssReport;
   const epssFetcher = deps.epssFetcher;
 
   const cve: SourceJob = async () => {
@@ -285,8 +298,16 @@ export function createSourceJobs(db: CveDatabase, deps: SourceJobDeps = {}): Sou
           ? await deps.epssImport(db)
           : await (async () => {
               const csvText = await fetchEpssCsvText(epssUrl, epssFetcher);
-              return importEpssCsv(db, csvText);
+              return importEpssCsv(db, csvText, { retentionDays: epssRetentionDays });
             })();
+      // The cycle owns logging, so hand the report over instead of logging here.
+      onEpssReport?.({
+        scoreDate: result.scoreDate,
+        alreadyCurrent: result.alreadyCurrent,
+        prunedRows: result.prunedRows,
+        oldestKept: result.oldestKept,
+        keepDays: epssRetentionDays,
+      });
       return { ok: true, version: result.scoreDate };
     } catch (error) {
       return failure("epss", error);
@@ -430,6 +451,15 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   const jobs = createSourceJobs(db, {
     ...options.deps,
     workDir: options.deps?.workDir ?? path.join(dataDir, "tmp"),
+    onEpssReport: (report) => {
+      if (report.alreadyCurrent) {
+        // Same CSV as the accepted run: no rows rewritten this cycle.
+        log({ event: "epss-unchanged", scoreDate: report.scoreDate });
+      }
+      if (report.prunedRows > 0) {
+        log({ event: "epss-retention", ...report });
+      }
+    },
   });
   const wrappedJobs: SourceJobs = {
     cve: async (ctx) => {

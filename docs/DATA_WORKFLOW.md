@@ -344,6 +344,54 @@ s-maxage=60, stale-while-revalidate=300` plus a strong ETag derived from the
 aggregate revision and request shape (304 on `If-None-Match`); error
 responses are never cached.
 
+## Import Cost
+
+Two rules keep a refresh cycle proportional to what actually changed:
+
+- **CVE**: an unchanged upstream revision short-circuits before listing the
+  record tree (`cve-diff-path: unchanged`). The git SHA already proves the
+  corpus; re-hashing ~396k files proves nothing.
+- **KEV**: the corpus membership check (`SELECT cve_id FROM cve_records`) runs
+  once per import and is reused for the unmatched-ID report. Calling it inside
+  the per-entry predicate made a 1.7k-entry catalog scan 396k rows 1.7k times —
+  minutes of CPU per cycle, for a report nobody sees change.
+- **EPSS**: byte-identical CSV short-circuits (`epss-unchanged`).
+
+Measured effect on the production volume (396k records, 5.2M EPSS rows): a boot
+cycle went from 7m30s of CPU to 52s, with the KEV step at 1.3s instead of ~7
+minutes, and the WAL stays in the low hundreds of KB.
+
+## Retention (bounded growth)
+
+Every table is bounded by the corpus except `epss_daily`, which gains one row per
+scored CVE per accepted score date. At the current corpus that is ~400k rows and
+~85 MB (table plus indexes) per day, so an unbounded table would reach tens of
+millions of rows within months and inflate both the volume and the nightly
+backup.
+
+The window is `EPSS_RETENTION_DAYS` (whole UTC days counted back from the
+accepted score date, default **90**, range 30-3650; a malformed value is
+rejected, never clamped). The default is not arbitrary: `loadEpssHistory` returns
+at most 90 observations per record, so 90 stored days are exactly the rows an
+endpoint can reach — a longer window would store unreachable rows, a shorter one
+would silently truncate the trend.
+
+- Pruning runs inside the EPSS import, after the accepted snapshot is recorded,
+  so a failed import never deletes history.
+- It is a single indexed `DELETE ... WHERE score_date < cutoff` and idempotent:
+  the same accepted date always keeps the same set of days, so a restart
+  mid-cycle deletes nothing extra.
+- A re-downloaded file whose bytes match the accepted run is not re-inserted:
+  the import records the run and logs `epss-unchanged` instead of rewriting
+  ~400k rows and every index on each boot.
+- The worker logs `epss-retention` with `prunedRows`, `oldestKept`, and
+  `keepDays` whenever a prune actually removed rows.
+- The window bounds disk and backup time, not query latency: every read is keyed
+  by `score_date` (or by `cve_id` through the primary key), so the planner never
+  scans the older history.
+- Nothing prunes `cve_records`, `cvss_metrics`, `kev_*`, `ssvc_records`,
+  `cve_tombstones`, or `sync_runs`; they are bounded by the corpus, not by time.
+
 ## Security and Acceptance Gates
 
 Treat upstream text/URLs/archives as untrusted. Validate bounded input/schema,

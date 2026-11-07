@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
 import type { CveDatabase } from "./db";
+import { pruneEpssHistory } from "./retention";
 
 export class EpssImportError extends Error {
   readonly name = "EpssImportError";
@@ -47,6 +48,11 @@ export interface EpssCsvDocument {
 
 export interface EpssImportOptions {
   knownCveIds?: readonly string[];
+  /**
+   * Days of daily history to keep, counted back from the accepted score date.
+   * Undefined keeps everything, which is only appropriate for tests and tools.
+   */
+  retentionDays?: number;
 }
 
 export interface EpssImportResult {
@@ -55,6 +61,12 @@ export interface EpssImportResult {
   rowCount: number;
   unmatched: string[];
   contentHash: string;
+  /** Rows removed by the retention window after this import, 0 when unbounded. */
+  prunedRows: number;
+  /** Oldest score date still stored after pruning, null when the table is empty. */
+  oldestKept: string | null;
+  /** True when this exact CSV was already accepted, so no row was rewritten. */
+  alreadyCurrent: boolean;
 }
 
 export interface EpssObservation {
@@ -181,10 +193,7 @@ function canonicalizeDecimalText(field: string, value: string, cveId: string): s
       return canonical;
     } catch (error) {
       if (error instanceof EpssImportError) {
-        const detail = error.message.replace(
-          /^invalid EPSS decimal /,
-          `invalid EPSS ${field} `,
-        );
+        const detail = error.message.replace(/^invalid EPSS decimal /, `invalid EPSS ${field} `);
         const withId = detail.includes(" for ") ? detail : `${detail} for ${cveId}`;
         fail(withId);
       }
@@ -318,6 +327,43 @@ function recordSyncRun(
   });
 }
 
+interface LastEpssRun {
+  scoreDate: string;
+  modelVersion: string;
+  rowCount: number;
+  contentHash: string;
+}
+
+/**
+ * The accepted run whose CSV hash and score date match what the table already
+ * holds. `sync_runs.revision` for EPSS is `<scoreDate>@<modelVersion>`.
+ */
+function lastSucceededEpssRun(db: CveDatabase): LastEpssRun | null {
+  const row = db.handle
+    .prepare(
+      "SELECT revision, content_hash FROM sync_runs WHERE source = ? AND status = ? ORDER BY id DESC LIMIT 1",
+    )
+    .get("epss", "succeeded") as
+    { revision: string | null; content_hash: string | null } | undefined;
+  if (row === undefined || row.revision === null || row.content_hash === null) return null;
+  const [scoreDate, modelVersion] = row.revision.split("@");
+  if (scoreDate === undefined || modelVersion === undefined) return null;
+  const counted = db.handle
+    .prepare("SELECT COUNT(*) AS c FROM epss_daily WHERE score_date = ?")
+    .get(scoreDate) as { c: number };
+  return { scoreDate, modelVersion, rowCount: counted.c, contentHash: row.content_hash };
+}
+
+function pruneEpss(
+  db: CveDatabase,
+  options: EpssImportOptions,
+  anchorDay: string,
+): { deleted: number; oldestKept: string | null } {
+  if (options.retentionDays === undefined) return { deleted: 0, oldestKept: null };
+  const result = pruneEpssHistory(db, { anchorDay, keepDays: options.retentionDays });
+  return { deleted: result.deleted, oldestKept: result.oldestKept };
+}
+
 export function importEpssCsv(
   db: CveDatabase,
   csvText: string,
@@ -325,6 +371,33 @@ export function importEpssCsv(
 ): EpssImportResult {
   const startedAt = new Date().toISOString();
   const contentHash = sha256Hex(csvText);
+
+  // The EPSS file is republished daily and re-downloaded on every boot, but its
+  // content only changes once a day. Without this guard each cycle rewrote all
+  // ~400k rows and every index (minutes of CPU and a large WAL) for no change.
+  const previous = lastSucceededEpssRun(db);
+  if (previous !== null && previous.contentHash === contentHash) {
+    const pruned = pruneEpss(db, options, previous.scoreDate);
+    recordSyncRun(
+      db,
+      "succeeded",
+      `${previous.scoreDate}@${previous.modelVersion}`,
+      contentHash,
+      null,
+      startedAt,
+    );
+    return {
+      scoreDate: previous.scoreDate,
+      modelVersion: previous.modelVersion,
+      rowCount: previous.rowCount,
+      unmatched: [],
+      contentHash,
+      prunedRows: pruned.deleted,
+      oldestKept: pruned.oldestKept,
+      alreadyCurrent: true,
+    };
+  }
+
   let document: EpssCsvDocument;
   try {
     document = parseEpssCsv(csvText);
@@ -363,12 +436,16 @@ export function importEpssCsv(
     null,
     startedAt,
   );
+  const pruned = pruneEpss(db, options, document.scoreDate);
   return {
     scoreDate: document.scoreDate,
     modelVersion: document.modelVersion,
     rowCount: document.rows.length,
     unmatched,
     contentHash,
+    prunedRows: pruned.deleted,
+    oldestKept: pruned.oldestKept,
+    alreadyCurrent: false,
   };
 }
 

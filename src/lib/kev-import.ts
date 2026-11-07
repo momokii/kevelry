@@ -240,7 +240,10 @@ export function importKevCatalog(
   const nextIds = new Set(catalog.entries.map((entry) => entry.cveId));
   const added = [...nextIds].filter((id) => !previousIds.has(id)).sort();
   const removed = [...previousIds].filter((id) => !nextIds.has(id)).sort();
-  const unmatched = [...nextIds].filter((id) => !knownCveIds(db).has(id)).sort();
+  // Read the corpus once. Calling knownCveIds inside the predicate rescanned
+  // all ~396k records per catalog entry (minutes of CPU for 1.7k entries).
+  const known = knownCveIds(db);
+  const unmatched = [...nextIds].filter((id) => !known.has(id)).sort();
 
   db.runBoundedWrite(() => {
     db.handle.prepare("DELETE FROM kev_entries").run();

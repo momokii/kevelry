@@ -308,6 +308,20 @@ and explicitly selected `compose.dev.yaml`; retained as historical rationale onl
 
 ---
 
+## 2026-11-07 - EPSS retention: 90 days, enforced inside the import
+
+---
+
+**Decision:** Keep 90 whole UTC days of `epss_daily` history, configurable via `EPSS_RETENTION_DAYS` (30-3650, malformed values rejected, never clamped), pruning inside the EPSS import right after the accepted snapshot is recorded.
+**Date:** 2026-11-07
+**Context:** An audit found 5,183,235 EPSS rows over 13 accepted dates with no retention at all — ~400k rows/~85 MB per day, growing without bound and inflating every backup.
+**Rationale:** 90 is not a round guess: `loadEpssHistory` returns at most 90 observations per record, so a longer window stores rows no endpoint can reach, and a shorter one silently truncates the trend. Pruning inside the import (after the success record) means a failed import can never delete history, and the delete is a single indexed range on `score_date`.
+**Alternatives Rejected:** Pruning on the read path (a page render must never delete rows); a nightly `VACUUM`-based trim (rewrites a 5.5 GB file for a bounded delete); dropping the history entirely (the per-record trend and the rising view depend on it); time-based pruning by wall clock instead of the accepted score date (non-deterministic, untestable).
+**Security Implications:** None: no new input path, no user-controlled value in the DELETE, cutoff computed from a validated date.
+**Impact:** DB growth is bounded and predictable (≈36M rows / ≈7.5 GB at 90 days); query latency is unaffected because every EPSS read is keyed by `score_date` or `cve_id`. Operators with tight disk lower the window; the docs state the arithmetic.
+
+---
+
 ## Entry Template
 
 Copy this block for each new decision; newest entry at the top.

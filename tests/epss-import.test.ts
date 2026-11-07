@@ -217,6 +217,40 @@ describe("EPSS daily import and history archive", () => {
     }
   });
 
+  it("skips the row rewrite when the accepted CSV is byte-identical", () => {
+    const db = makeDatabase();
+    try {
+      const first = importEpssCsv(db, DAY_ONE_CSV, { retentionDays: 90 });
+      expect(first.alreadyCurrent).toBe(false);
+      const second = importEpssCsv(db, DAY_ONE_CSV, { retentionDays: 90 });
+      // Same bytes: nothing rewritten, so the counters describe the stored run.
+      expect(second.alreadyCurrent).toBe(true);
+      expect(second.scoreDate).toBe(DAY_ONE);
+      expect(second.rowCount).toBe(3);
+      expect(epssDailyCount(db)).toBe(3);
+      // A genuinely new file still imports.
+      const third = importEpssCsv(db, DAY_TWO_CSV, { retentionDays: 90 });
+      expect(third.alreadyCurrent).toBe(false);
+      expect(getAcceptedEpssDate(db)).toBe(DAY_TWO);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("prunes history inside the import and keeps the window bounded", () => {
+    const db = makeDatabase();
+    try {
+      importEpssCsv(db, DAY_ONE_CSV, { retentionDays: 90 });
+      expect(epssDailyCount(db)).toBe(3);
+      // One day of history: importing the next day drops everything older.
+      const result = importEpssCsv(db, DAY_TWO_CSV, { retentionDays: 1 });
+      expect(result.prunedRows).toBe(3);
+      expect(result.oldestKept).toBe(DAY_TWO);
+    } finally {
+      db.close();
+    }
+  });
+
   it("reports unmatched IDs without manufacturing CVE records", () => {
     const db = makeDatabase();
     try {

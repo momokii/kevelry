@@ -87,6 +87,9 @@ const EPSS_RESULT: EpssImportResult = {
   rowCount: 10,
   unmatched: [],
   contentHash: "cafef00d",
+  prunedRows: 0,
+  oldestKept: "2026-10-24",
+  alreadyCurrent: false,
 };
 
 function okDeps(): SourceJobDeps & { calls: Record<"cve" | "kev" | "epss", number> } {
@@ -123,6 +126,47 @@ describe("createSourceJobs", () => {
       cloneDepth: 0,
     });
   });
+  it("reports the EPSS outcome so unchanged and pruned cycles are observable", async () => {
+    const db = makeDb();
+    type EpssReport = {
+      scoreDate: string;
+      alreadyCurrent: boolean;
+      prunedRows: number;
+      oldestKept: string | null;
+      keepDays: number;
+    };
+    const reports: EpssReport[] = [];
+    const jobs = createSourceJobs(db, {
+      ...okDeps(),
+      epssRetentionDays: 90,
+      onEpssReport: (report: EpssReport) => reports.push(report),
+      epssImport: async () => ({
+        ...EPSS_RESULT,
+        prunedRows: 1234,
+        oldestKept: "2026-08-09",
+      }),
+    });
+    await jobs.epss({ signal: new AbortController().signal, now: new Date() });
+    expect(reports).toEqual([
+      {
+        scoreDate: EPSS_RESULT.scoreDate,
+        alreadyCurrent: false,
+        prunedRows: 1234,
+        oldestKept: "2026-08-09",
+        keepDays: 90,
+      },
+    ]);
+
+    // An identical file reports alreadyCurrent and rewrites nothing.
+    const unchanged = createSourceJobs(db, {
+      ...okDeps(),
+      onEpssReport: (report: EpssReport) => reports.push(report),
+      epssImport: async () => ({ ...EPSS_RESULT, alreadyCurrent: true }),
+    });
+    await unchanged.epss({ signal: new AbortController().signal, now: new Date() });
+    expect(reports[1]).toMatchObject({ alreadyCurrent: true, prunedRows: 0 });
+  });
+
   it("maps each importer result to its SourceRefreshOutcome version pin", async () => {
     const db = makeDb();
     const jobs = createSourceJobs(db, okDeps());

@@ -2,6 +2,39 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-07 - Retention and import cost: from 7m30s to 52s per cycle
+
+Owner item: "make sure the retention data setup is properly configured and the
+app stays efficient at all times". The audit answered with numbers, not
+intentions.
+
+**Found.** `epss_daily` had no retention window at all: 5,183,235 rows over 13
+accepted dates (~400k rows and ~85 MB with indexes per day), which would have
+reached tens of millions of rows within months. Two import paths were also
+re-doing work for nothing:
+
+- The KEV importer called `knownCveIds(db)` **inside** the unmatched-ID filter,
+  so a 1,769-entry catalog re-read all 396,841 records per entry — roughly 700M
+  row visits and ~7 minutes of a saturated core on every cycle.
+- The EPSS importer rewrote all ~400k rows and every index on every boot, even
+  when the downloaded CSV was byte-identical.
+
+**Fixed.** `src/lib/retention.ts` implements a window in whole UTC days
+(`EPSS_RETENTION_DAYS`, default 90 — exactly the per-record history cap the API
+returns, so nothing stored is unreachable and nothing returned is missing),
+pruned inside the import after the accepted snapshot is recorded, idempotent and
+indexed. The KEV scan is hoisted once per import. The EPSS import short-circuits
+on a matching content hash and logs `epss-unchanged`. The `cve-diff-path` log now
+says `unchanged` instead of the misleading `full-first` when the accepted
+revision did not move.
+
+**Verified.** A regression test fails on the old KEV predicate (400 corpus scans
+for 400 entries) and passes on the new one (1 scan). Live: boot cycle 7m30s →
+52s, KEV step 1.3s, WAL 140 KB, all pages 200.
+
+Gates: 415 unit, 97 e2e (1 skipped), lint/typecheck green, container rebuilt and
+recreated.
+
 ## 2026-11-07 - Owner feedback batch: import cost, exploit signal, Sankey, volume, confirmation card
 
 Owner delivered six work items. Five shipped, one (retention) queued as TASK-031.

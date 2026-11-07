@@ -208,6 +208,7 @@ the app reads is listed there.
 | `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                               |
 | `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                            |
 | `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                              |
+| `EPSS_RETENTION_DAYS`     | no       | `90`                           | Days of daily EPSS history kept (30-3650); the only table that grows with time                                            |
 | `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                              |
 | `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                    |
 | `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                  |
