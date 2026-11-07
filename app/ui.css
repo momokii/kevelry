@@ -4871,3 +4871,53 @@ a.graph-evidence-chip:hover {
   display: block;
   margin-top: 2px;
 }
+
+/* Fastest-confirmation rows: id, delay badge, then the two dates. */
+.stat-grid-inline {
+  margin-bottom: 12px;
+}
+
+.fastest-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fastest-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-rule-soft);
+}
+
+.fastest-row:last-child {
+  border-bottom: 0;
+}
+
+.fastest-id {
+  font-size: 11.5px;
+  color: var(--ui-accent);
+  text-decoration: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fastest-id:hover {
+  text-decoration: underline;
+}
+
+.fastest-row .badge {
+  white-space: nowrap;
+}
+
+.fastest-dates {
+  grid-column: 1 / -1;
+  font-family: var(--ui-font-mono);
+  font-size: 10px;
+  color: var(--ui-ink-3);
+}

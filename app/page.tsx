@@ -247,42 +247,63 @@ export default function OverviewPage() {
 
         <Panel
           title="Fastest confirmations"
-          sub="Shortest publication-to-confirmation delays in the retained snapshot."
+          sub="Shortest publication-to-confirmation delays in the retained snapshot. A short delay means CISA confirmed exploitation soon after the record was published."
           className="span-4"
           testId="overview-fastest"
         >
-          <dl className="priority-summary" data-testid="overview-time-to-kev-stats">
-            <div>
-              <dt>Median delay</dt>
-              <dd>
-                {data.timeToKev.medianDays === null ? "—" : `${data.timeToKev.medianDays} days`}
-              </dd>
+          <dl className="stat-grid stat-grid-inline" data-testid="overview-time-to-kev-stats">
+            <div className="stat">
+              <div className="stat-label">Median delay</div>
+              <div className="stat-value">
+                {data.timeToKev.medianDays === null ? "—" : formatInt(data.timeToKev.medianDays)}
+              </div>
+              <div className="stat-note">
+                {data.timeToKev.medianDays === null
+                  ? "no confirmed record"
+                  : "days, after publication"}
+              </div>
             </div>
-            <div>
-              <dt>Within 30 days</dt>
-              <dd>
-                {formatInt(data.timeToKev.within30)} of {formatInt(data.timeToKev.eligible)} (
-                {data.timeToKev.within30Share})
-              </dd>
+            <div className="stat">
+              <div className="stat-label">Within 30 days</div>
+              <div className="stat-value">{formatInt(data.timeToKev.within30)}</div>
+              <div className="stat-note">
+                of {formatInt(data.timeToKev.eligible)} ({data.timeToKev.within30Share})
+              </div>
             </div>
-            <div>
-              <dt>Excluded, no date</dt>
-              <dd>{formatInt(data.timeToKev.excluded)}</dd>
+            <div className="stat">
+              <div className="stat-label">Excluded</div>
+              <div className="stat-value">{formatInt(data.timeToKev.excluded)}</div>
+              <div className="stat-note">no publication date retained</div>
             </div>
           </dl>
-          <ul className="plain-list" data-testid="overview-fastest-list">
+          <ul className="fastest-list" data-testid="overview-fastest-list">
             {data.timeToKev.fastest.map((entry) => (
-              <li key={entry.cveId}>
-                <a className="mono" href={`/explore?q=${encodeURIComponent(entry.cveId)}`}>
+              <li key={entry.cveId} className="fastest-row">
+                <a
+                  className="mono fastest-id"
+                  href={`/explore?q=${encodeURIComponent(entry.cveId)}`}
+                >
                   {entry.cveId}
-                </a>{" "}
-                — {entry.days} day{entry.days === 1 ? "" : "s"} from publication to KEV
+                </a>
+                <span className="badge badge-accent">
+                  {entry.days} day{entry.days === 1 ? "" : "s"}
+                </span>
+                <span className="fastest-dates">
+                  published <TimeText value={entry.publishedAt} /> · KEV added{" "}
+                  <TimeText value={entry.dateAdded} />
+                </span>
               </li>
             ))}
             {data.timeToKev.fastest.length === 0 ? (
-              <li>No confirmation-after-publication record is retained.</li>
+              <li className="chart-note">
+                No record was confirmed after its publication date in this snapshot.
+              </li>
             ) : null}
           </ul>
+          <p className="chart-note">
+            A delay of zero or less (CISA listing the record before its publication date) is counted
+            in its own bucket above, never as a fast confirmation.
+          </p>
         </Panel>
 
         <Panel
