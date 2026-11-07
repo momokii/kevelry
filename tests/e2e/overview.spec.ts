@@ -393,6 +393,25 @@ test("time-to-KEV flow draws cohorts, bands, stats and a data table", async ({ p
   await expect(panel.locator("table tbody tr").first()).toBeVisible();
 });
 
+test("clicking a Sankey band opens the records inside that flow", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const band = page.locator('[data-testid^="overview-time-to-kev-band-"]').first();
+  if ((await band.count()) === 0) return;
+  await band.click({ force: true });
+  const dialog = page.getByTestId("overview-time-to-kev-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("records in this flow");
+  const items = dialog.locator("[data-testid^='flow-details-item-']");
+  expect(await items.count()).toBeGreaterThan(0);
+  await expect(items.first()).toHaveAttribute("href", /explore\?q=CVE-/);
+  // Filter narrows the list, Escape closes.
+  await dialog.getByTestId("flow-details-filter").fill("CVE-");
+  await expect(dialog.getByTestId("flow-details-count")).toContainText("matching");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
+
 test("matrix inspector links navigate client-side without a full reload", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");

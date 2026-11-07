@@ -61,7 +61,12 @@ export interface SankeyLink {
   from: string;
   to: string;
   count: number;
+  /** Bounded sample of the records in this flow (first 200 by CVE id). */
+  cveIds: string[];
 }
+
+/** Cap per flow: the modal paginates over these, the count stays exact. */
+export const FLOW_SAMPLE_CAP = 200;
 
 export interface SankeyNode {
   id: string;
@@ -173,11 +178,26 @@ export function buildTimeToKev(db: CveDatabase, oldestYear = 2021): TimeToKev {
       total: lagCounts.get(bucket) ?? 0,
     })),
   ];
+  const idsByFlow = new Map<string, string[]>();
+  for (const entry of [...parsed].sort((a, b) => (a.cveId < b.cveId ? -1 : 1))) {
+    const cohort = cohortForYear(entry.year, oldestYear);
+    const key = `${cohort}\u0000${bucketForLag(entry.days)}`;
+    const list = idsByFlow.get(key);
+    if (list === undefined) idsByFlow.set(key, [entry.cveId]);
+    else if (list.length < FLOW_SAMPLE_CAP) list.push(entry.cveId);
+  }
   const links: SankeyLink[] = [];
   for (const cohort of cohortLabels) {
     for (const bucket of LAG_BUCKETS) {
       const count = flows.get(`${cohort}\u0000${bucket}`) ?? 0;
-      if (count > 0) links.push({ from: `cohort:${cohort}`, to: `lag:${bucket}`, count });
+      if (count > 0) {
+        links.push({
+          from: `cohort:${cohort}`,
+          to: `lag:${bucket}`,
+          count,
+          cveIds: idsByFlow.get(`${cohort}\u0000${bucket}`) ?? [],
+        });
+      }
     }
   }
 

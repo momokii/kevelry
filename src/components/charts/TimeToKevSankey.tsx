@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatInt, sharePercent } from "./chartTokens";
 import type { SankeyLink, TimeToKev } from "@/lib/time-to-kev";
 
-const WIDTH = 760;
+// Symmetric gutters: left labels, flow, right labels. The chart is not
+// stretched to the panel width, so the two label columns stay balanced
+// instead of leaving a dead margin on one side.
+const WIDTH = 860;
 const HEIGHT = 360;
-// Labels sit outside the flow area so a band can never run under them.
-const COL_LEFT = 132;
-const COL_RIGHT = 470;
+const COL_LEFT = 178;
+const COL_RIGHT = 642;
 const NODE_WIDTH = 14;
 const PAD = 10;
 const MARGIN_TOP = 16;
@@ -33,8 +36,175 @@ interface PlacedNode {
  * always draws the same picture. Every band carries a `<title>` with the exact
  * count and share, and the same series is available as a data table.
  */
+
+const PAGE_SIZE = 10;
+
+/**
+ * Records inside one flow. The browser is a result set, not a dump: filter by
+ * CVE id, page through, and follow any record into the corpus. `count` is the
+ * exact flow size while the sample is capped, so the header never overclaims.
+ */
+function FlowDetails({
+  detail,
+  labelOf,
+  onClose,
+}: {
+  detail: { from: string; to: string; cveIds: string[]; count: number } | null;
+  labelOf: (id: string) => string;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog === null) return;
+    if (detail !== null && !dialog.open) dialog.showModal();
+    if (detail === null && dialog.open) dialog.close();
+  }, [detail]);
+
+  const needle = query.trim().toLowerCase();
+  const filtered =
+    detail === null
+      ? []
+      : detail.cveIds.filter((id) => needle === "" || id.toLowerCase().includes(needle));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+
+  return (
+    <dialog
+      ref={ref}
+      className="graph-dialog"
+      aria-labelledby="flow-details-title"
+      data-testid="overview-time-to-kev-dialog"
+      onClose={onClose}
+      onCancel={() => {
+        // Escape closes natively; mirror it into state so the effect does not
+        // re-open the dialog. Never preventDefault here: that blocks the close.
+        onClose();
+      }}
+      onKeyDown={(event) => {
+        // A `type="search"` input consumes the first Escape to clear its own
+        // text, so the dialog would stay open. Close explicitly instead.
+        if (event.key === "Escape") onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === ref.current) onClose();
+      }}
+    >
+      {detail === null ? null : (
+        <div className="graph-dialog-body">
+          <header className="graph-dialog-head">
+            <div>
+              <div className="eyebrow">Flow details</div>
+              <h2 id="flow-details-title">
+                {labelOf(detail.from)} → {labelOf(detail.to)}
+              </h2>
+              <p className="chart-note">
+                {formatInt(detail.count)} records in this flow.
+                {detail.count > detail.cveIds.length
+                  ? ` Showing the first ${formatInt(detail.cveIds.length)} by CVE id.`
+                  : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={onClose}
+              data-testid="flow-details-close"
+            >
+              Close
+            </button>
+          </header>
+
+          <div className="graph-dialog-tools">
+            <input
+              className="ledger-search-input"
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(0);
+              }}
+              placeholder="Filter by CVE id"
+              aria-label="Filter these records"
+              data-testid="flow-details-filter"
+            />
+            <span className="chart-note" data-testid="flow-details-count">
+              {filtered.length === 0 ? "No match" : `${formatInt(filtered.length)} matching`}
+            </span>
+          </div>
+
+          <ul className="graph-dialog-list" data-testid="flow-details-list">
+            {visible.map((id) => (
+              <li key={id} className="graph-dialog-row">
+                <div className="graph-dialog-row-head">
+                  <Link
+                    className="mono graph-dialog-id"
+                    href={`/explore?q=${encodeURIComponent(id)}`}
+                    data-testid={`flow-details-item-${id}`}
+                  >
+                    {id}
+                  </Link>
+                  <span className="graph-dialog-badges">
+                    <a
+                      className="graph-evidence-chip"
+                      href={`https://www.cve.org/CVERecord?id=${id}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      official record
+                    </a>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {pageCount > 1 ? (
+            <nav className="graph-dialog-pager" aria-label="Record pages">
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={current === 0}
+                onClick={() => setPage(current - 1)}
+                data-testid="flow-details-prev"
+              >
+                Previous
+              </button>
+              <span className="chart-note" data-testid="flow-details-page">
+                Page {current + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={current >= pageCount - 1}
+                onClick={() => setPage(current + 1)}
+                data-testid="flow-details-next"
+              >
+                Next
+              </button>
+            </nav>
+          ) : null}
+        </div>
+      )}
+    </dialog>
+  );
+}
+
 export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
   const [hover, setHover] = useState<string | null>(null);
+  // Clicking a band pins it (Escape or a second click clears) so the reader can
+  // open its details without holding the pointer steady.
+  const [pinned, setPinned] = useState<string | null>(null);
+  const [detail, setDetail] = useState<{
+    from: string;
+    to: string;
+    cveIds: string[];
+    count: number;
+  } | null>(null);
 
   const { nodes, links } = useMemo(() => {
     const left = flow.nodes.filter((node) => node.column === "cohort");
@@ -121,9 +291,54 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
             key={band.key}
             d={band.d}
             fill="var(--ui-accent)"
-            fillOpacity={isDim(band) ? 0.08 : hover === null ? 0.28 : 0.55}
-            stroke="none"
+            fillOpacity={
+              pinned === band.key ? 0.6 : isDim(band) ? 0.08 : hover === null ? 0.28 : 0.55
+            }
+            stroke={pinned === band.key ? "var(--ui-accent-deep)" : "none"}
+            strokeWidth={pinned === band.key ? 1.5 : 0}
             data-testid={`overview-time-to-kev-band-${band.key}`}
+            role="button"
+            tabIndex={0}
+            aria-pressed={pinned === band.key}
+            aria-label={`${band.fromLabel} to ${band.toLabel}: ${formatInt(band.count)} records. Open details.`}
+            onClick={() => {
+              const key = pinned === band.key ? null : band.key;
+              setPinned(key);
+              if (key !== null) {
+                const match = links.find((link) => `${link.from}->${link.to}` === key);
+                if (match !== undefined) {
+                  setDetail({
+                    from: match.from,
+                    to: match.to,
+                    cveIds: match.cveIds,
+                    count: match.count,
+                  });
+                }
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                const key = pinned === band.key ? null : band.key;
+                setPinned(key);
+                if (key !== null) {
+                  const match = links.find((link) => `${link.from}->${link.to}` === key);
+                  if (match !== undefined) {
+                    setDetail({
+                      from: match.from,
+                      to: match.to,
+                      cveIds: match.cveIds,
+                      count: match.count,
+                    });
+                  }
+                }
+              }
+              if (event.key === "Escape") {
+                setPinned(null);
+                setDetail(null);
+              }
+            }}
+            style={{ cursor: "pointer", outline: "none" }}
           >
             <title>{`${band.fromLabel} → ${band.toLabel}: ${formatInt(band.count)} records (${sharePercent(band.count, total)} of ${formatInt(total)} with both dates)`}</title>
           </path>
@@ -176,6 +391,14 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
           );
         })}
       </svg>
+      <FlowDetails
+        detail={detail}
+        labelOf={(id) => flow.nodes.find((node) => node.id === id)?.label ?? id}
+        onClose={() => {
+          setDetail(null);
+          setPinned(null);
+        }}
+      />
       <p className="chart-note" data-testid="overview-time-to-kev-note">
         Left: publication cohort. Right: days until the KEV catalog confirmed exploitation. Band
         width is the record count; {formatInt(flow.excluded)} KEV records are excluded for a missing
