@@ -157,6 +157,10 @@ export default function OverviewPage() {
           <VolumeChart
             months={months}
             publishedTotal={data.publishedTotal}
+            daily={data.volumeDaily.map((bucket) => ({
+              month: bucket.bucketStart,
+              count: bucket.count,
+            }))}
             kevMonths={data.kevByMonth}
           />
         </Panel>

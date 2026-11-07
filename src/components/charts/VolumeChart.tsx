@@ -9,7 +9,7 @@ import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleBand, scaleLinear } from "@visx/scale";
 
-import { monthExploreHref } from "@/components/overview/chartData";
+import { dailyWindow, monthExploreHref, weeklyVolume } from "@/components/overview/chartData";
 
 import { formatCompact, formatInt, monthLong, monthShort, sharePercent } from "./chartTokens";
 
@@ -21,8 +21,48 @@ export interface VolumeDatum {
 type VolumeChartProps = {
   months: VolumeDatum[];
   publishedTotal: number;
+  /** Daily counts for the trailing window; enables week/day granularity. */
+  daily?: VolumeDatum[];
   kevMonths?: Array<{ month: string; count: number }>;
 };
+
+type Granularity = "month" | "week" | "day";
+
+const WINDOWS: Record<Granularity, readonly number[]> = {
+  month: [12, 24],
+  week: [26, 52],
+  day: [30, 90],
+};
+
+const DAY_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function labelFor(granularity: Granularity, key: string): string {
+  if (granularity === "month") return monthLong(key);
+  const [year, month, day] = key.split("-");
+  const monthName = DAY_LABELS[Number(month) - 1] ?? month;
+  return granularity === "week"
+    ? `week of ${Number(day)} ${monthName} ${year}`
+    : `${Number(day)} ${monthName} ${year}`;
+}
+
+function shortLabel(granularity: Granularity, key: string): string {
+  if (granularity === "month") return monthShort(key);
+  const [, month, day] = key.split("-");
+  return `${Number(day)} ${DAY_LABELS[Number(month) - 1] ?? month}`;
+}
 
 const MARGIN = { top: 24, right: 10, bottom: 26, left: 44 };
 const HEIGHT = 286;
@@ -33,12 +73,14 @@ function VolumeSvg({
   publishedTotal,
   selected,
   onSelect,
+  granularity,
 }: {
   width: number;
   months: VolumeDatum[];
   publishedTotal: number;
   selected: string | null;
   onSelect: (month: string | null) => void;
+  granularity: Granularity;
 }) {
   const [hover, setHover] = useState<{ month: string; x: number; y: number } | null>(null);
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
@@ -85,12 +127,12 @@ function VolumeSvg({
           style={{ left: tooltipLeft, top: 8 }}
           data-testid="overview-volume-tooltip"
         >
-          <div className="tt-label">{monthLong(active.month)}</div>
+          <div className="tt-label">{labelFor(granularity, active.month)}</div>
           <div className="tt-value">{formatInt(active.count)}</div>
           <div className="tt-share">
             {sharePercent(active.count, publishedTotal)} of all published CVEs
           </div>
-          <div className="tt-share">UTC calendar month · click to inspect</div>
+          <div className="tt-share">UTC calendar {granularity} · click to inspect</div>
         </div>
       ) : null}
       <svg
@@ -100,7 +142,7 @@ function VolumeSvg({
         viewBox={`0 0 ${width} ${HEIGHT}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label={`Published CVE volume by UTC month. ${months.length} months, peak ${formatInt(peak.count)} in ${monthLong(peak.month)}.`}
+        aria-label={`Published CVE volume by UTC ${granularity}. ${months.length} buckets, peak ${formatInt(peak.count)} in ${labelFor(granularity, peak.month)}.`}
       >
         <Group left={MARGIN.left} top={MARGIN.top}>
           <GridRows
@@ -196,7 +238,7 @@ function VolumeSvg({
             scale={xScale}
             top={innerHeight}
             tickValues={tickValues}
-            tickFormat={(value) => monthShort(String(value))}
+            tickFormat={(value) => shortLabel(granularity, String(value))}
             tickLength={4}
             tickLabelProps={() => ({
               fill: "var(--ui-ink-3)",
@@ -214,13 +256,42 @@ function VolumeSvg({
   );
 }
 
-export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeChartProps) {
-  const [windowSize, setWindowSize] = useState<12 | 24>(24);
+export function VolumeChart({
+  months,
+  publishedTotal,
+  daily = [],
+  kevMonths = [],
+}: VolumeChartProps) {
+  const [granularity, setGranularity] = useState<Granularity>("month");
+  const [windowSize, setWindowSize] = useState<number>(24);
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 620px)").matches) setWindowSize(12);
   }, []);
+
+  const weeks: VolumeDatum[] = useMemo(
+    () =>
+      weeklyVolume(daily.map((entry) => ({ bucketStart: entry.month, count: entry.count }))).map(
+        (bucket) => ({ month: bucket.bucketStart, count: bucket.count }),
+      ),
+    [daily],
+  );
+  // One series feeds the drawing, the table, the tooltip and the selection
+  // strip, so all four can never disagree about a bucket.
+  const series: VolumeDatum[] =
+    granularity === "month" ? months : granularity === "week" ? weeks : daily;
+  const visible = series.slice(-windowSize);
+
+  const switchGranularity = (next: Granularity): void => {
+    setGranularity(next);
+    setSelected(null);
+    // Keep the most detailed window that still fits the chosen bucket.
+    const options = WINDOWS[next];
+    setWindowSize((current) =>
+      options.includes(current) ? current : (options[options.length - 1] ?? 12),
+    );
+  };
 
   if (months.length === 0) {
     return (
@@ -231,11 +302,10 @@ export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeCh
       </div>
     );
   }
-  const visible = months.slice(-windowSize);
   const total = visible.reduce((sum, entry) => sum + entry.count, 0);
   const selectedEntry =
-    selected === null ? null : (months.find((entry) => entry.month === selected) ?? null);
-  const href = selected === null ? null : monthExploreHref(selected);
+    selected === null ? null : (series.find((entry) => entry.month === selected) ?? null);
+  const href = selected === null ? null : monthExploreHref(selected.slice(0, 7));
   const first = visible[0];
   const last = visible[visible.length - 1];
   const growth =
@@ -246,57 +316,74 @@ export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeCh
   return (
     <div>
       <div className="chart-actions" style={{ marginBottom: 12 }}>
+        <div className="pill segmented" role="group" aria-label="Bucket size">
+          {(["month", "week", "day"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`btn btn-sm ${granularity === option ? "btn-primary" : "btn-ghost"}`}
+              aria-pressed={granularity === option}
+              data-testid={`overview-volume-granularity-${option}`}
+              onClick={() => switchGranularity(option)}
+            >
+              {option === "month" ? "Month" : option === "week" ? "Week" : "Day"}
+            </button>
+          ))}
+        </div>
         <div className="pill segmented" role="group" aria-label="Chart window">
-          <button
-            type="button"
-            className={`btn btn-sm ${windowSize === 24 ? "btn-primary" : "btn-ghost"}`}
-            aria-pressed={windowSize === 24}
-            data-testid="overview-volume-window-24"
-            onClick={() => setWindowSize(24)}
-          >
-            24 months
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${windowSize === 12 ? "btn-primary" : "btn-ghost"}`}
-            aria-pressed={windowSize === 12}
-            data-testid="overview-volume-window-12"
-            onClick={() => setWindowSize(12)}
-          >
-            12 months
-          </button>
+          {WINDOWS[granularity].map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`btn btn-sm ${windowSize === option ? "btn-primary" : "btn-ghost"}`}
+              aria-pressed={windowSize === option}
+              data-testid={`overview-volume-window-${option}`}
+              onClick={() => setWindowSize(option)}
+            >
+              {option}{" "}
+              {granularity === "month" ? "months" : granularity === "week" ? "weeks" : "days"}
+            </button>
+          ))}
         </div>
         <label className="volume-month-focus">
-          <span>Focus month</span>
+          <span>Focus {granularity}</span>
           <select
             className="ledger-snapshot-select"
             value={selected ?? ""}
             data-testid="overview-volume-month-select"
             onChange={(event) => setSelected(event.target.value === "" ? null : event.target.value)}
           >
-            <option value="">All months</option>
+            <option value="">All {granularity}s</option>
             {visible.map((entry) => (
               <option key={entry.month} value={entry.month}>
-                {monthLong(entry.month)} · {formatInt(entry.count)}
+                {labelFor(granularity, entry.month)} · {formatInt(entry.count)}
               </option>
             ))}
           </select>
         </label>
         <span className="faint" style={{ fontSize: 12 }}>
           {formatInt(total)} in view
-          {growth !== null ? ` · latest is ${growth}× the first month` : ""}
+          {growth !== null ? ` · latest is ${growth}× the first ${granularity}` : ""}
         </span>
       </div>
       {selectedEntry !== null && href !== null ? (
         <div className="selection-strip" data-testid="overview-volume-selection">
           <span>
-            <strong>{monthLong(selectedEntry.month)}</strong>: {formatInt(selectedEntry.count)}{" "}
-            published ({sharePercent(selectedEntry.count, publishedTotal)} of the corpus) ·{" "}
-            {formatInt(kevMonths.find((entry) => entry.month === selectedEntry.month)?.count ?? 0)}{" "}
-            KEV additions
+            <strong>{labelFor(granularity, selectedEntry.month)}</strong>:{" "}
+            {formatInt(selectedEntry.count)} published (
+            {sharePercent(selectedEntry.count, publishedTotal)} of the corpus)
+            {granularity === "month" ? (
+              <>
+                {" · "}
+                {formatInt(
+                  kevMonths.find((entry) => entry.month === selectedEntry.month)?.count ?? 0,
+                )}{" "}
+                KEV additions
+              </>
+            ) : null}
           </span>
           <Link className="btn btn-sm btn-primary" href={href}>
-            Open this month in Explore
+            {granularity === "month" ? "Open this month in Explore" : "Open this range in Explore"}
           </Link>
           <button type="button" className="btn btn-sm" onClick={() => setSelected(null)}>
             Clear
@@ -312,6 +399,7 @@ export function VolumeChart({ months, publishedTotal, kevMonths = [] }: VolumeCh
               publishedTotal={publishedTotal}
               selected={selected}
               onSelect={setSelected}
+              granularity={granularity}
             />
           ) : null
         }

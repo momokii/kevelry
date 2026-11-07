@@ -6,7 +6,7 @@ import {
   type AggregateSnapshot,
   type SeverityEpssCell,
 } from "../../lib/aggregates";
-import { monthlyVolume, type DayBucket } from "./chartData";
+import { dailyWindow, monthlyVolume, type DayBucket } from "./chartData";
 
 export type { DayBucket } from "./chartData";
 import { openReadDatabase, type CveDatabase } from "../../lib/db";
@@ -70,6 +70,8 @@ export interface OverviewData {
   volume30: DayBucket[];
   volumeTotal30: number;
   volumeMonths: DayBucket[];
+  /** Daily counts for the trailing 90 days, enabling week/day granularity. */
+  volumeDaily: DayBucket[];
   volumeTotalMonths: number;
   severityBands: Record<string, number>;
   epssHistogram: number[];
@@ -527,6 +529,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       volume30,
       volumeTotal30: volume30.reduce((sum, bucket) => sum + bucket.count, 0),
       volumeMonths,
+      volumeDaily: dailyWindow(counts, anchorDay, 90),
       volumeTotalMonths: volumeMonths.reduce((sum, bucket) => sum + bucket.count, 0),
       severityBands,
       epssHistogram,

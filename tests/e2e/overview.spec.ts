@@ -362,14 +362,15 @@ test("volume chart exposes tooltips, selection, and the window toggle", async ({
   // Segmented control: every option sits fully inside the track, and the
   // bars glide on window switches.
   const containment = await page.evaluate(() => {
-    const track = document.querySelector(".chart-actions .pill.segmented");
-    const options = [...document.querySelectorAll(".chart-actions .pill.segmented .btn")];
-    if (track === null || options.length !== 2) return { ok: false, reason: "missing" };
-    const box = track.getBoundingClientRect();
-    for (const option of options) {
-      const inner = option.getBoundingClientRect();
-      if (inner.top < box.top || inner.bottom > box.bottom) {
-        return { ok: false, reason: "overflow" };
+    const tracks = [...document.querySelectorAll(".chart-actions .pill.segmented")];
+    if (tracks.length === 0) return { ok: false, reason: "missing" };
+    for (const track of tracks) {
+      const box = track.getBoundingClientRect();
+      for (const option of [...track.querySelectorAll(".btn")]) {
+        const inner = option.getBoundingClientRect();
+        if (inner.top < box.top || inner.bottom > box.bottom) {
+          return { ok: false, reason: "overflow" };
+        }
       }
     }
     const bar = document.querySelector(".volume-bar");
@@ -391,6 +392,41 @@ test("time-to-KEV flow draws cohorts, bands, stats and a data table", async ({ p
   // The same series is available as a table (chart contract).
   await panel.getByText("Data table").click();
   await expect(panel.locator("table tbody tr").first()).toBeVisible();
+});
+
+test("volume chart switches between month, week and day buckets", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const bars = page.getByTestId(/^overview-volume-bar-/);
+  await expect(bars).toHaveCount(24);
+
+  await page.getByTestId("overview-volume-granularity-week").click();
+  await expect(page.getByTestId("overview-volume-granularity-week")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // Weekly buckets are Monday-anchored dates; the count is bounded by how many
+  // days the fixture actually holds, never padded with empty buckets.
+  const weekCount = await bars.count();
+  expect(weekCount).toBeGreaterThan(0);
+  expect(weekCount).toBeLessThanOrEqual(52);
+  const firstWeek = await bars.first().getAttribute("data-testid");
+  expect(firstWeek).toMatch(/^overview-volume-bar-\d{4}-\d{2}-\d{2}$/);
+
+  await page.getByTestId("overview-volume-granularity-day").click();
+  const dayCount = await bars.count();
+  expect(dayCount).toBeGreaterThan(weekCount);
+  expect(dayCount).toBeLessThanOrEqual(90);
+  // Selection works per bucket, and the strip names the bucket label.
+  await bars.last().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("overview-volume-selection")).toContainText(
+    "Open this range in Explore",
+  );
+  await page.keyboard.press("Escape");
+
+  await page.getByTestId("overview-volume-granularity-month").click();
+  await expect(bars).toHaveCount(24);
 });
 
 test("clicking a Sankey band opens the records inside that flow", async ({ page }) => {

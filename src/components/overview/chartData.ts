@@ -217,3 +217,34 @@ export function monthlyVolume(
   }
   return series;
 }
+
+/** Trailing window of daily counts ending at the anchor day (ascending). */
+export function dailyWindow(
+  counts: Map<string, number>,
+  anchorDay: string | null,
+  days: number,
+): DayBucket[] {
+  if (anchorDay === null || days <= 0) return [];
+  return trailingDaysFrom(anchorDay, days).map((bucketStart) => ({
+    bucketStart,
+    count: counts.get(bucketStart) ?? 0,
+  }));
+}
+
+/** Collapse a daily series into Monday-anchored week buckets (UTC). */
+export function weeklyVolume(
+  days: ReadonlyArray<{ bucketStart: string; count: number }>,
+): DayBucket[] {
+  const buckets = new Map<string, number>();
+  for (const entry of days) {
+    const ms = Date.parse(`${entry.bucketStart}T00:00:00.000Z`);
+    if (!Number.isFinite(ms)) continue;
+    // 1970-01-01 was a Thursday; shift so Monday starts the week.
+    const dayOfWeek = (new Date(ms).getUTCDay() + 6) % 7;
+    const monday = new Date(ms - dayOfWeek * 86_400_000).toISOString().slice(0, 10);
+    buckets.set(monday, (buckets.get(monday) ?? 0) + entry.count);
+  }
+  return [...buckets]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([bucketStart, count]) => ({ bucketStart, count }));
+}
