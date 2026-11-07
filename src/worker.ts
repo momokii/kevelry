@@ -484,6 +484,19 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
         error: status.lastError,
       });
     }
+    // Fold the WAL after every cycle: a long import plus concurrent readers can
+    // starve auto-checkpointing, and a multi-hundred-MB WAL makes reads crawl.
+    try {
+      const folded = db.checkpointStatus();
+      log({
+        event: "wal-checkpoint",
+        busy: folded.busy,
+        logFrames: folded.logFrames,
+        checkpointedFrames: folded.checkpointedFrames,
+      });
+    } catch (error) {
+      log({ event: "wal-checkpoint-failed", error: errorDetail(error) });
+    }
     const cycleOk = (["cve", "kev", "epss", "ssvc"] as const).every(
       (source) => health.sources[source].lastError === null,
     );
