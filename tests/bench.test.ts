@@ -72,12 +72,19 @@ const EPSS_SCORE_DATE = "2026-10-23";
 const EPSS_MODEL = "v2026.06.15";
 const KEV_CATALOG_DATE = "2026-10-24T00:00:00.000Z";
 const KEV_CATALOG_VERSION = "2026.10.24-bench";
-const RESULTS_PATH = path.join(
+// The evidence file is a committed receipt. Only rewrite it on demand
+// (BENCH_WRITE_EVIDENCE=1); otherwise the suite would churn a tracked file on
+// every run and make every commit look like it touched the benchmark.
+const EVIDENCE_PATH = path.join(
   process.cwd(),
   ".omo",
   "evidence",
   "task-30-cve-change-radar.results.json",
 );
+const RESULTS_PATH =
+  process.env.BENCH_WRITE_EVIDENCE === "1"
+    ? EVIDENCE_PATH
+    : path.join(mkdtempSync(path.join(tmpdir(), "cve-bench-evidence-")), "results.json");
 
 const KEYWORDS = [
   "buffer overflow",
@@ -247,7 +254,11 @@ function fileBytes(filePath: string): number {
 
 function dbFiles(dir: string): { dbBytes: number; walBytes: number; shmBytes: number } {
   const base = path.join(dir, "cve.db");
-  return { dbBytes: fileBytes(base), walBytes: fileBytes(`${base}-wal`), shmBytes: fileBytes(`${base}-shm`) };
+  return {
+    dbBytes: fileBytes(base),
+    walBytes: fileBytes(`${base}-wal`),
+    shmBytes: fileBytes(`${base}-shm`),
+  };
 }
 
 function epssValue(index: number, salt: number): string {
@@ -317,7 +328,8 @@ function buildSearchMix(): { name: string; filters: SearchFilters }[] {
     '"unbalanced quote',
     "CVE-2024-0009' --",
   ];
-  for (const text of hostile) mix.push({ name: `hostile:${text.slice(0, 16)}`, filters: { q: text } });
+  for (const text of hostile)
+    mix.push({ name: `hostile:${text.slice(0, 16)}`, filters: { q: text } });
   mix.push({ name: "page:empty-q", filters: {} });
   mix.push({ name: "page:limit-1", filters: { limit: 1 } });
   mix.push({ name: "page:limit-5", filters: { q: "vulnerability", limit: 5 } });
@@ -382,7 +394,10 @@ describe("cve change radar benchmarks (todo 30)", () => {
         writeRecordFile(
           repoDir,
           record.relPath,
-          recordJson({ ...record, description: `${record.description} Corrected impact statement.` }),
+          recordJson({
+            ...record,
+            description: `${record.description} Corrected impact statement.`,
+          }),
         );
       }
       for (const record of addedRecords) {
@@ -412,7 +427,9 @@ describe("cve change radar benchmarks (todo 30)", () => {
 
       // -- Metrics seed (70% coverage, CNA versions incl. legacy 2.0). ----
       const liveIds = (
-        db.handle.prepare("SELECT cve_id FROM cve_records WHERE state = ?").all("PUBLISHED") as Array<{
+        db.handle
+          .prepare("SELECT cve_id FROM cve_records WHERE state = ?")
+          .all("PUBLISHED") as Array<{
           cve_id: string;
         }>
       ).map((row) => row.cve_id);
@@ -465,7 +482,10 @@ describe("cve change radar benchmarks (todo 30)", () => {
 
       // -- EPSS daily import (70% matched + 10 reported unmatched). --------
       const epssIds = liveIds.filter((_, position) => position % 10 < 7);
-      const epssUnmatched = Array.from({ length: 10 }, (_, i) => `CVE-2026-91${String(i).padStart(3, "0")}`);
+      const epssUnmatched = Array.from(
+        { length: 10 },
+        (_, i) => `CVE-2026-91${String(i).padStart(3, "0")}`,
+      );
       const epssCsv = [
         `#model_version:${EPSS_MODEL},score_date:${EPSS_SCORE_DATE}T12:00:28Z`,
         "cve,epss,percentile",
@@ -571,7 +591,10 @@ describe("cve change radar benchmarks (todo 30)", () => {
           ["cves-list", "https://radar.test/api/v1/cves?limit=20"],
           ["cves-kev", "https://radar.test/api/v1/cves?limit=5&kev=listed"],
           ["search", "https://radar.test/api/v1/search?q=buffer%20overflow&limit=5"],
-          ["replay", `https://radar.test/api/v1/replay?date=2026-10-24&view=known-exploited&limit=5`],
+          [
+            "replay",
+            `https://radar.test/api/v1/replay?date=2026-10-24&view=known-exploited&limit=5`,
+          ],
           ["checkpoints", "https://radar.test/api/v1/replay/checkpoints"],
         ];
         for (const [label, url] of calls) {
@@ -612,7 +635,8 @@ describe("cve change radar benchmarks (todo 30)", () => {
         warm === 0 ? (cold === 0 ? 0 : 1) : Math.abs(cold - warm) / warm;
       const coldP50Drift = drift(coldP50, concP50);
       const coldP95Drift = drift(coldP95, concP95);
-      const coldCacheFlagged = coldP50Drift > COLD_CACHE_TOLERANCE || coldP95Drift > COLD_CACHE_TOLERANCE;
+      const coldCacheFlagged =
+        coldP50Drift > COLD_CACHE_TOLERANCE || coldP95Drift > COLD_CACHE_TOLERANCE;
 
       // -- Verdicts (budgets never widened; a miss fails with numbers). ----
       const verdicts = {
@@ -696,12 +720,36 @@ describe("cve change radar benchmarks (todo 30)", () => {
           },
         },
         budgets: {
-          fullImportMs: { budget: FULL_IMPORT_BUDGET_MS, measured: fullImportMs, verdict: verdicts.fullImport },
-          incrementalMs: { budget: INCREMENTAL_BUDGET_MS, measured: incrementalMs, verdict: verdicts.incremental },
-          searchP50Ms: { budget: SEARCH_P50_BUDGET_MS, measured: concP50, verdict: verdicts.searchP50 },
-          searchP95Ms: { budget: SEARCH_P95_BUDGET_MS, measured: concP95, verdict: verdicts.searchP95 },
-          walRatio: { budget: WAL_RATIO_BUDGET, measured: preCheckpointWalRatio, verdict: verdicts.walRatio },
-          historyCostBytes: { budget: "recorded (no cap)", measured: historyDeltaBytes, verdict: verdicts.historyRecorded },
+          fullImportMs: {
+            budget: FULL_IMPORT_BUDGET_MS,
+            measured: fullImportMs,
+            verdict: verdicts.fullImport,
+          },
+          incrementalMs: {
+            budget: INCREMENTAL_BUDGET_MS,
+            measured: incrementalMs,
+            verdict: verdicts.incremental,
+          },
+          searchP50Ms: {
+            budget: SEARCH_P50_BUDGET_MS,
+            measured: concP50,
+            verdict: verdicts.searchP50,
+          },
+          searchP95Ms: {
+            budget: SEARCH_P95_BUDGET_MS,
+            measured: concP95,
+            verdict: verdicts.searchP95,
+          },
+          walRatio: {
+            budget: WAL_RATIO_BUDGET,
+            measured: preCheckpointWalRatio,
+            verdict: verdicts.walRatio,
+          },
+          historyCostBytes: {
+            budget: "recorded (no cap)",
+            measured: historyDeltaBytes,
+            verdict: verdicts.historyRecorded,
+          },
         },
       };
 
