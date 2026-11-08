@@ -52,7 +52,8 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-029 volume granularity (2026-11-07): month/week/day buckets with matching windows and full-height hit targets. Commit `ab78540`.
 - [x] TASK-030 fastest-confirmations card (2026-11-07): explained metric, two stats, linked rows. Commit `bfea56d` + refinement.
 - [x] TASK-031 EPSS retention window (2026-11-07): `EPSS_RETENTION_DAYS` (default 90, matching the API's 90-point history cap) prunes inside the import; byte-identical CSVs short-circuit. Live DB audited at 5.18M rows / 13 days and no window before this.
-- [x] TASK-032 import cost (2026-11-07): the KEV import rescanned all 396k records once per catalog entry; now one scan per import. Boot cycle 7m30s → 52s, WAL in the low hundreds of KB.
+- [x] TASK-032 import cost (2026-11-07): the KEV import rescanned all 396k records once per catalog entry; now one scan per import. Boot cycle 7m30s → 52s (38s after deploy), WAL in the low hundreds of KB.
+- Final gates for the owner batch: 416 unit, 98 e2e (1 skipped), lint/typecheck/build/Docker build green; four pre-existing e2e races (Sankey band open, help tooltip sidebar measure, matrix Enter→ArrowRight, hydrated node replacement) were made deterministic rather than retried blindly.
 
 - [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green. Committed as 7b70a63, rebuilt, live at 100.124.184.116:3100 (healthy, same volume, screenshot-verified).
 - [x] TASK-009 console polish batch (2026-10-27): 8 owner-reported UI fixes across overview/explore/replay; committed as 27b5f93, rebuilt, live and screenshot-verified. One focus-outline regression caught and fixed mid-task.

@@ -32,7 +32,7 @@ revision did not move.
 for 400 entries) and passes on the new one (1 scan). Live: boot cycle 7m30s →
 52s, KEV step 1.3s, WAL 140 KB, all pages 200.
 
-Gates: 415 unit, 97 e2e (1 skipped), lint/typecheck green, container rebuilt and
+Gates: 416 unit, 98 e2e (1 skipped), lint/typecheck green, container rebuilt and
 recreated.
 
 ## 2026-11-07 - Owner feedback batch: import cost, exploit signal, Sankey, volume, confirmation card

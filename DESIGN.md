@@ -278,17 +278,17 @@ a data table.
 
 ### Fastest confirmations
 
-The Sankey answers "how long does confirmation take"; this card answers "which
-records were confirmed fastest, and how fast is typical". It never repeats the
-chart as a bare sentence list:
+The Sankey answers "how long does confirmation take" and carries the two delay
+statistics (median days, confirmed within 30 days with its denominator); the
+adjacent card answers "which records were confirmed fastest". Splitting them this
+way keeps each statement next to the thing it describes, and balances the row:
+both cards end up the same height instead of one stretching around a dead band.
 
-- Two stats only — median delay in days and the count confirmed within 30 days
-  with its eligible denominator and share. The excluded count (no retained
-  publication date) is stated in the footnote, and only shown as a number when it
-  is non-zero; a `0` stat would be noise, not information.
-- Each row is a linked CVE id, a delay badge in whole days, then the publication
-  and KEV-listing instants in the reader's timezone. Dates wrap under the id
-  rather than forcing the id to truncate.
+- The Sankey never shows a median without its denominator, and the excluded count
+  (no retained publication date) is stated in the chart note.
+- Each fastest row is a linked CVE id, a delay badge in whole days, then the
+  publication and KEV-listing instants in the reader's timezone. Dates wrap under
+  the id rather than forcing the id to truncate.
 - The footnote defines the metric (KEV listing date − publication date) and says
   plainly that a zero-or-negative delay is a pre-publication listing, not a fast
   confirmation. No record is ever labelled fast on a missing date.

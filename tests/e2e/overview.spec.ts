@@ -471,11 +471,12 @@ test("fastest-confirmations card explains the metric and lists linked rows", asy
   await page.goto("/");
   const card = page.getByTestId("overview-fastest");
   await expect(card).toBeVisible();
-  await expect(page.getByTestId("overview-fastest-stats")).toContainText("Median delay");
-  await expect(page.getByTestId("overview-fastest-stats")).toContainText(
+  // The delay statistics live with the chart they describe, not in this list.
+  await expect(page.getByTestId("overview-time-to-kev-stats")).toContainText("Median delay");
+  await expect(page.getByTestId("overview-time-to-kev-stats")).toContainText(
     "Confirmed within 30 days",
   );
-  await expect(card).toContainText("publication → KEV listing");
+  await expect(card).toContainText("CISA confirmed exploitation within days");
   // Rows link into Explore and carry both dates, never a bare sentence.
   const rows = page.getByTestId("overview-fastest-list").locator("li.fastest-row");
   if ((await rows.count()) > 0) {

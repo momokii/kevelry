@@ -4943,3 +4943,22 @@ a.graph-evidence-chip:hover {
   flex: 1 1 auto;
   min-height: 0;
 }
+
+/* The Sankey keeps a fixed aspect ratio (non-uniform scaling would distort its
+   labels), so let the card hug its content instead of stretching to a taller
+   neighbour and leaving a dead band of panel below the data table. */
+[data-testid="overview-time-to-kev"] {
+  align-self: start;
+}
+
+[data-testid="overview-fastest"] .fastest-row {
+  padding-bottom: 6px;
+}
+
+[data-testid="overview-fastest"] .fastest-list {
+  gap: 8px;
+}
+
+[data-testid="overview-fastest"] .stat-grid-inline {
+  margin-bottom: 10px;
+}

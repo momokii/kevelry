@@ -243,16 +243,7 @@ export default function OverviewPage() {
             </ChartInfo>
           }
         >
-          <TimeToKevSankey flow={data.timeToKev} />
-        </Panel>
-
-        <Panel
-          title="Fastest confirmations"
-          sub="Shortest publication-to-confirmation delays in the retained snapshot. A short delay means CISA confirmed exploitation soon after the record was published."
-          className="span-4"
-          testId="overview-fastest"
-        >
-          <dl className="stat-grid stat-grid-inline" data-testid="overview-fastest-stats">
+          <dl className="stat-grid stat-grid-inline" data-testid="overview-time-to-kev-stats">
             <div className="stat">
               <div className="stat-label">Median delay, days</div>
               <div className="stat-value">
@@ -268,6 +259,15 @@ export default function OverviewPage() {
               </div>
             </div>
           </dl>
+          <TimeToKevSankey flow={data.timeToKev} />
+        </Panel>
+
+        <Panel
+          title="Fastest confirmations"
+          sub="Shortest publication-to-confirmation delays in the retained snapshot: CISA confirmed exploitation within days of the record being published."
+          className="span-4"
+          testId="overview-fastest"
+        >
           <ul className="fastest-list" data-testid="overview-fastest-list">
             {data.timeToKev.fastest.map((entry) => (
               <li key={entry.cveId} className="fastest-row">
@@ -293,11 +293,10 @@ export default function OverviewPage() {
             ) : null}
           </ul>
           <p className="chart-note">
-            Delay is the KEV listing date minus the publication date. Records with no retained
-            publication date are excluded
-            {data.timeToKev.excluded > 0 ? ` (${formatInt(data.timeToKev.excluded)} here)` : ""},
-            never assumed fast. A delay of zero or less means CISA listed the record before
-            publication, which is shown in the Sankey above, not as a fast confirmation.
+            Delay is KEV listing − publication date. Records without a publication date are excluded
+            {data.timeToKev.excluded > 0 ? ` (${formatInt(data.timeToKev.excluded)})` : ""}, never
+            assumed fast; zero or negative delays are pre-publication listings, not fast
+            confirmations.
           </p>
         </Panel>
 
