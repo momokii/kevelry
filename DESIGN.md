@@ -336,6 +336,13 @@ first and the honest answer is a classification, not a verdict:
   (`hasExploitTagInDocument`) and backfilled once for older rows, so the counts
   cost one indexed read rather than parsing 4 GB of JSON per request.
 
+### Watch
+
+A watched row shows the same three signals plus the exploit reference, and the
+`exploit ref` badge **is** the link (`target="_blank"`, `rel="noreferrer
+noopener"`). A compact row cannot carry a full reference list, so the badge
+itself points at the evidence instead of being a claim without one.
+
 ### Relation graph
 
 A layered ego drawing, never a node-link hairball: **center CVE → shared

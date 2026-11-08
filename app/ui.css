@@ -5128,3 +5128,12 @@ a.graph-evidence-chip:hover {
 .exploit-signal-list a:hover {
   text-decoration: underline;
 }
+
+/* A badge that is also the link: Watch never shows a tag without evidence. */
+a.badge {
+  text-decoration: none;
+}
+
+a.badge:hover {
+  text-decoration: underline;
+}

@@ -20,7 +20,7 @@ function seedWatchRecord(db: CveDatabase): void {
   db.runBoundedWrite(() => {
     db.handle
       .prepare(
-        "INSERT INTO cve_records (cve_id, data_version, state, date_published, title, description, description_lang, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO cve_records (cve_id, data_version, state, date_published, title, description, description_lang, created_at, updated_at, has_exploit_ref, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         "CVE-2099-1001",
@@ -32,6 +32,12 @@ function seedWatchRecord(db: CveDatabase): void {
         "en",
         nowIso,
         nowIso,
+        1,
+        JSON.stringify({
+          containers: {
+            cna: { references: [{ url: "https://example.test/poc-1001", tags: ["exploit"] }] },
+          },
+        }),
       );
     db.handle
       .prepare(
@@ -67,6 +73,20 @@ test.afterAll(() => {
   } finally {
     db.close();
   }
+});
+
+test("a watched record with a tagged reference links its evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("ui-watch", JSON.stringify(["CVE-2099-1001"]));
+  });
+  await page.goto("/watch");
+  // The badge is the link itself: Watch never claims a tag without evidence.
+  const badge = page.getByTestId("watch-row-CVE-2099-1001-exploit");
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveAttribute("href", "https://example.test/poc-1001");
+  await expect(badge).toHaveAttribute("rel", "noreferrer noopener");
+  await expect(badge).toContainText("exploit ref");
 });
 
 test("star persists across reload and /watch lists it", async ({ page }) => {

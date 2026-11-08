@@ -16,6 +16,8 @@ interface WatchSignals {
   cvssVersion: string | null;
   publishedAt: string | null;
   excerpt: string | null;
+  /** Tagged exploit reference URLs from the record; empty when none. */
+  exploitReferences: string[];
 }
 
 type WatchRow =
@@ -60,6 +62,7 @@ async function fetchRow(cveId: string): Promise<WatchRow> {
     { status?: string; baseScore?: number | null; version?: string | null } | undefined;
   const publishedAt = data.publishedAt;
   const excerpt = data.excerpt;
+  const exploit = data.exploitReferences;
   const title = data.title;
   const officialUrl = data.officialUrl;
   return {
@@ -82,6 +85,11 @@ async function fetchRow(cveId: string): Promise<WatchRow> {
       cvssVersion: typeof cvss?.version === "string" ? cvss.version : null,
       publishedAt: typeof publishedAt === "string" ? publishedAt : null,
       excerpt: typeof excerpt === "string" && excerpt !== "" ? excerpt : null,
+      exploitReferences: Array.isArray(exploit)
+        ? exploit
+            .map((entry) => (entry as { url?: unknown }).url)
+            .filter((url): url is string => typeof url === "string")
+        : [],
     },
   };
 }
@@ -159,11 +167,26 @@ export function WatchView() {
             signals.kevListed ? "KEV listed" : "Not KEV listed",
             signals.epssPercent !== null ? `EPSS ${signals.epssPercent}%` : "EPSS unknown",
             signals.cvssScore !== null ? `CVSS ${signals.cvssScore}` : "Unscored",
+            signals.exploitReferences.length > 0
+              ? `${signals.exploitReferences.length} tagged exploit reference(s)`
+              : "No tagged exploit reference",
           ].join(" · ");
           return (
             <article className="result-row" key={id} data-testid={`watch-row-${id}`}>
               <div className="result-rail">
                 {signals.kevListed ? <span className="badge badge-kev">KEV</span> : null}
+                {signals.exploitReferences[0] === undefined ? null : (
+                  <a
+                    className="badge badge-accent"
+                    href={signals.exploitReferences[0]}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title="A CVE reference carries the publisher's exploit tag: a classification, not a verified working exploit."
+                    data-testid={`watch-row-${id}-exploit`}
+                  >
+                    exploit ref
+                  </a>
+                )}
                 <span className="result-date">
                   Published <TimeText value={signals.publishedAt} />
                 </span>
