@@ -47,7 +47,13 @@ proportional bar and those three counts plus a link; Explore gained a
 `?exploit=tagged` filter, an `exploit ref` row badge and an active-filter count;
 the API accepts `?exploit=tagged` and documents it.
 
-Gates: 422 unit, 101 e2e (1 skipped), lint/typecheck green.
+**Follow-up.** The filter could report `tagged` while the record showed no
+links: `containers.adp` is an array of containers, and the extractor treated it
+as a single object, dropping the references that carry most exploit tags. One
+walker (`exploitReferenceUrls`) now serves the importer, the backfill and the API,
+with a regression test for the ADP array shape.
+
+Gates: 422 unit, 102 e2e (1 skipped), lint/typecheck green.
 
 ## 2026-11-08 - The feed that never advanced, and two hidden import hot spots
 
