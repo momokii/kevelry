@@ -389,10 +389,13 @@ CVE V5 references carry publisher tags. `exploit` marks a reference the CNA or
 CISA classified as exploit code, and it appears on ~12% of the current corpus
 (46,463 of 401,935 published records after the v2 pass).
 
-- The rule is one function (`hasExploitTagInDocument`): any CNA or ADP reference
-  tagged `exploit` **with an http(s) URL**. The URL requirement keeps the flag
-  identical to the linked references the API returns, so a badge can never
-  promise a link that does not exist.
+- The rule is one walker (`exploitReferenceUrls`): any CNA **or** ADP reference
+  tagged `exploit` with an http(s) URL. `containers.cna` is an object while
+  `containers.adp` is an array of containers, and most tags arrive through ADP,
+  so treating ADP as a single object silently drops them.
+- The URL requirement keeps the flag identical to the linked references the API
+  returns, so a badge can never promise a link that does not exist — the case
+  that exposed the ADP shape was a filtered row reporting `tagged` with no links.
 - The flag is stored on `cve_records.has_exploit_ref` (migration 006) with a
   partial index, set by the importer from the document it already parsed.
 - Rows imported before the migration are filled once by

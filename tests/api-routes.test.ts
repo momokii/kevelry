@@ -796,6 +796,20 @@ describe("exploit reference extraction", () => {
       { url: "https://example.org/poc" },
       { url: "https://example.org/second-poc" },
     ]);
+    // `containers.adp` is an array of containers (CISA Vulnrichment shape).
+    // Treating it as one object silently dropped every ADP-tagged reference,
+    // which is where most exploit tags actually live.
+    const adpArray = JSON.stringify({
+      containers: {
+        cna: { references: [{ url: "https://example.org/patch", tags: ["patch"] }] },
+        adp: [
+          { references: [{ url: "https://example.org/from-adp", tags: ["exploit"] }] },
+          { references: [] },
+        ],
+      },
+    });
+    expect(exploitReferencesOf(adpArray)).toEqual([{ url: "https://example.org/from-adp" }]);
+
     // No tag, no raw payload, or unparseable payload -> no claim.
     expect(exploitReferencesOf(null)).toEqual([]);
     expect(exploitReferencesOf("{not json")).toEqual([]);

@@ -314,6 +314,10 @@ first and the honest answer is a classification, not a verdict:
 - The wording is fixed: "Records whose CVE references carry the publisher's
   exploit tag. A classification, not a verified working exploit." Nothing here
   enters ranking, and no badge claims exploitability.
+- Both container shapes are walked: `containers.cna` is one object and
+  `containers.adp` is an array. Most exploit tags arrive through ADP (CISA
+  Vulnrichment), so reading only the CNA object makes the badge appear without
+  the link it promises.
 - The panel links to `/explore?exploit=tagged`, and Explore shows an
   `exploit ref` badge on each matching row with the same caveat in its tooltip.
 - The flag is computed at import from the document already in memory

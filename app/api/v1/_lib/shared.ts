@@ -27,6 +27,7 @@ import {
   severityBandFor,
   DESCRIPTION_MISSING_LABEL,
 } from "../../../../src/lib/search";
+import { exploitReferenceUrls } from "../../../../src/lib/exploit-ref";
 import { selectPrimaryCvss } from "../../../../src/lib/ranking";
 
 /** Ranking policy version pinned into every provenance envelope. */
@@ -848,30 +849,14 @@ export function parseVendor(raw: string | null): string | null {
  */
 export function exploitReferencesOf(rawJson: string | null, cap = 5): Array<{ url: string }> {
   if (rawJson === null || rawJson === "") return [];
-  const out: Array<{ url: string }> = [];
   try {
-    const root = JSON.parse(rawJson) as {
-      containers?: Record<string, { references?: unknown[] }>;
-    };
-    const containers = root.containers ?? {};
-    for (const container of ["cna", "adp"]) {
-      const refs = containers[container]?.references;
-      if (!Array.isArray(refs)) continue;
-      for (const entry of refs) {
-        const row = entry as { url?: unknown; tags?: unknown };
-        if (typeof row.url !== "string") continue;
-        const tags = Array.isArray(row.tags) ? row.tags : [];
-        if (!tags.includes("exploit")) continue;
-        if (!row.url.startsWith("https://") && !row.url.startsWith("http://")) continue;
-        if (out.some((existing) => existing.url === row.url)) continue;
-        out.push({ url: row.url });
-        if (out.length >= cap) return out;
-      }
-    }
+    // Same walker as the stored flag: CNA object plus the ADP array, so a record
+    // that is tagged only in an ADP container still links to its references.
+    return exploitReferenceUrls(JSON.parse(rawJson) as unknown, cap).map((url) => ({ url }));
   } catch {
     // Unparseable payloads carry no tagged references, never a throw.
+    return [];
   }
-  return out;
 }
 
 /** One dated EPSS observation for the per-record trend series. Values are
