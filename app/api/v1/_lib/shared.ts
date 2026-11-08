@@ -692,6 +692,8 @@ export function paginateCapped<T>(
 export type KevParam = "listed" | "not-listed" | "any";
 export type EpssParam = "scored" | "unscored" | "any";
 export type SeverityParam = "critical" | "high" | "medium" | "low" | "unknown" | "legacy";
+/** `tagged` = the record's own references carry the publisher's `exploit` tag. */
+export type ExploitParam = "tagged" | "any";
 
 const SEVERITIES: readonly string[] = ["critical", "high", "medium", "low", "unknown", "legacy"];
 
@@ -715,6 +717,14 @@ export function parseEpss(raw: string | null): EpssParam {
   if (raw === null || raw === "" || raw === "any") return "any";
   if (raw !== "scored" && raw !== "unscored") {
     throw new ApiError("BAD_FILTER", 400, "epss must be scored, unscored, or any.");
+  }
+  return raw;
+}
+
+export function parseExploit(raw: string | null): ExploitParam {
+  if (raw === null || raw === "" || raw === "any") return "any";
+  if (raw !== "tagged") {
+    throw new ApiError("BAD_FILTER", 400, "exploit must be tagged or any.");
   }
   return raw;
 }

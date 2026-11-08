@@ -302,6 +302,24 @@ both cards end up the same height instead of one stretching around a dead band.
   plainly that a zero-or-negative delay is a pre-publication listing, not a fast
   confirmation. No record is ever labelled fast on a missing date.
 
+### Exploit-tagged coverage
+
+The overview closes with what share of the corpus carries a publisher-tagged
+exploit reference, because "does this have a PoC?" is the question readers ask
+first and the honest answer is a classification, not a verdict:
+
+- One proportional bar plus plain counts: tagged records, how many of those are
+  also KEV-listed, how many carry an EPSS forecast, and the KEV catalog size.
+  Every overlap names its own denominator.
+- The wording is fixed: "Records whose CVE references carry the publisher's
+  exploit tag. A classification, not a verified working exploit." Nothing here
+  enters ranking, and no badge claims exploitability.
+- The panel links to `/explore?exploit=tagged`, and Explore shows an
+  `exploit ref` badge on each matching row with the same caveat in its tooltip.
+- The flag is computed at import from the document already in memory
+  (`hasExploitTagInDocument`) and backfilled once for older rows, so the counts
+  cost one indexed read rather than parsing 4 GB of JSON per request.
+
 ### Relation graph
 
 A layered ego drawing, never a node-link hairball: **center CVE → shared

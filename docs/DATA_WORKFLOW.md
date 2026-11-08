@@ -383,6 +383,28 @@ with the KEV step at 1.3s instead of ~7 minutes; the first 11-day catch-up
 (17,579 changed paths, 17,109 published + 470 rejected) now stages in 1.8s and
 publishes in 4.5s; the WAL stays in the low hundreds of KB.
 
+## Exploit-Tagged References (classification, not a verdict)
+
+CVE V5 references carry publisher tags. `exploit` marks a reference the CNA or
+CISA classified as exploit code, and it appears on ~12% of the current corpus
+(46,463 of 401,935 published records after the v2 pass).
+
+- The rule is one function (`hasExploitTagInDocument`): any CNA or ADP reference
+  tagged `exploit` **with an http(s) URL**. The URL requirement keeps the flag
+  identical to the linked references the API returns, so a badge can never
+  promise a link that does not exist.
+- The flag is stored on `cve_records.has_exploit_ref` (migration 006) with a
+  partial index, set by the importer from the document it already parsed.
+- Rows imported before the migration are filled once by
+  `backfillExploitRefsOnce`, recorded in `maintenance_runs` (v2 re-ran after the
+  URL rule tightened: 401,935 scanned, 2 corrected).
+- Aggregate cache v4 carries `exploitRef { tagged, taggedKev, taggedScored }`,
+  so the overview panel and any filter cost one indexed count.
+- The API exposes the same signal twice: `exploitReferenceStatus`/
+  `exploitReferences` on a record, and `?exploit=tagged` as a list filter.
+- Nothing here ranks, scores, or claims a working exploit. The UI says so in the
+  panel subtitle, the row badge tooltip, and the filter's help tip.
+
 ## Retention (bounded growth)
 
 Every table is bounded by the corpus except `epss_daily`, which gains one row per

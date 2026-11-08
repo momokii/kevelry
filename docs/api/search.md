@@ -14,7 +14,7 @@ for row.
 
 ## Parameters
 
-`q` plus `cursor`, `limit`, and the shared filters (`severity`, `kev`, `epss`,
+`q` plus `cursor`, `limit`, and the shared filters (`severity`, `kev`, `epss`, `exploit`,
 `publishedStart`, `publishedEnd`, `vendor`); see [README](README.md#filters).
 `vendor` is a substring over KEV catalog vendor/product labels: only
 KEV-listed records carry these labels, so it implies KEV membership. The

@@ -54,6 +54,7 @@ import {
   type EpssImportResult,
 } from "./lib/epss-import";
 import { resolveEpssRetentionDays } from "./lib/retention";
+import { EXPLOIT_REF_BACKFILL, backfillExploitRefsOnce } from "./lib/exploit-ref";
 import { importKevFromUrl, type KevImportResult } from "./lib/kev-import";
 import {
   IngestionScheduler,
@@ -447,6 +448,25 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
     throw error;
   }
   log({ event: "worker-start", dataDir, scheduleEnabled });
+
+  // One-off passes that must complete before the first cycle computes totals.
+  try {
+    const backfill = backfillExploitRefsOnce(db);
+    if (backfill.ran) {
+      log({
+        event: "maintenance-backfill",
+        name: EXPLOIT_REF_BACKFILL,
+        scanned: backfill.scanned,
+        updated: backfill.updated,
+      });
+    }
+  } catch (error) {
+    log({
+      event: "maintenance-backfill-failed",
+      name: EXPLOIT_REF_BACKFILL,
+      error: errorDetail(error),
+    });
+  }
 
   const jobs = createSourceJobs(db, {
     ...options.deps,

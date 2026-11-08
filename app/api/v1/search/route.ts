@@ -13,6 +13,7 @@ import {
   parseCursor,
   parseDateBound,
   parseEpss,
+  parseExploit,
   parseKev,
   parseLimit,
   parseQuery,
@@ -66,6 +67,7 @@ export async function GET(request: Request): Promise<Response> {
     const severity = parseSeverity(params.get("severity"));
     const kev = parseKev(params.get("kev"));
     const epss = parseEpss(params.get("epss"));
+    const exploit = parseExploit(params.get("exploit"));
     const start = parseDateBound(params.get("publishedStart"), "publishedStart");
     const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
     if (start !== null && end !== null && start >= end) {
@@ -93,6 +95,8 @@ export async function GET(request: Request): Promise<Response> {
       severity: severity === null ? undefined : [severity],
       kev: kev === "listed" ? "only" : kev === "not-listed" ? "excluded" : "all",
       epss: epss === "scored" ? "present" : epss === "unscored" ? "absent" : "all",
+      // `tagged` is the publisher's reference classification, never a PoC claim.
+      exploit: exploit === "tagged" ? "tagged" : "all",
       vendor: vendor ?? undefined,
       limit,
       cursor: offset === 0 ? null : encodeCursor(offset),

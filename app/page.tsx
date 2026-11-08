@@ -9,6 +9,7 @@ import { ChartInfo } from "@/components/charts/ChartInfo";
 import { formatInt, monthLong, sharePercent } from "@/components/charts/chartTokens";
 import { TimeText } from "@/components/ledger/TimeText";
 import { loadOverviewData, resolveDataDir } from "@/components/overview/loadOverview";
+import { ExploitCoverage } from "@/components/overview/ExploitCoverage";
 import { FreshnessPanel } from "@/components/overview/FreshnessPanel";
 import { PriorityPreview } from "@/components/overview/PriorityPreview";
 import { StatStrip } from "@/components/overview/StatStrip";
@@ -322,9 +323,22 @@ export default function OverviewPage() {
         </Panel>
 
         <Panel
+          title="Exploit-tagged references"
+          sub="Records whose CVE references carry the publisher's exploit tag. A classification, not a verified working exploit."
+          className="span-4"
+          testId="overview-exploit-panel"
+        >
+          <ExploitCoverage
+            coverage={data.exploitRef}
+            publishedTotal={data.publishedTotal}
+            kevTotal={data.corpus.kev}
+          />
+        </Panel>
+
+        <Panel
           title="How this page stays honest"
           sub="No score stitching, no silent zeros, no interpolation."
-          className="span-4"
+          className="span-12"
           testId="overview-method-panel"
         >
           <ul className="plain-list">

@@ -53,6 +53,7 @@ interface Fixture {
   metrics?: Array<{ origin: string; version: string; baseScore: string; vector?: string }>;
   kev?: boolean;
   epss?: boolean;
+  exploitRef?: boolean;
 }
 
 function seed(db: CveDatabase, fixtures: Fixture[]): void {
@@ -61,7 +62,7 @@ function seed(db: CveDatabase, fixtures: Fixture[]): void {
     for (const fixture of fixtures) {
       handle
         .prepare(
-          "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, title, description, description_lang, source_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, title, description, description_lang, source_revision, created_at, updated_at, has_exploit_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           fixture.cveId,
@@ -75,6 +76,7 @@ function seed(db: CveDatabase, fixtures: Fixture[]): void {
           "rev-test",
           STAMP,
           STAMP,
+          fixture.exploitRef === true ? 1 : 0,
         );
       for (const [index, metric] of (fixture.metrics ?? []).entries()) {
         handle
@@ -310,12 +312,12 @@ describe("local FTS5 search (todo 13)", () => {
     const db = makeDb();
     try {
       seed(db, baseFixtures());
-      expect(
-        searchCves(db, { severity: ["critical"] }).items.map((item) => item.cveId),
-      ).toEqual(["CVE-2099-0001"]);
-      expect(
-        searchCves(db, { severity: ["legacy"] }).items.map((item) => item.cveId),
-      ).toEqual(["CVE-2099-0004"]);
+      expect(searchCves(db, { severity: ["critical"] }).items.map((item) => item.cveId)).toEqual([
+        "CVE-2099-0001",
+      ]);
+      expect(searchCves(db, { severity: ["legacy"] }).items.map((item) => item.cveId)).toEqual([
+        "CVE-2099-0004",
+      ]);
       const unknown = searchCves(db, { severity: ["unknown"] });
       expect(unknown.items.map((item) => item.cveId).sort()).toEqual([
         "CVE-2099-0003",
@@ -336,11 +338,15 @@ describe("local FTS5 search (todo 13)", () => {
     try {
       seed(db, baseFixtures());
       expect(
-        searchCves(db, { kev: "only" }).items.map((item) => item.cveId).sort(),
+        searchCves(db, { kev: "only" })
+          .items.map((item) => item.cveId)
+          .sort(),
       ).toEqual(["CVE-2099-0001", "CVE-2099-0004"]);
       expect(searchCves(db, { kev: "excluded" }).total).toBe(3);
       expect(
-        searchCves(db, { epss: "present" }).items.map((item) => item.cveId).sort(),
+        searchCves(db, { epss: "present" })
+          .items.map((item) => item.cveId)
+          .sort(),
       ).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
       expect(searchCves(db, { epss: "absent" }).total).toBe(3);
       const coverage = searchCves(db, {}).coverage;
@@ -380,9 +386,7 @@ describe("local FTS5 search (todo 13)", () => {
         SearchValidationError,
       );
       expect(() => searchCves(db, { limit: 1.5 })).toThrowError(SearchValidationError);
-      expect(() => searchCves(db, { dateStart: "not-a-date" })).toThrowError(
-        SearchValidationError,
-      );
+      expect(() => searchCves(db, { dateStart: "not-a-date" })).toThrowError(SearchValidationError);
       expect(() =>
         searchCves(db, {
           dateStart: "2026-10-22T00:00:00.000Z",
@@ -479,18 +483,14 @@ describe("local FTS5 search (todo 13)", () => {
   });
 
   it("builds official links from stored IDs and titles fall back to the ID", () => {
-    expect(officialCveLink("CVE-2099-0001")).toBe(
-      "https://www.cve.org/CVERecord?id=CVE-2099-0001",
-    );
+    expect(officialCveLink("CVE-2099-0001")).toBe("https://www.cve.org/CVERecord?id=CVE-2099-0001");
     expect(severityBandFor(null)).toBe("unknown");
     const db = makeDb();
     try {
       seed(db, baseFixtures());
       const result = searchCves(db, { q: "CVE-2099-0003" });
       expect(result.items[0]?.title).toBe("CVE-2099-0003");
-      expect(result.items[0]?.officialLink).toBe(
-        "https://www.cve.org/CVERecord?id=CVE-2099-0003",
-      );
+      expect(result.items[0]?.officialLink).toBe("https://www.cve.org/CVERecord?id=CVE-2099-0003");
     } finally {
       db.close();
     }

@@ -2,6 +2,29 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Exploit-tagged references: flag, filter, coverage
+
+Owner asked for an "exploit ref" flag next to KEV/EPSS/CVSS and for counts.
+
+**Signal.** The CVE record's own references already carry publisher tags; ~12% of
+the corpus (46,463 of 401,935) has at least one reference tagged `exploit` with an
+http(s) URL. That rule is now a single function shared by the importer, the
+backfill and the API links, so a badge can never promise a link that does not
+exist.
+
+**Storage.** Migration 006 adds `cve_records.has_exploit_ref` with a partial
+index, filled by the importer from the document it already parses (no extra
+read). Older rows were filled once by `backfillExploitRefsOnce`, recorded in
+`maintenance_runs`; a v2 pass after the URL rule tightened corrected 2 rows.
+
+**Surfaces.** Aggregate cache v4 carries `exploitRef {tagged, taggedKev,
+taggedScored}`; the overview gained an "Exploit-tagged references" card with one
+proportional bar and those three counts plus a link; Explore gained a
+`?exploit=tagged` filter, an `exploit ref` row badge and an active-filter count;
+the API accepts `?exploit=tagged` and documents it.
+
+Gates: 422 unit, 101 e2e (1 skipped), lint/typecheck green.
+
 ## 2026-11-08 - The feed that never advanced, and two hidden import hot spots
 
 Owner asked why the volume chart ended at October. The chart was right; the data

@@ -1,8 +1,9 @@
-import type { EpssFilter, KevFilter, SeverityBand } from "@/lib/search";
+import type { EpssFilter, ExploitFilter, KevFilter, SeverityBand } from "@/lib/search";
 
 export type ExploreSeverity = SeverityBand;
 export type ExploreKev = KevFilter;
 export type ExploreEpss = EpssFilter;
+export type ExploreExploit = ExploitFilter;
 
 export const SEVERITY_ORDER: readonly SeverityBand[] = [
   "critical",
@@ -43,6 +44,7 @@ export interface ExploreInitial {
   severity: readonly SeverityBand[];
   kev: KevFilter;
   epss: EpssFilter;
+  exploit: ExploitFilter;
   /** Vendor/product substring over KEV catalog labels; "" means unfiltered. */
   vendor: string;
   limit: number;

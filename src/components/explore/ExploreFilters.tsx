@@ -102,6 +102,42 @@ export function ExploreFilters({ initial }: ExploreFiltersProps) {
 
       <fieldset className="ledger-explore-fieldset">
         <legend className="ledger-meta">
+          Exploit-tagged reference{" "}
+          <HelpTip term="Exploit reference" testId="explore-help-exploit">
+            A reference the CNA or CISA tagged <code>exploit</code> inside the CVE record itself. It
+            is a publisher classification, not a verified working exploit, and it is never scored.
+          </HelpTip>
+        </legend>
+        <div
+          className="ledger-filter-chips"
+          role="radiogroup"
+          aria-label="Exploit-tagged reference"
+        >
+          <label className="ledger-filter-chip ledger-explore-chip">
+            <input
+              type="radio"
+              name="exploit"
+              value="all"
+              defaultChecked={initial.exploit !== "tagged"}
+              data-testid="explore-exploit-all"
+            />
+            <span>Any record</span>
+          </label>
+          <label className="ledger-filter-chip ledger-explore-chip">
+            <input
+              type="radio"
+              name="exploit"
+              value="tagged"
+              defaultChecked={initial.exploit === "tagged"}
+              data-testid="explore-exploit-tagged"
+            />
+            <span>Tagged only</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset className="ledger-explore-fieldset">
+        <legend className="ledger-meta">
           Published date range{" "}
           <HelpTip term="date range filter" testId="explore-help-date">
             Compares the stored publication timestamp in UTC. The start binds inclusively, the end

@@ -17,6 +17,7 @@ import {
   searchFacets,
   type CohortFacets,
   type EpssFilter,
+  type ExploitFilter,
   type KevFilter,
   type SearchResponse,
   type SeverityBand,
@@ -74,6 +75,12 @@ function parseEpss(raw: string | undefined): EpssFilter {
   throw new SearchValidationError('Search "epss" must be "present", "absent", or "all".');
 }
 
+function parseExploit(raw: string | undefined): ExploitFilter {
+  if (raw === undefined || raw === "" || raw === "all") return "all";
+  if (raw === "tagged") return "tagged";
+  throw new SearchValidationError('Search "exploit" must be "tagged" or "all".');
+}
+
 function parseVendorParam(raw: string | undefined): string {
   if (raw === undefined || raw.trim() === "") return "";
   const trimmed = raw.trim();
@@ -125,6 +132,7 @@ const cachedExploreSearch = unstable_cache(
       severity: SeverityBand[];
       kev: KevFilter;
       epss: EpssFilter;
+      exploit: ExploitFilter;
       vendor: string;
       limit: number;
       cursor: string | null;
@@ -138,6 +146,7 @@ const cachedExploreSearch = unstable_cache(
       severity: args.severity.length === 0 ? undefined : args.severity,
       kev: args.kev,
       epss: args.epss,
+      exploit: args.exploit,
       vendor: args.vendor === "" ? undefined : args.vendor,
       limit: args.limit,
     };
@@ -172,6 +181,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
     severity: [],
     kev: "all",
     epss: "all",
+    exploit: "all",
     vendor,
     limit: EXPLORE_DEFAULT_LIMIT,
   };
@@ -181,10 +191,12 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
     const severity = parseSeverity(allValues(params.severity));
     const kev = parseKev(firstValue(params.kev));
     const epss = parseEpss(firstValue(params.epss));
+    const exploit = parseExploit(firstValue(params.exploit));
     const limit = parseLimit(firstValue(params.limit));
     initial.severity = severity;
     initial.kev = kev;
     initial.epss = epss;
+    initial.exploit = exploit;
     initial.limit = limit;
 
     let cached: { response: SearchResponse; facets: CohortFacets } | null = null;
@@ -199,6 +211,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
           severity,
           kev,
           epss,
+          exploit,
           vendor,
           limit,
           cursor: cursor ?? null,
@@ -221,6 +234,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
         severity.length > 0 ||
         kev !== "all" ||
         epss !== "all" ||
+        exploit !== "all" ||
         vendor !== "";
       const kept = new URLSearchParams();
       if (q !== "") kept.set("q", q);
@@ -228,6 +242,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
       if (dateEnd !== "") kept.set("dateEnd", dateEnd);
       for (const band of severity) kept.append("severity", band);
       if (kev !== "all") kept.set("kev", kev);
+      if (exploit !== "all") kept.set("exploit", exploit);
       if (epss !== "all") kept.set("epss", epss);
       if (vendor !== "") kept.set("vendor", vendor);
       if (limit !== EXPLORE_DEFAULT_LIMIT) kept.set("limit", String(limit));

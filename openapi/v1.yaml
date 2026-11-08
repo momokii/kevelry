@@ -154,6 +154,7 @@ paths:
         - $ref: "#/components/parameters/Severity"
         - $ref: "#/components/parameters/Kev"
         - $ref: "#/components/parameters/EpssPresence"
+        - $ref: "#/components/parameters/Exploit"
         - $ref: "#/components/parameters/PublishedStart"
         - $ref: "#/components/parameters/PublishedEnd"
       responses:
@@ -603,6 +604,21 @@ components:
           - any
         default: any
         example: scored
+    Exploit:
+      name: exploit
+      in: query
+      required: false
+      description: >
+        Filter by publisher-tagged exploit references. `tagged` keeps records whose own CVE
+        references carry the `exploit` tag with an http(s) URL. This is a publisher classification,
+        not a verified working exploit, and it never affects ranking.
+      schema:
+        type: string
+        enum:
+          - tagged
+          - any
+        default: any
+        example: tagged
     PublishedStart:
       name: publishedStart
       in: query

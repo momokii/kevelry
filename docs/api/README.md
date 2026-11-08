@@ -68,13 +68,14 @@ curl "https://radar.example.org/api/v1/cves?limit=50&cursor=W1lOVUYtMjAyNi0xMDk2
 `cves` and `search` share the explore-view filters, so the site and the API
 read the same cohort:
 
-| Param                            | Values                                                   | Notes                                                |
-| -------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
-| `q` (search only)                | 2–200 chars                                              | ID or description text; local index only             |
-| `severity`                       | `critical`, `high`, `medium`, `low`, `unknown`, `legacy` | Primary-CNA band; CVSS versions not calibrated alike |
-| `kev`                            | `listed`, `not-listed`, `any` (default)                  | Membership in accepted snapshot                      |
-| `epss`                           | `scored`, `unscored`, `any` (default)                    | `unscored` means unknown, never zero                 |
-| `publishedStart`, `publishedEnd` | RFC 3339 UTC                                             | Half-open `[start, end)` interval                    |
+| Param                            | Values                                                   | Notes                                                   |
+| -------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `q` (search only)                | 2–200 chars                                              | ID or description text; local index only                |
+| `severity`                       | `critical`, `high`, `medium`, `low`, `unknown`, `legacy` | Primary-CNA band; CVSS versions not calibrated alike    |
+| `kev`                            | `listed`, `not-listed`, `any` (default)                  | Membership in accepted snapshot                         |
+| `epss`                           | `scored`, `unscored`, `any` (default)                    | `unscored` means unknown, never zero                    |
+| `exploit`                        | `tagged`, `any` (default)                                | Publisher-tagged reference; a classification, not a PoC |
+| `publishedStart`, `publishedEnd` | RFC 3339 UTC                                             | Half-open `[start, end)` interval                       |
 
 Injection-shaped input is rejected with `BAD_QUERY` or `BAD_FILTER`; it never
 reaches the query layer as code. See [SECURITY_STANDARDS](../.claude/SECURITY_STANDARDS.md).

@@ -336,6 +336,20 @@ and explicitly selected `compose.dev.yaml`; retained as historical rationale onl
 
 ---
 
+## 2026-11-08 - Exploit signal is a stored publisher classification
+
+---
+
+**Decision:** Treat "has an exploit reference" as one stored boolean derived from the record's own reference tags (`exploit` + http(s) URL), computed at import, backfilled once, exposed as a filter/count/badge, and never used in ranking.
+**Date:** 2026-11-08
+**Context:** Owner wanted an exploit flag beside KEV/EPSS/CVSS and corpus-wide counts. Without a stored column, every count or filter would parse ~4 GB of `raw_json`.
+**Rationale:** The tag is first-party, free, and already in the record. Storing it makes the badge, the filter and the aggregate one indexed read; computing it at import costs nothing because the document is already in memory. The URL requirement keeps the flag exactly equal to the references the API can link, so the badge never implies a link that is not there.
+**Alternatives Rejected:** Scraping exploit databases (licensing, rate limits, link rot, and the claim would be ours, not the publisher's); a JSON expression in the query (slow, uncacheable); calling it "PoC available" (unverifiable); folding it into a score (a composite the project refuses).
+**Security Implications:** Only http(s) links are surfaced, capped, and labelled as a classification; no exploit code or usage instructions are ever displayed.
+**Impact:** Migration 006 + one backfill pass; aggregate cache v4; new UI card, Explore filter, API parameter and docs. Ranking is untouched.
+
+---
+
 ## Entry Template
 
 Copy this block for each new decision; newest entry at the top.

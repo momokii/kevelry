@@ -152,6 +152,24 @@ test("explore filters are reachable and operable by keyboard alone", async ({ pa
   await page.screenshot({ path: `${EVIDENCE_DIR}/explore-keyboard-1280.png`, fullPage: true });
 });
 
+test("exploit-tagged records are filterable and carry the badge", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/explore?exploit=tagged");
+  // The filter contract holds regardless of what the local snapshot contains.
+  await expect(page.locator(".filter-count").first()).toHaveText("1 active");
+  const rows = page.getByTestId("explore-row");
+  const count = await rows.count();
+  if (count > 0) {
+    // Every row in this filtered view is tagged, and the rail says so.
+    await expect(page.getByTestId("explore-row-exploit-badge")).toHaveCount(count);
+  }
+  // The control reflects the URL, and switching back clears it.
+  await expect(page.getByTestId("explore-exploit-tagged")).toBeChecked();
+  await page.getByTestId("explore-exploit-all").check();
+  await page.getByTestId("explore-apply").click();
+  await expect(page).not.toHaveURL(/exploit=tagged/);
+});
+
 test("explore names invalid filters and keeps typed text", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
 

@@ -15,7 +15,7 @@ import type { CveDatabase } from "./db";
 import { getHighestForecast, getRisingForecast } from "./priority";
 
 export const AGGREGATE_KEY = "aggregates:v1";
-export const AGGREGATE_VERSION = 3;
+export const AGGREGATE_VERSION = 4;
 
 /** Bounded prefix stored per ranked list: exact full-order-then-slice head. */
 export const TOP_LIST_LIMIT = 100;
@@ -43,6 +43,29 @@ const VALID_EPSS_SQL = [
   "CAST(c.epss AS REAL) <= 1",
 ].join(" AND ");
 
+/**
+ * Counts exploit-tagged records once, from the indexed flag, instead of reading
+ * `raw_json` per request. KEV and EPSS overlap are separate counters because
+ * "tagged and listed" is the interesting intersection.
+ */
+export function exploitRefCoverageSql(db: CveDatabase): ExploitRefCoverage {
+  const row = db.handle
+    .prepare(
+      `SELECT
+         COUNT(*) AS tagged,
+         SUM(CASE WHEN EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) THEN 1 ELSE 0 END) AS tagged_kev,
+         SUM(CASE WHEN EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) THEN 1 ELSE 0 END) AS tagged_scored
+       FROM cve_records r
+       WHERE r.state = 'PUBLISHED' AND r.has_exploit_ref = 1`,
+    )
+    .get() as { tagged: number; tagged_kev: number | null; tagged_scored: number | null };
+  return {
+    tagged: row.tagged,
+    taggedKev: row.tagged_kev ?? 0,
+    taggedScored: row.tagged_scored ?? 0,
+  };
+}
+
 export interface CorpusTotals {
   published: number;
   kev: number;
@@ -54,6 +77,17 @@ export interface CorpusTotals {
   tombstones: number;
   unmatchedKev: number;
   unmatchedEpss: number;
+}
+
+/**
+ * Exploit-tagged reference coverage, counted over published records. The signal
+ * is a publisher classification from the record's own reference tags, never a
+ * verified working exploit, so the numbers are labelled as "tagged" everywhere.
+ */
+export interface ExploitRefCoverage {
+  tagged: number;
+  taggedKev: number;
+  taggedScored: number;
 }
 
 export const EPSS_LOG_BUCKET_COUNT = 9;
@@ -80,6 +114,7 @@ export interface AggregateSnapshot {
   epssLogHistogram: number[];
   severityEpssMatrix: SeverityEpssCell[];
   kevByMonth: Array<{ month: string; count: number }>;
+  exploitRef: ExploitRefCoverage;
   totals: CorpusTotals;
   /**
    * Exact heads of the two slowest ranked lists, computed at refresh with the
@@ -345,6 +380,7 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
     epssLogHistogram: joint.histogram,
     severityEpssMatrix: joint.cells,
     kevByMonth: kevByMonthSql(db, 12),
+    exploitRef: exploitRefCoverageSql(db),
     totals: {
       published: publishedTotal,
       kev,

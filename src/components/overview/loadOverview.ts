@@ -1,9 +1,11 @@
 import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
 import {
+  exploitRefCoverageSql,
   getAggregates,
   severityBandsSql,
   severityEpssMatrixSql,
   type AggregateSnapshot,
+  type ExploitRefCoverage,
   type SeverityEpssCell,
 } from "../../lib/aggregates";
 import { dailyWindow, monthlyVolume, type DayBucket } from "./chartData";
@@ -82,6 +84,7 @@ export interface OverviewData {
   severityEpssMatrix: SeverityEpssCell[];
   epssScoreDate: string | null;
   kevByMonth: KevMonthBucket[];
+  exploitRef: ExploitRefCoverage;
   corpus: CorpusStats;
   unknownDateCount: number;
   correctionNotes: string[];
@@ -498,6 +501,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       cached === null
         ? liveKevByMonth(db, OVERVIEW_KEV_MONTHS)
         : cached.kevByMonth.map((entry) => ({ month: entry.month, count: entry.count }));
+    const exploitRef = cached === null ? exploitRefCoverageSql(db) : { ...cached.exploitRef };
     const liveTotals = cached === null ? liveCorpusTotals(db, epssDate, severityBands) : null;
     const corpus: CorpusStats =
       cached === null
@@ -540,6 +544,7 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
       severityEpssMatrix,
       epssScoreDate,
       kevByMonth,
+      exploitRef,
       corpus,
       unknownDateCount,
       correctionNotes,

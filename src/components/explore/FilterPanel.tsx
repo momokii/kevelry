@@ -8,6 +8,7 @@ export function FilterPanel({ initial }: { initial: ExploreInitial }) {
     (initial.severity.length > 0 ? 1 : 0) +
     (initial.kev !== "all" ? 1 : 0) +
     (initial.epss !== "all" ? 1 : 0) +
+    (initial.exploit !== "all" ? 1 : 0) +
     (initial.vendor !== "" ? 1 : 0);
 
   return (

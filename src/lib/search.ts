@@ -34,6 +34,12 @@ const SEVERITY_BANDS: ReadonlySet<string> = new Set([
 ]);
 
 export type KevFilter = "only" | "excluded" | "all";
+/**
+ * `tagged` keeps records whose CVE references carry the publisher's `exploit`
+ * tag. It is a classification, never a proof of exploitability, so the filter
+ * and every label built from it say "tagged".
+ */
+export type ExploitFilter = "tagged" | "all";
 export type EpssFilter = "present" | "absent" | "all";
 
 export interface SearchFilters {
@@ -43,6 +49,7 @@ export interface SearchFilters {
   severity?: readonly SeverityBand[];
   kev?: KevFilter;
   epss?: EpssFilter;
+  exploit?: ExploitFilter;
   /** Vendor/product substring over KEV catalog labels; KEV-listed records only. */
   vendor?: string;
   limit?: number;
@@ -60,6 +67,8 @@ export interface SearchResultItem {
   dateUpdated: string | null;
   kevMember: boolean;
   epssKnown: boolean;
+  /** Publisher-tagged exploit reference present; a classification, not a PoC. */
+  exploitTagged: boolean;
   primary: PrimaryCvss | null;
   severityBand: SeverityBand;
 }
@@ -109,6 +118,7 @@ interface DisplayRow {
   description_lang: string | null;
   kev_member: number;
   epss_known: number;
+  has_exploit_ref: number;
 }
 
 interface MetricRow {
@@ -327,8 +337,12 @@ function prepareCohortPredicate(filters: SearchFilters): CohortPredicate {
   if (normalized.epss !== undefined && !["present", "absent", "all"].includes(normalized.epss)) {
     fail('Search "epss" must be "present", "absent", or "all".');
   }
+  if (normalized.exploit !== undefined && !["tagged", "all"].includes(normalized.exploit)) {
+    fail('Search "exploit" must be "tagged" or "all".');
+  }
   const kev = normalized.kev ?? "all";
   const epss = normalized.epss ?? "all";
+  const exploit = normalized.exploit ?? "all";
   const limit = normalizeLimit(normalized.limit);
   const offset = decodeOffset(normalized.cursor);
 
@@ -361,6 +375,9 @@ function prepareCohortPredicate(filters: SearchFilters): CohortPredicate {
     where.push("EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id)");
   } else if (kev === "excluded") {
     where.push("NOT EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id)");
+  }
+  if (exploit === "tagged") {
+    where.push("r.has_exploit_ref = 1");
   }
   if (epss === "present") {
     where.push("EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id)");
@@ -476,6 +493,7 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
       dateUpdated: row.date_updated,
       kevMember: row.kev_member === 1,
       epssKnown: row.epss_known === 1,
+      exploitTagged: row.has_exploit_ref === 1,
       primary,
       severityBand: band,
     });
@@ -687,7 +705,8 @@ function loadDisplayRows(db: CveDatabase, cveIds: readonly string[]): Map<string
       .prepare(
         "SELECT cve_id, date_published, date_updated, title, description, description_lang, " +
           "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_member, " +
-          "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known " +
+          "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known, " +
+          "r.has_exploit_ref AS has_exploit_ref " +
           `FROM cve_records r WHERE cve_id IN (${placeholders})`,
       )
       .all(...group) as DisplayRow[];

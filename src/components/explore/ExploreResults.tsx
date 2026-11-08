@@ -50,6 +50,15 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
       <div className="result-rail">
         <span className={`badge badge-${item.severityBand}`}>{meta.short}</span>
         {item.kevMember ? <span className="badge badge-kev">KEV</span> : null}
+        {item.exploitTagged ? (
+          <span
+            className="badge badge-accent"
+            title="A CVE reference carries the publisher's exploit tag: a classification, not a verified working exploit."
+            data-testid="explore-row-exploit-badge"
+          >
+            exploit ref
+          </span>
+        ) : null}
         <span className="result-date">
           Published <TimeText value={item.datePublished} />
         </span>

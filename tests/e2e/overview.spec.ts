@@ -505,6 +505,24 @@ test("a Sankey node pins its highlight, opens its flows and keeps a distribution
   await expect(page.getByTestId("overview-time-to-kev-pinned")).toHaveCount(0);
 });
 
+test("exploit-tagged coverage states its classification and links into Explore", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const panel = page.getByTestId("overview-exploit-panel");
+  await expect(panel).toBeVisible();
+  // The wording must stay a classification, never a PoC claim.
+  await expect(panel).toContainText("not a verified working exploit");
+  const tagged = page.getByTestId("overview-exploit-tagged");
+  await expect(tagged).not.toHaveText("");
+  await expect(page.getByTestId("overview-exploit-kev")).toContainText("of");
+  await expect(page.getByTestId("overview-exploit-link")).toHaveAttribute(
+    "href",
+    "/explore?exploit=tagged",
+  );
+});
+
 test("fastest-confirmations card explains the metric and lists linked rows", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");

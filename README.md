@@ -433,8 +433,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (419 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (98 passing, 1 skipped)
+npm test                # vitest suite (422 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (101 passing, 1 skipped)
 npx prettier --write <paths>  # format touched files
 
 The benchmark writes its evidence receipt to a temporary file by default; set

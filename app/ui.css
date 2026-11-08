@@ -5035,3 +5035,63 @@ a.graph-evidence-chip:hover {
 .graph-dialog .sankey-flow-breakdown {
   margin: 0 0 12px;
 }
+
+/* Exploit-tagged reference coverage: one proportional bar, then plain counts. */
+.exploit-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ui-rule-soft);
+  overflow: hidden;
+}
+
+.exploit-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--ui-accent);
+}
+
+.exploit-rows {
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exploit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px dashed var(--ui-rule-soft);
+}
+
+.exploit-row:last-child {
+  border-bottom: 0;
+}
+
+.exploit-row dt {
+  font-size: 11.5px;
+  color: var(--ui-ink-2);
+}
+
+.exploit-row dd {
+  margin: 0;
+  font-size: 12px;
+  text-align: right;
+}
+
+.exploit-of {
+  font-size: 10px;
+  color: var(--ui-ink-3);
+}
+
+/* The closing row pairs three short cards with one tall one. Hugging content
+   keeps each card full of information instead of stretching two of them around
+   a band of empty panel. */
+[data-testid="overview-kev"],
+[data-testid="overview-freshness-panel"],
+[data-testid="overview-exploit-panel"] {
+  align-self: start;
+}
