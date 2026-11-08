@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatInt, sharePercent } from "./chartTokens";
-import type { SankeyLink, TimeToKev } from "@/lib/time-to-kev";
+import { FLOW_SAMPLE_CAP, type SankeyLink, type TimeToKev } from "@/lib/time-to-kev";
 
 // Symmetric gutters: left labels, flow, right labels. The chart is not
 // stretched to the panel width, so the two label columns stay balanced
@@ -39,6 +39,30 @@ interface PlacedNode {
 
 const PAGE_SIZE = 10;
 
+/** One flow, as the dialog and the readout need it. */
+interface FlowSlice {
+  key: string;
+  from: string;
+  to: string;
+  count: number;
+  cveIds: string[];
+}
+
+/**
+ * What the details dialog is showing: a single band, or every flow through one
+ * node. `count` is always exact; `cveIds` is a capped sample.
+ */
+type FlowSelection =
+  | { kind: "band"; from: string; to: string; count: number; cveIds: string[] }
+  | {
+      kind: "node";
+      nodeId: string;
+      nodeColumn: "cohort" | "lag";
+      count: number;
+      cveIds: string[];
+      flows: FlowSlice[];
+    };
+
 /**
  * Records inside one flow. The browser is a result set, not a dump: filter by
  * CVE id, page through, and follow any record into the corpus. `count` is the
@@ -49,7 +73,7 @@ function FlowDetails({
   labelOf,
   onClose,
 }: {
-  detail: { from: string; to: string; cveIds: string[]; count: number } | null;
+  detail: FlowSelection | null;
   labelOf: (id: string) => string;
   onClose: () => void;
 }) {
@@ -98,12 +122,18 @@ function FlowDetails({
         <div className="graph-dialog-body">
           <header className="graph-dialog-head">
             <div>
-              <div className="eyebrow">Flow details</div>
+              <div className="eyebrow">
+                {detail.kind === "node" ? "Node details" : "Flow details"}
+              </div>
               <h2 id="flow-details-title">
-                {labelOf(detail.from)} → {labelOf(detail.to)}
+                {detail.kind === "node"
+                  ? `${labelOf(detail.nodeId)}: ${formatInt(detail.count)} records`
+                  : `${labelOf(detail.from)} → ${labelOf(detail.to)}`}
               </h2>
               <p className="chart-note">
-                {formatInt(detail.count)} records in this flow.
+                {detail.kind === "node"
+                  ? `Every flow through this ${detail.nodeColumn === "cohort" ? "publication cohort" : "delay bucket"}.`
+                  : `${formatInt(detail.count)} records in this flow.`}
                 {detail.count > detail.cveIds.length
                   ? ` Showing the first ${formatInt(detail.cveIds.length)} by CVE id.`
                   : ""}
@@ -118,6 +148,23 @@ function FlowDetails({
               Close
             </button>
           </header>
+
+          {detail.kind === "node" ? (
+            <ul className="sankey-flow-breakdown" data-testid="flow-details-breakdown">
+              {detail.flows.map((flow) => (
+                <li key={flow.key} className="sankey-flow-row">
+                  <span className="sankey-flow-label">
+                    {detail.nodeColumn === "cohort" ? "→ " : "← "}
+                    {labelOf(detail.nodeColumn === "cohort" ? flow.to : flow.from)}
+                  </span>
+                  <span className="sankey-flow-count mono">{formatInt(flow.count)}</span>
+                  <span className="sankey-flow-share mono">
+                    {sharePercent(flow.count, detail.count)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           <div className="graph-dialog-tools">
             <input
@@ -196,15 +243,12 @@ function FlowDetails({
 
 export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
   const [hover, setHover] = useState<string | null>(null);
-  // Clicking a band pins it (Escape or a second click clears) so the reader can
-  // open its details without holding the pointer steady.
-  const [pinned, setPinned] = useState<string | null>(null);
-  const [detail, setDetail] = useState<{
-    from: string;
-    to: string;
-    cveIds: string[];
-    count: number;
-  } | null>(null);
+  // Clicking a band or a node pins it (Escape or a second click clears) so the
+  // highlight survives the pointer leaving the diagram.
+  const [pinned, setPinned] = useState<
+    { kind: "band"; key: string } | { kind: "node"; id: string } | null
+  >(null);
+  const [detail, setDetail] = useState<FlowSelection | null>(null);
 
   const { nodes, links } = useMemo(() => {
     const left = flow.nodes.filter((node) => node.column === "cohort");
@@ -274,8 +318,102 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
     .filter((band): band is NonNullable<typeof band> => band !== null);
 
   const total = flow.eligible;
-  const isDim = (band: { key: string }): boolean =>
-    hover !== null && !band.key.startsWith(`${hover}->`) && !band.key.endsWith(`->${hover}`);
+  const labelOf = (id: string): string => flow.nodes.find((node) => node.id === id)?.label ?? id;
+  const pinnedBandKey = pinned?.kind === "band" ? pinned.key : null;
+  const pinnedNodeId = pinned?.kind === "node" ? pinned.id : null;
+  // Hover is transient, the pin is not: the diagram keeps the reader's
+  // selection visible after the pointer leaves.
+  const focusNode = hover ?? pinnedNodeId;
+  const touches = (band: { key: string }, nodeId: string): boolean =>
+    band.key.startsWith(`${nodeId}->`) || band.key.endsWith(`->${nodeId}`);
+  const isDim = (band: { key: string }): boolean => {
+    if (pinnedBandKey !== null) return band.key !== pinnedBandKey;
+    return focusNode !== null && !touches(band, focusNode);
+  };
+  const isActive = (band: { key: string }): boolean =>
+    band.key === pinnedBandKey || (focusNode !== null && touches(band, focusNode));
+
+  const flowsThrough = (nodeId: string): FlowSlice[] =>
+    links
+      .filter((link) => link.from === nodeId || link.to === nodeId)
+      .map((link) => ({
+        key: `${link.from}->${link.to}`,
+        from: link.from,
+        to: link.to,
+        count: link.count,
+        cveIds: link.cveIds,
+      }));
+
+  const openNode = (nodeId: string): void => {
+    const node = nodes.find((entry) => entry.id === nodeId);
+    if (node === undefined) return;
+    const flows = flowsThrough(nodeId);
+    const seen = new Set<string>();
+    const sample: string[] = [];
+    for (const flow of flows) {
+      for (const id of flow.cveIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        sample.push(id);
+      }
+    }
+    sample.sort();
+    setPinned({ kind: "node", id: nodeId });
+    setDetail({
+      kind: "node",
+      nodeId,
+      nodeColumn: node.column,
+      count: node.total,
+      cveIds: sample.slice(0, FLOW_SAMPLE_CAP),
+      flows,
+    });
+  };
+
+  const openBand = (bandKey: string): void => {
+    const match = links.find((link) => `${link.from}->${link.to}` === bandKey);
+    if (match === undefined) return;
+    setPinned({ kind: "band", key: bandKey });
+    setDetail({
+      kind: "band",
+      from: match.from,
+      to: match.to,
+      count: match.count,
+      cveIds: match.cveIds,
+    });
+  };
+
+  const clearSelection = (): void => {
+    setPinned(null);
+    setDetail(null);
+  };
+
+  const toggleBand = (bandKey: string): void => {
+    if (pinnedBandKey === bandKey) {
+      clearSelection();
+      return;
+    }
+    openBand(bandKey);
+  };
+
+  const toggleNode = (nodeId: string): void => {
+    if (pinnedNodeId === nodeId) {
+      clearSelection();
+      return;
+    }
+    openNode(nodeId);
+  };
+
+  // While a node is focused the readout names every flow through it with its
+  // share, so the distribution is readable without opening the dialog.
+  const readout =
+    focusNode === null
+      ? null
+      : {
+          node: nodes.find((node) => node.id === focusNode) ?? null,
+          flows: flowsThrough(focusNode)
+            .slice()
+            .sort((a, b) => b.count - a.count),
+        };
 
   return (
     <div className="chart-frame">
@@ -292,51 +430,22 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
             d={band.d}
             fill="var(--ui-accent)"
             fillOpacity={
-              pinned === band.key ? 0.6 : isDim(band) ? 0.08 : hover === null ? 0.28 : 0.55
+              band.key === pinnedBandKey ? 0.6 : isDim(band) ? 0.08 : isActive(band) ? 0.55 : 0.28
             }
-            stroke={pinned === band.key ? "var(--ui-accent-deep)" : "none"}
-            strokeWidth={pinned === band.key ? 1.5 : 0}
+            stroke={band.key === pinnedBandKey ? "var(--ui-accent-deep)" : "none"}
+            strokeWidth={band.key === pinnedBandKey ? 1.5 : 0}
             data-testid={`overview-time-to-kev-band-${band.key}`}
             role="button"
             tabIndex={0}
-            aria-pressed={pinned === band.key}
+            aria-pressed={band.key === pinnedBandKey}
             aria-label={`${band.fromLabel} to ${band.toLabel}: ${formatInt(band.count)} records. Open details.`}
-            onClick={() => {
-              const key = pinned === band.key ? null : band.key;
-              setPinned(key);
-              if (key !== null) {
-                const match = links.find((link) => `${link.from}->${link.to}` === key);
-                if (match !== undefined) {
-                  setDetail({
-                    from: match.from,
-                    to: match.to,
-                    cveIds: match.cveIds,
-                    count: match.count,
-                  });
-                }
-              }
-            }}
+            onClick={() => toggleBand(band.key)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                const key = pinned === band.key ? null : band.key;
-                setPinned(key);
-                if (key !== null) {
-                  const match = links.find((link) => `${link.from}->${link.to}` === key);
-                  if (match !== undefined) {
-                    setDetail({
-                      from: match.from,
-                      to: match.to,
-                      cveIds: match.cveIds,
-                      count: match.count,
-                    });
-                  }
-                }
+                toggleBand(band.key);
               }
-              if (event.key === "Escape") {
-                setPinned(null);
-                setDetail(null);
-              }
+              if (event.key === "Escape") clearSelection();
             }}
             style={{ cursor: "pointer", outline: "none" }}
           >
@@ -344,20 +453,28 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
           </path>
         ))}
         {nodes.map((node) => {
-          const active = hover === node.id;
+          const active = hover === node.id || pinnedNodeId === node.id;
           return (
             <g
               key={node.id}
               tabIndex={0}
               role="button"
-              aria-pressed={active}
-              aria-label={`${node.label}: ${formatInt(node.total)} records, ${sharePercent(node.total, total)} of ${formatInt(total)}`}
+              aria-pressed={pinnedNodeId === node.id}
+              aria-label={`${node.label}: ${formatInt(node.total)} records, ${sharePercent(node.total, total)} of ${formatInt(total)}. Open its flows.`}
               data-testid={`overview-time-to-kev-node-${node.column}-${node.label.replace(/\s+/g, "-")}`}
               onFocus={() => setHover(node.id)}
               onBlur={() => setHover(null)}
               onMouseEnter={() => setHover(node.id)}
               onMouseLeave={() => setHover(null)}
-              style={{ cursor: "pointer" }}
+              onClick={() => toggleNode(node.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  toggleNode(node.id);
+                }
+                if (event.key === "Escape") clearSelection();
+              }}
+              style={{ cursor: "pointer", outline: "none" }}
             >
               <rect
                 x={node.x}
@@ -366,6 +483,8 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
                 height={node.height}
                 rx={3}
                 fill={active ? "var(--ui-accent-deep)" : "var(--ui-ink)"}
+                stroke={pinnedNodeId === node.id ? "var(--ui-accent)" : "none"}
+                strokeWidth={pinnedNodeId === node.id ? 2 : 0}
               />
               <text
                 x={node.column === "cohort" ? node.x - 8 : node.x + NODE_WIDTH + 8}
@@ -395,10 +514,49 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
         detail={detail}
         labelOf={(id) => flow.nodes.find((node) => node.id === id)?.label ?? id}
         onClose={() => {
+          // Closing the dialog keeps the selection: the highlight and the flow
+          // distribution stay on the chart, and a second click (or Escape on the
+          // chart) clears them.
           setDetail(null);
-          setPinned(null);
         }}
       />
+      <div className="sankey-readout" data-testid="overview-time-to-kev-readout">
+        {readout === null || readout.node === null ? (
+          <p className="chart-note">
+            Hover or select a cohort or a delay bucket to see how its records distribute; click
+            again to pin the selection and open the records.
+          </p>
+        ) : (
+          <>
+            <div className="sankey-readout-head">
+              <span className="eyebrow">
+                {readout.node.column === "cohort" ? "Cohort" : "Delay"} ·{" "}
+                {formatInt(readout.node.total)} records
+              </span>
+              <strong>{readout.node.label}</strong>
+              {pinnedNodeId === readout.node.id ? (
+                <span className="badge badge-accent" data-testid="overview-time-to-kev-pinned">
+                  pinned
+                </span>
+              ) : null}
+            </div>
+            <ul className="sankey-flow-breakdown" data-testid="overview-time-to-kev-distribution">
+              {readout.flows.map((flow) => (
+                <li key={flow.key} className="sankey-flow-row">
+                  <span className="sankey-flow-label">
+                    {readout.node?.column === "cohort" ? "→ " : "← "}
+                    {labelOf(readout.node?.column === "cohort" ? flow.to : flow.from)}
+                  </span>
+                  <span className="sankey-flow-count mono">{formatInt(flow.count)}</span>
+                  <span className="sankey-flow-share mono">
+                    {sharePercent(flow.count, readout.node?.total ?? 0)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
       <p className="chart-note" data-testid="overview-time-to-kev-note">
         Left: publication cohort. Right: days until the KEV catalog confirmed exploitation. Band
         width is the record count; {formatInt(flow.excluded)} KEV records are excluded for a missing

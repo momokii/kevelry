@@ -466,6 +466,45 @@ test("clicking a Sankey band opens the records inside that flow", async ({ page 
   await expect(dialog).toBeHidden();
 });
 
+test("a Sankey node pins its highlight, opens its flows and keeps a distribution", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const nodes = page.locator('[data-testid^="overview-time-to-kev-node-cohort-"]');
+  if ((await nodes.count()) === 0) return;
+  const node = nodes.first();
+  // Click the node's rectangle, not the group's centre: the group's box spans
+  // the label too, and its centre can fall in the gap between text and node.
+  const nodeBody = node.locator("rect").first();
+  const dialog = page.getByTestId("overview-time-to-kev-dialog");
+  await expect(async () => {
+    await nodeBody.click({ force: true, timeout: 2000 });
+    await expect(dialog).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+
+  // A node opens every flow through it, with counts and shares.
+  await expect(dialog).toContainText("records");
+  const breakdown = dialog.getByTestId("flow-details-breakdown");
+  await expect(breakdown.locator("li").first()).toBeVisible();
+  await expect(breakdown.locator("li").first()).toContainText("%");
+
+  // Closing the dialog keeps the selection: the highlight and its distribution
+  // must survive the pointer leaving the chart.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page.mouse.move(4, 4);
+  await expect(page.getByTestId("overview-time-to-kev-pinned")).toHaveText("pinned");
+  const rows = page.getByTestId("overview-time-to-kev-distribution").locator("li");
+  expect(await rows.count()).toBeGreaterThan(0);
+  await expect(rows.first()).toContainText("%");
+  await expect(node).toHaveAttribute("aria-pressed", "true");
+
+  // A second click clears the pin.
+  await nodeBody.click({ force: true });
+  await expect(page.getByTestId("overview-time-to-kev-pinned")).toHaveCount(0);
+});
+
 test("fastest-confirmations card explains the metric and lists linked rows", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");

@@ -265,8 +265,17 @@ area so no band ever runs under text, in symmetric gutters (no dead margin on
 either side). Hover or keyboard focus on a node isolates its bands, and every
 band carries the exact count and its share of the eligible denominator.
 
-Bands are controls, not decoration: click, Enter or Space pins a flow (stronger
-fill plus an accent stroke) and Escape clears it. Pinning opens the same flow
+Nodes and bands are both controls, not decoration: click, Enter or Space pins the
+selection (nodes get an accent outline, bands a stronger fill plus an accent
+stroke) and Escape, or a second click, clears it. The pin outlives the pointer
+and the dialog: closing the details dialog leaves the highlight and its
+distribution on the chart, because the reader picked it deliberately.
+
+While a node is hovered, focused or pinned, a readout under the chart lists every
+flow through that node as **label · count · share of the node**, so the
+distribution is legible without opening anything. Clicking a node opens the same
+details dialog as a band, headed by the node, listing its flows with counts and
+shares, and offering the union of their record sample (filter, paging, links). Pinning opens the same flow
 drill-down dialog the relation graph uses: from→to labels, the exact count with a
 "first N by CVE id" caveat when the sample is capped, an ID filter, a paged list
 of links into Explore, and an official cve.org chip. Escape closes it from
