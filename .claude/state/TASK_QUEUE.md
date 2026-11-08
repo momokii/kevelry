@@ -467,6 +467,36 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns   | None: same validations, fewer redundant reads.                                                                                                                                                                                                                                                                           |
 | Notes               | The KEV predicate re-read 396k rows per catalog entry — ~700M row visits per cycle.                                                                                                                                                                                                                                      |
 
+## TASK-033 — Follow the fetched upstream ref (stale-feed root cause)
+
+| Field               | Value                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Task ID             | TASK-033                                                                                                                                                                                                           |
+| Name                | Resolve branch revisions against the fetched remote-tracking ref                                                                                                                                                   |
+| Priority            | Critical                                                                                                                                                                                                           |
+| Status              | DONE                                                                                                                                                                                                               |
+| Complexity          | S                                                                                                                                                                                                                  |
+| Depends On          | Owner report (2026-11-08: "why is the latest month October?")                                                                                                                                                      |
+| Scope               | `revisionCandidates()` + `resolveRevision()` in `src/lib/cve-import.ts`; regression test that fetches into a clone and asserts the remote tip wins while the local branch stays behind.                            |
+| Acceptance Criteria | Test fails on the old resolution (local branch) and passes on the new one; live corpus advances to the upstream tip; November records appear.                                                                      |
+| Security Concerns   | None: ref name resolution only, no caller-supplied URL.                                                                                                                                                            |
+| Notes               | `git fetch origin main` moves `refs/remotes/origin/main`, never the local branch. The app had been serving 28 Oct data while logging successful fetches: 17,579 changed paths were sitting unfetched in the cache. |
+
+## TASK-034 — Import cost: tree identity, FTS rowid, phase timings
+
+| Field               | Value                                                                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID             | TASK-034                                                                                                                                                                                                      |
+| Name                | Stop re-hashing the tree, stop full-scanning the FTS index per record, and make imports diagnosable                                                                                                           |
+| Priority            | Critical                                                                                                                                                                                                      |
+| Status              | DONE                                                                                                                                                                                                          |
+| Complexity          | L                                                                                                                                                                                                             |
+| Depends On          | TASK-033                                                                                                                                                                                                      |
+| Scope               | `resolveTreeId()` + `git-tree:` content receipt; migration 005 (FTS rowid identity, delete-by-rowid triggers, one-time rebuild); `cve-import-phase` log events with per-phase counts; staging counters fixed. |
+| Acceptance Criteria | 419 unit green; one FTS lookup no longer scans; publish phase 4.5s for 17.1k records (was ~50 min); FTS still matches and has zero orphan rowids.                                                             |
+| Security Concerns   | None: FTS content and triggers only. Migration is transactional and rebuilds from `cve_records`.                                                                                                              |
+| Notes               | Two independent 20-50 minute hot spots: hashing 4.3 GB to recompute a receipt git already had, and `DELETE FROM cve_fts WHERE cve_id = OLD.cve_id` on an UNINDEXED column.                                    |
+
 ## Task Template
 
 ```markdown

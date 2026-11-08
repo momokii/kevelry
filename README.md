@@ -433,7 +433,7 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (416 passing, 3 skipped)
+npm test                # vitest suite (419 passing, 3 skipped)
 npx playwright test     # end-to-end browser tests (98 passing, 1 skipped)
 npx prettier --write <paths>  # format touched files
 

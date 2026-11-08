@@ -322,6 +322,20 @@ and explicitly selected `compose.dev.yaml`; retained as historical rationale onl
 
 ---
 
+## 2026-11-08 - FTS5 bookkeeping by rowid, not by an unindexed column
+
+---
+
+**Decision:** Align `cve_fts.rowid` with `cve_records.rowid` (migration 005) and have every trigger delete by rowid; keep the FTS table self-content (not external-content) so `snippet()` and stored `cve_id` keep working.
+**Date:** 2026-11-08
+**Context:** A record update ran `DELETE FROM cve_fts WHERE cve_id = OLD.cve_id`. `cve_id` is declared UNINDEXED, so SQLite scans the whole virtual table: measured 175 ms at 396k documents, i.e. ~50 minutes for one 17.5k-record incremental import.
+**Rationale:** Rowid is FTS5's primary key; deleting by it costs time proportional to the document. Aligning rowids costs one rebuild and removes the scan permanently. Keeping the text inside the FTS table preserves `snippet()`/`highlight()` and the existing `cve_fts.cve_id` join, so no search query changes.
+**Alternatives Rejected:** External-content FTS5 (saves ~184 MB but makes NULL content columns and snippet behaviour a new risk for a search path that is already correct); dropping the FTS triggers and rebuilding the whole index after each import (minutes of work per cycle); indexing `cve_id` differently (FTS5 columns cannot be indexed; UNINDEXED is the only supported way to store a value outside the token stream).
+**Security Implications:** None: same content, same queries, transactional rebuild from `cve_records`.
+**Impact:** Record updates and deletes are O(document). The migration rebuilds the index once at boot (396k → 402k documents).
+
+---
+
 ## Entry Template
 
 Copy this block for each new decision; newest entry at the top.

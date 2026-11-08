@@ -2,6 +2,42 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - The feed that never advanced, and two hidden import hot spots
+
+Owner asked why the volume chart ended at October. The chart was right; the data
+was 11 days stale.
+
+**Root cause (TASK-033).** `git fetch origin main` updates
+`refs/remotes/origin/main` and leaves the local branch `main` untouched. The
+importer resolved the bare name `main` against the local branch, so it kept
+checking out the first accepted SHA forever while logging successful fetches
+every hour. The cache actually held `origin/main` from the same day: 17,579
+changed paths were sitting there unfetched. Resolution now prefers
+`refs/remotes/origin/<branch>` and falls back to the literal name (SHAs, tags,
+`HEAD` unchanged). Regression test: fetch into a clone, assert the remote tip
+wins while the local branch stays behind.
+
+**Second (TASK-034).** With the feed finally advancing, the catch-up import ran
+for 20+ minutes at 100% CPU. Two independent causes, both measured:
+
+1. The import recomputed a SHA-256 receipt by reading all 4.3 GB of record files
+   even for an incremental diff. Git already has that digest: the receipt is now
+   the tree id (`git-tree:<sha>`), O(1).
+2. `DELETE FROM cve_fts WHERE cve_id = OLD.cve_id` — `cve_id` is an UNINDEXED
+   FTS5 column, so every record update scanned all 396k documents (175 ms each,
+   ~50 minutes for 17.5k updates). Migration 005 aligns the FTS rowid with
+   `cve_records.rowid` and deletes by rowid, with a one-time rebuild.
+
+Also added `cve-import-phase` timings, which is how both numbers above were
+found instead of guessed.
+
+**Result.** CVE import: 7.5s total for 17,579 changed paths (staging 1.8s,
+publish 4.5s). Corpus 396,841 → 401,935 records, newest publication 2026-11-08,
+November 3,210 records and now the last bar in the volume chart. FTS still
+matches (0 orphan rowids), homepage 0.28s.
+
+Gates: 419 unit, 98 e2e (1 skipped), lint/typecheck green.
+
 ## 2026-11-07 - Retention and import cost: from 7m30s to 52s per cycle
 
 Owner item: "make sure the retention data setup is properly configured and the

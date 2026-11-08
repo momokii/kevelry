@@ -53,6 +53,8 @@ revamp shipped. Local `main` only: no remote.
 - [x] TASK-030 fastest-confirmations card (2026-11-07): explained metric, two stats, linked rows. Commit `bfea56d` + refinement.
 - [x] TASK-031 EPSS retention window (2026-11-07): `EPSS_RETENTION_DAYS` (default 90, matching the API's 90-point history cap) prunes inside the import; byte-identical CSVs short-circuit. Live DB audited at 5.18M rows / 13 days and no window before this.
 - [x] TASK-032 import cost (2026-11-07): the KEV import rescanned all 396k records once per catalog entry; now one scan per import. Boot cycle 7m30s → 52s (38s after deploy), WAL in the low hundreds of KB.
+- [x] TASK-033 upstream ref resolution (2026-11-08): the importer resolved the _local_ branch, so the corpus sat 11 days behind while fetches succeeded. Now resolves `refs/remotes/origin/<branch>` first. Corpus caught up: 396,841 → 401,935 records, November 3,210, newest publication 2026-11-08.
+- [x] TASK-034 import hot spots (2026-11-08): content receipt is the git tree id (no 4.3 GB re-read); migration 005 deletes FTS documents by rowid (was a 396k-document scan per update, ~50 min for 17.5k updates); `cve-import-phase` timings added. CVE import 7.5s total.
 - Final gates for the owner batch: 416 unit, 98 e2e (1 skipped), lint/typecheck/build/Docker build green; four pre-existing e2e races (Sankey band open, help tooltip sidebar measure, matrix Enter→ArrowRight, hydrated node replacement) were made deterministic rather than retried blindly.
 
 - [x] TASK-008 rail polish (2026-10-27): themed dropdowns + Data-status rows mirror nav rows; shell e2e added, gates green. Committed as 7b70a63, rebuilt, live at 100.124.184.116:3100 (healthy, same volume, screenshot-verified).

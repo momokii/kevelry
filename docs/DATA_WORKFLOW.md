@@ -346,20 +346,42 @@ responses are never cached.
 
 ## Import Cost
 
-Two rules keep a refresh cycle proportional to what actually changed:
+A refresh cycle must be proportional to what actually changed. Four rules
+enforce that, each one written after measuring the opposite on the production
+volume (401k records, 5.2M EPSS rows):
 
-- **CVE**: an unchanged upstream revision short-circuits before listing the
-  record tree (`cve-diff-path: unchanged`). The git SHA already proves the
-  corpus; re-hashing ~396k files proves nothing.
+- **Ref resolution.** A bare branch name resolves against
+  `refs/remotes/origin/<branch>` first, then the local branch. `git fetch origin
+main` moves the remote-tracking ref and leaves the local branch frozen, so
+  resolving the local branch pinned the importer to the first checkout forever:
+  the logs looked fresh (fetches succeeded hourly) while the corpus sat 11 days
+  behind. `revisionCandidates()` owns the order; explicit SHAs, tags and `HEAD`
+  keep their literal meaning.
+- **Content identity.** The stored receipt is the git tree id
+  (`git-tree:<sha>`), not a re-hash of the tree. Git had already hashed every
+  blob; re-reading 4.3 GB to recompute a digest turned a 17.5k-file update into
+  20+ minutes of IO.
+- **FTS bookkeeping.** FTS triggers delete by `rowid`, and the FTS rowid equals
+  `cve_records.rowid` (migration 005). The old trigger deleted with `WHERE
+cve_id = OLD.cve_id`; `cve_id` is an UNINDEXED FTS5 column, so each delete
+  scanned all 396k documents — 175 ms apiece, ~50 minutes for one 17.5k-record
+  update. Deleting by rowid is proportional to the document.
+- **CVE revision short-circuit.** An unchanged revision returns before listing
+  the record tree (`cve-diff-path: unchanged`).
+- **Phase timings.** Every import logs `cve-import-phase` with `phase`, `ms`,
+  `totalMs`, and its own counts (`list-record-files`, `content-identity`,
+  `diff-scope`, `staging`, `publish`), so a slow cycle is diagnosable from the
+  log alone instead of a profiler.
 - **KEV**: the corpus membership check (`SELECT cve_id FROM cve_records`) runs
   once per import and is reused for the unmatched-ID report. Calling it inside
   the per-entry predicate made a 1.7k-entry catalog scan 396k rows 1.7k times —
   minutes of CPU per cycle, for a report nobody sees change.
 - **EPSS**: byte-identical CSV short-circuits (`epss-unchanged`).
 
-Measured effect on the production volume (396k records, 5.2M EPSS rows): a boot
-cycle went from 7m30s of CPU to 52s, with the KEV step at 1.3s instead of ~7
-minutes, and the WAL stays in the low hundreds of KB.
+Measured on the production volume: a boot cycle went from 7m30s of CPU to 38-52s
+with the KEV step at 1.3s instead of ~7 minutes; the first 11-day catch-up
+(17,579 changed paths, 17,109 published + 470 rejected) now stages in 1.8s and
+publishes in 4.5s; the WAL stays in the low hundreds of KB.
 
 ## Retention (bounded growth)
 

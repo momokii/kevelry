@@ -86,7 +86,7 @@ describe("sqlite storage (todo 7)", () => {
   it("treats :memory: as the SQLite sentinel, never as a directory name", () => {
     const db = openDatabase({ dataDir: ":memory:" });
     try {
-      expect(db.appliedVersions()).toEqual([1, 2, 3, 4]);
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5]);
       expect(db.handle.name).toBe(":memory:");
       // An in-memory database must not leave artifacts behind in the tree.
       expect(existsSync(":memory:")).toBe(false);
@@ -98,7 +98,7 @@ describe("sqlite storage (todo 7)", () => {
   it("opens with WAL mode and applies the versioned schema", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
-      expect(db.appliedVersions()).toEqual([1, 2, 3, 4]);
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5]);
       expect(db.handle.pragma("journal_mode", { simple: true })).toBe("wal");
       for (const table of [
         "cve_records",
@@ -147,17 +147,57 @@ describe("sqlite storage (todo 7)", () => {
     }
   });
 
+  it("keys the FTS index by rowid so a record update never scans the corpus", () => {
+    // Regression: the triggers deleted with `WHERE cve_id = OLD.cve_id`, an
+    // UNINDEXED FTS5 column, so every record update scanned all 396k documents
+    // (175 ms each on the production volume).
+    const db = openDatabase({ dataDir: makeTempDir("cve-db-fts-") });
+    try {
+      const triggers = db.handle
+        .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?")
+        .all("cve_records") as Array<{ name: string; sql: string }>;
+      expect(triggers).toHaveLength(3);
+      for (const trigger of triggers) {
+        expect(trigger.sql).not.toMatch(/cve_id\s*=\s*OLD\.cve_id/);
+      }
+      expect(triggers.filter((t) => /rowid\s*=\s*OLD\.rowid/.test(t.sql))).toHaveLength(2);
+
+      insertRecord(db, "CVE-2099-0007", "Heap overflow", "A heap overflow in the parser");
+      const rowids = db.handle
+        .prepare(
+          "SELECT r.rowid AS r_rowid, f.rowid AS f_rowid FROM cve_records r JOIN cve_fts f ON f.cve_id = r.cve_id WHERE r.cve_id = ?",
+        )
+        .get("CVE-2099-0007") as { r_rowid: number; f_rowid: number };
+      // Rowid identity is what makes a delete-by-rowid address the right doc.
+      expect(rowids.f_rowid).toBe(rowids.r_rowid);
+
+      db.runBoundedWrite(() => {
+        db.handle
+          .prepare("UPDATE cve_records SET description = ? WHERE cve_id = ?")
+          .run("A use-after-free in the renderer", "CVE-2099-0007");
+      });
+      const after = db.handle
+        .prepare(
+          "SELECT r.rowid AS r_rowid, f.rowid AS f_rowid FROM cve_records r JOIN cve_fts f ON f.cve_id = r.cve_id WHERE r.cve_id = ?",
+        )
+        .get("CVE-2099-0007") as { r_rowid: number; f_rowid: number };
+      expect(after.f_rowid).toBe(after.r_rowid);
+    } finally {
+      db.close();
+    }
+  });
+
   it("round-trips migrations down to zero and back up on a temp volume", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
       expect(db.migrate()).toEqual([]);
-      expect(db.revertTo(0)).toEqual([4, 3, 2, 1]);
+      expect(db.revertTo(0)).toEqual([5, 4, 3, 2, 1]);
       expect(db.appliedVersions()).toEqual([]);
       expect(tableNames(db)).not.toContain("cve_records");
       expect(tableNames(db)).not.toContain("cve_fts");
       expect(tableNames(db)).not.toContain("aggregate_cache");
 
-      expect(db.migrate()).toEqual([1, 2, 3, 4]);
+      expect(db.migrate()).toEqual([1, 2, 3, 4, 5]);
       expect(tableNames(db)).toContain("cve_records");
       insertRecord(db, "CVE-2099-0002", "Round trip", "Schema works after re-migration");
       const rows = db.handle
