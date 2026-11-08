@@ -7,6 +7,15 @@ a valid backup. Histories (`kev_history`, `sync_runs`), retained Radar
 checkpoints, baseline refs, tombstones, and manifests travel inside the
 backup image plus a `manifest.json` sidecar.
 
+## Size and time are bounded by the retention window
+
+The backup size is dominated by `cve_records` (~3.9 GB at the current 402k
+corpus) plus the EPSS history window. `EPSS_RETENTION_DAYS` (default 90) is what
+keeps the second term predictable: ~400k rows and ~85 MB with indexes per day, so
+90 days is roughly 36M rows. Lowering the window shortens both the backup image
+and the nightly hashing time; it does not shrink the live database file (freed
+pages are reused, see `DATA_WORKFLOW.md`).
+
 ## Procedures (see `src/lib/backup.ts`)
 
 - **Back up:** `createBackup({ dataDir, backupDir })`. Staged as `*.tmp`,

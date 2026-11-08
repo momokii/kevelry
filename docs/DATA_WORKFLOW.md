@@ -436,6 +436,35 @@ would silently truncate the trend.
 - Nothing prunes `cve_records`, `cvss_metrics`, `kev_*`, `ssvc_records`,
   `cve_tombstones`, or `sync_runs`; they are bounded by the corpus, not by time.
 
+### Measured behaviour (production volume, 5.2M EPSS rows)
+
+The mechanism was verified on a **copy** of the live database rather than by
+lowering the window on the real one, so no history was destroyed to prove it:
+
+| Step                                                             | Result                                                 |
+| ---------------------------------------------------------------- | ------------------------------------------------------ |
+| Delete 11 days (3,180,434 rows) with `WHERE score_date < cutoff` | 28.1 s, oldest retained becomes the cutoff day exactly |
+| Rows before / after                                              | 5,183,235 → 2,002,801                                  |
+| Free pages created                                               | 132,670 (~520 MB, reused by later inserts)             |
+| Steady-state cost                                                | one day of history per day (~400k rows, ~2.5 s)        |
+
+Deleting rows does **not** shrink the file: SQLite reuses the freed pages, so the
+database sits at its high-water mark and stays there while the window is stable.
+`VACUUM` reclaims the space but needs a write lock and roughly the database size
+in free disk, so it is a deliberate maintenance step, never automatic.
+
+Migration 007 also drops `idx_epss_daily_score_date`: the covering index
+`idx_epss_daily_score_cve (score_date, cve_id, model_version, epss)` has the same
+leading column, and `EXPLAIN QUERY PLAN` for every EPSS read is identical with
+and without it (50 ms vs 51 ms on the same volume). Removing it saves ~180 MB and
+one index update per inserted row, which matters because the importer writes
+~400k rows a day.
+
+The methodology page states the window and the oldest retained score date from
+the live database, using the same constants the code uses
+(`EPSS_RETENTION_DAYS_DEFAULT`, `EPSS_HISTORY_CAP`), so the stated numbers cannot
+drift from the behaviour.
+
 ## Security and Acceptance Gates
 
 Treat upstream text/URLs/archives as untrusted. Validate bounded input/schema,

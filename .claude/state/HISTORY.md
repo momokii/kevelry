@@ -2,6 +2,30 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Retention audit: proven on a copy, one index lighter, stated in the app
+
+Owner asked whether retention was set up to best practice. The answer needed
+numbers, so it was verified on a copy of the live database (5.3 GB) rather than by
+trimming production history.
+
+**Proof.** `DELETE FROM epss_daily WHERE score_date < '2026-11-03'` removed
+3,180,434 rows (11 days) in 28.1 s and left exactly the 5 oldest days: 5,183,235 →
+2,002,801 rows, 132,670 free pages (~520 MB) which later inserts reuse. Steady
+state is one day per day (~2.5 s).
+
+**Index.** Migration 007 drops `idx_epss_daily_score_date`. `EXPLAIN QUERY PLAN`
+for the aggregate count, the priority read and the per-record history is identical
+with and without it (50 ms vs 51 ms), because the covering index
+`idx_epss_daily_score_cve` has the same leading column. That is ~180 MB and one
+index update per inserted row across ~400k daily inserts.
+
+**Visibility.** `EPSS_HISTORY_CAP` is now a shared constant, and the methodology
+page renders the window, the oldest retained score date read from the live
+database, and the honest limits: the file never shrinks on delete, VACUUM is a
+deliberate maintenance step, and only EPSS history is time-bounded.
+
+Gates: 422 unit, 102 e2e (1 skipped), lint/typecheck green.
+
 ## 2026-11-08 - Exploit-tagged references: flag, filter, coverage
 
 Owner asked for an "exploit ref" flag next to KEV/EPSS/CVSS and for counts.

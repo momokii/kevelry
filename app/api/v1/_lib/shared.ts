@@ -887,10 +887,17 @@ export interface EpssHistoryPoint {
  * recent `cap` points. One chunked query for all ids (500 per chunk, same
  * batching as loadFullRecords); ids without observations are simply absent
  * from the map, so callers render unknown as null. */
+/**
+ * Maximum EPSS observations returned per record. Retention keeps exactly this
+ * many days (see `src/lib/retention.ts`), so stored history and returned history
+ * cannot drift apart.
+ */
+export const EPSS_HISTORY_CAP = 90;
+
 export function loadEpssHistory(
   db: CveDatabase,
   ids: readonly string[],
-  cap: number = 90,
+  cap: number = EPSS_HISTORY_CAP,
 ): Map<string, EpssHistoryPoint[]> {
   const out = new Map<string, EpssHistoryPoint[]>();
   const unique = [...new Set(ids)];

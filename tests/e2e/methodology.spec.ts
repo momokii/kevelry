@@ -199,6 +199,18 @@ for (const width of [360, 768, 1280]) {
   });
 }
 
+test("methodology states the retention window with live numbers", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/methodology");
+  const section = page.getByText("Retention: what this site keeps, and for how long");
+  await expect(section).toBeVisible();
+  // The stated window is the shipped constant, not a hand-written number.
+  await expect(page.locator("main")).toContainText("kept for 90 UTC days");
+  await expect(page.locator("main")).toContainText("oldest retained:");
+  // The honest limits travel with it: no auto-shrink, VACUUM is deliberate.
+  await expect(page.locator("main")).toContainText("high-water mark");
+});
+
 test("every required reuse notice appears verbatim", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/methodology");

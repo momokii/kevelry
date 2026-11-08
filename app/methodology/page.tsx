@@ -19,6 +19,8 @@ import { SignalDiagram } from "@/components/methodology/SignalDiagram";
 import styles from "@/components/methodology/MethodologyDiagrams.module.css";
 import { getAggregates, severityBandsSql } from "@/lib/aggregates";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
+import { EPSS_RETENTION_DAYS_DEFAULT } from "@/lib/retention";
+import { EPSS_HISTORY_CAP } from "@/app/api/v1/_lib/shared";
 
 export const revalidate = 60;
 
@@ -64,10 +66,21 @@ export default function MethodologyPage() {
   let unknownDates: number | null = null;
   let cnaScored: number | null = null;
   let loadError: string | null = null;
+  // Retention is stated with the live numbers, not as a promise in prose.
+  const retention = {
+    keepDays: EPSS_RETENTION_DAYS_DEFAULT,
+    historyCap: EPSS_HISTORY_CAP,
+    oldestKeptDay: null as string | null,
+  };
 
   try {
     const db = openReadDatabase(resolveDataDir());
     provenance = buildProvenance(db, nowIso);
+    // One indexed read: the window is only honest if it names what is stored.
+    const oldest = db.handle.prepare("SELECT MIN(score_date) AS day FROM epss_daily").get() as {
+      day: string | null;
+    };
+    retention.oldestKeptDay = oldest.day;
     const cached = getAggregates(db);
     if (cached !== null) {
       publishedTotal = cached.totals.published;
@@ -93,6 +106,10 @@ export default function MethodologyPage() {
         db,
         "SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED' AND date_published IS NULL",
       );
+      const oldest = db.handle.prepare("SELECT MIN(score_date) AS day FROM epss_daily").get() as {
+        day: string | null;
+      };
+      retention.oldestKeptDay = oldest.day;
       const bands = severityBandsSql(db);
       cnaScored =
         (bands.critical ?? 0) +
@@ -272,6 +289,26 @@ export default function MethodologyPage() {
           <p className="ledger-meta">
             The three signals stay distinct. Multiplying CVSS by EPSS or mixing them with weights
             does not create a calibrated probability or risk score, so this site never computes one.
+          </p>
+          <h3>Retention: what this site keeps, and for how long</h3>
+          <p>
+            Every table is bounded by the corpus except the daily EPSS history, which gains one row
+            per scored CVE per score date. That history is kept for {retention.keepDays} UTC days
+            counted back from the accepted score date (oldest retained:{" "}
+            <span className="mono">{retention.oldestKeptDay ?? "none"}</span>). The window is pruned
+            inside the EPSS import, after the accepted snapshot is recorded, so a failed import can
+            never delete history; it is a single indexed delete and idempotent. The default matches
+            the {retention.historyCap}-observation cap this API returns per record, so nothing
+            stored is unreachable and nothing returned is missing. Lower it with{" "}
+            <code>EPSS_RETENTION_DAYS</code> if disk or backup time matters more than a longer
+            trend.
+          </p>
+          <p>
+            Deleting rows frees pages for reuse rather than shrinking the file, so the database
+            stays at its high-water mark; <code>VACUUM</code> reclaims space but needs a write lock
+            and roughly the database size in free disk, so it is a deliberate maintenance step,
+            never automatic. Records, metrics, KEV entries, tags and tombstones are never pruned by
+            time.
           </p>
           <h3>
             How the signals relate{" "}

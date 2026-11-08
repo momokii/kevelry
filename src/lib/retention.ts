@@ -14,9 +14,10 @@
 import type { CveDatabase } from "./db";
 
 /**
- * Default window. It matches `loadEpssHistory`'s 90-point cap in
- * `app/api/v1/_lib/shared.ts`, so retention never truncates a series the API is
- * allowed to return, and never stores rows no endpoint can reach.
+ * Default window. It matches `EPSS_HISTORY_CAP` (the per-record observation cap
+ * in `app/api/v1/_lib/shared.ts`), so retention never truncates a series the API
+ * is allowed to return, and never stores rows no endpoint can reach. The
+ * methodology page reads both constants, so the stated numbers track the code.
  */
 export const EPSS_RETENTION_DAYS_DEFAULT = 90;
 

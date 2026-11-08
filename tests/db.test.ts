@@ -86,7 +86,7 @@ describe("sqlite storage (todo 7)", () => {
   it("treats :memory: as the SQLite sentinel, never as a directory name", () => {
     const db = openDatabase({ dataDir: ":memory:" });
     try {
-      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(db.handle.name).toBe(":memory:");
       // An in-memory database must not leave artifacts behind in the tree.
       expect(existsSync(":memory:")).toBe(false);
@@ -98,7 +98,7 @@ describe("sqlite storage (todo 7)", () => {
   it("opens with WAL mode and applies the versioned schema", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
-      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(db.handle.pragma("journal_mode", { simple: true })).toBe("wal");
       for (const table of [
         "cve_records",
@@ -191,13 +191,13 @@ describe("sqlite storage (todo 7)", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
       expect(db.migrate()).toEqual([]);
-      expect(db.revertTo(0)).toEqual([6, 5, 4, 3, 2, 1]);
+      expect(db.revertTo(0)).toEqual([7, 6, 5, 4, 3, 2, 1]);
       expect(db.appliedVersions()).toEqual([]);
       expect(tableNames(db)).not.toContain("cve_records");
       expect(tableNames(db)).not.toContain("cve_fts");
       expect(tableNames(db)).not.toContain("aggregate_cache");
 
-      expect(db.migrate()).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(db.migrate()).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(tableNames(db)).toContain("cve_records");
       insertRecord(db, "CVE-2099-0002", "Round trip", "Schema works after re-migration");
       const rows = db.handle
