@@ -252,7 +252,7 @@ export default function OverviewPage() {
           className="span-4"
           testId="overview-fastest"
         >
-          <dl className="stat-grid stat-grid-inline" data-testid="overview-time-to-kev-stats">
+          <dl className="stat-grid stat-grid-inline" data-testid="overview-fastest-stats">
             <div className="stat">
               <div className="stat-label">Median delay, days</div>
               <div className="stat-value">

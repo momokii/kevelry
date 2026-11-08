@@ -52,7 +52,11 @@ test("help tooltip floats inside the viewport without pushing content", async ({
   await page.goto("/explore");
   const trigger = page.getByTestId("explore-help-severity-trigger");
   const panel = page.getByTestId("explore-help-severity-panel");
+  // Measure only after the sidebar has laid out, otherwise the "before" box can
+  // be undefined and the height comparison is meaningless.
+  await expect(page.locator(".explore-sidebar")).toBeVisible();
   const before = await page.locator(".explore-sidebar").boundingBox();
+  expect(before).not.toBeNull();
   await trigger.focus();
   await expect(panel).toBeVisible();
   const box = await panel.boundingBox();

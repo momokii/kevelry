@@ -392,8 +392,6 @@ test("time-to-KEV flow draws cohorts, bands, stats and a data table", async ({ p
   if (!(await panel.isVisible())) return;
   await expect(page.getByTestId("overview-time-to-kev-svg")).toBeVisible();
   await expect(page.getByTestId("overview-time-to-kev-note")).toContainText("excluded");
-  await expect(page.getByTestId("overview-time-to-kev-stats")).toContainText("Median delay");
-  await expect(page.getByTestId("overview-time-to-kev-stats")).toContainText("Within 30 days");
   // The same series is available as a table (chart contract).
   await panel.getByText("Data table").click();
   await expect(panel.locator("table tbody tr").first()).toBeVisible();
@@ -450,9 +448,13 @@ test("clicking a Sankey band opens the records inside that flow", async ({ page 
   expect(bandId).not.toBe("");
   const band = page.locator(`[data-testid="${bandId}"]`);
   if ((await band.count()) === 0) return;
-  await band.click({ force: true });
   const dialog = page.getByTestId("overview-time-to-kev-dialog");
-  await expect(dialog).toBeVisible();
+  // The chart re-renders when the page's data settles under parallel load, so a
+  // single click can land on a node that just moved. Retry the open.
+  await expect(async () => {
+    await band.click({ force: true, timeout: 2000 });
+    await expect(dialog).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
   await expect(dialog).toContainText("records in this flow");
   const items = dialog.locator("[data-testid^='flow-details-item-']");
   expect(await items.count()).toBeGreaterThan(0);
@@ -462,6 +464,25 @@ test("clicking a Sankey band opens the records inside that flow", async ({ page 
   await expect(dialog.getByTestId("flow-details-count")).toContainText("matching");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+});
+
+test("fastest-confirmations card explains the metric and lists linked rows", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const card = page.getByTestId("overview-fastest");
+  await expect(card).toBeVisible();
+  await expect(page.getByTestId("overview-fastest-stats")).toContainText("Median delay");
+  await expect(page.getByTestId("overview-fastest-stats")).toContainText(
+    "Confirmed within 30 days",
+  );
+  await expect(card).toContainText("publication → KEV listing");
+  // Rows link into Explore and carry both dates, never a bare sentence.
+  const rows = page.getByTestId("overview-fastest-list").locator("li.fastest-row");
+  if ((await rows.count()) > 0) {
+    await expect(rows.first().locator("a")).toHaveAttribute("href", /^\/explore\?q=CVE-/);
+    await expect(rows.first()).toContainText("published");
+    await expect(rows.first()).toContainText("KEV added");
+  }
 });
 
 test("matrix inspector links navigate client-side without a full reload", async ({ page }) => {
@@ -484,9 +505,15 @@ test("density matrix selection updates the inspector and supports arrow keys", a
   await page.goto("/");
 
   const cell = page.getByTestId("overview-density-cell-critical-0");
-  await cell.focus();
-  await page.keyboard.press("Enter");
+  // Hydration can replace the node right after the first paint, which drops
+  // focus and sends the arrow key nowhere. Retry until the press registers.
+  await expect(async () => {
+    await cell.focus();
+    await page.keyboard.press("Enter");
+    await expect(cell).toHaveAttribute("aria-pressed", "true", { timeout: 1_000 });
+  }).toPass({ timeout: 15000 });
   await expect(page.getByTestId("overview-density-inspector")).toContainText("Critical");
+  await expect(cell).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("overview-density-cell-critical-1")).toHaveAttribute(
     "aria-pressed",
