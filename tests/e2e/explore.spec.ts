@@ -162,6 +162,11 @@ test("exploit-tagged records are filterable and carry the badge", async ({ page 
   if (count > 0) {
     // Every row in this filtered view is tagged, and the rail says so.
     await expect(page.getByTestId("explore-row-exploit-badge")).toHaveCount(count);
+    // The badge must come with evidence: the same reference list Priority shows.
+    await expect(page.getByTestId("explore-row-exploit-list").first()).toBeVisible();
+    const firstLink = page.getByTestId("explore-row-exploit-list").first().locator("a");
+    await expect(firstLink).toHaveAttribute("href", /^https?:\/\//);
+    await expect(firstLink).toHaveAttribute("rel", "noreferrer noopener");
   }
   // The control reflects the URL, and switching back clears it.
   await expect(page.getByTestId("explore-exploit-tagged")).toBeChecked();

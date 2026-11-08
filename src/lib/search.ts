@@ -12,6 +12,8 @@
 // fallback labels, and official CVE links built from validated IDs.
 
 import type { CveDatabase } from "./db";
+import { exploitReferenceUrls } from "./exploit-ref";
+import { getAcceptedEpssDate } from "./epss-import";
 import { compareDecimalStrings, selectPrimaryCvss, type PrimaryCvss } from "./ranking";
 
 export const DEFAULT_SEARCH_LIMIT = 20;
@@ -32,6 +34,22 @@ const SEVERITY_BANDS: ReadonlySet<string> = new Set([
   "legacy",
   "unknown",
 ]);
+
+/**
+ * Tagged reference URLs a row may render. Five is enough to show the signal
+ * without turning a result row into a link farm; the detail endpoint carries the
+ * same cap.
+ */
+export const EXPLOIT_REF_ROW_CAP = 5;
+
+function parseJsonOrNull(raw: string | null): unknown {
+  if (raw === null || raw === "") return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
 
 export type KevFilter = "only" | "excluded" | "all";
 /**
@@ -66,9 +84,19 @@ export interface SearchResultItem {
   datePublished: string | null;
   dateUpdated: string | null;
   kevMember: boolean;
+  /** KEV catalog addition date when listed; the snapshot has no other date. */
+  kevDateAdded: string | null;
   epssKnown: boolean;
+  /** Exact stored EPSS decimal text and percentile, null when unknown. */
+  epssText: string | null;
+  epssPercentile: string | null;
   /** Publisher-tagged exploit reference present; a classification, not a PoC. */
   exploitTagged: boolean;
+  /**
+   * The tagged reference URLs themselves (capped), so every surface can show the
+   * same links the badge promises instead of a bare flag.
+   */
+  exploitReferences: string[];
   primary: PrimaryCvss | null;
   severityBand: SeverityBand;
 }
@@ -119,6 +147,12 @@ interface DisplayRow {
   kev_member: number;
   epss_known: number;
   has_exploit_ref: number;
+  raw_json: string | null;
+  /** Current EPSS observation (accepted score date), null when unknown. */
+  epss_value: string | null;
+  epss_percentile: string | null;
+  /** KEV catalog addition date; null when not listed in the accepted snapshot. */
+  kev_added: string | null;
 }
 
 interface MetricRow {
@@ -492,8 +526,15 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
       datePublished: row.date_published,
       dateUpdated: row.date_updated,
       kevMember: row.kev_member === 1,
+      kevDateAdded: row.kev_added,
       epssKnown: row.epss_known === 1,
+      epssText: row.epss_value,
+      epssPercentile: row.epss_percentile,
       exploitTagged: row.has_exploit_ref === 1,
+      exploitReferences:
+        row.has_exploit_ref === 1
+          ? exploitReferenceUrls(parseJsonOrNull(row.raw_json), EXPLOIT_REF_ROW_CAP)
+          : [],
       primary,
       severityBand: band,
     });
@@ -698,6 +739,9 @@ function loadPrimaryMap(
 function loadDisplayRows(db: CveDatabase, cveIds: readonly string[]): Map<string, DisplayRow> {
   const result = new Map<string, DisplayRow>();
   if (cveIds.length === 0) return result;
+  // Only the accepted score date is a current value; older observations stay
+  // history and are never shown as today's forecast.
+  const scoreDate = getAcceptedEpssDate(db);
   for (let index = 0; index < cveIds.length; index += 500) {
     const group = cveIds.slice(index, index + 500);
     const placeholders = group.map(() => "?").join(", ");
@@ -705,11 +749,14 @@ function loadDisplayRows(db: CveDatabase, cveIds: readonly string[]): Map<string
       .prepare(
         "SELECT cve_id, date_published, date_updated, title, description, description_lang, " +
           "EXISTS (SELECT 1 FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_member, " +
+          "(SELECT k.date_added FROM kev_entries k WHERE k.cve_id = r.cve_id) AS kev_added, " +
           "EXISTS (SELECT 1 FROM epss_daily e WHERE e.cve_id = r.cve_id) AS epss_known, " +
-          "r.has_exploit_ref AS has_exploit_ref " +
+          "(SELECT e.epss FROM epss_daily e WHERE e.cve_id = r.cve_id AND e.score_date = ? ORDER BY e.model_version DESC LIMIT 1) AS epss_value, " +
+          "(SELECT e.percentile FROM epss_daily e WHERE e.cve_id = r.cve_id AND e.score_date = ? ORDER BY e.model_version DESC LIMIT 1) AS epss_percentile, " +
+          "r.has_exploit_ref AS has_exploit_ref, r.raw_json AS raw_json " +
           `FROM cve_records r WHERE cve_id IN (${placeholders})`,
       )
-      .all(...group) as DisplayRow[];
+      .all(scoreDate, scoreDate, ...group) as DisplayRow[];
     for (const row of rows) result.set(row.cve_id, row);
   }
   return result;

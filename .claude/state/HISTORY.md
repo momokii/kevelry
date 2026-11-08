@@ -2,6 +2,27 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Search parity: a badge must carry its evidence
+
+Owner spotted a Search row with an `Exploit ref` badge and no reference anywhere in
+the row, and asked why Priority shows more.
+
+**Cause.** Search only carried the boolean flag; Priority's expanded row rendered
+the links. So the badge was true and unverifiable in the same view.
+
+**Fix.** `SearchResultItem` now carries the tagged reference URLs (cap 5, from the
+same `exploitReferenceUrls` walker), and `ExploitSignal` moved to
+`src/components/ledger/` so Priority and Search render one component. Search chips
+also stopped saying "Present" for EPSS: they show the real probability and the
+ordinal percentile (`0.391% · 33rd pct`) plus the KEV catalog addition date, which
+is what Priority showed.
+
+**Verified.** Live `CVE-2026-110963` now lists its wpscan reference in Search; the
+row keeps the link inside a 360px viewport; a unit test asserts flag and links come
+from the same source.
+
+Gates: 422 unit, 102 e2e (1 skipped), lint/typecheck green.
+
 ## 2026-11-08 - Retention audit: proven on a copy, one index lighter, stated in the app
 
 Owner asked whether retention was set up to best practice. The answer needed

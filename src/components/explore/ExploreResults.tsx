@@ -1,7 +1,9 @@
 import type { CohortFacets, SearchResponse } from "@/lib/search";
 import { TimeText } from "@/components/ledger/TimeText";
+import { displayProbabilityPercent } from "@/lib/ranking";
 
 import { SEVERITY_META, formatInt } from "../charts/chartTokens";
+import { ExploitSignal } from "../ledger/ExploitSignal";
 import { WatchStar } from "../ledger/WatchStar";
 import { CohortVisualization, type CohortLinkParams } from "./CohortVisualization";
 import {
@@ -24,6 +26,30 @@ export type ExploreOutcome =
       firstHref: string | null;
     };
 
+/**
+ * EPSS ships its percentile as a 0..1 fraction. Rendered as a whole ordinal
+ * ("33rd pct") because "0.33498 percentile" reads as a probability, which it is
+ * not — it is a rank among scored CVEs.
+ */
+function percentileLabel(raw: string | null): string | null {
+  if (raw === null) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 1) return null;
+  const whole = Math.round(value * 100);
+  const mod100 = whole % 100;
+  const suffix =
+    mod100 >= 11 && mod100 <= 13
+      ? "th"
+      : whole % 10 === 1
+        ? "st"
+        : whole % 10 === 2
+          ? "nd"
+          : whole % 10 === 3
+            ? "rd"
+            : "th";
+  return `${whole}${suffix} pct`;
+}
+
 function bandShort(band: (typeof SEVERITY_ORDER)[number]): string {
   return SEVERITY_LABELS[band].split(",")[0] ?? band;
 }
@@ -36,6 +62,11 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
     item.primary?.version ?? null,
   );
   const kev = item.kevMember ? "KEV listed." : "Not listed in this KEV snapshot.";
+  // Same values Priority shows: the real probability and percentile instead of a
+  // bare "present", so a reader never has to open another view for the number.
+  const epssPercent = item.epssText === null ? null : displayProbabilityPercent(item.epssText);
+  const epssLabel = epssPercent === null ? "Unavailable" : `${epssPercent}%`;
+  const epssRank = percentileLabel(item.epssPercentile);
   const epss = item.epssKnown
     ? "Forecast present in this snapshot."
     : "EPSS unavailable for this snapshot.";
@@ -99,10 +130,16 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
           <span className="signal-chip">
             <span className="signal-chip-label">KEV</span>
             <strong>{item.kevMember ? "Listed" : "Not listed"}</strong>
+            {item.kevDateAdded === null ? null : (
+              <span>
+                added <TimeText value={item.kevDateAdded} />
+              </span>
+            )}
           </span>
           <span className="signal-chip">
             <span className="signal-chip-label">EPSS</span>
-            <strong>{item.epssKnown ? "Present" : "Unavailable"}</strong>
+            <strong>{epssLabel}</strong>
+            {epssRank === null ? null : <span>{epssRank}</span>}
           </span>
           <span className="signal-chip">
             <span className="signal-chip-label">Updated</span>
@@ -111,6 +148,14 @@ function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
             </strong>
           </span>
         </div>
+        {item.exploitTagged ? (
+          <ExploitSignal
+            references={item.exploitReferences.map((url) => ({ url }))}
+            listTestId="explore-row-exploit-list"
+            helpTestId="explore-row-exploit-help"
+            compact
+          />
+        ) : null}
       </div>
       <div className="result-action">
         <a className="btn btn-sm" href={item.officialLink} data-testid="explore-row-action">

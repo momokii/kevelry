@@ -169,6 +169,18 @@ Spacing uses the 4/8/12/16/20/24/32/40/48/64 scale.
 
 ### Explore
 
+Rows carry the same evidence as a Priority row, in the same order and with the
+same component: severity badge, `KEV` (with its catalog addition date), the real
+`EPSS` probability with its ordinal percentile (`0.391% · 33rd pct`), the primary
+CVSS version and score, the updated instant, and — when the record has one — the
+`Exploit refs` block with the linked references. A badge never appears without
+the evidence behind it: `Exploit ref` and the reference list are produced by the
+same walker (`exploitReferenceUrls`) and rendered by the same
+`src/components/ledger/ExploitSignal.tsx` that the Priority view uses, so the two
+views cannot drift apart again.
+
+### Explore
+
 Filter disclosure (open by default, collapsible) inside a rail that scrolls
 independently on desktop. UTC date fields pair with 7d/30d/90d/1y/All presets.
 Cohort composition shows severity meters, monthly counts, and signal coverage;

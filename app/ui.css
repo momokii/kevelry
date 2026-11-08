@@ -5095,3 +5095,36 @@ a.graph-evidence-chip:hover {
 [data-testid="overview-exploit-panel"] {
   align-self: start;
 }
+
+/* Exploit-reference signal: one look for Priority and Search, so the same record
+   never claims a tag in one view and hides the evidence in another. */
+.exploit-signal {
+  margin-top: 8px;
+}
+
+.exploit-signal-compact {
+  margin-top: 6px;
+}
+
+.exploit-signal-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.exploit-signal-list {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.exploit-signal-list a {
+  color: var(--ui-accent);
+  text-decoration: none;
+}
+
+.exploit-signal-list a:hover {
+  text-decoration: underline;
+}

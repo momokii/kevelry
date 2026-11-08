@@ -56,13 +56,19 @@ interface Fixture {
   exploitRef?: boolean;
 }
 
+function taggedRecordJson(url: string): string {
+  return JSON.stringify({
+    containers: { cna: { references: [{ url, tags: ["exploit"] }] } },
+  });
+}
+
 function seed(db: CveDatabase, fixtures: Fixture[]): void {
   db.runBoundedWrite(() => {
     const handle: Database.Database = db.handle;
     for (const fixture of fixtures) {
       handle
         .prepare(
-          "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, title, description, description_lang, source_revision, created_at, updated_at, has_exploit_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, title, description, description_lang, source_revision, created_at, updated_at, has_exploit_ref, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           fixture.cveId,
@@ -77,6 +83,9 @@ function seed(db: CveDatabase, fixtures: Fixture[]): void {
           STAMP,
           STAMP,
           fixture.exploitRef === true ? 1 : 0,
+          fixture.exploitRef === true
+            ? taggedRecordJson(`https://example.test/${fixture.cveId.toLowerCase()}`)
+            : null,
         );
       for (const [index, metric] of (fixture.metrics ?? []).entries()) {
         handle
