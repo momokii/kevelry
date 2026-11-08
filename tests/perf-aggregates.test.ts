@@ -21,6 +21,7 @@ import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/shared";
 import {
   getAggregates,
   monthCountsFromDays,
+  aggregatesAreCurrent,
   refreshAggregates,
   severityBandsSql,
   type AggregateSnapshot,
@@ -205,6 +206,53 @@ function expectedBandsJs(db: CveDatabase): Record<string, number> {
 }
 
 describe("task 43 aggregate cache (50k fixture)", () => {
+  it("treats a cache whose inputs moved as stale, not as present", () => {
+    // Regression: the worker refreshed only an EMPTY cache, so after any data
+    // change the stored snapshot disagreed with the accepted EPSS date, pages
+    // rejected it and every overview render fell back to live full-corpus
+    // queries (~4 s on the production volume).
+    const { db } = makeDb();
+    expect(aggregatesAreCurrent(db)).toBe(false);
+
+    db.handle
+      .prepare(
+        "INSERT INTO cve_records (cve_id, data_version, state, date_published, title, description, source_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "CVE-2099-0500",
+        "5.1",
+        "PUBLISHED",
+        "2026-05-01T00:00:00.000Z",
+        "Title",
+        "Description",
+        "rev-1",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+      );
+    db.handle
+      .prepare(
+        "INSERT INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("CVE-2099-0500", "2026-05-01", "v2025.03.14", "0.4", "0.9");
+    refreshAggregates(db);
+    expect(aggregatesAreCurrent(db)).toBe(true);
+
+    // A newer accepted EPSS date invalidates the snapshot.
+    db.handle
+      .prepare(
+        "INSERT INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("CVE-2099-0500", "2026-05-02", "v2025.03.14", "0.4", "0.9");
+    expect(aggregatesAreCurrent(db)).toBe(false);
+
+    refreshAggregates(db);
+    expect(aggregatesAreCurrent(db)).toBe(true);
+
+    // So does a new CVE revision.
+    db.handle.prepare("UPDATE cve_records SET source_revision = ?").run("rev-2");
+    expect(aggregatesAreCurrent(db)).toBe(false);
+  });
+
   it("applies migration 002 additively with all indexes and the cache table", () => {
     const { db } = makeDb();
     const applied = db.appliedVersions();

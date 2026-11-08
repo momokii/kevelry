@@ -37,7 +37,7 @@ setDefaultResultOrder("ipv4first");
 
 import { createBackup, verifyBackup } from "./lib/backup";
 import { loadConfig } from "./lib/config";
-import { getAggregates, refreshAggregates } from "./lib/aggregates";
+import { aggregatesAreCurrent, getAggregates, refreshAggregates } from "./lib/aggregates";
 import {
   cloneAndImportCveRevision,
   getCveCloneDepth,
@@ -181,7 +181,10 @@ function failure(source: string, error: unknown): SourceRefreshOutcome {
  */
 export function ensureAggregates(db: CveDatabase, log: LogFn = defaultLog): boolean {
   try {
-    if (getAggregates(db) !== null) return false;
+    // "Is there a row?" is not the question: a stale row makes every page fall
+    // back to live full-corpus queries. Refresh whenever the accepted inputs
+    // moved, and skip the work when they did not.
+    if (aggregatesAreCurrent(db)) return false;
     const snapshot = refreshAggregates(db);
     log({
       event: "aggregate-refresh",

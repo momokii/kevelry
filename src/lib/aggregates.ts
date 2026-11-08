@@ -425,6 +425,27 @@ export function getAggregates(db: CveDatabase): AggregateSnapshot | null {
   }
 }
 
+/**
+ * True when the cached snapshot still describes the accepted data.
+ *
+ * Pages reject a snapshot whose `epssScoreDate` is not the accepted one and fall
+ * back to live full-corpus queries (~4 s on the production volume). Refreshing
+ * only an empty cache therefore turns every data change into a slow-read window
+ * until someone forces a refresh, so the worker asks this instead of "is there a
+ * row?".
+ */
+export function aggregatesAreCurrent(db: CveDatabase): boolean {
+  const cached = getAggregates(db);
+  if (cached === null) return false;
+  const accepted = db.handle.prepare("SELECT MAX(score_date) AS d FROM epss_daily").get() as {
+    d: string | null;
+  };
+  const revision = db.handle.prepare("SELECT MAX(source_revision) AS r FROM cve_records").get() as {
+    r: string | null;
+  };
+  return cached.epssScoreDate === accepted.d && cached.sourceRevision === revision.r;
+}
+
 /** Revision seed for ETags; null when the cache is empty. */
 export function getAggregateMeta(db: CveDatabase): AggregateMeta | null {
   try {

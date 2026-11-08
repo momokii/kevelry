@@ -322,9 +322,13 @@ linear EPSS histogram, the nine-bin log EPSS histogram, the exact
 severity×EPSS matrix with KEV counts, KEV months, corpus totals, and the
 bounded top heads for the two slowest priority lists. Refresh rules:
 
-- The worker calls `refreshAggregates` once after every successful
-  CVE/KEV/EPSS import cycle, and on boot when the cache table is empty (so a
-  seeded volume serves fast reads without waiting for an import).
+- The worker refreshes the cache after a cycle **whenever the accepted inputs
+  moved** (`aggregatesAreCurrent`): a cached snapshot whose `epssScoreDate` or
+  `sourceRevision` disagrees with the data is stale, because pages reject it and
+  fall back to live full-corpus queries. Measured consequence of the old
+  "refresh only an empty cache" rule: 4.2 s per overview render until the next
+  forced refresh, versus 0.26 s with a current cache. An unchanged cycle skips the
+  refresh, so the ~8 s recompute does not run hourly for nothing.
 - `refreshAggregates` is idempotent (recompute + INSERT OR REPLACE) and
   bounded: every section is a GROUP BY over indexed columns (per-day,
   per-month, per-band, per-model) — the full corpus is never materialized in

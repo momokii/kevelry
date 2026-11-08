@@ -2,6 +2,24 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - The cache that only filled when empty
+
+Auditing the app before a release announcement turned up a live regression: the
+homepage served in 4.2 s instead of 0.26 s.
+
+**Cause.** `ensureAggregates` refreshed only when the cache table was empty. After
+any data change the stored snapshot's `epssScoreDate`/`sourceRevision` no longer
+matched the accepted data, `loadOverview` rejected it (`useCache` requires the
+dates to agree) and every render fell back to live full-corpus GROUP BYs. The
+documentation claimed a per-cycle refresh that the code never performed.
+
+**Fix.** `aggregatesAreCurrent()` compares the cached inputs with the live ones;
+the worker refreshes on mismatch and skips when nothing moved, so the ~8 s
+recompute is not paid hourly for nothing. Regression test advances the EPSS date
+and the CVE revision and asserts staleness both times.
+
+Gates: 423 unit, 102 e2e (1 skipped). Live homepage back to 0.26-0.43 s.
+
 ## 2026-11-08 - Search parity: a badge must carry its evidence
 
 Owner spotted a Search row with an `Exploit ref` badge and no reference anywhere in

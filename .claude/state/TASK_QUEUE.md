@@ -557,6 +557,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns   | Links keep `target="_blank"` + `rel="noreferrer noopener"`; only http(s) URLs from the record are rendered.                                                                                                                                                                                                                                           |
 | Notes               | The badge and the list now come from one function, so "tagged with no links" cannot recur silently.                                                                                                                                                                                                                                                   |
 
+## TASK-039 — Aggregate cache must follow the accepted inputs
+
+| Field               | Value                                                                                                                                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID             | TASK-039                                                                                                                                                                                                                                                   |
+| Name                | Refresh the aggregate cache when the accepted data moved, not only when it is empty                                                                                                                                                                        |
+| Priority            | Critical                                                                                                                                                                                                                                                   |
+| Status              | DONE                                                                                                                                                                                                                                                       |
+| Complexity          | S                                                                                                                                                                                                                                                          |
+| Depends On          | Owner audit request (2026-11-08)                                                                                                                                                                                                                           |
+| Scope               | `aggregatesAreCurrent()` compares the cached `epssScoreDate` and `sourceRevision` with the live data; `ensureAggregates` refreshes on mismatch instead of returning early whenever a row exists; regression test with an advancing EPSS date and revision. |
+| Acceptance Criteria | 423 unit green; live homepage returns from 4.2 s to 0.26-0.43 s; `aggregate-refresh` is logged on data changes and skipped when nothing moved.                                                                                                             |
+| Security Concerns   | None: read-only comparison plus the existing idempotent refresh.                                                                                                                                                                                           |
+| Notes               | Found while auditing the app before a release announcement: pages rejected the stale snapshot and every overview render fell back to live full-corpus queries. Docs had claimed a per-cycle refresh that the code never did.                               |
+
 ## Task Template
 
 ```markdown
