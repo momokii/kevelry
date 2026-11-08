@@ -433,8 +433,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (423 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (103 passing, 1 skipped)
+npm test                # vitest suite (426 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (106 passing, 2 skipped)
 npx prettier --write <paths>  # format touched files
 
 The benchmark writes its evidence receipt to a temporary file by default; set
@@ -471,7 +471,8 @@ GET only, no auth, rate limited. Unknown EPSS renders as explicit `null`, never 
 
 Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
 
-- Upstream descriptions, references, and archives are **untrusted**: React-escaped output, constrained links, no PoC execution, archive guards. API responses carry a strict JSON CSP; page HTML does not currently set one.
+- Upstream descriptions, references, and archives are **untrusted**: React-escaped output, constrained links, no PoC execution, archive guards.
+- Page HTML carries a per-request **nonce-based CSP** (`default-src 'self'`, `script-src 'self' 'nonce-…' 'strict-dynamic'`, `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`); API responses carry a separate, stricter JSON policy (`default-src 'none'`). `style-src` keeps `'unsafe-inline'` because React writes inline style attributes for chart geometry.
 - Parameterized queries, validated filters, bounded pages/time/concurrency, rate-limited reads; SSRF allow-lists for the fixed upstream endpoints.
 - Public reads are anonymous by design; imports, migrations, and maintenance stay private CLI/internal operations.
 - No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release; pinned dependencies, minimal non-root image, no Docker socket.

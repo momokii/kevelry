@@ -38,3 +38,19 @@ last-known-good snapshot governed by upstream feed terms, not by this file.
 
 There is no paid bug bounty. Valid reports are credited in the release
 notes unless you ask to stay anonymous.
+
+## Browser hardening
+
+Page HTML is served with a per-request Content-Security-Policy nonce
+(`middleware.ts` + `src/lib/csp.ts`): `default-src 'self'`,
+`script-src 'self' 'nonce-…' 'strict-dynamic'`, `object-src 'none'`,
+`frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`. Next.js
+stamps the same nonce on every script it emits, so `script-src` needs no
+`'unsafe-inline'`. `style-src` keeps `'unsafe-inline'` on purpose: React writes
+inline `style` attributes for chart geometry, and style attributes cannot be
+nonce-scoped. API responses set their own stricter policy (`default-src 'none'`)
+so a JSON response can never execute anything.
+
+Regression guards: `tests/csp.test.ts` (policy shape) and
+`tests/e2e/csp.spec.ts` (header present, nonce matches the emitted scripts in a
+production build, nothing blocked, charts and theme still work).

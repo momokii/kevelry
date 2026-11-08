@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 export const SUPPORTED_TIME_ZONES = [
@@ -139,23 +147,31 @@ export function DisplayPrefsProvider({
     }
   }, []);
 
+  // Mirror of the committed list for the event handler. Keeping the storage
+  // write OUT of the state updater matters: React may invoke an updater more than
+  // once (StrictMode does, and it may replay), and a side effect inside it wrote
+  // the pre-toggle list back to storage — the row disappeared while the stored
+  // list still held the id.
+  const watchedIdsRef = useRef<readonly string[]>(watchedIds);
+  useEffect(() => {
+    watchedIdsRef.current = watchedIds;
+  }, [watchedIds]);
+
   const toggleWatch = useCallback((cveId: string) => {
     if (!WATCH_ID_PATTERN.test(cveId)) return;
-    setWatchedIds((current) => {
-      const next = current.includes(cveId)
-        ? current.filter((id) => id !== cveId)
-        : current.length >= WATCH_MAX_IDS
-          ? current
-          : [...current, cveId];
-      if (next !== current) {
-        try {
-          window.localStorage.setItem(WATCH_STORAGE_KEY, JSON.stringify(next));
-        } catch {
-          // Quota or private mode: keep the in-memory list for this view.
-        }
-      }
-      return next;
-    });
+    const current = watchedIdsRef.current;
+    const next: readonly string[] = current.includes(cveId)
+      ? current.filter((id) => id !== cveId)
+      : current.length >= WATCH_MAX_IDS
+        ? current
+        : [...current, cveId];
+    watchedIdsRef.current = next;
+    setWatchedIds(next);
+    try {
+      window.localStorage.setItem(WATCH_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Quota or private mode: keep the in-memory list for this view.
+    }
   }, []);
 
   const value = useMemo(

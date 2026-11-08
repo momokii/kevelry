@@ -2,6 +2,31 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Nonce CSP, and a watch-list bug hiding behind a flaky test
+
+**CSP.** Pages now send a per-request policy (`default-src 'self'`,
+`script-src 'self' 'nonce-…' 'strict-dynamic'`, `object-src 'none'`,
+`frame-ancestors 'none'`). Next stamps that nonce on every script it emits — 14/14
+on the production build, verified in the same response — so `script-src` no
+longer needs `'unsafe-inline'`. `style-src` keeps it, because React writes inline
+style attributes for chart geometry. API responses keep their stricter
+`default-src 'none'` policy. Verified live: 24 volume bars, 30 Sankey bands, theme
+toggle working, zero console violations.
+
+**Watch bug.** An intermittent E2E failure led to a real defect: `toggleWatch`
+wrote `localStorage` inside the state updater, so React's double invocation
+(StrictMode, and any updater replay) wrote the pre-toggle list back — the row
+disappeared while storage still held the id. The write now happens in the event
+handler with a ref mirror.
+
+**Suite.** The watch spec no longer seeds the shared dev database (`explore.spec`
+swaps the database file, so a dev-server read handle can keep pointing at the
+replaced inode). It stubs the record endpoint instead, which made the file
+deterministic and let it grow three honest assertions: signals parity, missing
+records, and persistence across tabs.
+
+Gates: 426 unit, 106 e2e (2 skipped), lint/typecheck/build green.
+
 ## 2026-11-08 - The cache that only filled when empty
 
 Auditing the app before a release announcement turned up a live regression: the

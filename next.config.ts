@@ -4,11 +4,10 @@ import type { NextConfig } from "next";
 // (strict JSON CSP included) in app/api/v1/_lib/shared.ts, so pages are
 // matched here with an /api exclusion to avoid duplicate headers.
 //
-// Deliberately no page-level Content-Security-Policy: Next.js ships inline
-// runtime chunks that would force `unsafe-inline`, neutering most of the
-// benefit on a cookie-less, account-less, read-only site with React-escaped
-// output. Revisit with nonce middleware if the page ever handles sessions
-// or user content. Frame-busting + nosniff + no-referrer stand on their own.
+// The page-level Content-Security-Policy lives in `middleware.ts`, because it
+// needs a per-request nonce: Next.js stamps that nonce onto the inline scripts
+// it emits, so `script-src` does not fall back to `'unsafe-inline'`. The headers
+// below are static and cost nothing per request.
 
 const PAGE_SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },

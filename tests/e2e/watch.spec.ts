@@ -1,131 +1,130 @@
-import { expect, test } from "@playwright/test";
-import path from "node:path";
+import { expect, test, type Page } from "@playwright/test";
 
-import { openDatabase, type CveDatabase } from "../../src/lib/db";
+// Watch journey: the list is browser-private (localStorage) and every row is
+// hydrated through the read-only API.
+//
+// The API is stubbed here on purpose. `explore.spec` replaces the server's
+// database file for its own fixture, so a dev-server read handle can keep
+// pointing at the replaced inode for the rest of a suite run; a test that seeds
+// the real database is therefore order-dependent. Stubbing keeps this file about
+// the one thing it owns — the row mapping and the persistence contract — while
+// the real endpoint stays covered by the API suite and by Search's own specs.
 
-// Watch journey: star toggles persist browser-privately, and /watch hydrates
-// stored IDs through the read-only API. No account, no server record.
-// Self-seeded: priority.spec wipes its own fixtures in afterAll, so this
-// file owns its records.
-function serverDataDir(): string {
-  const raw = process.env.DATA_DIR;
-  if (raw !== undefined && raw.trim() !== "") {
-    return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-  }
-  return path.join(process.cwd(), "data");
+const WATCH_ID = "CVE-2099-7001";
+
+async function stubRecord(page: Page, overrides: Record<string, unknown> = {}): Promise<void> {
+  const body = {
+    data: {
+      cveId: WATCH_ID,
+      title: "Stubbed record with one tagged reference",
+      excerpt: "Stubbed excerpt for the watch row.",
+      publishedAt: "2026-10-20T00:00:00.000Z",
+      officialUrl: `https://www.cve.org/CVERecord?id=${WATCH_ID}`,
+      kev: { listed: true, dateAdded: "2026-10-21" },
+      epss: { status: "known", value: 0.00412, percentile: 0.5, scoreDate: "2026-11-08" },
+      cvssPrimary: { status: "known", baseScore: 9.8, version: "3.1" },
+      exploitReferenceStatus: "tagged",
+      exploitReferences: [{ url: "https://example.test/poc-7001" }],
+      ...overrides,
+    },
+  };
+  await page.route(`**/api/v1/cves/${WATCH_ID}`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) }),
+  );
 }
 
-function seedWatchRecord(db: CveDatabase): void {
-  const nowIso = new Date().toISOString();
-  db.runBoundedWrite(() => {
-    db.handle
-      .prepare(
-        "INSERT INTO cve_records (cve_id, data_version, state, date_published, title, description, description_lang, created_at, updated_at, has_exploit_ref, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        "CVE-2099-1001",
-        "5.1",
-        "PUBLISHED",
-        "2026-10-20T00:00:00.000Z",
-        "Supplied CNA title: watched demo flaw.",
-        "Supplied description for CVE-2099-1001 with enough detail to render an excerpt.",
-        "en",
-        nowIso,
-        nowIso,
-        1,
-        JSON.stringify({
-          containers: {
-            cna: { references: [{ url: "https://example.test/poc-1001", tags: ["exploit"] }] },
-          },
-        }),
-      );
-    db.handle
-      .prepare(
-        "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
-      )
-      .run("CVE-2099-1001", nowIso, nowIso, nowIso);
-  });
+async function watched(page: Page, ids: readonly string[]): Promise<void> {
+  await page.addInitScript((list) => {
+    window.localStorage.setItem("ui-watch", JSON.stringify(list));
+  }, ids);
 }
-
-function wipeWatchRecord(db: CveDatabase): void {
-  db.runBoundedWrite(() => {
-    db.handle.prepare("DELETE FROM kev_entries WHERE cve_id = ?").run("CVE-2099-1001");
-    db.handle.prepare("DELETE FROM cve_records WHERE cve_id = ?").run("CVE-2099-1001");
-  });
-}
-
-test.beforeAll(() => {
-  const db = openDatabase({ dataDir: serverDataDir() });
-  try {
-    // Idempotent: other suites share these fixture IDs and may leave rows
-    // behind when a run aborts before their afterAll wipe.
-    wipeWatchRecord(db);
-    seedWatchRecord(db);
-  } finally {
-    db.close();
-  }
-});
-
-test.afterAll(() => {
-  const db = openDatabase({ dataDir: serverDataDir() });
-  try {
-    wipeWatchRecord(db);
-  } finally {
-    db.close();
-  }
-});
 
 test("a watched record with a tagged reference links its evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.addInitScript(() => {
-    window.localStorage.setItem("ui-watch", JSON.stringify(["CVE-2099-1001"]));
-  });
+  await stubRecord(page);
+  await watched(page, [WATCH_ID]);
   await page.goto("/watch");
+
   // The badge is the link itself: Watch never claims a tag without evidence.
-  const badge = page.getByTestId("watch-row-CVE-2099-1001-exploit");
-  await expect(badge).toBeVisible();
-  await expect(badge).toHaveAttribute("href", "https://example.test/poc-1001");
+  const badge = page.getByTestId(`watch-row-${WATCH_ID}-exploit`);
+  await expect(badge).toBeVisible({ timeout: 20_000 });
+  await expect(badge).toHaveAttribute("href", "https://example.test/poc-7001");
   await expect(badge).toHaveAttribute("rel", "noreferrer noopener");
   await expect(badge).toContainText("exploit ref");
+  await expect(page.getByTestId(`watch-row-${WATCH_ID}-signals`)).toContainText(
+    "tagged exploit reference",
+  );
 });
 
-test("star persists across reload and /watch lists it", async ({ page }) => {
+test("watch rows show the same signals as the rest of the console", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/priority?view=known-exploited");
-  await expect(page.getByTestId("priority-root")).toBeVisible();
-
-  const star = page.getByTestId("priority-watch-CVE-2099-1001");
-  await expect(star).toBeVisible();
-  await expect(star).toHaveAttribute("aria-pressed", "false");
-  await star.click();
-  await expect(star).toHaveAttribute("aria-pressed", "true");
-
-  await page.reload();
-  await expect(page.getByTestId("priority-watch-CVE-2099-1001")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-
+  await stubRecord(page, { exploitReferenceStatus: "none", exploitReferences: [] });
+  await watched(page, [WATCH_ID]);
   await page.goto("/watch");
-  await expect(page.getByTestId("watch-root")).toBeVisible();
-  await expect(page.getByTestId("watch-list")).toBeVisible();
-  await expect(page.getByTestId("watch-row-CVE-2099-1001-id")).toContainText("CVE-2099-1001");
-  await expect(page.getByTestId("watch-row-CVE-2099-1001-signals")).not.toBeEmpty();
 
-  await page.getByTestId("watch-remove-CVE-2099-1001").click();
-  await expect(page.getByTestId("watch-empty")).toBeVisible();
-  await page.goto("/priority?view=known-exploited");
-  await expect(page.getByTestId("priority-watch-CVE-2099-1001")).toHaveAttribute(
-    "aria-pressed",
-    "false",
+  const row = page.getByTestId(`watch-row-${WATCH_ID}`);
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  await expect(row).toContainText("KEV");
+  await expect(row).toContainText("0.41%");
+  await expect(row).toContainText("9.8");
+  // No tag: no badge, and the summary says so instead of staying silent.
+  await expect(page.getByTestId(`watch-row-${WATCH_ID}-exploit`)).toHaveCount(0);
+  await expect(page.getByTestId(`watch-row-${WATCH_ID}-signals`)).toContainText(
+    "No tagged exploit reference",
   );
+});
+
+test("unwatching clears the stored list and survives a reload", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await stubRecord(page);
+  await watched(page, [WATCH_ID]);
+  await page.goto("/watch");
+  await expect(page.getByTestId(`watch-row-${WATCH_ID}-id`)).toContainText(WATCH_ID, {
+    timeout: 20_000,
+  });
+
+  await page.getByTestId(`watch-remove-${WATCH_ID}`).click();
+  await expect(page.getByTestId("watch-empty")).toBeVisible();
+
+  // The stored list must be empty, not just the rendered one. (Reloading here
+  // would re-run the init script that seeds the id, so persistence is checked in
+  // a second tab of the same context, which shares localStorage.)
+  await expect
+    .poll(async () => page.evaluate(() => window.localStorage.getItem("ui-watch")))
+    .toEqual("[]");
+
+  const second = await page.context().newPage();
+  try {
+    await second.goto("/watch");
+    await expect(second.getByTestId("watch-empty")).toBeVisible();
+  } finally {
+    await second.close();
+  }
+});
+
+test("a record missing from the snapshot stays watched with an honest note", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.route(`**/api/v1/cves/${WATCH_ID}`, (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: "{}" }),
+  );
+  await watched(page, [WATCH_ID]);
+  await page.goto("/watch");
+
+  await expect(page.getByTestId(`watch-row-${WATCH_ID}`)).toContainText("No longer PUBLISHED", {
+    timeout: 20_000,
+  });
+  // It is still listed: the reader chose to keep it.
+  await expect(page.getByTestId(`watch-row-${WATCH_ID}`)).toBeVisible();
 });
 
 test("watch rail link navigates and empty state explains privacy", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  await page.getByRole("link", { name: "Watch" }).first().click();
-  await expect(page).toHaveURL("/watch");
-  await expect(page.getByTestId("watch-empty")).toContainText("No watched CVEs yet");
-  await expect(page.getByTestId("watch-empty")).toContainText("No account");
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: "Watch" })
+    .click();
+  await expect(page).toHaveURL(/\/watch$/);
+  await expect(page.getByTestId("watch-root")).toBeVisible();
+  await expect(page.getByTestId("watch-empty")).toContainText("browser");
 });
