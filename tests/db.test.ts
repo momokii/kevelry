@@ -6,7 +6,7 @@
 // Fixtures are synthetic CVE-2099 IDs; nothing here touches the network.
 
 import Database from "better-sqlite3";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -83,6 +83,18 @@ function tableNames(db: CveDatabase): string[] {
 }
 
 describe("sqlite storage (todo 7)", () => {
+  it("treats :memory: as the SQLite sentinel, never as a directory name", () => {
+    const db = openDatabase({ dataDir: ":memory:" });
+    try {
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4]);
+      expect(db.handle.name).toBe(":memory:");
+      // An in-memory database must not leave artifacts behind in the tree.
+      expect(existsSync(":memory:")).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
   it("opens with WAL mode and applies the versioned schema", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {

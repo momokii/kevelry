@@ -87,13 +87,17 @@ export class CveDatabase {
         "Refusing to open the CVE database: DATA_DIR is missing or empty. Set DATA_DIR to a writable local directory.",
       );
     }
+    // `:memory:` is the conventional SQLite sentinel. Without this branch it is
+    // treated as a relative path, which silently creates a directory named
+    // ":memory:" inside the working tree (and a real file inside it).
+    const inMemory = dataDir === ":memory:";
     let dirStats;
     try {
       dirStats = statSync(dataDir);
     } catch {
       dirStats = undefined;
     }
-    if (dirStats === undefined) {
+    if (dirStats === undefined && !inMemory) {
       try {
         mkdirSync(dataDir, { recursive: true });
         dirStats = statSync(dataDir);
@@ -104,13 +108,13 @@ export class CveDatabase {
         );
       }
     }
-    if (!dirStats.isDirectory()) {
+    if (!inMemory && dirStats !== undefined && !dirStats.isDirectory()) {
       throw new DbConfigError(
         `Refusing to open the CVE database: "${dataDir}" is not a directory. Set DATA_DIR to a writable local directory.`,
       );
     }
     try {
-      accessSync(dataDir, constants.W_OK);
+      if (!inMemory) accessSync(dataDir, constants.W_OK);
     } catch {
       throw new DbConfigError(
         `Refusing to open the CVE database: data directory "${dataDir}" is not writable (read-only?). Check volume permissions; running without a writable data dir would silently lose every import checkpoint.`,
@@ -118,7 +122,7 @@ export class CveDatabase {
     }
 
     const filename = options.filename ?? DB_FILENAME;
-    const filePath = path.join(dataDir, filename);
+    const filePath = inMemory ? ":memory:" : path.join(dataDir, filename);
     let db: Database.Database;
     try {
       db = new Database(filePath, { readonly: options.readOnly ?? false });
@@ -135,9 +139,13 @@ export class CveDatabase {
       db.pragma("foreign_keys = ON");
       db.pragma("synchronous = NORMAL");
       if (!(options.readOnly ?? false)) {
-        const mode = db.pragma("journal_mode = WAL", { simple: true });
-        if (mode !== "wal") {
-          throw new Error(`journal_mode request returned "${String(mode)}", not WAL.`);
+        // A memory database cannot keep a WAL, so the durability contract only
+        // applies to file-backed ones (the production path).
+        if (!inMemory) {
+          const mode = db.pragma("journal_mode = WAL", { simple: true });
+          if (mode !== "wal") {
+            throw new Error(`journal_mode request returned "${String(mode)}", not WAL.`);
+          }
         }
         migrateUp(db);
       }
