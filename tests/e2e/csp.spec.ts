@@ -20,15 +20,17 @@ test("pages ship a nonce-scoped CSP and nothing is blocked", async ({ page }) =>
   expect(policy).toContain("frame-ancestors 'none'");
   expect(policy).toContain("object-src 'none'");
 
-  const nonce = /'nonce-([a-f0-9]+)'/.exec(policy)?.[1] ?? "";
+  const nonce = /'nonce-([^']+)'/.exec(policy)?.[1] ?? "";
   expect(nonce).not.toBe("");
   // Production builds are nonce-only; the dev server injects inline HMR script
   // and therefore allows 'unsafe-inline'. Assert the matching contract for each.
   const nonceOnly = !/script-src[^;]*'unsafe-inline'/.test(policy);
-  const html = await page.content();
+  // Read the raw response body: browsers deliberately hide the `nonce` attribute
+  // from the DOM after parsing, so `page.content()` cannot see it.
+  const html = (await response?.body())?.toString("utf8") ?? "";
   if (nonceOnly) {
     const scriptNonces = new Set(
-      [...html.matchAll(/<script[^>]*nonce="([a-f0-9]+)"/g)].map((match) => match[1]),
+      [...html.matchAll(/<script[^>]*nonce="([^"]+)"/g)].map((match) => match[1]),
     );
     expect([...scriptNonces]).toEqual([nonce]);
     expect(html).not.toMatch(/<script(?![^>]*nonce=)[^>]*>/);
