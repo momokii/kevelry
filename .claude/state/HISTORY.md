@@ -2,6 +2,18 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Released 2.0.0
+
+`CHANGELOG.md` written, `package.json` bumped to 2.0.0, `README` release line and
+image references updated, commit `e4e67e0`, `git push origin main`, annotated tag
+`v2.0.0` pushed.
+
+Docker Hub: `kelanach/kevelry:2.0.0` and `:latest` both at digest
+`sha256:8e7a512133d859989ba42a54659e5a87767ba88bb61d6b9d184358e2eeb0b77c`.
+Verified by pulling the published tag into a clean state, running it on a scratch
+volume with ingest disabled, and checking the homepage (200, 0.21 s) and
+`/api/v1/health`.
+
 ## 2026-11-08 - Restore drill: a backup is only a backup once restored
 
 Added `RUN_RESTORE_ONCE` / `RESTORE_DIR` to the worker so the runbook's restore is
