@@ -587,6 +587,21 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns   | Removes the `script-src 'unsafe-inline'` escape hatch in production; `style-src` keeps `'unsafe-inline'` by necessity (inline style attributes).                                                                                                                                                                                                            |
 | Notes               | The watch bug was a side effect inside a React state updater: StrictMode's double invocation wrote the pre-toggle list back, so the row vanished while storage still held the id.                                                                                                                                                                           |
 
+## TASK-041 — Restore drill as a documented command
+
+| Field               | Value                                                                                                                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID             | TASK-041                                                                                                                                                                                |
+| Name                | Add a restore hook and rehearse a real restore into a throwaway volume                                                                                                                  |
+| Priority            | High                                                                                                                                                                                    |
+| Status              | DONE                                                                                                                                                                                    |
+| Complexity          | S                                                                                                                                                                                       |
+| Depends On          | Pre-release audit (2026-11-08)                                                                                                                                                          |
+| Scope               | `RUN_RESTORE_ONCE` / `RESTORE_DIR` in `src/worker.ts` (verify + restore + row-count log); unit test for the gates; `docs/backup-runbook.md` drill procedure with the rehearsed numbers. |
+| Acceptance Criteria | 427 unit green; drill logs `restore-done` with matching counts; the restored volume serves every page and `/api/v1/health` reports all sources current.                                 |
+| Security Concerns   | Drill uses a throwaway volume and a read-only serving container (no scheduler, no ingest); production volume untouched.                                                                 |
+| Notes               | First rehearsal accidentally ran a full import because the image predated the hook — rebuilt first, then re-ran clean.                                                                  |
+
 ## Task Template
 
 ```markdown

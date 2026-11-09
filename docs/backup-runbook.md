@@ -16,6 +16,43 @@ keeps the second term predictable: ~400k rows and ~85 MB with indexes per day, s
 and the nightly hashing time; it does not shrink the live database file (freed
 pages are reused, see `DATA_WORKFLOW.md`).
 
+## Restore drill (rehearsed 2026-11-08)
+
+A restore is only a backup once it has been restored. The drill runs against a
+throwaway named volume, never the production one:
+
+```bash
+# 1. Fresh, verified backup (host cron does this nightly at 02:00)
+./scripts/nightly-backup.sh /tmp/drill-backups 1
+mkdir -p /tmp/drill-restore
+gunzip -c /tmp/drill-backups/<date>/cve-backup.db.gz > /tmp/drill-restore/cve-backup.db
+cp /tmp/drill-backups/<date>/manifest.json /tmp/drill-restore/manifest.json
+
+# 2. Restore into a separate volume (verifies hashes + schema compatibility)
+docker volume create cve-drill
+docker compose run --rm -v /tmp/drill-restore:/backups -v cve-drill:/data \
+  -e RUN_RESTORE_ONCE=true -e RESTORE_DIR=/backups -e INGEST_ON_START=false \
+  app node worker.mjs        # logs {"event":"restore-done", rowCounts:{...}}
+
+# 3. Serve from the restored volume and check it (read-only, no scheduler)
+docker run -d --name cve-drill-app -p 127.0.0.1:3101:3000 -v cve-drill:/data \
+  -e APP_ENV=production -e NODE_ENV=production -e PORT=3000 -e DATA_DIR=/data \
+  -e SCHEDULE_ENABLED=false -e INGEST_ON_START=false cve-change-radar:local
+curl -fsS http://127.0.0.1:3101/api/v1/health
+
+# 4. Tear down
+docker stop cve-drill-app && docker rm cve-drill-app && docker volume rm cve-drill
+rm -rf /tmp/drill-restore /tmp/drill-backups
+```
+
+Result of the 2026-11-08 rehearsal: `restore-done` reported
+`schema_migrations: 7, cve_records: 402045, cvss_metrics: 294739,
+epss_daily: 5585191, kev_entries: 1769, cve_tombstones: 19141`; the app served
+`/`, `/explore`, `/priority` and `/methodology` from the restored volume
+(200s), `/api/v1/health` reported `status: ok` with all four sources current, and
+the first filtered Explore request cost 33 s on the cold volume (0.05 s warm) —
+expected page-cache effects, not a data problem.
+
 ## Procedures (see `src/lib/backup.ts`)
 
 - **Back up:** `createBackup({ dataDir, backupDir })`. Staged as `*.tmp`,

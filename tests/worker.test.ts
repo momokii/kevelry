@@ -13,6 +13,8 @@ import {
   acquireLeaseWithRetry,
   createSourceJobs,
   resolveBackupDir,
+  resolveRestoreDir,
+  resolveRunRestoreOnce,
   resolveCvePin,
   resolveIngestOnStart,
   resolveRunBackupOnce,
@@ -450,6 +452,17 @@ describe("RUN_BACKUP_ONCE one-shot gate", () => {
     expect(resolveBackupDir({})).toBe(null);
     expect(resolveBackupDir({ BACKUP_DIR: "" })).toBe(null);
     expect(resolveBackupDir({ BACKUP_DIR: "/backups/2026-10-29" })).toBe("/backups/2026-10-29");
+  });
+});
+
+describe("RUN_RESTORE_ONCE one-shot gate", () => {
+  it("resolves the gate and requires a restore directory", () => {
+    expect(resolveRunRestoreOnce({})).toBe(false);
+    expect(resolveRunRestoreOnce({ RUN_RESTORE_ONCE: "true" })).toBe(true);
+    expect(resolveRunRestoreOnce({ RUN_RESTORE_ONCE: "false" })).toBe(false);
+    expect(resolveRestoreDir({})).toBe(null);
+    expect(resolveRestoreDir({ RESTORE_DIR: "  " })).toBe(null);
+    expect(resolveRestoreDir({ RESTORE_DIR: "/backups/2026-11-08" })).toBe("/backups/2026-11-08");
   });
 });
 

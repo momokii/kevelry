@@ -2,6 +2,25 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Restore drill: a backup is only a backup once restored
+
+Added `RUN_RESTORE_ONCE` / `RESTORE_DIR` to the worker so the runbook's restore is
+a documented command, then rehearsed it end to end on a throwaway volume.
+
+**Drill.** Fresh nightly-style backup (639 MB gz), decompressed into a bind mount,
+restored into a new volume: `restore-done` reported `schema_migrations: 7,
+cve_records: 402045, cvss_metrics: 294739, epss_daily: 5585191, kev_entries: 1769,
+cve_tombstones: 19141`. Serving that volume read-only: `/`, `/explore`,
+`/priority`, `/methodology` all 200, `/api/v1/health` `status: ok` with four
+current sources. The first filtered Explore request cost 33 s on the cold volume
+and 0.05 s warm — page-cache, not data.
+
+**Honest slip.** The first attempt ran a full import instead of a restore because
+the image predated the hook; it wrote 402k rows into the throwaway volume. I wiped
+the volume, rebuilt, and re-ran. The production volume was never touched.
+
+Gates: 427 unit, 106 e2e.
+
 ## 2026-11-08 - Nonce CSP, and a watch-list bug hiding behind a flaky test
 
 **CSP.** Pages now send a per-request policy (`default-src 'self'`,

@@ -35,7 +35,7 @@ import { pathToFileURL } from "node:url";
 // startup, before any fetch. Optional override: NODE_OPTIONS=--dns-result-order=ipv4first.
 setDefaultResultOrder("ipv4first");
 
-import { createBackup, verifyBackup } from "./lib/backup";
+import { createBackup, restoreBackup, verifyBackup } from "./lib/backup";
 import { loadConfig } from "./lib/config";
 import { aggregatesAreCurrent, getAggregates, refreshAggregates } from "./lib/aggregates";
 import {
@@ -603,6 +603,27 @@ export function resolveRunBackupOnce(
   return env.RUN_BACKUP_ONCE === "true";
 }
 
+/**
+ * One-off restore drill: `RUN_RESTORE_ONCE=true RESTORE_DIR=/backups/<date>`
+ * restores a verified backup image into DATA_DIR, then reports the row counts.
+ * Exists so the runbook's "restore into a fresh volume" is a documented command
+ * instead of ad-hoc code, and so the drill can be rehearsed without touching the
+ * production volume.
+ */
+export function resolveRunRestoreOnce(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.RUN_RESTORE_ONCE === "true";
+}
+
+export function resolveRestoreDir(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const raw = env.RESTORE_DIR;
+  if (raw === undefined || raw.trim() === "") return null;
+  return raw;
+}
+
 export function resolveBackupDir(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
@@ -634,6 +655,34 @@ async function main(): Promise<void> {
       defaultLog({
         event: "worker-fatal",
         reason: "backup-failed",
+        error: errorDetail(error),
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (resolveRunRestoreOnce()) {
+    const restoreDir = resolveRestoreDir();
+    if (restoreDir === null) {
+      defaultLog({ event: "worker-fatal", reason: "restore-dir-missing" });
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const config = loadConfig();
+      const manifest = restoreBackup({ backupDir: restoreDir, dataDir: config.dataDir });
+      const verification = verifyBackup(restoreDir);
+      defaultLog({
+        event: "restore-done",
+        dataDir: config.dataDir,
+        sourceCreatedAt: manifest.createdAt,
+        rowCounts: verification.rowCounts,
+      });
+      process.exitCode = 0;
+    } catch (error) {
+      defaultLog({
+        event: "worker-fatal",
+        reason: "restore-failed",
         error: errorDetail(error),
       });
       process.exitCode = 1;
