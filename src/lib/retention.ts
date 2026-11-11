@@ -14,12 +14,20 @@
 import type { CveDatabase } from "./db";
 
 /**
- * Default window. It matches `EPSS_HISTORY_CAP` (the per-record observation cap
- * in `app/api/v1/_lib/shared.ts`), so retention never truncates a series the API
- * is allowed to return, and never stores rows no endpoint can reach. The
+ * Default window, and it is a storage budget as much as a product decision.
+ *
+ * Measured on the production volume after the 008 slimming: ~40 MB per day of
+ * history, so 45 days is ~1.8 GB against ~3.6 GB at 90. The features that read
+ * history need far less than that: the sparkline downsamples, and the rising
+ * view compares exactly `d` with `d-7`. Forty-five days is six weeks of trend
+ * with a month of margin.
+ *
+ * It matches `EPSS_HISTORY_CAP` (the per-record observation cap in
+ * `app/api/v1/_lib/shared.ts`), so retention never truncates a series the API is
+ * allowed to return, and never stores rows no endpoint can reach. The
  * methodology page reads both constants, so the stated numbers track the code.
  */
-export const EPSS_RETENTION_DAYS_DEFAULT = 90;
+export const EPSS_RETENTION_DAYS_DEFAULT = 45;
 
 /** Floor: below a month the per-record trend stops being a trend. */
 export const EPSS_RETENTION_DAYS_MIN = 30;

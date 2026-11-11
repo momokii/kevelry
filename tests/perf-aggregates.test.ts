@@ -259,7 +259,7 @@ describe("task 43 aggregate cache (50k fixture)", () => {
     expect(applied).toContain(2);
     const objects = db.handle
       .prepare(
-        "SELECT name FROM sqlite_master WHERE name IN ('aggregate_cache', 'idx_cve_records_state_published', 'idx_cve_records_published_date', 'idx_cve_records_source_revision', 'idx_cvss_metrics_cve_origin_version', 'idx_epss_daily_score_cve')",
+        "SELECT name FROM sqlite_master WHERE name IN ('aggregate_cache', 'idx_cve_records_state_published', 'idx_cve_records_published_date', 'idx_cve_records_source_revision', 'idx_cvss_metrics_cve_origin_version', 'idx_epss_daily_cve')",
       )
       .all() as Array<{ name: string }>;
     expect(objects.map((row) => row.name).sort()).toEqual(
@@ -269,16 +269,18 @@ describe("task 43 aggregate cache (50k fixture)", () => {
         "idx_cve_records_source_revision",
         "idx_cve_records_state_published",
         "idx_cve_records_published_date",
-        "idx_epss_daily_score_cve",
+        // 002 created idx_epss_daily_score_cve; migration 008 replaced it with
+        // the clustered primary key plus this per-record index.
+        "idx_epss_daily_cve",
       ].sort(),
     );
     const reverted = db.revertTo(1);
-    expect(reverted).toEqual([7, 6, 5, 4, 3, 2]);
+    expect(reverted).toEqual([8, 7, 6, 5, 4, 3, 2]);
     const after = db.handle
       .prepare("SELECT name FROM sqlite_master WHERE name = 'aggregate_cache'")
       .all();
     expect(after).toHaveLength(0);
-    expect(db.migrate()).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(db.migrate()).toEqual([2, 3, 4, 5, 6, 7, 8]);
   });
 
   it("refresh matches direct-SQL truth for every aggregate section", { timeout: 180_000 }, () => {

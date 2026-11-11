@@ -86,7 +86,7 @@ describe("sqlite storage (todo 7)", () => {
   it("treats :memory: as the SQLite sentinel, never as a directory name", () => {
     const db = openDatabase({ dataDir: ":memory:" });
     try {
-      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect(db.handle.name).toBe(":memory:");
       // An in-memory database must not leave artifacts behind in the tree.
       expect(existsSync(":memory:")).toBe(false);
@@ -98,7 +98,7 @@ describe("sqlite storage (todo 7)", () => {
   it("opens with WAL mode and applies the versioned schema", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
-      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(db.appliedVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect(db.handle.pragma("journal_mode", { simple: true })).toBe("wal");
       for (const table of [
         "cve_records",
@@ -187,17 +187,94 @@ describe("sqlite storage (todo 7)", () => {
     }
   });
 
+  it("slims the EPSS history without changing its rows (migration 008)", () => {
+    // The row set must survive exactly; only the storage shape changes:
+    // WITHOUT ROWID with (score_date, cve_id, model_version) as the clustered key
+    // (replacing the separate covering index) plus one per-record index.
+    const db = openDatabase({ dataDir: makeTempDir("cve-db-epss-") });
+    try {
+      const insert = db.handle.prepare(
+        "INSERT INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
+      );
+      db.runBoundedWrite(() => {
+        insert.run("CVE-2099-0001", "2026-11-08", "v2025.03.14", "0.00137", "0.03116");
+        insert.run("CVE-2099-0001", "2026-11-09", "v2025.03.14", "0.00140", "0.03200");
+        insert.run("CVE-2099-0002", "2026-11-09", "v2025.03.14", "0.4", "0.9");
+      });
+
+      const ddl = (
+        db.handle.prepare("SELECT sql FROM sqlite_master WHERE name = 'epss_daily'").get() as {
+          sql: string;
+        }
+      ).sql;
+      expect(ddl).toContain("WITHOUT ROWID");
+      expect(ddl).toContain("PRIMARY KEY (score_date, cve_id, model_version)");
+
+      const indexes = db.handle
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'epss_daily'")
+        .all() as Array<{ name: string }>;
+      // The clustered key serves score-date reads; one explicit index serves
+      // per-record history. No covering duplicate.
+      expect(indexes.map((row) => row.name)).toEqual(["idx_epss_daily_cve"]);
+
+      const rows = db.handle
+        .prepare(
+          "SELECT cve_id, score_date, model_version, epss, percentile FROM epss_daily ORDER BY score_date, cve_id",
+        )
+        .all();
+      expect(rows).toEqual([
+        {
+          cve_id: "CVE-2099-0001",
+          score_date: "2026-11-08",
+          model_version: "v2025.03.14",
+          epss: "0.00137",
+          percentile: "0.03116",
+        },
+        {
+          cve_id: "CVE-2099-0001",
+          score_date: "2026-11-09",
+          model_version: "v2025.03.14",
+          epss: "0.00140",
+          percentile: "0.03200",
+        },
+        {
+          cve_id: "CVE-2099-0002",
+          score_date: "2026-11-09",
+          model_version: "v2025.03.14",
+          epss: "0.4",
+          percentile: "0.9",
+        },
+      ]);
+
+      // Upsert semantics unchanged: the importer's INSERT OR REPLACE still
+      // replaces the row for the same (date, cve, model) key.
+      db.runBoundedWrite(() => {
+        db.handle
+          .prepare(
+            "INSERT OR REPLACE INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
+          )
+          .run("CVE-2099-0002", "2026-11-09", "v2025.03.14", "0.5", "0.91");
+      });
+      const count = db.handle.prepare("SELECT COUNT(*) AS c FROM epss_daily").get() as {
+        c: number;
+      };
+      expect(count.c).toBe(3);
+    } finally {
+      db.close();
+    }
+  });
+
   it("round-trips migrations down to zero and back up on a temp volume", () => {
     const db = openDatabase({ dataDir: makeTempDir("cve-db-test-") });
     try {
       expect(db.migrate()).toEqual([]);
-      expect(db.revertTo(0)).toEqual([7, 6, 5, 4, 3, 2, 1]);
+      expect(db.revertTo(0)).toEqual([8, 7, 6, 5, 4, 3, 2, 1]);
       expect(db.appliedVersions()).toEqual([]);
       expect(tableNames(db)).not.toContain("cve_records");
       expect(tableNames(db)).not.toContain("cve_fts");
       expect(tableNames(db)).not.toContain("aggregate_cache");
 
-      expect(db.migrate()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(db.migrate()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect(tableNames(db)).toContain("cve_records");
       insertRecord(db, "CVE-2099-0002", "Round trip", "Schema works after re-migration");
       const rows = db.handle

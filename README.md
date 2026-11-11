@@ -213,7 +213,7 @@ the app reads is listed there.
 | `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                               |
 | `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                            |
 | `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                              |
-| `EPSS_RETENTION_DAYS`     | no       | `90`                           | Days of daily EPSS history kept (30-3650); the only table that grows with time                                            |
+| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                |
 | `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                              |
 | `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                    |
 | `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                  |
@@ -438,11 +438,14 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (427 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (106 passing, 2 skipped)
+npm test                # vitest suite (428 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (107 passing, 1 skipped)
 npx prettier --write <paths>  # format touched files
 
 The benchmark writes its evidence receipt to a temporary file by default; set
+`scripts/health-watch.sh <base-url>` polls `/api/v1/health` and exits non-zero
+when the instance is unreachable, reports a non-ok status, or has a stale/failed
+source — install it on a 15-minute cron and let cron mail the failure. Set
 `BENCH_WRITE_EVIDENCE=1` to refresh the committed
 `.omo/evidence/task-30-cve-change-radar.results.json`.
 

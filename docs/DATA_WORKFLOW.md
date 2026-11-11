@@ -380,7 +380,8 @@ cve_id = OLD.cve_id`; `cve_id` is an UNINDEXED FTS5 column, so each delete
   once per import and is reused for the unmatched-ID report. Calling it inside
   the per-entry predicate made a 1.7k-entry catalog scan 396k rows 1.7k times —
   minutes of CPU per cycle, for a report nobody sees change.
-- **EPSS**: byte-identical CSV short-circuits (`epss-unchanged`).
+- **EPSS**: byte-identical CSV short-circuits (`epss-unchanged`), and the
+  history is stored in the slimmed shape from migration 008 (~40 MB/day).
 
 Measured on the production volume: a boot cycle went from 7m30s of CPU to 38-52s
 with the KEV step at 1.3s instead of ~7 minutes; the first 11-day catch-up
@@ -421,11 +422,35 @@ millions of rows within months and inflate both the volume and the nightly
 backup.
 
 The window is `EPSS_RETENTION_DAYS` (whole UTC days counted back from the
-accepted score date, default **90**, range 30-3650; a malformed value is
-rejected, never clamped). The default is not arbitrary: `loadEpssHistory` returns
-at most 90 observations per record, so 90 stored days are exactly the rows an
-endpoint can reach — a longer window would store unreachable rows, a shorter one
-would silently truncate the trend.
+accepted score date, default **45**, range 30-3650; a malformed value is rejected,
+never clamped). The default is a storage budget with a product justification, not
+a round number: `loadEpssHistory` returns at most 45 observations per record, so 45
+stored days are exactly the rows an endpoint can reach — a longer window stores
+rows no endpoint reaches, a shorter one truncates the trend. The sparkline
+downsamples, and the rising view compares exactly `d` with `d-7`, so six weeks is
+a month of margin over what the features need.
+
+Migration 008 slims the storage shape without touching a single query: the table
+is `WITHOUT ROWID` with the primary key ordered `(score_date, cve_id,
+model_version)`, so the clustered key _is_ the score-date index every read needs
+and the separate covering index is redundant. Measured on the production volume
+(6.0M rows, 15 days) on the same data:
+
+| Shape                             | Table  | Indexes      | Total      | Per day     |
+| --------------------------------- | ------ | ------------ | ---------- | ----------- |
+| 001 (rowid + covering index)      | 353 MB | 314 + 267 MB | 935 MB     | 62.3 MB     |
+| 008 (WITHOUT ROWID, clustered PK) | 359 MB | 240 MB       | **599 MB** | **39.9 MB** |
+
+So the whole window is ~1.8 GB at 45 days (18M rows) instead of ~5.6 GB at 90
+days at the old shape. The read plans are unchanged: `EXPLAIN QUERY PLAN` for the
+aggregate count, the newest-date join, per-record history and the retention scan
+all hit the clustered key or the per-record index, and measured no slower
+(count-newest 50→23 ms, joins and history <1 ms).
+
+`model_version` is still repeated per row. Moving it to an `epss_runs` table
+measured a further −17% (455 MB), but it rewrites ~70 query sites including the
+ranking paths; the migration above deliberately leaves that for its own change,
+with its own evidence.
 
 - Pruning runs inside the EPSS import, after the accepted snapshot is recorded,
   so a failed import never deletes history.

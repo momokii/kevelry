@@ -602,6 +602,36 @@ user directs otherwise. Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | Security Concerns   | Drill uses a throwaway volume and a read-only serving container (no scheduler, no ingest); production volume untouched.                                                                 |
 | Notes               | First rehearsal accidentally ran a full import because the image predated the hook — rebuilt first, then re-ran clean.                                                                  |
 
+## TASK-042 — EPSS storage budget: slim shape, 45-day window, golden diff
+
+| Field               | Value                                                                                                                                                                                                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task ID             | TASK-042                                                                                                                                                                                                                                                                |
+| Name                | Cut EPSS history storage ~40% without touching a query, and set a defensible window                                                                                                                                                                                     |
+| Priority            | High                                                                                                                                                                                                                                                                    |
+| Status              | DONE                                                                                                                                                                                                                                                                    |
+| Complexity          | M                                                                                                                                                                                                                                                                       |
+| Depends On          | TASK-037 retention audit; owner request ("not that big")                                                                                                                                                                                                                |
+| Scope               | Migration 008 (WITHOUT ROWID, clustered PK on `(score_date, cve_id, model_version)`, per-record index, covering index removed); default window 90 → 45 days with `EPSS_HISTORY_CAP` aligned; docs with the measured table; golden API diff proving no behaviour change. |
+| Acceptance Criteria | 428 unit + 106 e2e green; same data 935 MB → 599 MB (62.3 → 39.9 MB/day); 19/20 API responses byte-identical to the 2.0.0 image on the same database (the 20th was a wrong slug in the harness); live migration applied at version 8.                                   |
+| Security Concerns   | Structural DDL only; the rebuild runs in one transaction, readers keep serving the previous snapshot.                                                                                                                                                                   |
+| Notes               | Rejected the fuller `epss_runs` split (−17% more) because it rewrites ~70 query sites including ranking paths; documented as its own future change with evidence.                                                                                                       |
+
+## TASK-043 — Close the operational caveats: browser CI and a health watch
+
+| Field               | Value                                                                                                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Task ID             | TASK-043                                                                                                                                                                                                                 |
+| Name                | Run corpus-independent browser checks in CI and ship a cron-able health check                                                                                                                                            |
+| Priority            | Medium                                                                                                                                                                                                                   |
+| Status              | DONE                                                                                                                                                                                                                     |
+| Complexity          | S                                                                                                                                                                                                                        |
+| Depends On          | TASK-040 (CSP spec made data-independent)                                                                                                                                                                                |
+| Scope               | `ci.yml` e2e job (Chromium, empty DATA_DIR, `csp public-surface shell api-docs methodology ui-foundation`); `scripts/health-watch.sh` polling `/api/v1/health` with exit codes 0/1/2; README ops note.                   |
+| Acceptance Criteria | 428 unit + 107 e2e green; the CI spec set passes 28/28 against an empty database; health-watch exits 0 when current, 2 when unreachable.                                                                                 |
+| Security Concerns   | CI job gets read-only token and no secrets; the health script uses `curl -f` with a 20 s timeout.                                                                                                                        |
+| Notes               | Data-dependent journeys stay local: several assert exact corpus counts against a fixture database that `explore.spec` swaps in itself. Extracting that fixture into a shared seed step is the next step for full CI e2e. |
+
 ## Task Template
 
 ```markdown

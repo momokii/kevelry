@@ -3,6 +3,41 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 2.0.1 — 2026-11-08
+
+Storage and operations follow-up to 2.0.0, plus the fixes found while rehearsing
+the release.
+
+### Changed
+
+- **EPSS history is ~40% smaller and the window is a stated budget.** Migration
+  008 rebuilds `epss_daily` as `WITHOUT ROWID` with the primary key ordered
+  `(score_date, cve_id, model_version)`, so the clustered key replaces the
+  separate covering index. Measured on the production data: 935 MB → 599 MB
+  (62.3 → 39.9 MB per day), with identical query plans.
+- **`EPSS_RETENTION_DAYS` default 90 → 45** (and the per-record history cap
+  moves with it). Six weeks of trend with a month of margin over what the
+  sparkline and the 7-day rising delta need; ~1.8 GB instead of ~5.6 GB.
+- The methodology page, the environment reference and the backup runbook state
+  the new arithmetic.
+
+### Fixed
+
+- The restore drill is now a documented command (`RUN_RESTORE_ONCE`,
+  `RESTORE_DIR`) and was rehearsed end to end: a 639 MB verified backup restored
+  into a throwaway volume (402,045 records, 5.6M EPSS rows), served every page,
+  and `/api/v1/health` reported all four sources current.
+- Nonce-based CSP for page HTML (from the 2.0.0 audit), with the watch-list write
+  moved out of a React state updater so unwatching no longer restores the old
+  list.
+
+### Upgrade notes
+
+- Migration 008 rebuilds the EPSS table once on the first write open (~20-30 s
+  for 6M rows on the reference host). The file does not shrink; freed pages are
+  reused by later imports, which is what keeps the steady state at ~40 MB/day.
+- Nothing else changes shape: no API, no query, no ranking behaviour.
+
 ## 2.0.0 — 2026-11-08
 
 Second product release. Four new evidence surfaces, a fourth upstream feed, and an

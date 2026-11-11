@@ -38,8 +38,9 @@ test("pages ship a nonce-scoped CSP and nothing is blocked", async ({ page }) =>
     expect(policy).toContain("'unsafe-eval'");
   }
 
-  // Nothing blocked, and the page still behaves like a client app.
-  await expect(page.getByTestId(/^overview-volume-bar-/).first()).toBeVisible();
+  // Nothing blocked, and the page still behaves like a client app. The theme
+  // toggle is client state, so it proves hydration ran without assuming any
+  // corpus is present (this spec also runs in CI against an empty database).
   await page.getByTestId("theme-toggle").click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", "");
   expect(violations).toEqual([]);

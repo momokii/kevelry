@@ -875,9 +875,10 @@ export interface EpssHistoryPoint {
 /**
  * Maximum EPSS observations returned per record. Retention keeps exactly this
  * many days (see `src/lib/retention.ts`), so stored history and returned history
- * cannot drift apart.
+ * cannot drift apart. 45 days is six weeks of trend; the sparkline downsamples
+ * and the rising view only needs `d` and `d-7`.
  */
-export const EPSS_HISTORY_CAP = 90;
+export const EPSS_HISTORY_CAP = 45;
 
 export function loadEpssHistory(
   db: CveDatabase,

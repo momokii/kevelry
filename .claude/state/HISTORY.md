@@ -2,6 +2,53 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-08 - Closing caveats: browser CI and a health watch
+
+**Browser CI.** Added an `e2e` job to `ci.yml` (Chromium, empty `DATA_DIR`,
+pinned action SHAs) that runs the specs which do not need a corpus: CSP, public
+surface, shell, API docs, methodology and the UI foundation gates — 28/28 green
+against an empty database. The CSP spec had to stop asserting volume bars, which
+was a data dependency in a security test. Data-dependent journeys stay local on
+purpose: several assert exact corpus counts against a fixture database that
+`explore.spec` deploys by replacing the server's database file, so full CI e2e
+needs that fixture extracted into a seed step first.
+
+**Health watch.** `scripts/health-watch.sh <base-url>` polls `/api/v1/health`,
+prints one line and exits 0 (ok), 1 (stale or failed source) or 2 (unreachable),
+ready for a 15-minute cron whose failures mail. Verified live: exit 0 against the
+running instance, exit 2 against a closed port.
+
+Gates: 428 unit, 107 e2e (1 skipped).
+
+## 2026-11-08 - EPSS storage budget: 935 MB -> 599 MB, 45-day window
+
+Owner asked for retention that stays small. Measured first: on the production data
+(6.0M rows, 15 days) `epss_daily` cost 935 MB — table 353, primary-key index 267,
+covering index 314 — about 62 MB per day, i.e. ~5.6 GB at a 90-day window.
+
+**What changed.** Migration 008 rebuilds the table `WITHOUT ROWID` with the primary
+key ordered `(score_date, cve_id, model_version)`: the clustered key is exactly the
+score-date index every read needs, so the separate covering index goes away, and a
+narrow per-record index serves history. Same data: **599 MB (39.9 MB/day)**.
+`EPSS_RETENTION_DAYS` 90 → 45 (aligned with the per-record history cap): ~1.8 GB
+instead of ~5.6 GB, still six weeks of trend with a month of margin over the
+sparkline and the `d`-vs-`d-7` rising view.
+
+**Proof it changed nothing.** The migration and the window change touch no query,
+so I proved it: captured every EPSS-touching API response (all six priority views,
+overview, status, health, four CVE details with history, three searches, the 463 KB
+graph payload, radar, replay) from the published 2.0.0 image on a copy of the live
+database, then from the new image on an identical copy that migrated to version 8.
+After scrubbing `generatedAt`, **19/20 responses were byte-identical**; the one
+error was a wrong slug in my harness, not a difference.
+
+**Rejected on purpose.** Splitting `model_version` into `epss_runs` measured a
+further −17% (455 MB total) but rewrites ~70 query sites including the ranking
+paths. Recorded with numbers in the migration and the workflow doc so it can be
+done later on its own evidence.
+
+Gates: 428 unit, 106 e2e (2 skipped); live at schema version 8, `EPSS_RETENTION_DAYS=45`.
+
 ## 2026-11-08 - Released 2.0.0
 
 `CHANGELOG.md` written, `package.json` bumped to 2.0.0, `README` release line and

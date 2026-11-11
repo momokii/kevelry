@@ -75,3 +75,31 @@ jobs:
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Browser checks that do not need a corpus: routing, security headers, the CSP
+  # nonce contract, the shell, the API docs page, methodology and the UI
+  # foundation gates. Data-dependent journeys (search results, priority ordering,
+  # graph, watch hydration) stay local because several of them assert exact
+  # corpus counts against a fixture database they swap in themselves; running them
+  # in CI needs that fixture extracted into its own seed step first.
+  e2e:
+    runs-on: ubuntu-24.04
+    env:
+      APP_ENV: development
+      PORT: "3000"
+      DATA_DIR: ${{ github.workspace }}/.ci-data
+      SCHEDULE_ENABLED: "false"
+      INGEST_ON_START: "false"
+      SITE_URL: http://localhost:3210
+    steps:
+      # v4 — 11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # v4 — 49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Only Chromium: the suite is written against it and the job stays short.
+      - run: npx playwright install --with-deps chromium
+      - run: mkdir -p .ci-data
+      - run: npx playwright test csp public-surface shell api-docs methodology ui-foundation

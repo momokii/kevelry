@@ -28,7 +28,7 @@ function seedEpss(db: ReturnType<typeof openDatabase>, days: readonly string[]):
 
 describe("EPSS retention policy", () => {
   it("uses the documented default when unset and rejects malformed values", () => {
-    expect(resolveEpssRetentionDays({})).toBe(90);
+    expect(resolveEpssRetentionDays({})).toBe(45);
     expect(resolveEpssRetentionDays({ EPSS_RETENTION_DAYS: "365" })).toBe(365);
     expect(() => resolveEpssRetentionDays({ EPSS_RETENTION_DAYS: "0" })).toThrow(
       /EPSS_RETENTION_DAYS/,

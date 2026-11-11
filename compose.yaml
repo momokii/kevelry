@@ -41,7 +41,7 @@ services:
       INGEST_ON_START: ${INGEST_ON_START:-true}
       # EPSS history window in UTC days (30-3650). Bounds the only table that
       # grows with time; see src/lib/retention.ts.
-      EPSS_RETENTION_DAYS: ${EPSS_RETENTION_DAYS:-90}
+      EPSS_RETENTION_DAYS: ${EPSS_RETENTION_DAYS:-45}
     ports:
       # Loopback-bound by default. Host side honors $BIND_ADDR (default
       # 127.0.0.1) and $PORT (default 3000); the container always listens
