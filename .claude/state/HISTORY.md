@@ -18,6 +18,10 @@ prints one line and exits 0 (ok), 1 (stale or failed source) or 2 (unreachable),
 ready for a 15-minute cron whose failures mail. Verified live: exit 0 against the
 running instance, exit 2 against a closed port.
 
+Released as **2.0.1**: `main` pushed, tag `v2.0.1` pushed, Docker Hub
+`kelanach/kevelry:2.0.1` and `:latest` at digest
+`sha256:3a04c9f66736c17bad213236aa7f4d4a3e4f5d424f3c7606ea8fe916f3350e23`.
+
 Gates: 428 unit, 107 e2e (1 skipped).
 
 ## 2026-11-08 - EPSS storage budget: 935 MB -> 599 MB, 45-day window
