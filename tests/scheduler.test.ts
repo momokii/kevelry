@@ -77,6 +77,49 @@ function makeClock(startIso: string): { now: () => Date; advance: (ms: number) =
   };
 }
 
+describe("cycle completion hook", () => {
+  it("reports every settled cycle, including one with a failed source", async () => {
+    // Regression: the aggregate cache was only refreshed by the boot cycle, so
+    // after the first scheduled cycle the pages served stale aggregates and fell
+    // back to live full-corpus queries until the next restart.
+    const clock = makeClock("2026-10-24T00:00:00.000Z");
+    const db = makeDb();
+    const calls: Array<Record<string, string | null>> = [];
+    const scheduler = new IngestionScheduler({
+      db,
+      jobs: goodJobs(),
+      manual: true,
+      holderId: "scheduler-hook",
+      now: clock.now,
+      onCycleComplete: (outcome) => calls.push(outcome.failed),
+    });
+    expect(scheduler.start()).toBe(true);
+
+    await scheduler.runCycle();
+    expect(calls).toHaveLength(1);
+    expect(Object.values(calls[0] ?? {}).filter((value) => value !== null)).toHaveLength(0);
+
+    const failing = new IngestionScheduler({
+      db,
+      jobs: {
+        ...goodJobs(),
+        kev: async () => ({ ok: false, version: null, error: "kev feed unavailable" }),
+      },
+      manual: true,
+      holderId: "scheduler-hook-fail",
+      now: clock.now,
+      onCycleComplete: (outcome) => calls.push(outcome.failed),
+    });
+    await scheduler.shutdown();
+    expect(failing.start()).toBe(true);
+    await failing.runCycle();
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.kev).toBe("kev feed unavailable");
+    expect(calls[1]?.epss).toBeNull();
+    await failing.shutdown();
+  });
+});
+
 describe("scheduler lease: single authoritative owner", () => {
   it("refuses a second concurrent scheduler on the same database", async () => {
     const clock = makeClock("2026-10-24T00:00:00.000Z");

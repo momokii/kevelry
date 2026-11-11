@@ -353,6 +353,8 @@ export function defaultLog(entry: WorkerLog): void {
 export interface CreateSchedulerOptions {
   intervalsMs?: { cve: number; kev: number; epss: number };
   holderId?: string;
+  /** Called after every settled cycle; the worker refreshes derived aggregates. */
+  onCycleComplete?: (outcome: { failed: Record<string, string | null> }) => void;
 }
 
 /**
@@ -372,6 +374,7 @@ export function createWorkerScheduler(
     manual: !scheduleEnabled,
     intervalsMs: options.intervalsMs,
     holderId: options.holderId,
+    onCycleComplete: options.onCycleComplete,
   });
 }
 
@@ -502,12 +505,13 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       return jobs.ssvc(ctx);
     },
   };
-  const scheduler = createWorkerScheduler(
-    db,
-    wrappedJobs,
-    scheduleEnabled,
-    options.schedulerOptions,
-  );
+  const scheduler = createWorkerScheduler(db, wrappedJobs, scheduleEnabled, {
+    ...options.schedulerOptions,
+    // Every cycle, not just the boot one, can change the accepted data.
+    onCycleComplete: () => {
+      ensureAggregates(db, log);
+    },
+  });
   const releaseHandlers =
     options.installHandlers === false ? () => {} : installShutdownHandlers(scheduler);
 
@@ -550,14 +554,9 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
     } catch (error) {
       log({ event: "wal-checkpoint-failed", error: errorDetail(error) });
     }
-    const cycleOk = (["cve", "kev", "epss", "ssvc"] as const).every(
-      (source) => health.sources[source].lastError === null,
-    );
-    if (cycleOk) {
-      refreshAggregatesForced(db, log);
-    } else {
-      ensureAggregates(db, log);
-    }
+    // The scheduler's `onCycleComplete` hook already refreshed the cache when
+    // this cycle settled — including when a source failed — so the boot path
+    // does not refresh again (that would pay the ~8 s recompute twice).
     log({
       event: scheduleEnabled ? "worker-scheduled" : "worker-idle",
       scheduleEnabled,

@@ -2,6 +2,38 @@
 
 Append-only. Newest entries at the top. One entry per completed or paused session.
 
+## 2026-11-11 - Two silent degradations, caught by checking instead of assuming
+
+While verifying "is it ready", two live problems surfaced within minutes.
+
+**1. Scheduled cycles never refreshed the aggregate cache.** `ensureAggregates`
+was only called from the boot path; the scheduler's hourly cycles did not touch
+it. So after the first scheduled cycle the cached snapshot no longer matched the
+data, pages rejected it, and every overview render fell back to live full-corpus
+queries — 4.3 s instead of 0.28 s — until the next restart. Fixed with
+`IngestionScheduler.onCycleComplete`, called for every settled cycle including
+ones where a source failed (the sources that succeeded still moved the data).
+
+**2. The freshness check compared the wrong revision.** It used
+`MAX(source_revision)` over `cve_records`; after an incremental import only the
+touched rows carry the new revision, so the maximum is a lexicographic
+coincidence. The snapshot recorded the same value, which meant the check could
+report "current" while the corpus had changed. Both now read the acceptance
+ledger (`sync_runs`); cache v5 stores the accepted CVE revision, KEV version, SSVC
+revision and EPSS score date.
+
+**3. A stale git lock froze the CVE feed for a day.** `shallow.lock`, timestamped
+2026-11-10 16:26 (a deploy killed a fetch), made every later fetch fail with
+"Another git process seems to be running". The importer now clears locks older
+than the fetch timeout before retrying and logs `cve-cache-lock-cleared`. The
+feed immediately caught up from 402,335 to 405,039 records.
+
+Also removed the duplicated boot refresh: the hook is the single place that
+refreshes, so boot pays the ~8 s recompute once instead of twice.
+
+Gates: 430 unit, 106 e2e (2 skipped). Live homepage 0.28 s, one `aggregate-refresh`
+per cycle, all four sources current.
+
 ## 2026-11-08 - Closing caveats: browser CI and a health watch
 
 **Browser CI.** Added an `e2e` job to `ci.yml` (Chromium, empty `DATA_DIR`,

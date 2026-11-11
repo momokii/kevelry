@@ -322,10 +322,17 @@ linear EPSS histogram, the nine-bin log EPSS histogram, the exact
 severity×EPSS matrix with KEV counts, KEV months, corpus totals, and the
 bounded top heads for the two slowest priority lists. Refresh rules:
 
-- The worker refreshes the cache after a cycle **whenever the accepted inputs
-  moved** (`aggregatesAreCurrent`): a cached snapshot whose `epssScoreDate` or
-  `sourceRevision` disagrees with the data is stale, because pages reject it and
-  fall back to live full-corpus queries. Measured consequence of the old
+- The worker refreshes the cache after **every** settled cycle — the scheduler
+  reports each cycle through `onCycleComplete`, and a cycle where one source
+  failed still refreshes, because the sources that succeeded moved the data.
+  Refreshing only on boot left the cache stale after the first scheduled cycle and
+  pushed every overview render to live full-corpus queries until the next restart
+  (4.3 s vs 0.28 s).
+- "Did the inputs move?" is answered by the **acceptance ledger** (`sync_runs`),
+  not by `MAX(source_revision)` over the records: an incremental import stamps only
+  the rows it touched, so the maximum is a lexicographic coincidence. The snapshot
+  records the accepted CVE revision, KEV version, SSVC revision and EPSS score
+  date (cache version 5), and `aggregatesAreCurrent` compares those four. Measured consequence of the old
   "refresh only an empty cache" rule: 4.2 s per overview render until the next
   forced refresh, versus 0.26 s with a current cache. An unchanged cycle skips the
   refresh, so the ~8 s recompute does not run hourly for nothing.
@@ -354,6 +361,11 @@ A refresh cycle must be proportional to what actually changed. Four rules
 enforce that, each one written after measuring the opposite on the production
 volume (401k records, 5.2M EPSS rows):
 
+- **Stale git locks.** A process killed mid-fetch leaves `.git/*.lock` behind and
+  every later fetch fails with "Another git process seems to be running" — the
+  corpus stays frozen while the log reports failures. The importer clears locks
+  older than the fetch timeout before retrying (`cve-cache-lock-cleared`), because
+  nothing else writes to the checkout.
 - **Ref resolution.** A bare branch name resolves against
   `refs/remotes/origin/<branch>` first, then the local branch. `git fetch origin
 main` moves the remote-tracking ref and leaves the local branch frozen, so

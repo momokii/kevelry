@@ -15,7 +15,7 @@ import type { CveDatabase } from "./db";
 import { getHighestForecast, getRisingForecast } from "./priority";
 
 export const AGGREGATE_KEY = "aggregates:v1";
-export const AGGREGATE_VERSION = 4;
+export const AGGREGATE_VERSION = 5;
 
 /** Bounded prefix stored per ranked list: exact full-order-then-slice head. */
 export const TOP_LIST_LIMIT = 100;
@@ -103,6 +103,8 @@ export interface AggregateSnapshot {
   version: number;
   computedAt: string;
   sourceRevision: string | null;
+  kevVersion: string | null;
+  ssvcRevision: string | null;
   epssScoreDate: string | null;
   /** Full day -> count map (bounded ~10k entries); months derived by prefix. */
   dayCounts: Record<string, number>;
@@ -359,7 +361,15 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
             "ON r.cve_id = e.cve_id AND r.state = 'PUBLISHED' WHERE e.score_date = ? AND r.cve_id IS NULL",
           [scoreDate],
         );
-  const sourceRevision = singleText(db, "SELECT MAX(source_revision) AS r FROM cve_records");
+  // Accepted versions, not `MAX(source_revision)`: an incremental import only
+  // stamps the rows it touched, so MAX() is a lexicographic coincidence rather
+  // than "what this snapshot reflects". The acceptance ledger is the truth.
+  const accepted = acceptedVersions(db);
+  // The ledger is authoritative when present; a database seeded without
+  // `sync_runs` (tests, fixtures) falls back to the stored release revision so
+  // the cache still describes something checkable.
+  const sourceRevision =
+    accepted.cveRevision ?? singleText(db, "SELECT MAX(source_revision) AS r FROM cve_records");
   const topHighest = getHighestForecast(db, TOP_LIST_LIMIT).map((item) => item.id);
   const topRising = getRisingForecast(db, undefined, TOP_LIST_LIMIT).map(({ item, deltaPp }) => ({
     id: item.id,
@@ -370,6 +380,8 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
     version: AGGREGATE_VERSION,
     computedAt: nowIso,
     sourceRevision,
+    kevVersion: accepted.kevVersion,
+    ssvcRevision: accepted.ssvcRevision,
     epssScoreDate: scoreDate,
     dayCounts,
     unknownDateCount,
@@ -434,16 +446,53 @@ export function getAggregates(db: CveDatabase): AggregateSnapshot | null {
  * until someone forces a refresh, so the worker asks this instead of "is there a
  * row?".
  */
+/**
+ * The accepted version of each source, read from the acceptance ledger
+ * (`sync_runs`), which is what the API's provenance reports. Comparing these
+ * four values is how the cache knows whether it still describes the data.
+ */
+export function acceptedVersions(db: CveDatabase): AcceptedVersions {
+  const latest = db.handle.prepare(
+    "SELECT revision FROM sync_runs WHERE source = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1",
+  );
+  const value = (source: string): string | null => {
+    const row = latest.get(source) as { revision: string | null } | undefined;
+    return row?.revision ?? null;
+  };
+  const epss = value("epss");
+  return {
+    cveRevision: value("cve"),
+    kevVersion: value("kev"),
+    ssvcRevision: value("ssvc"),
+    // sync_runs stores EPSS as `<scoreDate>@<modelVersion>`.
+    epssRevision: epss === null ? null : (epss.split("@")[0] ?? null),
+  };
+}
+
+interface AcceptedVersions {
+  cveRevision: string | null;
+  kevVersion: string | null;
+  ssvcRevision: string | null;
+  epssRevision: string | null;
+}
+
 export function aggregatesAreCurrent(db: CveDatabase): boolean {
   const cached = getAggregates(db);
   if (cached === null) return false;
-  const accepted = db.handle.prepare("SELECT MAX(score_date) AS d FROM epss_daily").get() as {
+  const accepted = acceptedVersions(db);
+  // EPSS is compared on the data itself: the current score date is unambiguous
+  // and survives databases that have no acceptance ledger.
+  const epss = db.handle.prepare("SELECT MAX(score_date) AS d FROM epss_daily").get() as {
     d: string | null;
   };
-  const revision = db.handle.prepare("SELECT MAX(source_revision) AS r FROM cve_records").get() as {
-    r: string | null;
-  };
-  return cached.epssScoreDate === accepted.d && cached.sourceRevision === revision.r;
+  const cveRevision =
+    accepted.cveRevision ?? singleText(db, "SELECT MAX(source_revision) AS r FROM cve_records");
+  return (
+    cached.sourceRevision === cveRevision &&
+    cached.kevVersion === accepted.kevVersion &&
+    cached.ssvcRevision === accepted.ssvcRevision &&
+    cached.epssScoreDate === epss.d
+  );
 }
 
 /** Revision seed for ETags; null when the cache is empty. */

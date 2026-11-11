@@ -66,6 +66,14 @@ export interface SchedulerOptions {
   now?: () => Date;
   /** Skip real timers (tests drive runCycle manually). */
   manual?: boolean;
+  /**
+   * Called after every cycle settles, with the per-source failures of that
+   * cycle. The worker uses it to refresh the derived aggregate cache: the boot
+   * cycle is not the only one that changes data, and a cache that only follows
+   * boots makes every page fall back to live full-corpus queries until the next
+   * restart.
+   */
+  onCycleComplete?: (outcome: { failed: Record<SourceName, string | null> }) => void;
 }
 
 export interface SourceStatus {
@@ -275,6 +283,7 @@ export class IngestionScheduler {
     }
     this.clock = options.now ?? (() => new Date());
     this.manual = options.manual ?? false;
+    this.onCycleComplete = options.onCycleComplete;
     ensureLeaseTable(this.db);
   }
 
@@ -377,6 +386,10 @@ export class IngestionScheduler {
     return true;
   }
 
+  private readonly onCycleComplete?: (outcome: {
+    failed: Record<SourceName, string | null>;
+  }) => void;
+
   async runCycle(): Promise<void> {
     if (!this.leaseHeld || this.shuttingDown || this.fatalError !== null) {
       return;
@@ -455,6 +468,9 @@ export class IngestionScheduler {
       if (!isShutdown()) {
         this.manifest = built.manifest;
       }
+      // Reported even when a source failed: the sources that did succeed moved
+      // the data, and the derived cache must follow them.
+      this.onCycleComplete?.({ failed: { ...failed } });
     })();
     this.inFlight = run;
     try {

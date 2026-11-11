@@ -3,6 +3,38 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 2.0.2 — 2026-11-11
+
+Two operational bugs found while verifying the 2.0.1 release on a running
+instance. Both made the console degrade silently rather than fail loudly.
+
+### Fixed
+
+- **Scheduled cycles never refreshed the aggregate cache.** Only the boot cycle
+  called the refresh, so after the first hourly cycle the cached snapshot no
+  longer matched the accepted data; pages rejected it and every overview render
+  fell back to live full-corpus queries (4.3 s instead of 0.28 s) until the next
+  restart. The scheduler now reports every settled cycle through
+  `onCycleComplete`, and the worker refreshes from there — including cycles where
+  one source failed, because the sources that succeeded still moved the data.
+- **The cache freshness check compared the wrong revision.** It used
+  `MAX(source_revision)` over `cve_records`, which is a lexicographic coincidence
+  after an incremental import (only touched rows carry the new revision), and the
+  snapshot had the same flaw. Both now use the acceptance ledger (`sync_runs`),
+  and the snapshot records the accepted CVE revision, KEV version, SSVC revision
+  and EPSS score date. Aggregate cache version 5.
+- **A stale `git` lock could freeze the CVE feed indefinitely.** A process killed
+  mid-fetch (deploy, OOM) leaves `.git/*.lock` behind and every later fetch fails
+  with "Another git process seems to be running". The importer now clears locks
+  older than the fetch timeout before retrying, and reports it
+  (`cve-cache-lock-cleared`). This is what left the corpus frozen for a day on
+  2026-11-10.
+
+### Notes
+
+- The instance that exposed these had been running since 2.0.1: 402k → 405k
+  records were waiting in the fetched git cache while the feed reported failures.
+
 ## 2.0.1 — 2026-11-08
 
 Storage and operations follow-up to 2.0.0, plus the fixes found while rehearsing
