@@ -1,6 +1,6 @@
 {
   "name": "cve-change-radar",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Public CVE intelligence console: interactive overview, explainable prioritization, search, Change Radar, replay, and a versioned read-only API.",
   "type": "module",

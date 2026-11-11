@@ -168,7 +168,7 @@ Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md
 
 ## Release
 
-Current release: **2.0.0** (2026-11-08) — see [CHANGELOG.md](CHANGELOG.md) for the
+Current release: **2.0.1** (2026-11-08) — see [CHANGELOG.md](CHANGELOG.md) for the
 full list, upgrade notes, and what 2.0.0 deliberately does not claim.
 
 ## Quick start
@@ -260,11 +260,11 @@ Open `http://100.124.184.116:3100` in the browser.
 ### Public deployment
 
 The release artifact is **one self-contained image** — published as
-[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`2.0.0` and
+[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`2.0.1` and
 `latest` point at the same digest; prefer the versioned tag). Pull and
 `docker run` it anywhere with the env vars below. To publish your own build:
-`docker tag cve-change-radar:local USER/kevelry:2.0.0 && docker push
-USER/kevelry:2.0.0`. It runs
+`docker tag cve-change-radar:local USER/kevelry:2.0.1 && docker push
+USER/kevelry:2.0.1`. It runs
 the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
 container as non-root, listening on `$PORT` (default 3000) with data in
 `/data`. Two supported shapes:
@@ -273,7 +273,7 @@ container as non-root, listening on `$PORT` (default 3000) with data in
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:2.0.0 \
+  --image docker.io/kelanach/kevelry:2.0.1 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
