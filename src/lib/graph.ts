@@ -1,4 +1,4 @@
-import type { CveDatabase } from "./db";
+import { chunk, type CveDatabase } from "./db";
 import { getAcceptedEpssDate } from "./priority";
 import { compareDecimalStrings, selectPrimaryCvss } from "./ranking";
 import { severityBandFor } from "./search";
@@ -527,17 +527,9 @@ function intersects(a: Set<string> | undefined, b: Set<string> | undefined): boo
   return false;
 }
 
-function chunked<T>(items: readonly T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    out.push(items.slice(index, index + size));
-  }
-  return out;
-}
-
 function cweMap(db: CveDatabase, ids: readonly string[]): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
-  for (const group of chunked(ids, 500)) {
+  for (const group of chunk(ids, 500)) {
     const placeholders = group.map(() => "?").join(", ");
     const rows = db.handle
       .prepare(`SELECT cve_id, cwe_id FROM kev_cwes WHERE cve_id IN (${placeholders})`)
@@ -553,7 +545,7 @@ function cweMap(db: CveDatabase, ids: readonly string[]): Map<string, Set<string
 
 function vendorMap(db: CveDatabase, ids: readonly string[]): Map<string, string | null> {
   const out = new Map<string, string | null>();
-  for (const group of chunked(ids, 500)) {
+  for (const group of chunk(ids, 500)) {
     const placeholders = group.map(() => "?").join(", ");
     const rows = db.handle
       .prepare(`SELECT cve_id, vendor_project FROM kev_entries WHERE cve_id IN (${placeholders})`)
@@ -565,7 +557,7 @@ function vendorMap(db: CveDatabase, ids: readonly string[]): Map<string, string 
 
 function domainMap(db: CveDatabase, ids: readonly string[]): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
-  for (const group of chunked(ids, 500)) {
+  for (const group of chunk(ids, 500)) {
     const placeholders = group.map(() => "?").join(", ");
     const rows = db.handle
       .prepare(`SELECT cve_id, raw_json FROM cve_records WHERE cve_id IN (${placeholders})`)
@@ -577,7 +569,7 @@ function domainMap(db: CveDatabase, ids: readonly string[]): Map<string, Set<str
 
 function bandMap(db: CveDatabase, ids: readonly string[]): Map<string, string | null> {
   const out = new Map<string, string | null>();
-  for (const group of chunked(ids, 500)) {
+  for (const group of chunk(ids, 500)) {
     const placeholders = group.map(() => "?").join(", ");
     const rows = db.handle
       .prepare(
@@ -627,7 +619,7 @@ function epssMap(db: CveDatabase, ids: readonly string[]): Map<string, string> {
   const out = new Map<string, { epss: string; model: string }>();
   const accepted = getAcceptedEpssDate(db);
   if (accepted === null) return new Map();
-  for (const group of chunked(ids, 500)) {
+  for (const group of chunk(ids, 500)) {
     const placeholders = group.map(() => "?").join(", ");
     const rows = db.handle
       .prepare(

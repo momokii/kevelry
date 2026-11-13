@@ -152,7 +152,11 @@ function singleScalar(db: CveDatabase, sql: string, params: unknown[] = []): num
   return typeof value === "number" ? value : 0;
 }
 
-function singleText(db: CveDatabase, sql: string, params: unknown[] = []): string | null {
+/**
+ * First column of the first row as text, or null when absent or not a string.
+ * One definition for every reader that needs a scalar provenance lookup.
+ */
+export function singleText(db: CveDatabase, sql: string, params: unknown[] = []): string | null {
   const row = db.handle.prepare(sql).get(...params) as Record<string, unknown> | undefined;
   if (row === undefined) return null;
   const value = Object.values(row)[0];

@@ -35,6 +35,19 @@ export interface OpenDatabaseOptions {
   readOnly?: boolean;
 }
 
+/**
+ * Split a list into bounded groups for `IN (?, ?, ...)` lookups. One
+ * definition for every reader that batches ids, so a given chunk bound means
+ * the same thing everywhere and the batches stay byte-identical.
+ */
+export function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    out.push(items.slice(index, index + size));
+  }
+  return out;
+}
+
 export interface CheckpointStatus {
   busy: boolean;
   logFrames: number;

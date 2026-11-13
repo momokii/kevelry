@@ -19,8 +19,11 @@ import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
 import {
   acquireConcurrencySlot,
+  ApiError,
   checkRateLimit,
   clientKeyFor,
+  encodeCursor,
+  parseCursor,
   RATE_LIMIT_MAX,
   RATE_LIMIT_WINDOW_SECONDS,
   releaseConcurrencySlot,
@@ -31,6 +34,7 @@ import {
   setSearchBudgetMs,
   setDbOverride,
 } from "../app/api/v1/_lib/shared";
+import { encodeOffsetCursor } from "../src/lib/search";
 import { GET as getCves, OPTIONS as optionsCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
@@ -330,6 +334,22 @@ describe("request size bounds", () => {
     );
     expect(longCursor.status).toBe(400);
     expect((await bodyOf(longCursor)).code).toBe("BAD_CURSOR");
+  });
+});
+
+describe("cursor codec parity with the search service", () => {
+  it("mints and accepts byte-identical cursors through the one shared codec", () => {
+    // The API keeps its own length bound and ApiError contract, but the
+    // encoding is owned by src/lib/search. Both must stay the same bytes, so a
+    // cursor already handed to a client keeps working.
+    expect(encodeCursor(50)).toBe("eyJvZmZzZXQiOjUwfQ");
+    expect(encodeCursor(50)).toBe(encodeOffsetCursor(50));
+    expect(parseCursor(encodeOffsetCursor(1234))).toBe(1234);
+    expect(parseCursor("eyJvZmZzZXQiOjUwfQ")).toBe(50);
+    expect(parseCursor(null)).toBe(0);
+    expect(parseCursor("")).toBe(0);
+    expect(() => parseCursor("bogus")).toThrowError(ApiError);
+    expect(() => parseCursor("y".repeat(600))).toThrowError(ApiError);
   });
 });
 

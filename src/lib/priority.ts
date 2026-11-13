@@ -8,7 +8,7 @@
 // empty corpus yields empty lists, never errors. Every value-bearing
 // statement is parameterized with `?` placeholders.
 
-import type { CveDatabase } from "./db";
+import { chunk, type CveDatabase } from "./db";
 import {
   compareDecimalStrings,
   orderDefaultPriority,
@@ -64,14 +64,6 @@ function hasLimit(limit?: number): limit is number {
 
 const OVERVIEW_LOOKUP_CHUNK = 500;
 
-function chunkIds(ids: readonly string[]): string[][] {
-  const out: string[][] = [];
-  for (let index = 0; index < ids.length; index += OVERVIEW_LOOKUP_CHUNK) {
-    out.push(ids.slice(index, index + OVERVIEW_LOOKUP_CHUNK));
-  }
-  return out;
-}
-
 /**
  * SQL predicate matching isValidEpss in ./ranking (plain decimal literal,
  * at most 64 chars, within [0, 1]). Import validation only ever stores such
@@ -111,7 +103,7 @@ function hydrateOverviewItems(
   const kevDates = new Map<string, { dateAdded: string; dueDate: string | null }>();
   const epssById = new Map<string, string>();
   const metricsById = new Map<string, CvssMetricInput[]>();
-  for (const group of chunkIds(ids)) {
+  for (const group of chunk(ids, OVERVIEW_LOOKUP_CHUNK)) {
     const placeholders = group.map(() => "?").join(", ");
     const kevRows = db.handle
       .prepare(

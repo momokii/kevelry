@@ -12,8 +12,8 @@
 import { createHash } from "node:crypto";
 
 import { loadConfig } from "../../../../src/lib/config";
-import { getAggregateMeta, getAggregates } from "../../../../src/lib/aggregates";
-import { type CveDatabase, openDatabase } from "../../../../src/lib/db";
+import { getAggregateMeta, getAggregates, singleText } from "../../../../src/lib/aggregates";
+import { chunk, type CveDatabase, openDatabase } from "../../../../src/lib/db";
 import { getAcceptedEpssDate, type PriorityItem } from "../../../../src/lib/priority";
 import {
   diffCheckpoints,
@@ -22,6 +22,8 @@ import {
   type StoredRadarCheckpoint,
 } from "../../../../src/lib/radar";
 import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
   excerptDescription,
   officialCveLink,
   severityBandFor,
@@ -281,13 +283,6 @@ function latestSucceeded(db: CveDatabase, source: string): SyncRun | undefined {
       "SELECT started_at, finished_at, status, revision, error FROM sync_runs WHERE source = ? AND status = ? ORDER BY id DESC LIMIT 1",
     )
     .get(source, "succeeded") as SyncRun | undefined;
-}
-
-function singleText(db: CveDatabase, sql: string, params: unknown[] = []): string | null {
-  const row = db.handle.prepare(sql).get(...params) as Record<string, unknown> | undefined;
-  if (row === undefined) return null;
-  const value = Object.values(row)[0];
-  return typeof value === "string" ? value : null;
 }
 
 function parseEpssRevision(revision: string | null): {
@@ -620,8 +615,13 @@ export function parseLimit(raw: string | null): number {
   return value;
 }
 
+/**
+ * Cursor encode/decode delegate to the single codec in src/lib/search, so the
+ * API and the search service issue and accept byte-identical cursors. The
+ * length bound and the ApiError contract stay here because they are the API's.
+ */
 export function encodeCursor(offset: number): string {
-  return Buffer.from(JSON.stringify({ offset }), "utf8").toString("base64url");
+  return encodeOffsetCursor(offset);
 }
 
 export function parseCursor(raw: string | null): number {
@@ -633,26 +633,13 @@ export function parseCursor(raw: string | null): number {
       "cursor is not a cursor returned by a previous response.",
     );
   }
-  try {
-    const text = Buffer.from(raw, "base64url").toString("utf8");
-    const parsed: unknown = JSON.parse(text);
-    const offset = (parsed as { offset?: unknown }).offset;
-    if (!Number.isInteger(offset) || (offset as number) < 0) {
-      throw new ApiError(
-        "BAD_CURSOR",
-        400,
-        "cursor is not a cursor returned by a previous response.",
-      );
-    }
-    return offset as number;
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError(
-      "BAD_CURSOR",
-      400,
-      "cursor is not a cursor returned by a previous response.",
-    );
-  }
+  const decoded = decodeOffsetCursor(raw);
+  if (decoded.ok) return decoded.offset;
+  throw new ApiError(
+    "BAD_CURSOR",
+    400,
+    "cursor is not a cursor returned by a previous response.",
+  );
 }
 
 export function paginate<T>(
@@ -980,14 +967,6 @@ interface MetricRow {
   base_score: string;
   vector: string;
   source_order: number;
-}
-
-function chunk<T>(items: readonly T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    out.push(items.slice(index, index + size));
-  }
-  return out;
 }
 
 /** Load full display records for ids, preserving input order and skipping gaps. */

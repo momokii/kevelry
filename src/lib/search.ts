@@ -260,24 +260,48 @@ function normalizeLimit(value: unknown): number {
   return value as number;
 }
 
+/** Why an opaque cursor was refused, so each caller keeps its own error contract. */
+export type CursorDecode =
+  | { ok: true; offset: number }
+  | { ok: false; reason: "malformed" | "bad-offset" };
+
+/**
+ * The one owner of the opaque cursor format: base64url of `{"offset":N}`. The
+ * search service and the versioned API both encode and decode through these
+ * two functions, so a cursor issued by either is accepted by the other and no
+ * second implementation can drift.
+ */
+export function encodeOffsetCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset }), "utf8").toString("base64url");
+}
+
+/**
+ * Decode without throwing. `malformed` is anything that does not base64url
+ * decode to a JSON object carrying an offset; `bad-offset` is a decoded cursor
+ * whose offset is not a non-negative integer.
+ */
+export function decodeOffsetCursor(cursor: string): CursorDecode {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    const offset = (parsed as { offset?: unknown }).offset;
+    if (!Number.isInteger(offset) || (offset as number) < 0) {
+      return { ok: false, reason: "bad-offset" };
+    }
+    return { ok: true, offset: offset as number };
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
+}
+
 function decodeOffset(cursor: unknown): number {
   if (cursor === undefined || cursor === null) return 0;
   if (typeof cursor !== "string" || cursor === "") {
     fail('Search "cursor" must be an opaque cursor returned by a previous search.');
   }
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    const offset = (parsed as { offset?: unknown }).offset;
-    if (!Number.isInteger(offset) || (offset as number) < 0) fail("Bad cursor offset.");
-    return offset as number;
-  } catch (error) {
-    if (error instanceof SearchValidationError) throw error;
-    fail('Search "cursor" is not a cursor returned by a previous search.');
-  }
-}
-
-function encodeOffset(offset: number): string {
-  return Buffer.from(JSON.stringify({ offset }), "utf8").toString("base64url");
+  const decoded = decodeOffsetCursor(cursor);
+  if (decoded.ok) return decoded.offset;
+  if (decoded.reason === "bad-offset") fail("Bad cursor offset.");
+  fail('Search "cursor" is not a cursor returned by a previous search.');
 }
 
 function normalizeQuery(value: unknown): string {
@@ -540,7 +564,7 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     });
   }
 
-  const nextCursor = offset + limit < eligible ? encodeOffset(offset + limit) : null;
+  const nextCursor = offset + limit < eligible ? encodeOffsetCursor(offset + limit) : null;
   return { items, total: coverage.total, coverage, nextCursor, limit, offset };
 }
 

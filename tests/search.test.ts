@@ -15,7 +15,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { openDatabase, type CveDatabase } from "../src/lib/db";
 import {
+  decodeOffsetCursor,
   DESCRIPTION_MISSING_LABEL,
+  encodeOffsetCursor,
   MAX_QUERY_LENGTH,
   MAX_SEARCH_LIMIT,
   excerptDescription,
@@ -384,6 +386,27 @@ describe("local FTS5 search (todo 13)", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("pins the opaque cursor encoding so both codecs stay byte-compatible", () => {
+    // Exact strings, not just a round-trip: the versioned API and the search
+    // service share one codec, so a cursor minted by either must be the same
+    // bytes on the wire as before the consolidation.
+    expect(encodeOffsetCursor(0)).toBe("eyJvZmZzZXQiOjB9");
+    expect(encodeOffsetCursor(50)).toBe("eyJvZmZzZXQiOjUwfQ");
+    expect(encodeOffsetCursor(1234)).toBe("eyJvZmZzZXQiOjEyMzR9");
+    expect(decodeOffsetCursor("eyJvZmZzZXQiOjUwfQ")).toEqual({ ok: true, offset: 50 });
+    for (const offset of [0, 1, 50, 199, 1234, 100000]) {
+      expect(decodeOffsetCursor(encodeOffsetCursor(offset))).toEqual({ ok: true, offset });
+    }
+    const raw = (value: unknown): string =>
+      Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+    expect(decodeOffsetCursor("bogus")).toEqual({ ok: false, reason: "malformed" });
+    expect(decodeOffsetCursor(raw(null))).toEqual({ ok: false, reason: "malformed" });
+    expect(decodeOffsetCursor(raw({}))).toEqual({ ok: false, reason: "bad-offset" });
+    expect(decodeOffsetCursor(raw({ offset: -1 }))).toEqual({ ok: false, reason: "bad-offset" });
+    expect(decodeOffsetCursor(raw({ offset: 1.5 }))).toEqual({ ok: false, reason: "bad-offset" });
+    expect(decodeOffsetCursor(raw({ offset: "50" }))).toEqual({ ok: false, reason: "bad-offset" });
   });
 
   it("rejects oversized pages and malformed filters without querying", () => {
