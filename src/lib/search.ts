@@ -262,8 +262,7 @@ function normalizeLimit(value: unknown): number {
 
 /** Why an opaque cursor was refused, so each caller keeps its own error contract. */
 export type CursorDecode =
-  | { ok: true; offset: number }
-  | { ok: false; reason: "malformed" | "bad-offset" };
+  { ok: true; offset: number } | { ok: false; reason: "malformed" | "bad-offset" };
 
 /**
  * The one owner of the opaque cursor format: base64url of `{"offset":N}`. The

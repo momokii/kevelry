@@ -635,11 +635,7 @@ export function parseCursor(raw: string | null): number {
   }
   const decoded = decodeOffsetCursor(raw);
   if (decoded.ok) return decoded.offset;
-  throw new ApiError(
-    "BAD_CURSOR",
-    400,
-    "cursor is not a cursor returned by a previous response.",
-  );
+  throw new ApiError("BAD_CURSOR", 400, "cursor is not a cursor returned by a previous response.");
 }
 
 export function paginate<T>(
