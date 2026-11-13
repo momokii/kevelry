@@ -41,21 +41,11 @@ import {
   type StoredRadarCheckpoint,
 } from "../src/lib/radar";
 import { DESCRIPTION_MISSING_LABEL, excerptDescription, searchCves } from "../src/lib/search";
-import {
-  buildProvenance,
-  buildRadarEvents,
-  coverageForSnapshots,
-  detailExtras,
-  loadFullRecords,
-  mapReplayReason,
-  RANKING_POLICY_VERSION,
-  resetDbOverride,
-  resetHardeningState,
-  setDbOverride,
-  toCveItem,
-  toReplayItem,
-  todayUtcDay,
-} from "../app/api/v1/_lib/shared";
+import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
+import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
+import { buildProvenance, RANKING_POLICY_VERSION } from "../app/api/v1/_lib/provenance";
+import { detailExtras, loadFullRecords, toCveItem, todayUtcDay } from "../app/api/v1/_lib/records";
+import { buildRadarEvents, coverageForSnapshots, mapReplayReason, toReplayItem } from "../app/api/v1/_lib/radar-api";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";

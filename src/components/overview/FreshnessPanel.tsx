@@ -1,5 +1,5 @@
 import { TimeText } from "@/components/ledger/TimeText";
-import type { Provenance, SourceProvenance } from "@/app/api/v1/_lib/shared";
+import type { Provenance, SourceProvenance } from "@/app/api/v1/_lib/provenance";
 
 type SourceState = "current" | "stale" | "failed" | "missing";
 

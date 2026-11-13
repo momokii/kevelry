@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/shell/PageHeader";
 import path from "node:path";
 
-import { mapReplayReason } from "@/app/api/v1/_lib/shared";
+import { mapReplayReason } from "@/app/api/v1/_lib/radar-api";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import { isCheckpointExpired, launchDay, listCheckpoints, replayCheckpoint } from "@/lib/radar";
 import {

@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GET as getHealth } from "../app/api/v1/health/route";
 import { GET as getOverview } from "../app/api/v1/overview/route";
 import { GET as getStatus } from "../app/api/v1/status/route";
-import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/shared";
+import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import {
   getAggregates,
   monthCountsFromDays,

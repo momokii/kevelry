@@ -7,7 +7,7 @@ import { buildContentSecurityPolicy, createCspNonce } from "./src/lib/csp";
 // wires them onto the request (for Next) and the response (for the browser).
 //
 // API routes keep their own stricter policy (`default-src 'none'`) in
-// `app/api/v1/_lib/shared.ts`; the matcher below leaves them alone so a response
+// `app/api/v1/_lib/guardrails.ts`; the matcher below leaves them alone so a response
 // never carries two policies.
 
 export const CSP_NONCE_HEADER = "x-csp-nonce";

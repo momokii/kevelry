@@ -8,7 +8,7 @@
 import { PageHeader } from "@/components/shell/PageHeader";
 import path from "node:path";
 
-import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/shared";
+import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/provenance";
 import { HelpTip } from "@/components/ledger/HelpTip";
 import { TimeText } from "@/components/ledger/TimeText";
 import { OrderingDiagram } from "@/components/methodology/OrderingDiagram";
@@ -20,7 +20,7 @@ import styles from "@/components/methodology/MethodologyDiagrams.module.css";
 import { getAggregates, severityBandsSql } from "@/lib/aggregates";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import { EPSS_RETENTION_DAYS_DEFAULT } from "@/lib/retention";
-import { EPSS_HISTORY_CAP } from "@/app/api/v1/_lib/shared";
+import { EPSS_HISTORY_CAP } from "@/app/api/v1/_lib/epss-history";
 
 export const revalidate = 60;
 

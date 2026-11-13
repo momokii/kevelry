@@ -23,7 +23,7 @@ import type { CveDatabase } from "./db";
  * with a month of margin.
  *
  * It matches `EPSS_HISTORY_CAP` (the per-record observation cap in
- * `app/api/v1/_lib/shared.ts`), so retention never truncates a series the API is
+ * `app/api/v1/_lib/epss-history.ts`), so retention never truncates a series the API is
  * allowed to return, and never stores rows no endpoint can reach. The
  * methodology page reads both constants, so the stated numbers track the code.
  */

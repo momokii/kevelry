@@ -18,7 +18,7 @@ import {
   writeCheckpoint,
 } from "../src/lib/radar";
 import { resolveIngestOnStart } from "../src/worker";
-import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/shared";
+import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
 import { GET as getPriority } from "../app/api/v1/priority/[listName]/route";

@@ -17,23 +17,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
-import {
-  acquireConcurrencySlot,
-  ApiError,
-  checkRateLimit,
-  clientKeyFor,
-  encodeCursor,
-  parseCursor,
-  RATE_LIMIT_MAX,
-  RATE_LIMIT_WINDOW_SECONDS,
-  releaseConcurrencySlot,
-  resetDbOverride,
-  resetHardeningState,
-  setAllowedOrigins,
-  setMaxConcurrentRequests,
-  setSearchBudgetMs,
-  setDbOverride,
-} from "../app/api/v1/_lib/shared";
+import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
+import { acquireConcurrencySlot, checkRateLimit, clientKeyFor, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS, releaseConcurrencySlot, resetHardeningState, setAllowedOrigins, setMaxConcurrentRequests, setSearchBudgetMs } from "../app/api/v1/_lib/guardrails";
+import { ApiError } from "../app/api/v1/_lib/errors";
+import { encodeCursor, parseCursor } from "../app/api/v1/_lib/params";
 import { encodeOffsetCursor } from "../src/lib/search";
 import { GET as getCves, OPTIONS as optionsCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";

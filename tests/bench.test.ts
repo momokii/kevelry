@@ -38,12 +38,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCheckpoints } from "../app/api/v1/replay/checkpoints/route";
 import { GET as getReplay } from "../app/api/v1/replay/route";
-import {
-  RANKING_POLICY_VERSION,
-  resetDbOverride,
-  resetHardeningState,
-  setDbOverride,
-} from "../app/api/v1/_lib/shared";
+import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
+import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
+import { RANKING_POLICY_VERSION } from "../app/api/v1/_lib/provenance";
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { diffChangedPaths, importCveRevision } from "../src/lib/cve-import";
 import { importEpssCsv } from "../src/lib/epss-import";

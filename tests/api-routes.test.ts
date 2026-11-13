@@ -20,12 +20,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
-import {
-  exploitReferencesOf,
-  loadEpssHistory,
-  resetDbOverride,
-  setDbOverride,
-} from "../app/api/v1/_lib/shared";
+import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
+import { exploitReferencesOf } from "../app/api/v1/_lib/records";
+import { loadEpssHistory } from "../app/api/v1/_lib/epss-history";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";

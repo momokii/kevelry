@@ -8,25 +8,14 @@ import {
   getNewCritical,
   getRisingForecast,
 } from "../../../../../src/lib/priority";
-import {
-  acquireConcurrencySlot,
-  ApiError,
-  assertRequestBounds,
-  buildProvenance,
-  coverageFor,
-  encodeCursor,
-  errorResponse,
-  getDb,
-  loadFullRecords,
-  cachedOkResponse,
-  parseCursor,
-  parseLimit,
-  preflightResponse,
-  releaseConcurrencySlot,
-  reserveRateLimit,
-  paginateCapped,
-  toCveItem,
-} from "../../_lib/shared";
+import { getDb } from "../../_lib/db-handle";
+import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot } from "../../_lib/guardrails";
+import { ApiError } from "../../_lib/errors";
+import { errorResponse, reserveRateLimit } from "../../_lib/responses";
+import { cachedOkResponse } from "../../_lib/http-cache";
+import { encodeCursor, parseCursor, parseLimit, paginateCapped } from "../../_lib/params";
+import { buildProvenance } from "../../_lib/provenance";
+import { coverageFor, loadFullRecords, toCveItem } from "../../_lib/records";
 
 export const dynamic = "force-dynamic";
 

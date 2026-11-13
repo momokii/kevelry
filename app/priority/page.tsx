@@ -35,15 +35,10 @@ import {
 } from "@/lib/priority";
 import { displayProbabilityPercent } from "@/lib/ranking";
 import { excerptDescription, officialCveLink } from "@/lib/search";
-import {
-  buildProvenance,
-  loadEpssHistory,
-  loadFullRecords,
-  RANKING_POLICY_VERSION,
-  type EpssHistoryPoint,
-  type FullRecord,
-  unfilteredCohortCoverage,
-} from "@/app/api/v1/_lib/shared";
+import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/provenance";
+import { loadFullRecords, type FullRecord } from "@/app/api/v1/_lib/records";
+import { loadEpssHistory, type EpssHistoryPoint } from "@/app/api/v1/_lib/epss-history";
+import { unfilteredCohortCoverage } from "@/app/api/v1/_lib/coverage";
 
 export const revalidate = 60;
 

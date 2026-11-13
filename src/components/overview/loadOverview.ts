@@ -1,4 +1,4 @@
-import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/shared";
+import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/provenance";
 import {
   exploitRefCoverageSql,
   getAggregates,

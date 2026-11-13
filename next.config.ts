@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 // Page hardening headers. The API routes set their own stricter set
-// (strict JSON CSP included) in app/api/v1/_lib/shared.ts, so pages are
+// (strict JSON CSP included) in app/api/v1/_lib/guardrails.ts, so pages are
 // matched here with an /api exclusion to avoid duplicate headers.
 //
 // The page-level Content-Security-Policy lives in `middleware.ts`, because it

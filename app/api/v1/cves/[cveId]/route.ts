@@ -1,21 +1,13 @@
 import { getAcceptedEpssDate } from "../../../../../src/lib/priority";
-import {
-  acquireConcurrencySlot,
-  ApiError,
-  assertRequestBounds,
-  buildProvenance,
-  CVE_ID_RE,
-  detailExtras,
-  errorResponse,
-  getDb,
-  loadEpssHistory,
-  loadFullRecords,
-  cachedOkResponse,
-  preflightResponse,
-  releaseConcurrencySlot,
-  reserveRateLimit,
-  toCveItem,
-} from "../../_lib/shared";
+import { getDb } from "../../_lib/db-handle";
+import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot } from "../../_lib/guardrails";
+import { ApiError } from "../../_lib/errors";
+import { errorResponse, reserveRateLimit } from "../../_lib/responses";
+import { cachedOkResponse } from "../../_lib/http-cache";
+import { CVE_ID_RE } from "../../_lib/params";
+import { buildProvenance } from "../../_lib/provenance";
+import { detailExtras, loadFullRecords, toCveItem } from "../../_lib/records";
+import { loadEpssHistory } from "../../_lib/epss-history";
 
 export const dynamic = "force-dynamic";
 

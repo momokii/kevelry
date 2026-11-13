@@ -1,19 +1,13 @@
 import { getAcceptedEpssDate } from "../../../../src/lib/priority";
 import { getAggregates } from "../../../../src/lib/aggregates";
-import {
-  acquireConcurrencySlot,
-  ApiError,
-  assertRequestBounds,
-  buildProvenance,
-  cachedOkResponse,
-  countRows,
-  errorResponse,
-  getDb,
-  preflightResponse,
-  releaseConcurrencySlot,
-  reserveRateLimit,
-  REUSE_NOTICES,
-} from "../_lib/shared";
+import { getDb } from "../_lib/db-handle";
+import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot } from "../_lib/guardrails";
+import { ApiError } from "../_lib/errors";
+import { errorResponse, reserveRateLimit } from "../_lib/responses";
+import { cachedOkResponse } from "../_lib/http-cache";
+import { buildProvenance } from "../_lib/provenance";
+import { REUSE_NOTICES } from "../_lib/notices";
+import { countRows } from "../_lib/coverage";
 
 export const dynamic = "force-dynamic";
 

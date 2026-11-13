@@ -1,30 +1,13 @@
 import { getAcceptedEpssDate } from "../../../../src/lib/priority";
 import { searchCves } from "../../../../src/lib/search";
-import {
-  acquireConcurrencySlot,
-  ApiError,
-  assertRequestBounds,
-  buildProvenance,
-  encodeCursor,
-  errorResponse,
-  getDb,
-  loadFullRecords,
-  cachedOkResponse,
-  parseCursor,
-  parseDateBound,
-  parseEpss,
-  parseExploit,
-  parseKev,
-  parseLimit,
-  parseQuery,
-  parseSeverity,
-  parseVendor,
-  preflightResponse,
-  releaseConcurrencySlot,
-  reserveRateLimit,
-  searchBudgetExceeded,
-  toCveItem,
-} from "../_lib/shared";
+import { getDb } from "../_lib/db-handle";
+import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot, searchBudgetExceeded } from "../_lib/guardrails";
+import { ApiError } from "../_lib/errors";
+import { errorResponse, reserveRateLimit } from "../_lib/responses";
+import { cachedOkResponse } from "../_lib/http-cache";
+import { encodeCursor, parseCursor, parseDateBound, parseEpss, parseExploit, parseKev, parseLimit, parseQuery, parseSeverity, parseVendor } from "../_lib/params";
+import { buildProvenance } from "../_lib/provenance";
+import { loadFullRecords, toCveItem } from "../_lib/records";
 
 export const dynamic = "force-dynamic";
 
