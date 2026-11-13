@@ -17,7 +17,7 @@
 // walk can skip every file whose basename is not wanted without reading it,
 // and the whole cycle stays in seconds rather than minutes.
 
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import type { CveDatabase } from "./db";
@@ -117,11 +117,6 @@ export function parseSsvcRecord(root: unknown): SsvcDecision | null {
     }
   }
   return null;
-}
-
-/** True when a path looks like a vulnrichment record file. */
-export function isSsvcRecordPath(relPath: string): boolean {
-  return /^[0-9]{4}\/[0-9]+xxx\/CVE-[0-9]{4}-[0-9]{4,}\.json$/.test(relPath);
 }
 
 /**
@@ -276,22 +271,4 @@ export function syncSsvcCache(options: {
   const sha = runner(["rev-parse", "FETCH_HEAD"], cacheDir, timeoutMs).trim();
   runner(["checkout", "--force", "--quiet", sha], cacheDir, timeoutMs);
   return { revision: sha, cacheReused, cacheSizeBytes: getCacheSizeBytes(cacheDir) };
-}
-
-/** Cheap existence helper used by tests and the worker preflight. */
-export function hasSsvcTable(db: CveDatabase): boolean {
-  const row = db.handle
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ssvc_records'")
-    .get() as { name: string } | undefined;
-  return row !== undefined;
-}
-
-/** Guard against a checkout that exists but holds no year directories. */
-export function looksLikeVulnrichmentCheckout(dir: string): boolean {
-  try {
-    if (!statSync(dir).isDirectory()) return false;
-    return readdirSync(dir).some((entry) => /^[0-9]{4}$/.test(entry));
-  } catch {
-    return false;
-  }
 }

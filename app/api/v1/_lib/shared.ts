@@ -98,10 +98,6 @@ interface RateBucket {
 
 const rateBuckets = new Map<string, RateBucket>();
 
-export function resetRateLimits(): void {
-  rateBuckets.clear();
-}
-
 export function clientKeyFor(request: Request): string {
   // Proxies append the observed peer address; the client-supplied leftmost
   // entries are spoofable, so the rate-limit identity is the LAST entry —
@@ -180,10 +176,6 @@ export function resetHardeningState(): void {
   searchBudgetMs = SEARCH_TIME_BUDGET_MS;
   allowedOrigins = [];
   rateBuckets.clear();
-}
-
-export function getSearchBudgetMs(): number {
-  return searchBudgetMs;
 }
 
 export function acquireConcurrencySlot(): boolean {
