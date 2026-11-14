@@ -7,6 +7,30 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **Unscored coverage counters and the secondary coverage detail block (E1).**
+  `unscored` was one number for two different situations. The aggregate cache
+  now splits it with two additive SQL counters over the same predicates the
+  severity bands already use (never `raw_json`): `secondaryOnly` (PUBLISHED,
+  no valid CNA metric, at least one valid ADP metric — context exists) and
+  `noMetric` (no valid CNA and no valid ADP metric — nothing published). They
+  are an exact partition of the unscored cohort, asserted in
+  `tests/aggregates-coverage.test.ts`, and `AGGREGATE_VERSION` moves to 6 so an
+  older snapshot is rejected instead of read with missing keys.
+  `/api/v1/overview` exposes both in its `coverage` block; every existing field
+  keeps its name and meaning (list endpoints are unchanged). The overview's
+  "Unscored severity" stat gains the subnote `X with ADP secondary (context) ·
+  Y with no published metric` with the unscored cohort as denominator and a
+  `HelpTip` stating secondary is context only and never used for ranking or
+  eligibility — no band colour, no filter. The expanded Priority severity block
+  gains a "Secondary (context only)" group listing each metric's origin/
+  provider, version, base score, and vector, or the explicit line "No CNA or
+  ADP metric published." Secondary never renders as a band, never appears in
+  the compact signal line, and is never filterable. The api-docs CVE detail
+  example now includes `cvssSecondary`, closing the drift left by the previous
+  entry. Playwright covers the subnote numbers at 1280/360px and in dark theme,
+  plus the detail block (words "context only", no `badge-*`/band class, absent
+  from the compact signal line).
+
 - **Secondary CVSS projection (`cvssSecondary`).** Every preserved metric the
   primary selector did not pick is now exposed on `CveItem` as one bounded,
   labeled block instead of being dropped. The projection hides the shape

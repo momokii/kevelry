@@ -83,6 +83,11 @@ test("api-docs examples use the spec origin and shape-true responses", async ({ 
   await expect(page.getByTestId("api-docs-response-get-api-v1-search")).toContainText(
     "cvssPrimary",
   );
+  // v3 E1: the CVE detail example carries the additive secondary block too, so
+  // the page cannot drift from the openapi schema again.
+  const cveDetail = page.getByTestId("api-docs-response-get-api-v1-cves-cveid");
+  await expect(cveDetail).toContainText("cvssSecondary");
+  await expect(cveDetail).toContainText("secondary (context only)");
   await expect(page.getByTestId("api-docs-response-get-api-v1-status")).toContainText(
     "joinCoverage",
   );

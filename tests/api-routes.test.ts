@@ -792,6 +792,19 @@ describe("v1 overview, status, and health routes", () => {
     const buckets = body.buckets as Array<{ bucketStart: string; count: number }>;
     expect(buckets.length).toBe(2);
 
+    // Additive since v3 E1: the unscored cohort is split by what a reader can
+    // still inspect. Existing coverage keys keep their exact names and meaning.
+    const coverage = body.coverage as Record<string, number>;
+    const secondaryOnly = coverage.secondaryOnly ?? -1;
+    const noMetric = coverage.noMetric ?? -1;
+    expect(coverage.eligibleCohort).toBe(5);
+    expect(coverage.unscored).toBe(2);
+    expect(secondaryOnly).toBe(1);
+    expect(noMetric).toBe(1);
+    expect(secondaryOnly + noMetric).toBe(coverage.unscored);
+    expect(coverage.unknownEpss).toBe(2);
+    expect(coverage.unknownDate).toBe(1);
+
     const badBucket = await getOverview(
       new Request("https://radar.test/api/v1/overview?bucket=year"),
     );

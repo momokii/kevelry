@@ -15,23 +15,34 @@ import type { CveDatabase } from "./db";
 import { getHighestForecast, getRisingForecast } from "./priority";
 
 export const AGGREGATE_KEY = "aggregates:v1";
-export const AGGREGATE_VERSION = 5;
+export const AGGREGATE_VERSION = 6;
 
 /** Bounded prefix stored per ranked list: exact full-order-then-slice head. */
 export const TOP_LIST_LIMIT = 100;
 
+/**
+ * Valid stored metric predicate for one origin, mirroring selectPrimaryCvss:
+ * a preferred version and a plain decimal base score in [0, 10].
+ */
+function validMetricSql(origin: "CNA" | "ADP"): string {
+  return [
+    `m.origin = '${origin}'`,
+    "m.version IN ('4.0', '3.1', '3.0', '2.0')",
+    "m.base_score GLOB '[0-9]*'",
+    "m.base_score NOT GLOB '*[^0-9.]*'",
+    "m.base_score NOT GLOB '*.*.*'",
+    "m.base_score NOT GLOB '*.'",
+    "LENGTH(m.base_score) <= 64",
+    "CAST(m.base_score AS REAL) >= 0",
+    "CAST(m.base_score AS REAL) <= 10",
+  ].join(" AND ");
+}
+
 /** Valid stored CNA metric predicate, mirroring selectPrimaryCvss. */
-const VALID_CNA_SCORE_SQL = [
-  "m.origin = 'CNA'",
-  "m.version IN ('4.0', '3.1', '3.0', '2.0')",
-  "m.base_score GLOB '[0-9]*'",
-  "m.base_score NOT GLOB '*[^0-9.]*'",
-  "m.base_score NOT GLOB '*.*.*'",
-  "m.base_score NOT GLOB '*.'",
-  "LENGTH(m.base_score) <= 64",
-  "CAST(m.base_score AS REAL) >= 0",
-  "CAST(m.base_score AS REAL) <= 10",
-].join(" AND ");
+const VALID_CNA_SCORE_SQL = validMetricSql("CNA");
+
+/** The same validity rules applied to ADP-published metrics. */
+const VALID_ADP_SCORE_SQL = validMetricSql("ADP");
 
 const VALID_EPSS_SQL = [
   "c.epss GLOB '[0-9]*'",
@@ -72,6 +83,13 @@ export interface CorpusTotals {
   epssScored: number;
   epssRows: number;
   unscored: number;
+  /**
+   * Exact split of `unscored`: no valid CNA metric but at least one valid ADP
+   * metric (secondary context to read, never a primary).
+   */
+  secondaryOnly: number;
+  /** `unscored` records with no valid CNA and no valid ADP metric at all. */
+  noMetric: number;
   unknownEpss: number;
   unknownDate: number;
   tombstones: number;
@@ -218,6 +236,38 @@ export function severityBandsSql(db: CveDatabase): Record<string, number> {
   return out;
 }
 
+/**
+ * Split the unscored cohort into its two cases, in one bounded pass.
+ *
+ * `unscored` (severity band `unknown`) counts PUBLISHED records with no valid
+ * CNA metric. Those records are not one thing: some carry an ADP-published
+ * metric the reader can still inspect, some carry nothing at all. Counting
+ * them separately keeps "unscored" from implying "nothing is published" while
+ * ADP metrics stay context only — neither count feeds a band, a filter, or an
+ * order.
+ *
+ * The two counters are an exact partition of `unscored`: the band query
+ * assigns `unknown` precisely when the CNA predicate finds no valid metric,
+ * and this query adds the ADP predicate on top of the same CNA-exclusion.
+ */
+export function secondaryCoverageSql(db: CveDatabase): {
+  secondaryOnly: number;
+  noMetric: number;
+} {
+  const row = db.handle
+    .prepare(
+      "SELECT " +
+        `SUM(CASE WHEN EXISTS (SELECT 1 FROM cvss_metrics m WHERE m.cve_id = r.cve_id AND ${VALID_ADP_SCORE_SQL}) ` +
+        "THEN 1 ELSE 0 END) AS secondary_only, " +
+        `SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM cvss_metrics m WHERE m.cve_id = r.cve_id AND ${VALID_ADP_SCORE_SQL}) ` +
+        "THEN 1 ELSE 0 END) AS no_metric " +
+        "FROM cve_records r WHERE r.state = 'PUBLISHED' AND NOT EXISTS " +
+        `(SELECT 1 FROM cvss_metrics m WHERE m.cve_id = r.cve_id AND ${VALID_CNA_SCORE_SQL})`,
+    )
+    .get() as { secondary_only: number | null; no_metric: number | null };
+  return { secondaryOnly: row.secondary_only ?? 0, noMetric: row.no_metric ?? 0 };
+}
+
 function epssHistogramSql(db: CveDatabase, scoreDate: string | null): number[] {
   const buckets = new Array<number>(10).fill(0);
   if (scoreDate === null) return buckets;
@@ -349,6 +399,9 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
         );
   const bands = severityBandsSql(db);
   const unscored = bands.unknown ?? 0;
+  // Read from the same PUBLISHED cohort the band query counted, so the split
+  // always sums to `unscored`; asserted in tests/aggregates-coverage.test.ts.
+  const secondary = secondaryCoverageSql(db);
   const unknownEpss =
     scoreDate === null ? publishedTotal : Math.max(0, publishedTotal - epssScored);
   const unmatchedKev = singleScalar(
@@ -403,6 +456,8 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
       epssScored,
       epssRows,
       unscored,
+      secondaryOnly: secondary.secondaryOnly,
+      noMetric: secondary.noMetric,
       unknownEpss,
       unknownDate: unknownDateCount,
       tombstones,

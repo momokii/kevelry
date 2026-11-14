@@ -384,25 +384,53 @@ explainer above the list (what the three decision points mean, how the order is
 formed, the coverage caveat) and a recency window control; the right-hand rail
 keeps a short ordering summary rather than repeating the explainer.
 
+### Unscored severity split (overview)
+
+The "Unscored severity" stat keeps its own value and note, and gains one
+subnote below them: `X with ADP secondary (context) · Y with no published
+metric (of N unscored)`. Contract:
+
+- The denominator is the **unscored cohort**, never the whole corpus, and the
+  two counts always add up to `N`. The existing "share of the corpus · not low"
+  note above it is unchanged.
+- The subnote is a count of what can be read, not a severity statement: no band
+  colour, no chip, no filter link, and it never reorders anything.
+- A `HelpTip` beside it says the same in words: an ADP metric is context only,
+  never used for ranking, ordering, filtering, or eligibility; "no published
+  metric" is a data gap, not low severity.
+- API counterpart: `/api/v1/overview` carries both counters as additive
+  `coverage` fields (`secondaryOnly`, `noMetric`). Existing fields keep their
+  names and meaning.
+
 ### Secondary CVSS block
 
 The record detail block (expanded Priority row, Explore inspector, API detail)
 shows exactly one secondary CVSS group, and only when a metric other than the
 selected primary exists. Contract:
 
-- It is a list of rows, never a second severity badge and never a second band.
-  The primary badge keeps the only severity colour; secondary rows stay neutral
-  text so a v4.0 ADP score cannot read as this record's severity.
-- Every row is labeled `secondary (context only)` and the group carries a
-  coverage note saying these metrics are not used for ranking or eligibility.
+- **Secondary never looks like a band.** It is a list of rows under a
+  "Secondary (context only)" label, never a second severity badge, chip, or
+  band. The primary line keeps the only severity colour; secondary rows stay
+  neutral text (published score, version, origin/provider, and the vector in
+  mono) so a v4.0 ADP score cannot read as this record's severity. No
+  `badge-*`, band, or severity class may appear inside it.
+- It lives in the **detail/expanded severity block only** — never in the
+  compact signal line where the KEV/EPSS/CVSS chips sit — and it is never
+  filterable, sortable, or an eligibility input.
+- Every row is labeled `secondary (context only)`, the group carries a
+  `HelpTip`, and a closing line says the metrics are never used for ranking,
+  ordering, filtering, or eligibility.
 - Order is fixed by the data layer, not by the component: ADP before CNA, then
   version preference 4.0 > 3.1 > 3.0 > 2.0, then exact base score descending,
   then stored source order. At most four rows render.
 - Scores are printed as the published decimal text, unfused with EPSS and never
   re-derived; malformed values are absent rather than shown as zero or unknown.
+  A missing provider reads "provider not specified", never blank.
 - An empty or absent secondary set is stated in words, not hidden and not
-  rendered as a disabled row. Nothing in this block may reorder a list or change
-  a filter result.
+  rendered as a disabled row: "No secondary (ADP or non-selected CNA) metric
+  published." when a primary exists, and "No CNA or ADP metric published." when
+  the record has no metric at all. Nothing here may reorder a list, change a
+  filter result, or alter a severity band.
 
 ## 8. Interaction
 

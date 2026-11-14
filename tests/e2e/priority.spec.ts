@@ -393,6 +393,72 @@ test.describe.serial("priority list views", () => {
     await expect(trend).toHaveAttribute("aria-label", /dated observations/);
   });
 
+  test("detail severity block shows secondary CVSS as context only, never a band", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=highest-forecast");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+
+    // CVE-2099-1008 is ADP-only: no primary, one valid ADP metric.
+    const adpRow = page.locator('[data-cve-id="CVE-2099-1008"]');
+    const adpToggle = adpRow.getByRole("button").first();
+    if ((await adpToggle.getAttribute("aria-expanded")) !== "true") await adpToggle.click();
+    const secondary = adpRow.getByTestId("priority-row-cvss-secondary");
+    await expect(secondary).toBeVisible();
+    await expect(secondary).toContainText("Secondary (context only)");
+    await expect(secondary).toContainText("10.0");
+    await expect(secondary).toContainText("v4.0");
+    await expect(secondary).toContainText("ADP");
+    await expect(secondary).toContainText("provider not specified");
+    await expect(secondary).toContainText("CVSS:4.0/AV:N");
+    await expect(secondary).toContainText("context only");
+    await expect(secondary).toContainText("never used for ranking");
+    // Secondary never looks like a band: no badge, no band class, no band word.
+    await expect(secondary.locator('[class*="badge-"]')).toHaveCount(0);
+    await expect(secondary.locator('[class*="band"]')).toHaveCount(0);
+    await expect(secondary.getByText(/critical|high|medium/i)).toHaveCount(0);
+    // The compact signal line stays primary-only; secondary is detail-only.
+    await expect(adpRow.getByTestId("priority-row-signals")).not.toContainText("context");
+
+    // A record with no published metric says so in words instead of showing 0.
+    const emptyRow = page.locator('[data-cve-id="CVE-2099-1006"]');
+    const emptyToggle = emptyRow.getByRole("button").first();
+    if ((await emptyToggle.getAttribute("aria-expanded")) !== "true") await emptyToggle.click();
+    await expect(emptyRow.getByTestId("priority-row-cvss-secondary-empty")).toContainText(
+      "No CNA or ADP metric published.",
+    );
+    await expect(emptyRow.getByTestId("priority-row-cvss-secondary-guard")).toContainText(
+      "Context only: never used for ranking",
+    );
+  });
+
+  test("secondary CVSS detail block holds at 360px in dark theme", async ({ page }) => {
+    await page.context().addCookies([
+      { name: "ui-theme", value: "dark", url: "http://localhost:3210" },
+    ]);
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.goto("/priority?view=highest-forecast");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    const row = page.locator('[data-cve-id="CVE-2099-1008"]');
+    const toggle = row.getByRole("button").first();
+    if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+    const secondary = row.getByTestId("priority-row-cvss-secondary");
+    await expect(secondary).toContainText("Secondary (context only)");
+    await expect(secondary).toContainText("context only");
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, "horizontal overflow from the secondary block").toBeLessThanOrEqual(1);
+    await page.screenshot({
+      path: `${EVIDENCE_DIR}/priority-cvss-secondary-dark-360.png`,
+      fullPage: true,
+    });
+  });
+
   test("new-critical renders windowed order and names the ineligible cases", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/priority?view=new-critical");

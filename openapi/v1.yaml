@@ -434,6 +434,9 @@ paths:
         UTC calendar buckets over the accepted current records for the overview
         charts, with the date basis, unknown-date bucket, correction notes, and
         coverage stated explicitly. Corrections and rejections can move history.
+        `coverage` additionally splits its `unscored` cohort into `secondaryOnly`
+        (ADP context published, no primary) and `noMetric` (nothing published);
+        both are additive fields and always sum to `unscored`.
       tags:
         - Overview
       parameters:
@@ -1020,6 +1023,22 @@ components:
           type: integer
           description: Records with no primary-CNA CVSS in this response scope.
           example: 41210
+        secondaryOnly:
+          type: integer
+          description: |
+            Additive, returned by `/api/v1/overview` only. Records in the
+            unscored cohort with no valid CNA metric but at least one valid ADP
+            metric: secondary context is published, never a primary. ADP
+            metrics never feed bands, filters, ranking, or eligibility.
+            `secondaryOnly + noMetric` always equals `unscored`.
+          example: 4103
+        noMetric:
+          type: integer
+          description: |
+            Additive, returned by `/api/v1/overview` only. Records in the
+            unscored cohort with no valid CNA metric and no valid ADP metric:
+            nothing is published. A data gap, never low severity.
+          example: 37107
         unknownEpss:
           type: integer
           description: Records with no current EPSS row in this response scope.
@@ -2629,6 +2648,8 @@ components:
           eligibleCohort: 312040
           returned: 2
           unscored: 41210
+          secondaryOnly: 4103
+          noMetric: 37107
           unknownEpss: 1804
           unknownDate: 37
         provenance:

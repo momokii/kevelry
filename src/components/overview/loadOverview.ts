@@ -2,6 +2,7 @@ import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/prove
 import {
   exploitRefCoverageSql,
   getAggregates,
+  secondaryCoverageSql,
   severityBandsSql,
   severityEpssMatrixSql,
   type AggregateSnapshot,
@@ -56,6 +57,13 @@ export interface CorpusStats {
   kev: number;
   epssScored: number;
   unscored: number;
+  /**
+   * Split of `unscored` for the overview subnote: records with no valid CNA
+   * metric but at least one valid ADP metric, and records with neither.
+   * Always sums to `unscored`; neither count is a band, a filter, or an order.
+   */
+  secondaryOnly: number;
+  noMetric: number;
   unknownDate: number;
   tombstones: number;
   computedAt: string | null;
@@ -211,6 +219,7 @@ function liveText(db: CveDatabase, sql: string, params: unknown[] = []): string 
 }
 
 function liveCorpusTotals(db: CveDatabase, epssDate: string | null, bands: Record<string, number>) {
+  const secondary = secondaryCoverageSql(db);
   return {
     kev: liveScalar(db, "SELECT COUNT(*) AS n FROM kev_entries"),
     epssScored:
@@ -222,6 +231,8 @@ function liveCorpusTotals(db: CveDatabase, epssDate: string | null, bands: Recor
             [epssDate],
           ),
     unscored: bands.unknown ?? 0,
+    secondaryOnly: secondary.secondaryOnly,
+    noMetric: secondary.noMetric,
     tombstones: liveScalar(db, "SELECT COUNT(*) AS n FROM cve_tombstones"),
     sourceRevision: liveText(db, "SELECT MAX(source_revision) AS r FROM cve_records"),
   };
@@ -510,6 +521,8 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             kev: liveTotals?.kev ?? 0,
             epssScored: liveTotals?.epssScored ?? 0,
             unscored: severityBands.unknown ?? 0,
+            secondaryOnly: liveTotals?.secondaryOnly ?? 0,
+            noMetric: liveTotals?.noMetric ?? 0,
             unknownDate: unknownDateCount,
             tombstones: liveTotals?.tombstones ?? 0,
             computedAt: null,
@@ -521,6 +534,8 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
             kev: cached.totals.kev,
             epssScored: cached.totals.epssScored,
             unscored: cached.severityBands.unknown ?? cached.totals.unscored,
+            secondaryOnly: cached.totals.secondaryOnly,
+            noMetric: cached.totals.noMetric,
             unknownDate: cached.unknownDateCount,
             tombstones: cached.tombstones,
             computedAt: cached.computedAt,

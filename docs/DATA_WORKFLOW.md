@@ -335,10 +335,12 @@ state) and carry no data contract.
 
 Hot paths (overview page, `/api/v1/overview`, `/api/v1/status`,
 `/api/v1/health`) read the precomputed `aggregate_cache` table (migration 002) instead of recomputing GROUP BY / COUNT(*) / full-corpus sorts per
-request. Cache schema version 3 stores day/month counts, severity bands, the
+request. Cache schema version 6 stores day/month counts, severity bands, the
 linear EPSS histogram, the nine-bin log EPSS histogram, the exact
-severity×EPSS matrix with KEV counts, KEV months, corpus totals, and the
-bounded top heads for the two slowest priority lists. Refresh rules:
+severity×EPSS matrix with KEV counts, KEV months, corpus totals (including the
+unscored split below), and the bounded top heads for the two slowest priority
+lists. A snapshot whose `version` is not the current one is treated as absent,
+so readers rebuild instead of serving a payload with missing keys. Refresh rules:
 
 - The worker refreshes the cache after **every** settled cycle — the scheduler
   reports each cycle through `onCycleComplete`, and a cycle where one source
@@ -350,7 +352,7 @@ bounded top heads for the two slowest priority lists. Refresh rules:
   not by `MAX(source_revision)` over the records: an incremental import stamps only
   the rows it touched, so the maximum is a lexicographic coincidence. The snapshot
   records the accepted CVE revision, KEV version, SSVC revision and EPSS score
-  date (cache version 5), and `aggregatesAreCurrent` compares those four. Measured consequence of the old
+  date (cache version 6), and `aggregatesAreCurrent` compares those four. Measured consequence of the old
   "refresh only an empty cache" rule: 4.2 s per overview render until the next
   forced refresh, versus 0.26 s with a current cache. An unchanged cycle skips the
   refresh, so the ~8 s recompute does not run hourly for nothing.
@@ -363,6 +365,21 @@ bounded top heads for the two slowest priority lists. Refresh rules:
 - The severity-band section uses a SQL mirror of `selectPrimaryCvss`
   (preferred version, then max base within it); vector/sourceOrder tie-breaks
   cannot change a band and are therefore out of scope for the mirror.
+- **Unscored split (`secondaryOnly` / `noMetric`).** `unscored` is the
+  `unknown` severity band: PUBLISHED records with no valid CNA metric (same
+  origin/version/plain-decimal predicate as `selectPrimaryCvss`). Two additive
+  counters divide that cohort by what a reader can still inspect, both from
+  SQL only — never `raw_json`:
+  - `secondaryOnly` — no valid CNA metric, but at least one valid ADP metric
+    (the same validity rules on `origin = 'ADP'`). The ADP score is secondary
+    context: it is never promoted to primary and never feeds a band, filter,
+    ranking, or eligibility rule.
+  - `noMetric` — no valid CNA metric and no valid ADP metric. A data gap,
+    never low severity.
+  The two are an exact partition: `secondaryOnly + noMetric === unscored`
+  holds on every snapshot and is asserted in `tests/aggregates-coverage.test.ts`.
+  `/api/v1/overview` exposes both in its `coverage` block as additive fields;
+  other list endpoints keep the five-key coverage they had.
 - One-off refresh without an import cycle:
   `REFRESH_AGGREGATES_ONCE=true node dist/worker.mjs`
   (Compose: `docker compose exec app env REFRESH_AGGREGATES_ONCE=true node

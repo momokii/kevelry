@@ -91,6 +91,24 @@ function exampleResponse(endpoint: { path: string }): string {
       baseScore: 9.2,
       vector: "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
     },
+    // Additive projection: the metrics cvssPrimary did not select. Context
+    // only — never ranked, never an eligibility input, never a second primary.
+    cvssSecondary: {
+      status: "present",
+      coverageNote:
+        "Secondary (context only): metrics other than the selected primary. They are not used for ranking or eligibility.",
+      metrics: [
+        {
+          origin: "ADP",
+          provider: "CISA-ADP",
+          version: "3.1",
+          baseScore: "9.1",
+          vector:
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          label: "secondary (context only)",
+        },
+      ],
+    },
     ssvc: {
       exploitation: "active",
       automatable: "yes",
@@ -135,7 +153,10 @@ function exampleResponse(endpoint: { path: string }): string {
         ],
         unknownDateCount: 0,
         correctionNotes: [],
-        coverage: { ...coverage, returned: 24 },
+        // Additive partition of `unscored` on this endpoint only: records with
+        // ADP-only context to read, and records with no CNA or ADP metric at
+        // all. They always sum to `unscored`.
+        coverage: { ...coverage, returned: 24, secondaryOnly: 4103, noMetric: 212522 },
         provenance,
       },
       null,

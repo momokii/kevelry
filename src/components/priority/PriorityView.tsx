@@ -10,6 +10,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import type { CvssSecondary } from "@/lib/cvss-projection";
+
 import { ExploitSignal } from "../ledger/ExploitSignal";
 import { HelpTip } from "../ledger/HelpTip";
 import { TimeText } from "../ledger/TimeText";
@@ -78,6 +80,12 @@ export interface PriorityRowData {
   primaryAdpOnly: boolean;
   primaryVersion: string | null;
   primaryScore: string | null;
+  /**
+   * Bounded, pre-ordered projection of the metrics the primary selector did
+   * not pick. Rendered in the expanded severity block only, never on the
+   * compact signal line, never band-coloured, never a filter or sort input.
+   */
+  cvssSecondary: CvssSecondary;
   deltaPp: string | null;
   deltaPreviousDate: string | null;
   officialUrl: string;
@@ -496,6 +504,60 @@ function EpssSignal({ row }: { row: PriorityRowData }) {
   );
 }
 
+/**
+ * Secondary metrics, inside the detail severity block only.
+ *
+ * Every row is neutral text: no band class, no severity colour, no badge. The
+ * label and the closing line carry the guard in words, so a high ADP score can
+ * never be read as this record's severity and nothing here can be filtered,
+ * sorted, or promoted. Not rendered on the compact signal line.
+ */
+function CvssSecondaryBlock({ row }: { row: PriorityRowData }) {
+  // A non-selected CNA metric is secondary too, so "nothing publishable" only
+  // when the record has no primary either.
+  const hasPrimary = row.primaryKnown || row.primaryLegacy;
+  const metrics = row.cvssSecondary.metrics;
+  return (
+    <div className={styles.secondary} data-testid="priority-row-cvss-secondary">
+      <div className={styles.signalHead}>
+        <span className="ledger-label">Secondary (context only)</span>
+        <HelpTip term="secondary CVSS" testId="priority-row-cvss-secondary-help">
+          Metrics the CNA did not publish as the primary selection: ADP-published, or extra CNA
+          metrics. They are shown as published and are context only — they never rank, order,
+          filter, or decide eligibility, and they never replace the primary. No band is derived
+          from them.
+        </HelpTip>
+      </div>
+      {metrics.length > 0 ? (
+        <ul className={styles.secondaryList}>
+          {metrics.map((metric, index) => (
+            <li
+              key={`${metric.origin}-${metric.version}-${metric.baseScore}-${String(index)}`}
+              data-testid="priority-row-cvss-secondary-metric"
+            >
+              <span>
+                <strong className="ledger-emphasis">{metric.baseScore}</strong> v{metric.version} ·{" "}
+                {metric.origin}
+                {metric.provider === null ? " · provider not specified" : ` · ${metric.provider}`}
+              </span>
+              <span className={styles.secondaryVector}>{metric.vector}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={styles.secondaryNote} data-testid="priority-row-cvss-secondary-empty">
+          {hasPrimary
+            ? "No secondary (ADP or non-selected CNA) metric published."
+            : "No CNA or ADP metric published."}
+        </p>
+      )}
+      <p className={styles.trendCaption} data-testid="priority-row-cvss-secondary-guard">
+        Context only: never used for ranking, ordering, filtering, or eligibility.
+      </p>
+    </div>
+  );
+}
+
 function CvssSignal({ row }: { row: PriorityRowData }) {
   const state = cvssStateForRow(row);
   const band = state === "known" ? cvssBandForScore(row.primaryScore) : null;
@@ -529,8 +591,8 @@ function CvssSignal({ row }: { row: PriorityRowData }) {
       ) : state === "adp-only" ? (
         <p>
           <em className="ledger-caveat">
-            Unscored under this view&apos;s policy; ADP-only metrics are retained for inspection,
-            never promoted.
+            Unscored under this view&apos;s policy; ADP-only metrics are shown below as secondary
+            context, never promoted.
           </em>
         </p>
       ) : (
@@ -538,6 +600,7 @@ function CvssSignal({ row }: { row: PriorityRowData }) {
           <em className="ledger-caveat">Unscored under this view&apos;s policy.</em>
         </p>
       )}
+      <CvssSecondaryBlock row={row} />
     </div>
   );
 }

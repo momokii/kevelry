@@ -861,6 +861,12 @@ a {
   color: var(--ui-ink-3);
 }
 
+/* Second note under a stat: a related, subordinate count. Kept tight so the
+   card reads as one number with one footnote, not two competing values. */
+.stat-subnote {
+  margin-top: 4px;
+}
+
 @media (max-width: 900px) {
   .stat-grid {
     grid-template-columns: 1fr 1fr;

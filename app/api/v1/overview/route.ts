@@ -1,4 +1,8 @@
-import { getAggregates, monthCountsFromDays } from "../../../../src/lib/aggregates";
+import {
+  getAggregates,
+  monthCountsFromDays,
+  secondaryCoverageSql,
+} from "../../../../src/lib/aggregates";
 import { getDb } from "../_lib/db-handle";
 import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot } from "../_lib/guardrails";
 import { ApiError } from "../_lib/errors";
@@ -128,11 +132,24 @@ export async function GET(request: Request): Promise<Response> {
         : [];
     const coverage =
       cached === null
-        ? unfilteredCohortCoverage(db, buckets.length)
+        ? (() => {
+            const live = unfilteredCohortCoverage(db, buckets.length);
+            const secondary = secondaryCoverageSql(db);
+            return {
+              ...live,
+              secondaryOnly: secondary.secondaryOnly,
+              noMetric: secondary.noMetric,
+            };
+          })()
         : {
             eligibleCohort: cached.publishedTotal,
             returned: buckets.length,
             unscored: cached.totals.unscored,
+            // Additive split of `unscored` from the same snapshot: these two
+            // always sum to it. Secondary metrics are context only and never
+            // change a band, a filter, or an order.
+            secondaryOnly: cached.totals.secondaryOnly,
+            noMetric: cached.totals.noMetric,
             unknownEpss: cached.totals.unknownEpss,
             unknownDate: cached.unknownDateCount,
           };

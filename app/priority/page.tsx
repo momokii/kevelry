@@ -132,6 +132,7 @@ function toRow(
     primaryAdpOnly: primary === null && record.hasAdp,
     primaryVersion: primary?.version ?? null,
     primaryScore: primary?.baseScore ?? null,
+    cvssSecondary: record.cvssSecondary,
     deltaPp: delta?.deltaPp ?? null,
     deltaPreviousDate: delta?.previousDate ?? null,
     epssHistory: historyById.get(item.id) ?? null,

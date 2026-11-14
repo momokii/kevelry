@@ -171,6 +171,17 @@ function buildSeededDbFile(): string {
       kevCatalogDate: null,
       epss: [],
     });
+    seedRecord(db, {
+      cveId: "CVE-2099-0005",
+      title: "ADP-scored demonstration flaw",
+      description: "An ADP-scored demonstration flaw; the CNA published no primary metric.",
+      lang: "en",
+      published: isoDayAgo(4),
+      metrics: [{ origin: "ADP", version: "4.0", baseScore: "9.3" }],
+      kevDateAdded: null,
+      kevCatalogDate: null,
+      epss: [],
+    });
     db.handle
       .prepare(
         "INSERT INTO cve_tombstones (cve_id, last_state, removed_in_revision, reason, recorded_at) " +
@@ -262,12 +273,20 @@ for (const width of [360, 768, 1280]) {
     );
 
     await expect(page.getByTestId("global-search")).toBeVisible();
-    await expect(page.getByTestId("overview-published-total")).toContainText("4");
+    await expect(page.getByTestId("overview-published-total")).toContainText("5");
     await expect(page.getByTestId("overview-volume-bar-2026-10")).toBeVisible();
     await expect(page.getByTestId("overview-severity-critical")).toHaveAttribute(
       "href",
       "/explore?severity=critical",
     );
+
+    // v3 E1: the unscored stat carries its split, and the denominator is the
+    // unscored cohort (2 seeded records: one ADP-only, one with no metric).
+    await expect(page.getByTestId("overview-corpus-unscored")).toHaveText("2");
+    const split = page.getByTestId("overview-corpus-unscored-split");
+    await expect(split).toContainText("1 with ADP secondary (context)");
+    await expect(split).toContainText("1 with no published metric");
+    await expect(split).toContainText("(of 2 unscored)");
 
     await page.getByTestId("overview-chart").getByText("Data table").click();
     await expect(page.getByTestId("overview-chart").locator("table.data-table")).toBeVisible();
@@ -299,6 +318,37 @@ for (const width of [360, 768, 1280]) {
     await page.screenshot({ path: `${EVIDENCE_DIR}/overview-${width}.png`, fullPage: true });
   });
 }
+
+test("overview unscored split keeps its numbers in dark theme at 360px", async ({ page }) => {
+  await page.context().addCookies([
+    { name: "ui-theme", value: "dark", url: "http://localhost:3210" },
+  ]);
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.goto("/");
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const split = page.getByTestId("overview-corpus-unscored-split");
+  await expect(split).toContainText("1 with ADP secondary (context)");
+  await expect(split).toContainText("1 with no published metric");
+  // The help tip states the guard in words, and stays keyboard reachable.
+  const trigger = page.getByTestId("overview-corpus-unscored-split-help-trigger");
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("overview-corpus-unscored-split-help-panel")).toContainText(
+    "context only",
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("overview-corpus-unscored-split-help-panel")).toBeHidden();
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow, "horizontal overflow with the split subnote").toBeLessThanOrEqual(1);
+  await page.screenshot({
+    path: `${EVIDENCE_DIR}/overview-unscored-split-dark-360.png`,
+    fullPage: true,
+  });
+});
 
 test("overview empty corpus shows honest empty states", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
