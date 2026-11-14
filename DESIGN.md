@@ -490,6 +490,33 @@ same data as `cvssSecondary`. Contract:
   the record has no metric at all. Nothing here may reorder a list, change a
   filter result, or alter a severity band.
 
+### CWE taxonomy labels
+
+CWE ids already appear in KEV rows, record attributes, and graph groups. The
+local taxonomy catalog supplies the published label for those ids, and the
+read path reports exactly one of three states per id — it never guesses.
+
+- **`known`.** The id exists in the accepted catalog. Render the mono id plus
+  the published name (e.g. `CWE-94 · Improper Control of Generation of Code`),
+  linking to the canonical MITRE page. Optional fields (`abstraction`,
+  `summary`, `mitigation`) appear only when the taxonomy published them; a
+  missing mitigation is not an empty mitigation block, and the label never
+  implies remediation guidance is ours.
+- **`unmapped`.** The id is well-formed but absent from the accepted catalog,
+  or the input is not a valid CWE id shape. The raw id is **always shown** with
+  a short explanation that it is not present in the loaded taxonomy — never
+  hidden, never silently dropped from a list, never rendered as a blank chip,
+  and never given an invented name. A valid-shaped id keeps its canonical
+  link; an unparseable input is plain text with no fake URL.
+- **`taxonomy-unavailable`.** No accepted catalog is available (never loaded,
+  failed refresh, or unreadable). The id still renders as the raw mono id with
+  a “taxonomy unavailable” note, and no name is claimed. Empty/absent catalog
+  states are stated in words, not rendered as a disabled row.
+
+Catalog status is context, not a verdict: it never changes ranking, filtering,
+severity bands, or whether a record is listed. The reader is local-only, so
+these labels never depend on an upstream request completing.
+
 ## 8. Interaction
 
 - Global `⌘K` / `Ctrl+K` focuses search. `Escape` closes menus/tooltips.

@@ -496,6 +496,43 @@ CISA classified as exploit code, and it appears on ~12% of the current corpus
 - Nothing here ranks, scores, or claims a working exploit. The UI says so in the
   panel subtitle, the row badge tooltip, and the filter's help tip.
 
+## CWE Taxonomy Catalog (local reference data)
+
+CWE ids already travel with KEV rows and record attributes; the catalog adds the
+published label, class, description, and reference mitigation text for those
+ids. It is **reference data**, not a live feed: MITRE publishes versioned packs
+that change infrequently, so the catalog is acquired by an infrequent importer
+job and every visitor-facing read is purely local.
+
+- **Tables (migration 009, additive).** `cwe_catalog_meta` is a pinned one-row
+  pointer (`id = 1`) holding `version`, `source`, `source_hash`, `retrieved_at`,
+  `status`, `record_count`, and `notes`. `cwe_entries` is keyed by normalized
+  `cwe_id` (`CWE-<n>`) with `name`, optional `abstraction` (Base/Class/Variant as
+  published), `status` (Draft/Stable/Deprecated as published), `summary`,
+  optional `mitigation`, `version`, and `updated_at`. No fact table changes; a
+  taxonomy refresh never rewrites a CVE/KEV/SSVC row.
+- **Indexes:** the `cwe_entries.cwe_id` primary key only. Lookups are point
+  lookups and batched `IN` reads; the row count is bounded by the taxonomy.
+- **Status states.** `empty` = no accepted catalog has ever been published (no
+  meta row). `ready` = the accepted catalog matches the meta row and may be
+  served. `stale` = a refresh failed and the catalog must not be presented as
+  current. `unavailable` = the catalog could not be read. In this step only
+  `ready` serves entries; `stale`, `unavailable`, and `empty` all resolve ids as
+  `taxonomy-unavailable` with no name, and the recorded provenance stays visible
+  so a later step can decide whether to serve last-known-good.
+- **Resolution states.** `known` = the id exists in `cwe_entries` (name, and
+  whichever optional fields the taxonomy published). `unmapped` = a
+  valid-shaped id absent from the catalog, or an input that has no valid CWE id
+  shape; the raw id is retained rather than dropped. `taxonomy-unavailable` =
+  no accepted catalog, so no label is claimed. The canonical URL is derived from
+  the id, never stored.
+- **Read path never touches upstream.** `getCweCatalogMeta`/`resolveCweIds` in
+  `src/lib/cwe-catalog.ts` only read SQLite: no fetch, no unzip, no parser, no
+  cache. Inputs are normalized (`CWE-79`, `cwe-79`, `79` → `CWE-79`), deduped,
+  and queried in bounded `IN` batches; no caller-supplied shape throws an
+  error. Acquisition and CSV parsing belong to the importer, which reuses the
+  RFC 4180 parser already shipped for EPSS.
+
 ## Retention (bounded growth)
 
 Every table is bounded by the corpus except `epss_daily`, which gains one row per

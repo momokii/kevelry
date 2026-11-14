@@ -7,6 +7,25 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **Local CWE taxonomy schema and reader (E3 step 1).** Migration 009 adds two
+  additive tables: `cwe_catalog_meta` (a pinned one-row pointer to the accepted
+  catalog with `version`, `source`, `source_hash`, `retrieved_at`, `status`,
+  `record_count`, and `notes`) and `cwe_entries` (normalized `CWE-<n>` primary
+  key with `name`, optional `abstraction`/`status`/`summary`/`mitigation`,
+  `version`, `updated_at`). No fact table changes and no extra index beyond the
+  entry primary key. `src/lib/cwe-catalog.ts` is the purely local read seam:
+  `getCweCatalogMeta` reports `ready`, `stale`, `unavailable`, or `empty`, and
+  `resolveCweIds` maps caller ids to a `CweRef` in one of three states —
+  `known` (with the published fields and canonical MITRE URL), `unmapped`
+  (valid-shaped id absent from the catalog, or an unparseable input retained as
+  its raw string), or `taxonomy-unavailable` (no accepted catalog, so no name
+  is claimed). `CWE-79`, `cwe-79`, and `79` normalize to `CWE-79`; inputs are
+  deduped and looked up in bounded `IN` batches. The reader never throws on
+  caller input, never fabricates a label, and never touches upstream. Tests in
+  `tests/cwe-catalog.test.ts` cover known/unmapped/unavailable resolution,
+  absent mitigation, normalization, dedupe, invalid shapes, chunk boundaries,
+  and the `empty` meta state before any load.
+
 - **Page-bounded CSV/JSON export and subscribe controls (E5).**
   `GET /api/v1/search` now accepts `format=csv|json` and serializes **exactly
   the page it already returned** — the same validation, filters, ordering,
