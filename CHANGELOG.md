@@ -3,6 +3,27 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## Unreleased (v3.0.0)
+
+### Added
+
+- **Secondary CVSS projection (`cvssSecondary`).** Every preserved metric the
+  primary selector did not pick is now exposed on `CveItem` as one bounded,
+  labeled block instead of being dropped. The projection hides the shape
+  decisions behind a single pure function (`src/lib/cvss-projection.ts`): it
+  excludes the metric `cvssPrimary` selected, orders the rest ADP before CNA,
+  then version preference 4.0 > 3.1 > 3.0 > 2.0, then base score descending on
+  exact decimal text, then stored source order; it caps the block at four
+  metrics, skips malformed scores instead of rendering them, and labels every
+  entry `secondary (context only)`. `coverageNote` states in prose that the
+  metrics are not used for ranking or eligibility. **Ranking and eligibility are
+  untouched**: severity bands, ordering, filters, and the new-critical cohort
+  still read the primary selection alone, and `cvssPrimary` keeps its exact
+  previous shape. `hasAdp` stays on the record as a compatibility alias.
+  Tests cover the ADP-only, CNA+ADP (primary excluded), multi-ADP ordering and
+  cap, legacy-only, none, malformed-value, and determinism cases, plus an API
+  shape assertion that `cvssSecondary` is additive and `cvssPrimary` unchanged.
+
 ## 2.0.2 — 2026-11-11
 
 Two operational bugs found while verifying the 2.0.1 release on a running

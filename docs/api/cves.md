@@ -52,6 +52,11 @@ curl "https://radar.example.org/api/v1/cves/CVE-2026-109618"
         "version": "4.0",
         "baseScore": 9.2,
         "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+      },
+      "cvssSecondary": {
+        "status": "none",
+        "coverageNote": "No secondary (ADP or non-selected CNA) metric is published. Any secondary would be context only and is not used for ranking or eligibility.",
+        "metrics": []
       }
     }
   ],
@@ -99,6 +104,26 @@ Unknown EPSS is explicit null, never 0; a real zero is `"status": "known",
 (`adp-only`, `legacy`) instead of a promoted number. Unknown dates are null and
 excluded from dated views. Every response carries `provenance` and the
 rate-limit headers from the [README](README.md#limits).
+
+## Secondary CVSS block
+
+`cvssSecondary` rides on every `CveItem` (list, detail, and search) and never
+replaces `cvssPrimary`:
+
+- `status` is `present` or `none`; `none` is explicit, never a missing key
+- `coverageNote` states the guard in prose: these metrics are context only and
+  are not used for ranking or eligibility
+- `metrics` holds at most four entries: `origin`, `provider`, `version`,
+  `baseScore`, `vector`, and `label` (always `secondary (context only)`)
+
+The block excludes the one metric `cvssPrimary` selected, keeps both CNA and ADP
+context, and orders ADP before CNA, then version preference 4.0 > 3.1 > 3.0 >
+2.0, then base score descending on exact decimal text, then stored source order.
+Malformed scores are skipped, never rendered. `baseScore` is exact published
+text, not a number, so it is never re-rounded. Ranking, severity bands, filters,
+and eligibility read `cvssPrimary` alone; `cvssSecondary` changes none of them.
+An ADP-only record still reports `cvssPrimary.status: "adp-only"` with a null
+score and shows the ADP metric as secondary context.
 
 ## EPSS history (detail only)
 

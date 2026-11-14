@@ -51,6 +51,11 @@ A real zero is `"status": "known", "value": 0`. Missing publication dates go to
 an explicit unknown bucket and are excluded from dated views. See
 [DATA_WORKFLOW.md](../DATA_WORKFLOW.md) for the full missing-data contract.
 
+CVSS is two fields on every `CveItem`. `cvssPrimary` is the single edited
+selection that ranking, bands, filters, and eligibility read. `cvssSecondary`
+is the bounded, labeled projection of every other preserved metric: context
+only, never ranked, and never a second primary (see [cves.md](cves.md#secondary-cvss-block)).
+
 ## Pagination
 
 Cursor-based. `limit` defaults to 50 and caps at 200; oversized values are

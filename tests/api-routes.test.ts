@@ -387,6 +387,61 @@ describe("v1 cve list and detail routes", () => {
     });
     expect(malformed.status).toBe(400);
   });
+
+  it("adds cvssSecondary additively and leaves cvssPrimary untouched", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    void db;
+
+    // Pre-E1 fixture: a single CNA v4.0 metric. The primary shape must not move
+    // and the secondary block is explicit, not absent.
+    const known = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0001"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0001" }),
+    });
+    const knownData = (await bodyOf(known)).data as Record<string, unknown>;
+    expect(knownData.cvssPrimary).toEqual({
+      status: "known",
+      source: "cna",
+      version: "4.0",
+      baseScore: 9.2,
+      vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+    });
+    expect(knownData.cvssSecondary).toEqual({
+      status: "none",
+      coverageNote: expect.any(String),
+      metrics: [],
+    });
+
+    // ADP-only fixture: the primary stays adp-only; the metric is context only.
+    const adpOnly = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0005"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0005" }),
+    });
+    const adpData = (await bodyOf(adpOnly)).data as Record<string, unknown>;
+    expect(adpData.cvssPrimary).toEqual({
+      status: "adp-only",
+      source: null,
+      version: null,
+      baseScore: null,
+      vector: null,
+    });
+    expect(adpData.cvssSecondary).toEqual({
+      status: "present",
+      coverageNote: expect.any(String),
+      metrics: [
+        {
+          origin: "ADP",
+          provider: null,
+          version: "3.1",
+          baseScore: "9.8",
+          vector: "CVSS:3.1/AV:N",
+          label: "secondary (context only)",
+        },
+      ],
+    });
+    const note = (adpData.cvssSecondary as { coverageNote: string }).coverageNote.toLowerCase();
+    expect(note).toContain("context only");
+    expect(note).toContain("not used for ranking or eligibility");
+  });
 });
 
 describe("epss history trend (detail-only)", () => {

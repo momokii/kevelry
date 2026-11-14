@@ -150,6 +150,24 @@ official reconciliation of providers. Preserve every original metric for inspect
    vector and scenario. ADP-only scores are visible as secondary metrics, not silently
    promoted by this policy. No valid CNA metric means unknown primary.
 
+### Secondary CVSS projection
+
+Every preserved metric other than the one the primary rule selected is projected
+for display as `cvssSecondary`. It is context only and is never a second primary.
+
+- **Ordering**, deterministic: ADP before CNA, then version preference 4.0 > 3.1
+  > 3.0 > 2.0, then base score descending on exact decimal text
+  > (`compareDecimalStrings`), then stored source order.
+- **Bounded**: at most four metrics reach the payload; the rest stay in
+  `cvss_metrics` for inspection, never truncated silently into the UI.
+- **Validity**: malformed scores are skipped, never rendered or defaulted.
+- **Labeling**: each entry carries `label: secondary (context only)` and the
+  block carries a coverage note stating the same guard.
+- Secondary metrics never become primary, never feed ranking or ordering, never
+  change severity bands, filters, or any eligibility rule. `cvssSecondary` is an
+  additive API field: `cvssPrimary` keeps its exact previous shape and `hasAdp`
+  remains as a compatibility alias for the pre-E1 flag.
+
 CVSS v2-only is legacy-scored and is not called critical. Modern primary v3/v4
 base >=9 qualifies for the new-critical view. This deliberately limits
 coverage; NVD or ADP-based enrichment needs an approved revised selection policy.

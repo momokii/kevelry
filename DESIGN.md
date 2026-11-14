@@ -384,6 +384,26 @@ explainer above the list (what the three decision points mean, how the order is
 formed, the coverage caveat) and a recency window control; the right-hand rail
 keeps a short ordering summary rather than repeating the explainer.
 
+### Secondary CVSS block
+
+The record detail block (expanded Priority row, Explore inspector, API detail)
+shows exactly one secondary CVSS group, and only when a metric other than the
+selected primary exists. Contract:
+
+- It is a list of rows, never a second severity badge and never a second band.
+  The primary badge keeps the only severity colour; secondary rows stay neutral
+  text so a v4.0 ADP score cannot read as this record's severity.
+- Every row is labeled `secondary (context only)` and the group carries a
+  coverage note saying these metrics are not used for ranking or eligibility.
+- Order is fixed by the data layer, not by the component: ADP before CNA, then
+  version preference 4.0 > 3.1 > 3.0 > 2.0, then exact base score descending,
+  then stored source order. At most four rows render.
+- Scores are printed as the published decimal text, unfused with EPSS and never
+  re-derived; malformed values are absent rather than shown as zero or unknown.
+- An empty or absent secondary set is stated in words, not hidden and not
+  rendered as a disabled row. Nothing in this block may reorder a list or change
+  a filter result.
+
 ## 8. Interaction
 
 - Global `⌘K` / `Ctrl+K` focuses search. `Escape` closes menus/tooltips.

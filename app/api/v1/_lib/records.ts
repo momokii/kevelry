@@ -1,4 +1,5 @@
 import { chunk, type CveDatabase } from "../../../../src/lib/db";
+import { projectSecondaryCvss, type CvssSecondary } from "../../../../src/lib/cvss-projection";
 import { exploitReferenceUrls } from "../../../../src/lib/exploit-ref";
 import { getAcceptedEpssDate, type PriorityItem } from "../../../../src/lib/priority";
 import { selectPrimaryCvss } from "../../../../src/lib/ranking";
@@ -58,6 +59,12 @@ export interface FullRecord {
   epssPercentile: string | null;
   epssModel: string | null;
   primary: { version: string; baseScore: string; vector: string } | null;
+  /**
+   * Every other preserved metric, bounded and labeled "context only".
+   * Never a second primary: ranking/eligibility read `primary` alone.
+   */
+  cvssSecondary: CvssSecondary;
+  /** Legacy flag kept additive; `cvssSecondary.status` supersedes it. */
   hasAdp: boolean;
 }
 
@@ -91,10 +98,34 @@ interface EpssRow {
 interface MetricRow {
   cve_id: string;
   origin: string;
+  provider: string | null;
   version: string;
   base_score: string;
   vector: string;
   source_order: number;
+}
+
+/**
+ * The 001 schema predates `provider` (the importer adds it additively), so a
+ * freshly migrated but never-imported database has no such column. Probe once
+ * per handle and fall back to NULL instead of failing the read path.
+ */
+const metricProviderColumnByDb = new WeakMap<CveDatabase, boolean>();
+
+function hasMetricProviderColumn(db: CveDatabase): boolean {
+  const cached = metricProviderColumnByDb.get(db);
+  if (cached !== undefined) return cached;
+  let present = false;
+  try {
+    const columns = db.handle.prepare("PRAGMA table_info(cvss_metrics)").all() as Array<{
+      name: string;
+    }>;
+    present = columns.some((column) => column.name === "provider");
+  } catch {
+    present = false;
+  }
+  metricProviderColumnByDb.set(db, present);
+  return present;
 }
 
 /** Load full display records for ids, preserving input order and skipping gaps. */
@@ -193,9 +224,10 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
         }
       }
     }
+    const providerColumn = hasMetricProviderColumn(db) ? "provider" : "NULL AS provider";
     const metricRows = db.handle
       .prepare(
-        `SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics WHERE cve_id IN (${placeholders})`,
+        `SELECT cve_id, origin, ${providerColumn}, version, base_score, vector, source_order FROM cvss_metrics WHERE cve_id IN (${placeholders})`,
       )
       .all(...group) as MetricRow[];
     for (const row of metricRows) {
@@ -210,15 +242,15 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
     const row = records.get(cveId);
     if (row === undefined) continue;
     const metrics = metricsById.get(cveId) ?? [];
-    const primary = selectPrimaryCvss(
-      metrics.map((metric, index) => ({
-        origin: metric.origin,
-        version: metric.version,
-        baseScore: metric.base_score,
-        vector: metric.vector,
-        sourceOrder: Number.isInteger(metric.source_order) ? metric.source_order : index,
-      })),
-    );
+    const metricInputs = metrics.map((metric, index) => ({
+      origin: metric.origin,
+      provider: metric.provider,
+      version: metric.version,
+      baseScore: metric.base_score,
+      vector: metric.vector,
+      sourceOrder: Number.isInteger(metric.source_order) ? metric.source_order : index,
+    }));
+    const primary = selectPrimaryCvss(metricInputs);
     const epss = epssById.get(cveId);
     out.push({
       cveId: row.cve_id,
@@ -244,6 +276,7 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
         primary === null
           ? null
           : { version: primary.version, baseScore: primary.baseScore, vector: primary.vector },
+      cvssSecondary: projectSecondaryCvss(metricInputs, primary),
       hasAdp: metrics.some((metric) => metric.origin === "ADP"),
     });
   }
@@ -360,6 +393,7 @@ export function toCveItem(
     },
     epss,
     cvssPrimary,
+    cvssSecondary: record.cvssSecondary,
     ssvc: record.ssvc,
     exploitReferenceStatus: record.exploitReferences.length > 0 ? "tagged" : "none",
     exploitReferences: record.exploitReferences,
