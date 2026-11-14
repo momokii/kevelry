@@ -412,8 +412,9 @@ word. Contract:
 - The membership state is exactly `Listed` or `Not listed`; the remaining rows
   are labeled and source-scoped: _Date added (catalog)_, _Due date (catalog,
   federal context)_, _Required action_ (catalog-supplied and wrapped),
-  _Ransomware campaign use_, _Catalog name_, and _CWEs_ as monospace ID chips
-  (names arrive with the E3 taxonomy; the ID is always the label).
+  _Ransomware campaign use_, _Catalog name_, and _CWEs_ as monospace chips (the
+  ID is always the label; the published name joins it when the taxonomy knows
+  the id, see [CWE taxonomy labels](#cwe-taxonomy-labels)).
 - _Ransomware campaign use_ renders one of three explicit catalog states —
   `Known (catalog)`, `Unknown (catalog)`, `Not stated`. The UI branches on the
   tri-state `ransomwareUse`, never on the legacy boolean alias. `Unknown` is the
@@ -516,6 +517,34 @@ read path reports exactly one of three states per id — it never guesses.
 Catalog status is context, not a verdict: it never changes ranking, filtering,
 severity bands, or whether a record is listed. The reader is local-only, so
 these labels never depend on an upstream request completing.
+
+**Chip anatomy.** A CWE chip is two parts in one line: the mono id is the
+label (`CWE-94`, never a translated or prettified form) and the published name
+follows it, separated by `·`, only for `known` ids. The name is secondary
+type at the same baseline, wraps to a second line at 360px and 200% zoom
+instead of truncating, and is never a replacement for the id — a reader can
+always copy what the catalog actually published. `unmapped` and
+`taxonomy-unavailable` chips keep the same mono id plus a short state word
+(`not in taxonomy`, `taxonomy unavailable`) and never show a fabricated name or
+an invented link. Colour is not the state signal: the word is. A `known` chip
+links to `https://cwe.mitre.org/data/definitions/<n>.html`; only the id is
+linked, so the accessible name stays the id.
+
+**Marker stripping is a read-path rule.** MITRE's published `summary` and
+`mitigation` text carries internal control markers such as
+`::PHASE:Implementation::`. They are publishing markup, not content, so the
+projection strips every `::…::` run, collapses the resulting whitespace, and
+trims — at read time only. Stored catalog rows keep MITRE's verbatim wording
+(see [DATA_WORKFLOW](docs/DATA_WORKFLOW.md)), a marker-only field is absent
+rather than empty, and no surface displays `::`.
+
+**List rows stay ID-only.** The label block is deliberately not projected onto
+list, search, or bulk rows: those pages are unbounded enough that a per-row
+taxonomy read would dominate their cost, and the ID is the citation a row
+needs. Labels are served where the reader is already looking at one record —
+the record detail route (`cweDetails`) and the priority rows
+(`kev.cweDetails`, one batched resolution per page) — and `kev.cwes` never
+changes shape or meaning to carry them.
 
 ## 8. Interaction
 

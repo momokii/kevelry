@@ -16,6 +16,7 @@ import {
   resolveRestoreDir,
   resolveRunRestoreOnce,
   resolveCvePin,
+  resolveCweRefreshEnabled,
   resolveIngestOnStart,
   resolveRunBackupOnce,
   runWorker,
@@ -526,6 +527,41 @@ describe("RUN_RESTORE_ONCE one-shot gate", () => {
     expect(resolveRestoreDir({})).toBe(null);
     expect(resolveRestoreDir({ RESTORE_DIR: "  " })).toBe(null);
     expect(resolveRestoreDir({ RESTORE_DIR: "/backups/2026-11-08" })).toBe("/backups/2026-11-08");
+  });
+});
+
+describe("CWE_REFRESH_ENABLED fail-closed gate", () => {
+  it("enables when the variable is absent or exactly true, and disables on false", () => {
+    expect(resolveCweRefreshEnabled({})).toBe(true);
+    expect(resolveCweRefreshEnabled({ CWE_REFRESH_ENABLED: "true" })).toBe(true);
+    expect(resolveCweRefreshEnabled({ CWE_REFRESH_ENABLED: "  true  " })).toBe(true);
+    expect(resolveCweRefreshEnabled({ CWE_REFRESH_ENABLED: "false" })).toBe(false);
+  });
+
+  it("disables and logs one cwe-refresh-config-invalid event for any other value", () => {
+    for (const value of ["yes", "1", "tru", "TRUE", "enabled", ""]) {
+      const logs: WorkerLog[] = [];
+      const enabled = resolveCweRefreshEnabled({ CWE_REFRESH_ENABLED: value }, (entry) => {
+        logs.push(entry);
+      });
+      expect(enabled, `value ${JSON.stringify(value)} must fail closed`).toBe(false);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ event: "cwe-refresh-config-invalid" });
+    }
+  });
+
+  it("keeps the rejected value on one bounded line", () => {
+    const logs: WorkerLog[] = [];
+    resolveCweRefreshEnabled({ CWE_REFRESH_ENABLED: `y\n${"x".repeat(200)}` }, (entry) =>
+      logs.push(entry),
+    );
+    expect(logs[0]).toMatchObject({ event: "cwe-refresh-config-invalid", value: "y" });
+
+    const long: WorkerLog[] = [];
+    resolveCweRefreshEnabled({ CWE_REFRESH_ENABLED: "x".repeat(200) }, (entry) => long.push(entry));
+    const rendered = String(long[0]?.value);
+    expect(rendered.length).toBeLessThanOrEqual(64);
+    expect(rendered.endsWith("…")).toBe(true);
   });
 });
 

@@ -16,6 +16,8 @@ import { cachedOkResponse } from "../../_lib/http-cache";
 import { encodeCursor, parseCursor, parseLimit, paginateCapped } from "../../_lib/params";
 import { buildProvenance } from "../../_lib/provenance";
 import { coverageFor, loadFullRecords, toCveItem } from "../../_lib/records";
+import { resolveCweRefsMany } from "../../../../../src/lib/cwe-catalog";
+import type { CveDatabase } from "../../../../../src/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,30 @@ const ORDERINGS: Record<ListName, string[]> = {
     "cveId-asc",
   ],
 };
+
+/**
+ * Add `kev.cweDetails` to a rendered page without touching any existing field.
+ * The whole page's CWEs resolve in one batched catalog lookup, and each row's
+ * list keeps the order of its own `kev.cwes` (deduped). Deliberately additive:
+ * the list routes never carry taxonomy labels — this is the priority-row
+ * surface only, and `kev.cwes` stays the ID-only field.
+ */
+function withKevCweDetails(
+  db: CveDatabase,
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  if (rows.length === 0) return rows;
+  const cwes = rows.map((row) => {
+    const kev = row.kev as { cwes?: unknown } | null | undefined;
+    if (kev === null || kev === undefined || !Array.isArray(kev.cwes)) return [];
+    return kev.cwes.filter((id): id is string => typeof id === "string");
+  });
+  const resolved = resolveCweRefsMany(db, cwes);
+  return rows.map((row, index) => ({
+    ...row,
+    kev: { ...(row.kev as Record<string, unknown>), cweDetails: resolved[index] ?? [] },
+  }));
+}
 
 export async function GET(
   request: Request,
@@ -115,7 +141,10 @@ export async function GET(
         {
           list,
           ordering: ORDERINGS[list],
-          data: data.filter((row) => row !== null),
+          data: withKevCweDetails(
+            db,
+            data.filter((row) => row !== null),
+          ),
           deltaPp: page.map((row) => Number(row.deltaPp)),
           pagination: { limit, hasMore, nextCursor },
           coverage: coverageFor(
@@ -157,7 +186,10 @@ export async function GET(
       {
         list,
         ordering: ORDERINGS[list],
-        data: data.filter((row) => row !== null),
+        data: withKevCweDetails(
+          db,
+          data.filter((row) => row !== null),
+        ),
         deltaPp: null,
         pagination: { limit, hasMore, nextCursor },
         coverage: coverageFor(items, page.length),

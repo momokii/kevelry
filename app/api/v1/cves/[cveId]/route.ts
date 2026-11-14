@@ -8,6 +8,7 @@ import { CVE_ID_RE } from "../../_lib/params";
 import { buildProvenance } from "../../_lib/provenance";
 import { detailExtras, loadFullRecords, toCveItem } from "../../_lib/records";
 import { loadEpssHistory } from "../../_lib/epss-history";
+import { resolveCweRefs } from "../../../../../src/lib/cwe-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,10 @@ export async function GET(
           ...toCveItem(record, getAcceptedEpssDate(db), null),
           descriptionLanguages: extras.descriptionLanguages,
           references: extras.references,
+          // Detail-only taxonomy labels for `kev.cwes`, same order and deduped.
+          // An absent/non-ready catalog still yields one `taxonomy-unavailable`
+          // ref per id; lists omit this block deliberately (payload cost).
+          cweDetails: resolveCweRefs(db, record.kevCwes),
           // Detail-only: per-date EPSS observations, oldest first, capped.
           // Lists omit it for cost; null means no observations were retained.
           epssHistory: history.get(cveId) ?? null,

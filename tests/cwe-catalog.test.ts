@@ -18,6 +18,7 @@ import {
   getCweCatalogMeta,
   normalizeCweId,
   resolveCweIds,
+  stripCweMarkers,
 } from "../src/lib/cwe-catalog";
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 
@@ -109,6 +110,39 @@ function seedKnownCatalog(db: CveDatabase): void {
     mitigation: "Use a vetted library or framework that does not allow this weakness to occur.",
   });
 }
+
+describe("stripCweMarkers", () => {
+  it("removes a phase marker in the middle of a sentence", () => {
+    expect(stripCweMarkers("Review the code ::PHASE:Implementation:: before shipping.")).toBe(
+      "Review the code before shipping.",
+    );
+  });
+
+  it("removes every marker, including names that contain a single colon", () => {
+    expect(
+      stripCweMarkers(
+        "::PHASE:Architecture and Design::Design it. ::PHASE:Implementation::Then build it.",
+      ),
+    ).toBe("Design it. Then build it.");
+  });
+
+  it("returns an empty string when the text is markers only", () => {
+    expect(stripCweMarkers("::PHASE:Implementation::")).toBe("");
+    expect(stripCweMarkers("  ::PHASE:A:: ::PHASE:B::  ")).toBe("");
+  });
+
+  it("leaves text without markers unchanged", () => {
+    expect(stripCweMarkers("Use a vetted library or framework.")).toBe(
+      "Use a vetted library or framework.",
+    );
+  });
+
+  it("collapses whitespace and trims", () => {
+    expect(stripCweMarkers("  multiple   spaces\tand\nnewlines  ")).toBe(
+      "multiple spaces and newlines",
+    );
+  });
+});
 
 describe("getCweCatalogMeta", () => {
   it("reports empty before any catalog load", () => {
@@ -229,6 +263,38 @@ describe("resolveCweIds", () => {
       expect(ref.status).toBe("unmapped");
       expect(ref.url).toBe("");
     }
+  });
+
+  it("strips MITRE phase markers from summary and mitigation at projection time", () => {
+    const db = makeDatabase();
+    seedMeta(db);
+    seedEntry(db, {
+      id: "CWE-79",
+      name: "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
+      summary: "The product ::PHASE:Implementation:: fails to neutralize input.",
+      mitigation:
+        "::PHASE:Architecture and Design::Use structure. ::PHASE:Implementation::Encode output.",
+    });
+
+    const ref = resolveCweIds(db, ["CWE-79"]).get("CWE-79") as CweRef;
+    expect(ref.summary).toBe("The product fails to neutralize input.");
+    expect(ref.mitigation).toBe("Use structure. Encode output.");
+    expect(JSON.stringify(ref)).not.toContain("::");
+  });
+
+  it("omits a marker-only field instead of projecting empty text", () => {
+    const db = makeDatabase();
+    seedMeta(db);
+    seedEntry(db, {
+      id: "CWE-79",
+      name: "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
+      summary: null,
+      mitigation: "::PHASE:Implementation::",
+    });
+
+    const ref = resolveCweIds(db, ["CWE-79"]).get("CWE-79") as CweRef;
+    expect(ref.status).toBe("known");
+    expect(ref.mitigation).toBeUndefined();
   });
 
   it("looks up ids across chunk boundaries", () => {

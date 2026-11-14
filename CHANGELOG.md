@@ -7,6 +7,29 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **CWE labels in API payloads with marker stripping and a fail-closed flag
+  (E3 step 3a).** `GET /api/v1/cves/{cveId}` now serves a top-level
+  `cweDetails: CweRef[]` alongside `kev.cwes` (same order, deduped after
+  normalization, never omitted), and every priority row carries the additive
+  `kev.cweDetails`, resolved for the whole page in one batched catalog lookup.
+  `CweRef.status` keeps the three states distinct — `known` (published `name`
+  plus `abstraction`/`summary`/`mitigation` only when MITRE published them),
+  `unmapped`, and `taxonomy-unavailable` (still present, with its canonical
+  `url`) — so an absent or stale catalog never removes an id and never invents a
+  name. List, search, and bulk rows stay ID-only by design. A new
+  `stripCweMarkers` in `src/lib/cwe-catalog.ts` removes MITRE's `::PHASE:…::`
+  control markers (plus any other `::…::` run), collapses whitespace, and never
+  throws; it runs at projection time only, so stored rows stay verbatim and no
+  payload contains `::`. `CWE_REFRESH_ENABLED` is now **fail-closed**: only
+  `true`/`false` are accepted, absent still means enabled (the job is 24 h-gated
+  and hash-conditional), and any other value disables the refresh and logs one
+  `cwe-refresh-config-invalid` event with the value sanitised to a single,
+  length-capped line — a typo can no longer look like consent to fetch
+  upstream. Docs: `openapi/v1.yaml` (`CweRef`, detail `cweDetails`, priority
+  `kev.cweDetails`), `docs/api/cves.md`, `docs/api/priority-lists.md`,
+  `DESIGN.md` (chip anatomy, marker rule, list rows stay ID-only), and
+  `docs/DATA_WORKFLOW.md` (payload states, fail-closed flag).
+
 - **CWE catalog ingest with last-known-good (E3 step 2b).**
   `refreshCweCatalog(db, options)` in `src/lib/cwe-import.ts` is now the only
   writer of `cwe_entries` / `cwe_catalog_meta`: fetch → `extractSingleEntryZip`

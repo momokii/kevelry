@@ -231,17 +231,31 @@ function refreshAggregatesForced(db: CveDatabase, log: LogFn = defaultLog): bool
 /**
  * Resolve whether the worker keeps the local CWE catalog fresh.
  *
- * Default true: the refresh is one conditional HTTP request per day at most.
- * Deliberately lenient like the other `*_ONCE` toggles — only the exact string
- * `false` disables it. A typo must not crash the worker over an optional
- * maintenance job, which would defeat the fail-soft contract it exists for.
+ * Fail closed: only the exact strings `true` and `false` (after trim) are
+ * accepted. An absent variable keeps the default ON — the refresh is one
+ * conditional HTTP request per day at most, hash-gated and 24h-gated — while a
+ * malformed value (including an empty string) disables it and logs
+ * `cwe-refresh-config-invalid` once with the value sanitised. A plausible typo
+ * must never look like consent to contact upstream.
  */
 export function resolveCweRefreshEnabled(
   env: Record<string, string | undefined> = process.env,
+  log: LogFn = defaultLog,
 ): boolean {
-  const raw = env.CWE_REFRESH_ENABLED?.trim();
-  if (raw === undefined || raw === "") return true;
-  return raw !== "false";
+  const raw = env.CWE_REFRESH_ENABLED;
+  if (raw === undefined) return true;
+  const value = raw.trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  log({ event: "cwe-refresh-config-invalid", value: sanitizeFlagValue(raw) });
+  return false;
+}
+
+/** One-line, bounded, credential-free rendering of a rejected env value. */
+function sanitizeFlagValue(raw: string): string {
+  const collapsed = raw.split(/\r?\n/, 1)[0]?.replace(/\s+/g, " ").trim() ?? "";
+  if (collapsed === "") return "<empty>";
+  return collapsed.length > 64 ? `${collapsed.slice(0, 63)}…` : collapsed;
 }
 
 export interface CweRefreshRunOptions {
@@ -615,7 +629,8 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   // contribute to `failed`/readiness or block an import. The gate keeps the
   // scheduled cost at one conditional HTTP request per 24h in this process; a
   // restart re-checks at most once. Failures are logged and swallowed.
-  const cweRefreshEnabled = options.deps?.cweRefreshEnabled ?? resolveCweRefreshEnabled();
+  const cweRefreshEnabled =
+    options.deps?.cweRefreshEnabled ?? resolveCweRefreshEnabled(process.env, log);
   let cweLastAttemptAt: string | null = cweRefreshEnabled ? cweGateAnchor(db) : null;
   let cweInFlight: Promise<void> | null = null;
   const kickCweRefresh = (): Promise<void> => {

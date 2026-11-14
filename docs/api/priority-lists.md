@@ -71,7 +71,17 @@ curl "https://radar.example.org/api/v1/priority/rising-forecast?limit=2"
         "vulnerabilityName": null,
         "ransomwareUse": "unstated",
         "ransomwareKnown": null,
-        "cwes": ["CWE-78"]
+        "cwes": ["CWE-78"],
+        "cweDetails": [
+          {
+            "id": "CWE-78",
+            "status": "known",
+            "name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+            "abstraction": "Base",
+            "mitigation": "Use a vetted library or framework that does not allow this weakness to occur.",
+            "url": "https://cwe.mitre.org/data/definitions/78.html"
+          }
+        ]
       },
       "epss": {
         "status": "known",
@@ -134,3 +144,34 @@ Rising-forecast responses add `deltaPp` aligned with `data` order
 rounded display text). Stale snapshots keep dated values with `stale: true`;
 they are never relabeled as current. Every response carries `provenance` and
 the rate-limit headers from the [README](README.md#limits).
+
+## CWE taxonomy labels
+
+Every priority row carries `kev.cweDetails`: the local MITRE taxonomy's label
+for each id in that row's `kev.cwes`, in the same order and deduped after
+normalization. The whole page's ids resolve in **one** batched catalog lookup,
+so a page never costs one lookup per row.
+
+Contract:
+
+- **Additive.** `kev.cwes` keeps its name and meaning as the ID-only list, and
+  every other `CveItem` field is unchanged. Clients that ignore `cweDetails` see
+  exactly the payload they saw before.
+- **Never omitted.** Every id yields one entry, so `cweDetails` is `[]` only when
+  `cwes` is `[]`. With no accepted catalog (never loaded, a failed refresh, or
+  unreadable) each entry is `taxonomy-unavailable` with its canonical MITRE
+  `url` — an absent taxonomy never removes an id from the array and never
+  produces an invented name.
+- `status` is `known` (id in the accepted catalog; carries the published `name`
+  plus `abstraction`/`summary`/`mitigation` when the taxonomy published them),
+  `unmapped` (well-formed id absent from the catalog, or an input with no valid
+  CWE shape), or `taxonomy-unavailable`. The three states are never collapsed.
+- Published `summary`/`mitigation` arrives with MITRE's `::…::` control markers
+  stripped at projection time. Those markers are publishing markup, not content,
+  so no payload contains `::`; stored catalog rows keep MITRE's verbatim text.
+- Priority rows are the only list-shaped surface with labels. `GET /api/v1/cves`,
+  search, and bulk rows stay ID-only; the per-record detail route carries the
+  same labels as top-level
+  [`cweDetails`](cves.md#cwe-taxonomy-labels-cwedetails).
+- Taxonomy labels are context: they never change ordering, coverage, filters, or
+  eligibility, and they are resolved locally (no upstream request).

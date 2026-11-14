@@ -1351,6 +1351,63 @@ components:
             type: string
           example:
             - CWE-78
+    CweRef:
+      type: object
+      required:
+        - id
+        - status
+        - url
+      description: >-
+        One taxonomy label for a CWE id, resolved against the local MITRE catalog. `status`
+        is the read path's verdict and is never a guess; `id` is always present, so an
+        uncertain label never drops a CWE from the list. `known` carries the published
+        `name` (and any optional text the taxonomy published); `unmapped` means a well-formed
+        id that is absent from the accepted catalog, or an input with no valid CWE shape;
+        `taxonomy-unavailable` means no accepted catalog is available (never loaded, a failed
+        refresh, or unreadable). Published `summary`/`mitigation` arrive with MITRE's
+        `::…::` control markers removed: they are publishing markup, not content, so no
+        response carries `::`.
+      properties:
+        id:
+          type: string
+          description: Normalized `CWE-<n>`, or the trimmed raw input when it has no valid CWE shape.
+          example: CWE-78
+        status:
+          type: string
+          enum:
+            - known
+            - unmapped
+            - taxonomy-unavailable
+          example: known
+        name:
+          type: string
+          description: Published taxonomy name. Present only when `status` is `known`; never invented.
+          example: >-
+            Improper Neutralization of Special Elements used in an OS Command ('OS Command
+            Injection')
+        abstraction:
+          type: string
+          description: Published abstraction (e.g. `Base`). Absent when the taxonomy publishes none.
+          example: Base
+        summary:
+          type: string
+          description: >-
+            Published description with `::…::` markers stripped. Absent when the taxonomy
+            published nothing, or published nothing but markup.
+          example: The product constructs all or part of an OS command using externally-influenced input.
+        mitigation:
+          type: string
+          description: >-
+            Published mitigation guidance with `::…::` markers stripped. Absent when the
+            taxonomy published nothing, or published nothing but markup; absence is never
+            read as “no mitigation exists”.
+          example: Use a vetted library or framework that does not allow this weakness to occur.
+        url:
+          type: string
+          description: >-
+            Canonical MITRE page for a well-formed id; the empty string when the input has no
+            valid CWE shape (a fake link is never invented).
+          example: https://cwe.mitre.org/data/definitions/78.html
     CvssPrimary:
       type: object
       required:
@@ -1569,7 +1626,17 @@ components:
             - descriptionLanguages
             - references
             - epssHistory
+            - cweDetails
           properties:
+            cweDetails:
+              type: array
+              description: >-
+                Taxonomy labels for `kev.cwes`, same order and deduped. Detail-only:
+                list, search, and bulk rows stay ID-only. Never omitted — with no accepted
+                catalog every entry is `taxonomy-unavailable` with its canonical `url`, so
+                the array is empty only when `kev.cwes` is empty.
+              items:
+                $ref: "#/components/schemas/CweRef"
             epssHistory:
               type: array
               nullable: true
@@ -1961,6 +2028,33 @@ components:
           example: true
         provenance:
           $ref: "#/components/schemas/Provenance"
+    PriorityKevSignal:
+      allOf:
+        - $ref: "#/components/schemas/KevSignal"
+        - type: object
+          required:
+            - cweDetails
+          properties:
+            cweDetails:
+              type: array
+              description: >-
+                Taxonomy labels for this row's `cwes`, same order and deduped; a page's ids
+                resolve in one batched catalog lookup. Purely additive: `cwes` stays the
+                ID-only field and every existing key keeps its name and meaning. Never
+                omitted — with no accepted catalog every entry is `taxonomy-unavailable`
+                with its canonical `url`.
+              items:
+                $ref: "#/components/schemas/CweRef"
+    PriorityCveItem:
+      description: >-
+        A `CveItem` as served on the priority routes: identical fields, plus
+        `kev.cweDetails`. List, search, and bulk rows do not carry taxonomy labels.
+      allOf:
+        - $ref: "#/components/schemas/CveItem"
+        - type: object
+          properties:
+            kev:
+              $ref: "#/components/schemas/PriorityKevSignal"
     PriorityListResponse:
       type: object
       required:
@@ -1984,7 +2078,7 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/CveItem"
+            $ref: "#/components/schemas/PriorityCveItem"
         deltaPp:
           type: array
           nullable: true

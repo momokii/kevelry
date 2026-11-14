@@ -23,6 +23,7 @@ import { writeCheckpoint } from "../src/lib/radar";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { exploitReferencesOf } from "../app/api/v1/_lib/records";
 import { loadEpssHistory } from "../app/api/v1/_lib/epss-history";
+import type { CweRef } from "../src/lib/cwe-catalog";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
@@ -113,6 +114,7 @@ function seedRecord(
     published?: string | null;
     metrics?: Array<{ origin: string; version: string; baseScore: string; vector?: string }>;
     kev?: string | null;
+    cwes?: string[];
     epss?: Array<{ date: string; value: string; percentile?: string; model?: string }>;
     rawJson?: string | null;
   } = {},
@@ -148,6 +150,11 @@ function seedRecord(
           "INSERT INTO kev_entries (cve_id, date_added, catalog_date, recorded_at) VALUES (?, ?, ?, ?)",
         )
         .run(cveId, opts.kev, "2026.10.23", STAMP);
+    }
+    for (const cwe of opts.cwes ?? []) {
+      db.handle
+        .prepare("INSERT OR IGNORE INTO kev_cwes (cve_id, cwe_id) VALUES (?, ?)")
+        .run(cveId, cwe);
     }
     for (const row of opts.epss ?? []) {
       db.handle
@@ -441,6 +448,160 @@ describe("v1 cve list and detail routes", () => {
     const note = (adpData.cvssSecondary as { coverageNote: string }).coverageNote.toLowerCase();
     expect(note).toContain("context only");
     expect(note).toContain("not used for ranking or eligibility");
+  });
+});
+
+describe("CWE taxonomy enrichment (detail and priority only)", () => {
+  const CWE_VERSION = "1000-2";
+
+  function seedCweCatalog(db: CveDatabase): void {
+    db.runBoundedWrite(() => {
+      db.handle
+        .prepare(
+          "INSERT OR REPLACE INTO cwe_catalog_meta (id, version, source, source_hash, retrieved_at, status, record_count, notes) VALUES (1, ?, ?, ?, ?, 'ready', 3, NULL)",
+        )
+        .run(CWE_VERSION, "MITRE CWE", "a".repeat(64), STAMP);
+      const insert = db.handle.prepare(
+        "INSERT OR REPLACE INTO cwe_entries (cwe_id, name, abstraction, status, summary, mitigation, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      insert.run(
+        "CWE-78",
+        "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+        "Base",
+        "Stable",
+        "The product builds an OS command from externally-influenced input.",
+        "::PHASE:Architecture and Design::Use a vetted library. ::PHASE:Implementation::Escape arguments.",
+        CWE_VERSION,
+        STAMP,
+      );
+      insert.run(
+        "CWE-79",
+        "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
+        "Base",
+        "Stable",
+        "The product does not neutralize user input before it is placed in output.",
+        null,
+        CWE_VERSION,
+        STAMP,
+      );
+    });
+  }
+
+  it("returns ordered, deduped cweDetails on the detail route with markers stripped", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    seedCweCatalog(db);
+    seedRecord(db, "CVE-2099-0007", {
+      kev: "2026-10-23",
+      // `CWE-079` normalizes to `CWE-79`, so the third id is a duplicate.
+      cwes: ["CWE-78", "CWE-79", "CWE-079"],
+    });
+
+    const response = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0007"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0007" }),
+    });
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    const data = (JSON.parse(raw) as { data: Record<string, unknown> }).data;
+    const kev = data.kev as { cwes: string[] };
+    const details = data.cweDetails as CweRef[];
+
+    expect(kev.cwes).toEqual(["CWE-079", "CWE-78", "CWE-79"]);
+    expect(details.map((ref) => ref.id)).toEqual(["CWE-79", "CWE-78"]);
+    expect(details[1]).toEqual({
+      id: "CWE-78",
+      status: "known",
+      name: "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+      abstraction: "Base",
+      summary: "The product builds an OS command from externally-influenced input.",
+      mitigation: "Use a vetted library. Escape arguments.",
+      url: "https://cwe.mitre.org/data/definitions/78.html",
+    });
+    expect(details[0]?.mitigation).toBeUndefined();
+    expect(raw).not.toContain("::");
+  });
+
+  it("keeps every id as taxonomy-unavailable with its url when no catalog exists", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    seedRecord(db, "CVE-2099-0007", { kev: "2026-10-23", cwes: ["CWE-78", "CWE-79"] });
+
+    const response = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0007"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0007" }),
+    });
+    const raw = await response.text();
+    const data = (JSON.parse(raw) as { data: Record<string, unknown> }).data;
+    expect(data.cweDetails).toEqual([
+      {
+        id: "CWE-78",
+        status: "taxonomy-unavailable",
+        url: "https://cwe.mitre.org/data/definitions/78.html",
+      },
+      {
+        id: "CWE-79",
+        status: "taxonomy-unavailable",
+        url: "https://cwe.mitre.org/data/definitions/79.html",
+      },
+    ]);
+    expect(raw).not.toContain("::");
+  });
+
+  it("adds kev.cweDetails to priority rows without changing existing fields", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    seedCweCatalog(db);
+    seedRecord(db, "CVE-2099-0007", { kev: "2026-10-23", cwes: ["CWE-78", "CWE-79"] });
+
+    const response = await getPriority(
+      new Request("https://radar.test/api/v1/priority/known-exploited?limit=100"),
+      { params: Promise.resolve({ listName: "known-exploited" }) },
+    );
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    const data = (JSON.parse(raw) as { data: Array<Record<string, unknown>> }).data;
+    const row = data.find((item) => item.cveId === "CVE-2099-0007") as Record<string, unknown>;
+    expect(row).toBeDefined();
+    const kev = row.kev as { cwes: string[]; cweDetails: CweRef[] };
+
+    expect(kev.cwes).toEqual(["CWE-78", "CWE-79"]);
+    expect(kev.cweDetails.map((ref) => ref.id)).toEqual(["CWE-78", "CWE-79"]);
+    expect(kev.cweDetails[0]).toMatchObject({
+      status: "known",
+      name: expect.stringContaining("OS Command Injection"),
+      mitigation: "Use a vetted library. Escape arguments.",
+    });
+    // Every pre-existing field keeps its value; the block is purely additive.
+    expect(kev).toMatchObject({ listed: true, dateAdded: "2026-10-23", ransomwareUse: "unstated" });
+    expect(row.epss).toEqual({
+      status: "unknown",
+      value: null,
+      percentile: null,
+      scoreDate: null,
+      modelVersion: null,
+    });
+    expect(raw).not.toContain("::");
+  });
+
+  it("deliberately omits cweDetails from search and list rows", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    seedCweCatalog(db);
+    seedRecord(db, "CVE-2099-0007", { kev: "2026-10-23", cwes: ["CWE-78"] });
+
+    const list = await getCves(new Request("https://radar.test/api/v1/cves?limit=10"));
+    const listRows = ((await bodyOf(list)).data ?? []) as Array<Record<string, unknown>>;
+    expect(listRows.length).toBeGreaterThan(0);
+    for (const listRow of listRows) {
+      expect("cweDetails" in listRow, "list rows stay ID-only").toBe(false);
+      expect("cweDetails" in (listRow.kev as Record<string, unknown>)).toBe(false);
+    }
+
+    const search = await getSearch(new Request("https://radar.test/api/v1/search?q=Title"));
+    const searchRows = ((await bodyOf(search)).data ?? []) as Array<Record<string, unknown>>;
+    expect(searchRows.length).toBeGreaterThan(0);
+    for (const searchRow of searchRows) {
+      expect("cweDetails" in searchRow).toBe(false);
+    }
   });
 });
 

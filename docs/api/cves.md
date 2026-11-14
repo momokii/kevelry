@@ -152,7 +152,7 @@ Contract:
 - `data` is in requested-dedupe order and each item is exactly the `CveItem`
   the list route serves. **Parity:** a bulk item deep-equals the same record from
   `GET /api/v1/cves/{cveId}` once the detail-only extras
-  (`descriptionLanguages`, `references`, `epssHistory`) are removed.
+  (`descriptionLanguages`, `references`, `epssHistory`, `cweDetails`) are removed.
 - `resolution.requested` is the unique ID count after trim/dedupe,
   `resolution.returned` is `data.length`, and `resolution.missingIds` lists the
   requested IDs with no current `PUBLISHED` record, in requested order. Missing
@@ -189,6 +189,67 @@ additive: existing keys keep their names and meaning.
 - `ransomwareKnown` remains as a legacy boolean alias for the same fact
   (`true`/`false`/`null` for known/unknown/unstated). New clients should read
   `ransomwareUse`.
+
+`cwes` is ID-only on list, search, and bulk rows by design. The taxonomy label
+for those ids is served as [CWE taxonomy labels](#cwe-taxonomy-labels-cwedetails)
+on the detail and priority routes only.
+
+## CWE taxonomy labels (`cweDetails`)
+
+`GET /api/v1/cves/{cveId}` adds `cweDetails`: the local MITRE taxonomy's label
+for each id in `kev.cwes`, in the same order, deduped after normalization
+(`CWE-079` and `79` are the same `CWE-79`). Every requested id always yields one
+entry, so the array is empty only when `kev.cwes` is empty. Key order aside, the
+shape is `{ id, status, url }` plus the published fields a `known` entry carries.
+
+```bash
+curl "https://radar.example.org/api/v1/cves/CVE-2026-109618"
+```
+
+```json
+{
+  "data": {
+    "cveId": "CVE-2026-109618",
+    "kev": { "listed": true, "cwes": ["CWE-78"] },
+    "cweDetails": [
+      {
+        "id": "CWE-78",
+        "status": "known",
+        "name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+        "abstraction": "Base",
+        "summary": "The product constructs all or part of an OS command using externally-influenced input.",
+        "mitigation": "Use a vetted library or framework that does not allow this weakness to occur.",
+        "url": "https://cwe.mitre.org/data/definitions/78.html"
+      }
+    ]
+  },
+  "provenance": { "...": "..." }
+}
+```
+
+Contract:
+
+- `status` is exactly one of three facts, never a guess. **`known`**: the id is
+  in the accepted catalog; `name` is the published label and `abstraction`,
+  `summary`, `mitigation` appear only when the taxonomy published them. A
+  missing mitigation is absent, not an empty block and not a claim that no
+  mitigation exists. **`unmapped`**: the id is well formed but absent from the
+  accepted catalog (or the input has no valid CWE shape); it keeps its canonical
+  `url` (empty string for an unparseable input) and never gains an invented
+  name. **`taxonomy-unavailable`**: no accepted catalog is available (never
+  loaded, a failed refresh, or unreadable) — the entry is still present with its
+  canonical `url`, never omitted and never silently dropped from the list.
+- Published `summary`/`mitigation` text is MITRE's wording with its `::…::`
+  control markers (e.g. `::PHASE:Implementation::`) removed at projection time.
+  Those markers are publishing markup, not content: no API payload contains
+  `::`. Stored rows are untouched, so a later reader can still see the original.
+- Labels are presentation context. They never change ranking, severity bands,
+  filters, or eligibility, and resolving them is a local read — no upstream
+  request is made to serve this block.
+- Detail-only. List (`GET /api/v1/cves`), search, and bulk rows deliberately omit
+  the key (and bulk/item parity accounts for it); see
+  [priority lists](priority-lists.md#cwe-taxonomy-labels) for the one other
+  surface that carries labels.
 
 ## Secondary CVSS block
 

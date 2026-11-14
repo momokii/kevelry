@@ -55,6 +55,25 @@ const CWE_ID_RE = /^(?:CWE-)?0*(\d{1,6})$/i;
 const CANONICAL_CWE_ID_RE = /^CWE-([1-9]\d*)$/;
 
 /**
+ * MITRE's published CSV wraps remediation phases in `::PHASE:<name>::` and uses
+ * the same `::…::` shape for other control markers. Opened by `::`, closed by
+ * the next `::`; the inner text may itself contain single colons (e.g.
+ * `::PHASE:Architecture and Design::`), so only a doubled colon terminates it.
+ */
+const CWE_MARKER_RE = /::(?:(?!::)[\s\S])*?::/g;
+
+/**
+ * Remove MITRE's `::…::` control markers from published taxonomy text, collapse
+ * runs of whitespace to one space, and trim. Pure and total: never throws, and
+ * marker-only text becomes the empty string. Applied at projection time only;
+ * stored rows keep MITRE's verbatim wording.
+ */
+export function stripCweMarkers(text: string): string {
+  if (typeof text !== "string") return "";
+  return text.replace(CWE_MARKER_RE, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
  * `CWE-79`, `cwe-79`, `79`, and zero-padded forms normalize to `CWE-79`.
  * Anything else — including an empty string, `CWE-0`, or a number-shaped
  * string that is too long — returns null and is never thrown on.
@@ -72,6 +91,15 @@ export function normalizeCweId(raw: unknown): string | null {
 export function cweUrl(id: string): string {
   const match = CANONICAL_CWE_ID_RE.exec(id);
   return match === null ? "" : `https://cwe.mitre.org/data/definitions/${match[1]}.html`;
+}
+
+/**
+ * The key `resolveCweIds` uses for one input: its normalized id, or the trimmed
+ * raw string when the id has no valid shape. Shared with the ordered helpers
+ * below so both surfaces can never disagree about which id a ref describes.
+ */
+function resolutionKey(raw: unknown): string {
+  return normalizeCweId(raw) ?? (typeof raw === "string" ? raw.trim() : String(raw));
 }
 
 function readStatus(raw: unknown): CweCatalogStatus {
@@ -152,7 +180,7 @@ export function resolveCweIds(db: CveDatabase, ids: readonly string[]): Map<stri
   for (const raw of ids as readonly unknown[]) {
     const normalized = normalizeCweId(raw);
     if (normalized === null) {
-      const key = typeof raw === "string" ? raw.trim() : String(raw);
+      const key = resolutionKey(raw);
       if (!out.has(key)) {
         out.set(key, { id: key, status: "unmapped", url: "" });
       }
@@ -192,12 +220,63 @@ export function resolveCweIds(db: CveDatabase, ids: readonly string[]): Map<stri
       continue;
     }
     const ref: CweRef = { id, status: "known", name: row.name, url: cweUrl(id) };
-    // Absent optional fields stay absent instead of becoming "" or null, so a
-    // caller can distinguish "taxonomy has no mitigation text" from empty text.
+    // Long free text leaves this module stripped: MITRE markers are publishing
+    // markup, not content, so no API caller ever receives `::…::`. Absent (or
+    // marker-only) optional fields stay absent instead of becoming "" or null,
+    // so a caller can distinguish "no mitigation text" from empty text.
     if (row.abstraction !== null) ref.abstraction = row.abstraction;
-    if (row.summary !== null) ref.summary = row.summary;
-    if (row.mitigation !== null) ref.mitigation = row.mitigation;
+    const summary = row.summary === null ? null : stripCweMarkers(row.summary);
+    if (summary !== null && summary !== "") ref.summary = summary;
+    const mitigation = row.mitigation === null ? null : stripCweMarkers(row.mitigation);
+    if (mitigation !== null && mitigation !== "") ref.mitigation = mitigation;
     out.set(id, ref);
   }
   return out;
+}
+
+/**
+ * Turn a batched resolution back into an ordered list: caller order, one entry
+ * per id, duplicates removed after normalization. Every requested id yields a
+ * ref — the resolution map already carries one for every key — so an id is
+ * never omitted and never becomes a blank object.
+ */
+export function cweRefsFromResolution(
+  ids: readonly string[],
+  resolved: ReadonlyMap<string, CweRef>,
+): CweRef[] {
+  const out: CweRef[] = [];
+  const seen = new Set<string>();
+  for (const raw of ids as readonly unknown[]) {
+    const key = resolutionKey(raw);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(resolved.get(key) ?? { id: key, status: "unmapped", url: cweUrl(key) });
+  }
+  return out;
+}
+
+/**
+ * Resolve one id list into ordered refs. The single-record detail path. Same
+ * taxonomy-unavailable contract as `resolveCweIds`: an absent or non-ready
+ * catalog still returns every id, with its canonical URL and no invented name.
+ */
+export function resolveCweRefs(db: CveDatabase, ids: readonly string[]): CweRef[] {
+  return cweRefsFromResolution(ids, resolveCweIds(db, ids));
+}
+
+/**
+ * Resolve several id lists (one rendered page) in ONE batched catalog lookup
+ * while keeping each list's own order and dedupe. The priority routes use this
+ * so a page of rows costs one meta read plus bounded `IN` queries, never one
+ * lookup per row.
+ */
+export function resolveCweRefsMany(
+  db: CveDatabase,
+  idLists: readonly (readonly string[])[],
+): CweRef[][] {
+  const resolved = resolveCweIds(
+    db,
+    idLists.flatMap((ids) => [...ids]),
+  );
+  return idLists.map((ids) => cweRefsFromResolution(ids, resolved));
 }

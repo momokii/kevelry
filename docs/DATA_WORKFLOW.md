@@ -579,7 +579,14 @@ job and every visitor-facing read is purely local.
   that is at most one HTTP request per day per process, and one per restart.
   `CWE_REFRESH_ENABLED=false` disables it; `REFRESH_CWE_ONCE=true node
   dist/worker.mjs` performs exactly one attempt (no gate) and exits non-zero if
-  it failed, which is also the on-demand retry for a stale catalog.
+  it failed, which is also the on-demand retry for a stale catalog. The toggle
+  is **fail-closed**: only the exact strings `true` and `false` (after trim) are
+  accepted. An absent variable keeps the default ON — the job is already
+  24 h-gated and hash-conditional — but any other value, including an empty
+  string or a plausible typo like `yes` or `TRUE`, disables the job and logs one
+  `cwe-refresh-config-invalid` event (`{ event, value }`) with the rejected
+  value collapsed to one line and capped at 64 characters. A malformed value is
+  never read as consent to contact upstream.
 - **Conditional fetch.** When the downloaded bytes hash to the accepted
   `source_hash` nothing is parsed and nothing is written: the run reports
   `unchanged` and the accepted pin (and every row's `updated_at`) stays put. The
@@ -601,10 +608,27 @@ job and every visitor-facing read is purely local.
   no fact-table impact, so it cannot contribute to `failed`/readiness or block
   an import, and the worker only logs `cwe-refresh`, `cwe-refresh-unchanged`, or
   `cwe-refresh-failed` before moving on.
-- **Published text is verbatim.** `summary`/`mitigation` carry MITRE's published
-  wording, including the `::PHASE:…::` markers the CSV uses inside “Potential
-  Mitigations”. Presentation is the read path's problem; the importer never
-  rewrites upstream text beyond stripping CR/LF and the 600-code-point cap.
+- **Published text is verbatim at rest, markers stripped at projection.**
+  `summary`/`mitigation` carry MITRE's published wording, including the
+  `::PHASE:…::` markers the CSV uses inside “Potential Mitigations”. The
+  importer never rewrites upstream text beyond stripping CR/LF and the
+  600-code-point cap, so stored rows stay verbatim. The read path applies
+  `stripCweMarkers` when it projects a `CweRef`: every `::…::` run (opened by a
+  doubled colon, closed by the next doubled colon, single colons allowed
+  inside) is removed, whitespace is collapsed, and the result is trimmed. A
+  field that ends up empty is omitted rather than emitted as `""`; nothing here
+  throws, so malformed text degrades to text instead of failing a response.
+- **Taxonomy states in payloads.** The three read states appear exactly where a
+  reader is inspecting one record: `GET /api/v1/cves/{cveId}` serves a top-level
+  `cweDetails: CweRef[]` aligned with (and deduped like) `kev.cwes`, and every
+  priority row carries the additive `kev.cweDetails`. In both cases an id is
+  never omitted: with no accepted catalog every entry is `taxonomy-unavailable`
+  with its canonical MITRE `url`, a valid-shaped id missing from the catalog is
+  `unmapped`, and only `known` carries a `name` plus whatever
+  `abstraction`/`summary`/`mitigation` the taxonomy actually published. List,
+  search, and bulk rows stay ID-only (`kev.cwes`) by design, so page cost never
+  grows with taxonomy lookups. States are never collapsed, and a failed refresh
+  withdraws the `ready` claim without removing ids from any list.
 
 ## Retention (bounded growth)
 

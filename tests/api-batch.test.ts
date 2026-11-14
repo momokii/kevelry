@@ -212,6 +212,7 @@ describe("bulk CVE lookup route", () => {
     delete parityItem.descriptionLanguages;
     delete parityItem.references;
     delete parityItem.epssHistory;
+    delete parityItem.cweDetails;
 
     const batchItem = (batchBody.data as Array<Record<string, unknown>>)[0];
     expect(batchItem).toEqual(parityItem);
