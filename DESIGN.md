@@ -404,9 +404,11 @@ metric (of N unscored)`. Contract:
 
 ### Secondary CVSS block
 
-The record detail block (expanded Priority row, Explore inspector, API detail)
-shows exactly one secondary CVSS group, and only when a metric other than the
-selected primary exists. Contract:
+The block renders on exactly one surface: the **expanded Priority row**. There is
+no record-detail route and no Explore inspector in this product, so Explore
+result rows, Watch rows, and the Graph "+N more" dialog deliberately stay static
+and never expand into it; the API detail (`GET /api/v1/cves/{cveId}`) carries the
+same data as `cvssSecondary`. Contract:
 
 - **Secondary never looks like a band.** It is a list of rows under a
   "Secondary (context only)" label, never a second severity badge, chip, or
@@ -414,9 +416,12 @@ selected primary exists. Contract:
   neutral text (published score, version, origin/provider, and the vector in
   mono) so a v4.0 ADP score cannot read as this record's severity. No
   `badge-*`, band, or severity class may appear inside it.
-- It lives in the **detail/expanded severity block only** — never in the
-  compact signal line where the KEV/EPSS/CVSS chips sit — and it is never
-  filterable, sortable, or an eligibility input.
+- It lives in the **expanded severity block of a Priority row only** — never
+  in the compact signal line where the KEV/EPSS/CVSS chips sit — and it is
+  never filterable, sortable, or an eligibility input. Adding an
+  expanded/inspector surface that shows severity means rendering this same
+  block there, not a second implementation; a static list row must not grow an
+  expansion just to host it.
 - Every row is labeled `secondary (context only)`, the group carries a
   `HelpTip`, and a closing line says the metrics are never used for ranking,
   ordering, filtering, or eligibility.

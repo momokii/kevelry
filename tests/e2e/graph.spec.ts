@@ -122,6 +122,10 @@ test("+N more opens the complete attribute list in a dialog", async ({ page }) =
   await expect(firstRow.locator(".graph-dialog-badges")).toContainText(
     /EPSS|unscored|critical|high|medium|low|legacy/,
   );
+  // The dialog is a member list, not a record detail: severity is a badge per
+  // row and the secondary CVSS block never appears here.
+  await expect(dialog.getByTestId("priority-row-cvss-secondary")).toHaveCount(0);
+  await expect(dialog.getByText("context only")).toHaveCount(0);
 
   // A long group gets real affordances, not an endless scroll.
   await expect(dialog.getByTestId("graph-more-count")).toContainText("group holds");

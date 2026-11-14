@@ -69,6 +69,10 @@ for (const width of [360, 768, 1280]) {
       await expect(firstRow.getByTestId("explore-row-excerpt")).not.toBeEmpty();
       await expect(firstRow.getByTestId("explore-row-signals")).not.toBeEmpty();
       await expect(firstRow.getByTestId("explore-row-dates")).not.toBeEmpty();
+      // Explore rows are static by design: no expanded record detail exists
+      // here, so the secondary CVSS block must never leak into this list.
+      await expect(firstRow.getByTestId("priority-row-cvss-secondary")).toHaveCount(0);
+      await expect(page.getByTestId("explore-list").getByText("context only")).toHaveCount(0);
       const href = await firstRow.getByTestId("explore-row-action").getAttribute("href");
       expect(href, "official-record link").toMatch(/^https:\/\/www\.cve\.org\/CVERecord\?id=CVE-/);
       await expect(page.getByTestId("explore-page-count")).toContainText(

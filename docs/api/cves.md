@@ -108,7 +108,9 @@ rate-limit headers from the [README](README.md#limits).
 ## Secondary CVSS block
 
 `cvssSecondary` rides on every `CveItem` (list, detail, and search) and never
-replaces `cvssPrimary`:
+replaces `cvssPrimary`. That is a payload contract, not a UI one: in the
+console only the expanded Priority row renders the block, while Explore and
+Watch rows stay static lists. Contract:
 
 - `status` is `present` or `none`; `none` is explicit, never a missing key
 - `coverageNote` states the guard in prose: these metrics are context only and
