@@ -302,6 +302,24 @@ function exampleResponse(endpoint: { path: string }): string {
       2,
     );
   }
+  // Bulk lookup: same CveItem as the list route, but counts live under
+  // `resolution` — no `pagination` object and no `coverage` key, which keeps
+  // `coverage` meaning one thing (eligible cohort) on the list routes.
+  if (endpoint.path.endsWith("/cves/batch")) {
+    return JSON.stringify(
+      {
+        data: [{ ...cveItem }],
+        resolution: {
+          requested: 3,
+          returned: 2,
+          missingIds: ["CVE-2026-109999"],
+        },
+        provenance,
+      },
+      null,
+      2,
+    );
+  }
   if (endpoint.path.includes("/search")) {
     return JSON.stringify(
       {

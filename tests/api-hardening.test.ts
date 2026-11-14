@@ -504,7 +504,7 @@ describe("no raw database routes", () => {
       }
     };
     walk(root);
-    expect(routeFiles.length).toBe(11);
+    expect(routeFiles.length).toBe(12);
     for (const file of routeFiles) {
       const text = readFileSync(file, "utf8");
       expect(text, file).not.toMatch(/DATA_DIR|dataDir|\.db\b|openDatabase/);
@@ -513,6 +513,7 @@ describe("no raw database routes", () => {
     const modules = [
       await import("../app/api/v1/cves/route"),
       await import("../app/api/v1/cves/[cveId]/route"),
+      await import("../app/api/v1/cves/batch/route"),
       await import("../app/api/v1/search/route"),
       await import("../app/api/v1/priority/[listName]/route"),
       await import("../app/api/v1/radar/route"),

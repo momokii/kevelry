@@ -1,5 +1,6 @@
 export type ErrorCode =
   | "BAD_REQUEST"
+  | "BAD_ID"
   | "BAD_CURSOR"
   | "BAD_LIMIT"
   | "BAD_QUERY"

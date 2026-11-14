@@ -114,6 +114,67 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
+  /api/v1/cves/batch:
+    get:
+      operationId: listCvesBatch
+      summary: Look up many CVE records in one request
+      description: |
+        Bounded bulk lookup: 1 to 50 unique CVE IDs in one request, returned in
+        the requested order after trimming and dedupe (first-seen order wins).
+        Each item has exactly the `CveItem` shape the list route serves, so a
+        bulk item is identical to the same record fetched from
+        `/api/v1/cves/{cveId}` with the detail-only extras removed.
+
+        IDs with no current `PUBLISHED` record are listed in
+        `resolution.missingIds`; they are never fabricated, and one missing ID
+        never fails the request with a 404. There is no `pagination` object and
+        no `coverage` key here: bulk counts live under `resolution`, so
+        `coverage` keeps its one meaning (eligible cohort) on the list routes.
+
+        Known list/search params (`cursor`, `limit`, `severity`, `kev`, `epss`,
+        `exploit`, `publishedStart`, `publishedEnd`, `vendor`, `q`) are rejected
+        by name; any other unknown parameter is ignored. As on every v1 route,
+        the response carries the `provenance` envelope.
+      tags:
+        - Cves
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: >-
+            Comma-separated CVE IDs. Elements are trimmed and empty ones
+            dropped; duplicates are removed preserving first-seen order. Every
+            element must match CVE-YYYY-NNNN+, and the request carries at most
+            50 unique IDs. The parameter must appear once (no repeated-param
+            form).
+          schema:
+            type: string
+            example: CVE-2026-109618,CVE-2026-109620
+      responses:
+        "200":
+          description: Requested records in requested order, with the missing-ID resolution.
+          headers:
+            ETag:
+              description: Strong validator seeded over the canonical sorted ID set plus the aggregate revision.
+              schema:
+                type: string
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CveBatchResponse"
+              examples:
+                partialResolution:
+                  $ref: "#/components/examples/CveBatchPartialResolution"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/v1/search:
     get:
       operationId: searchCves
@@ -1444,6 +1505,51 @@ components:
           $ref: "#/components/schemas/CveDetail"
         provenance:
           $ref: "#/components/schemas/Provenance"
+    BulkResolution:
+      type: object
+      description: |
+        Bulk counts. `requested` is the unique ID count after trim and dedupe;
+        `returned` is `data.length`; `missingIds` lists requested IDs with no
+        current `PUBLISHED` record, in requested order. This route reports no
+        `coverage` object: `coverage` stays bound to eligible-cohort counts on
+        the list routes.
+      required:
+        - requested
+        - returned
+        - missingIds
+      properties:
+        requested:
+          type: integer
+          minimum: 1
+          maximum: 50
+          example: 3
+        returned:
+          type: integer
+          minimum: 0
+          maximum: 50
+          example: 2
+        missingIds:
+          type: array
+          items:
+            type: string
+            example: CVE-2026-109999
+    CveBatchResponse:
+      type: object
+      required:
+        - data
+        - resolution
+        - provenance
+      properties:
+        data:
+          type: array
+          maxItems: 50
+          description: Requested-dedupe order. Items absent from the accepted snapshots are not present.
+          items:
+            $ref: "#/components/schemas/CveItem"
+        resolution:
+          $ref: "#/components/schemas/BulkResolution"
+        provenance:
+          $ref: "#/components/schemas/Provenance"
     SearchResponse:
       type: object
       required:
@@ -2137,6 +2243,85 @@ components:
         provenance:
           $ref: "#/components/schemas/Provenance"
   examples:
+    CveBatchPartialResolution:
+      value:
+        data:
+          - cveId: CVE-2026-109618
+            title: CVE-2026-109618
+            state: PUBLISHED
+            publishedAt: "2026-10-20T14:02:00Z"
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109618
+            excerpt: A denial of service flaw was found in the packet parser ...
+            excerptTruncated: true
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: true
+              dateAdded: "2026-10-23"
+            epss:
+              status: known
+              value: 0.1162
+              percentile: 0.96047
+              scoreDate: "2026-10-23"
+              modelVersion: v2026.06.15
+            cvssPrimary:
+              status: known
+              source: cna
+              version: "4.0"
+              baseScore: 9.2
+              vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+          - cveId: CVE-2026-109620
+            title: CVE-2026-109620
+            state: PUBLISHED
+            publishedAt: "2026-10-18T07:45:00Z"
+            officialUrl: https://www.cve.org/CVERecord?id=CVE-2026-109620
+            excerpt: A flaw in the archive helper allows ...
+            excerptTruncated: false
+            excerptLanguage: en
+            excerptStatus: present
+            kev:
+              listed: false
+              dateAdded: null
+            epss:
+              status: unknown
+              value: null
+              percentile: null
+              scoreDate: null
+              modelVersion: null
+            cvssPrimary:
+              status: unknown
+              source: null
+              version: null
+              baseScore: null
+              vector: null
+        resolution:
+          requested: 3
+          returned: 2
+          missingIds:
+            - CVE-2026-109999
+        provenance:
+          rankingPolicyVersion: ranking-v1
+          generatedAt: "2026-10-24T04:00:00Z"
+          sources:
+            cve:
+              revision: abc1234
+              lastCheckedAt: "2026-10-24T03:55:00Z"
+              lastAcceptedAt: "2026-10-24T03:10:00Z"
+              stale: false
+              error: null
+            kev:
+              catalogVersion: "2026.10.23"
+              lastCheckedAt: "2026-10-24T03:55:00Z"
+              lastAcceptedAt: "2026-10-24T03:10:00Z"
+              stale: false
+              error: null
+            epss:
+              scoreDate: "2026-10-23"
+              modelVersion: v2026.06.15
+              lastCheckedAt: "2026-10-24T03:55:00Z"
+              lastAcceptedAt: "2026-10-24T03:10:00Z"
+              stale: false
+              error: null
     CveListFirstPage:
       value:
         data:

@@ -403,6 +403,7 @@ export const SAMPLE_PATH_PARAMS: Record<string, string> = {
 /** Sample queries per operation so every endpoint gets a copy-paste example. */
 export const SAMPLE_QUERIES: Record<string, string> = {
   listCves: "?limit=2",
+  listCvesBatch: "?ids=CVE-2026-109618,CVE-2026-109620",
   getCveById: "",
   searchCves: "?q=openssl&limit=2",
   getPriorityList: "?limit=2",
@@ -455,6 +456,7 @@ export const FRESHNESS_TEXT = [
 
 export const ERROR_CATALOG: { code: string; http: string; meaning: string }[] = [
   { code: "BAD_REQUEST", http: "400", meaning: "Generic rejected input" },
+  { code: "BAD_ID", http: "400", meaning: "A bulk ids element is not shaped CVE-YYYY-NNNN+" },
   { code: "BAD_CURSOR", http: "400", meaning: "Malformed or foreign cursor" },
   { code: "BAD_LIMIT", http: "400", meaning: "limit outside 1–200" },
   { code: "BAD_QUERY", http: "400", meaning: "q too short, too long, or unsafe" },
@@ -486,9 +488,9 @@ export const DEPRECATION_TEXT = [
 export const HUMAN_GUIDES: { file: string; title: string; anchor: string; blurb: string }[] = [
   {
     file: "cves.md",
-    title: "Current records and one-record lookup",
+    title: "Current records, one-record lookup, and bulk lookup",
     anchor: "listCves",
-    blurb: "Paginated PUBLISHED records and one CVE by ID.",
+    blurb: "Paginated PUBLISHED records, one CVE by ID, and up to 50 IDs in one call.",
   },
   {
     file: "search.md",

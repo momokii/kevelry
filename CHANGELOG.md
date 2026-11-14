@@ -7,6 +7,28 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **Bulk CVE lookup route (E4).** `GET /api/v1/cves/batch?ids=CVE-…,CVE-…`
+  returns up to 50 records in one bounded read. `ids` is required, trimmed,
+  empties dropped, and deduped preserving first-seen order, so `data` is in
+  requested order; every element must match `CVE-YYYY-NNNN+` and the cap is 50
+  unique IDs. The envelope is `{ data, resolution: { requested, returned,
+  missingIds }, provenance }`: absent and not-publicly-visible IDs are listed
+  in `resolution.missingIds` (requested order) instead of being fabricated or
+  failing the whole request with a `404`. The route deliberately does **not**
+  reuse the list route's `coverage` key, which keeps its single meaning
+  (eligible cohort). Known list/search params (`cursor`, `limit`, `severity`,
+  `kev`, `epss`, `exploit`, `publishedStart`, `publishedEnd`, `vendor`, `q`)
+  are rejected with `400 BAD_REQUEST` naming the param; any other unknown
+  parameter is ignored. Success responses carry the usual strong `ETag` seeded
+  over the canonical sorted ID set plus the aggregate revision, so the same set
+  in any order revalidates as `304`. Guardrails are the shared ones (`getDb`,
+  rate limit, concurrency slot, request bounds, `preflightResponse`), and items
+  are exactly the `CveItem` shape the list route serves, so a bulk item
+  deep-equals the same record from `GET /api/v1/cves/{cveId}` minus the
+  detail-only extras. `BAD_ID` joins the error catalog. Docs updated in
+  `docs/api/cves.md`, `docs/api/README.md`, `openapi/v1.yaml`, and the
+  `/api-docs` page. Playwright is out of scope for this API-only epic.
+
 - **Unscored coverage counters and the secondary coverage detail block (E1).**
   `unscored` was one number for two different situations. The aggregate cache
   now splits it with two additive SQL counters over the same predicates the

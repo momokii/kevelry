@@ -9,7 +9,7 @@ parameters, response highlights, and one copy-paste curl example per endpoint.
 
 Per-view pages:
 
-- [cves.md](cves.md) — current published records and one-record lookup
+- [cves.md](cves.md) — current published records, one-record lookup, and bounded bulk lookup
 - [search.md](search.md) — ID and description search behind the explore view
 - [priority-lists.md](priority-lists.md) — the six named explainable orderings
 - [graph.md](graph.md) — KEV-cohort relationship graph with labeled links
@@ -43,7 +43,9 @@ Base path: `/api/v1`. All responses are JSON. Every success response carries:
 - `provenance.sources.{cve,kev,epss}` — revision or version, score date and
   model where applicable, last check, last acceptance, `stale` flag, last error
 - `coverage` on list responses — eligible cohort plus unscored, unknown-EPSS,
-  and unknown-date counts; unknowns are counted, never hidden
+  and unknown-date counts; unknowns are counted, never hidden. The bulk route
+  (`/api/v1/cves/batch`) reports `resolution` instead and deliberately never
+  reuses `coverage`, so the key keeps exactly one meaning
 
 Unknown values are explicit. A missing EPSS row renders as
 `"epss": {"status": "unknown", "value": null, ...}` and is never coerced to 0.
@@ -104,6 +106,7 @@ stable; `message` is sanitized; no stack traces, paths, or secrets.
 | Code                     | HTTP | Meaning                                                       |
 | ------------------------ | ---- | ------------------------------------------------------------- |
 | `BAD_REQUEST`            | 400  | Generic rejected input                                        |
+| `BAD_ID`                 | 400  | A bulk `ids` element is not shaped `CVE-YYYY-NNNN+`           |
 | `BAD_CURSOR`             | 400  | Malformed or foreign cursor                                   |
 | `BAD_LIMIT`              | 400  | `limit` outside 1–200                                         |
 | `BAD_QUERY`              | 400  | `q` too short, too long, or unsafe                            |

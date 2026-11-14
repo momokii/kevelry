@@ -7,16 +7,20 @@ points, explore results, priority lists, radar inspector, replay output).
 
     GET /api/v1/cves
     GET /api/v1/cves/{cveId}
+    GET /api/v1/cves/batch
 
 List returns current `PUBLISHED` records in default-priority order (KEV tier,
 EPSS presence, raw probability, date, ID). Detail returns one record with
-descriptions, references, and full signals. Rejected IDs are not served here.
+descriptions, references, and full signals. Bulk returns up to 50 requested
+records in one bounded call with its own envelope. Rejected IDs are not served
+here.
 
 ## Parameters
 
 List accepts `cursor`, `limit`, and the shared filters (`severity`, `kev`,
 `epss`, `publishedStart`, `publishedEnd`); see [README](README.md#filters).
-`{cveId}` must match `CVE-YYYY-NNNN+`.
+`{cveId}` must match `CVE-YYYY-NNNN+`. Bulk accepts only `ids`; see
+[Bulk lookup](#bulk-lookup).
 
 ## Example
 
@@ -104,6 +108,66 @@ Unknown EPSS is explicit null, never 0; a real zero is `"status": "known",
 (`adp-only`, `legacy`) instead of a promoted number. Unknown dates are null and
 excluded from dated views. Every response carries `provenance` and the
 rate-limit headers from the [README](README.md#limits).
+
+## Bulk lookup
+
+`GET /api/v1/cves/batch` reads many records in one bounded request. It is a
+separate route, not a mode switch on the list route, so each route keeps one
+envelope: the list route keeps `pagination` and `coverage`, and this one
+returns `resolution`.
+
+Parameters:
+
+| Param | Values                  | Notes                                                                                                                                                                                                                     |
+| ----- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ids` | comma-separated CVE IDs | Required. Elements trimmed, empty ones dropped, duplicates removed preserving first-seen order. Every element must match `CVE-YYYY-NNNN+`; 1 to 50 unique IDs. One canonical encoding only — repeating `ids` is rejected. |
+
+Known list/search params are **rejected by name**, never silently ignored: `cursor`, `limit`, `severity`, `kev`, `epss`, `exploit`, `publishedStart`, `publishedEnd`, `vendor`, `q`. Any **other unknown parameter is ignored**, since it has no documented meaning here to conflict with.
+
+```bash
+curl "https://radar.example.org/api/v1/cves/batch?ids=CVE-2026-109618,CVE-2026-109620"
+```
+
+```json
+{
+  "data": [
+    { "cveId": "CVE-2026-109618", "title": "CVE-2026-109618", "state": "PUBLISHED" },
+    { "cveId": "CVE-2026-109620", "title": "CVE-2026-109620", "state": "PUBLISHED" }
+  ],
+  "resolution": {
+    "requested": 3,
+    "returned": 2,
+    "missingIds": ["CVE-2026-109999"]
+  },
+  "provenance": {
+    "rankingPolicyVersion": "ranking-v1",
+    "generatedAt": "2026-10-24T04:00:00Z",
+    "sources": { "...": "..." }
+  }
+}
+```
+
+Contract:
+
+- `data` is in requested-dedupe order and each item is exactly the `CveItem`
+  the list route serves. **Parity:** a bulk item deep-equals the same record from
+  `GET /api/v1/cves/{cveId}` once the detail-only extras
+  (`descriptionLanguages`, `references`, `epssHistory`) are removed.
+- `resolution.requested` is the unique ID count after trim/dedupe,
+  `resolution.returned` is `data.length`, and `resolution.missingIds` lists the
+  requested IDs with no current `PUBLISHED` record, in requested order. Missing
+  or not-publicly-visible IDs are never fabricated and never turn the whole
+  request into a `404`: one stale ID must not sink the other 49.
+- There is **no `pagination` object and no `coverage` key**. Bulk counts live
+  under `resolution` only, so `coverage` keeps one meaning (eligible cohort) on
+  the list routes.
+- Errors: `400 BAD_ID` when an element fails `CVE-YYYY-NNNN+`; `400
+BAD_REQUEST` when `ids` is missing or empty, when more than 50 unique IDs are
+  requested (the message names the cap), when `ids` is repeated, or when a known
+  conflicting param is present (the message names it). Standard `429`/`500`
+  envelopes as everywhere else.
+- A `200` carries a strong `ETag` seeded over the canonical **sorted** ID set
+  plus the aggregate revision, so the same set in any order revalidates as `304`.
 
 ## KEV block
 

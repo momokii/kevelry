@@ -220,9 +220,9 @@ _Ingestion seam (worker-only):_ `loadPinnedOrRefreshCweCatalog(env, fs, db) -> {
 
 - `GET /api/v1/cves/batch` with required `ids` (comma-separated, trimmed) — one canonical encoding, no repeated-param form.
 - **Constraints:** `1 <= unique valid ids <= 50` (bounded well under URL/IN-clause/response budgets); each matches `CVE_ID_RE`; duplicates removed preserving first-seen order.
-- **No filter/pagination params on this route:** anything besides `ids` (`cursor`, `severity`, `kev`, `epss`, `publishedStart`, `publishedEnd`, `limit`, …) is **rejected** with `400 BAD_REQUEST`, never ignored.
+- **Known conflicting params are rejected, unknown params are ignored:** the list/search params besides `ids` (`cursor`, `severity`, `kev`, `epss`, `exploit`, `publishedStart`, `publishedEnd`, `limit`, `vendor`, `q`) are **rejected by name** with `400 BAD_REQUEST`; any other unknown parameter is ignored, because it has no documented meaning on this route to conflict with.
 - **Response:** `200 { data: CveItem[], resolution: { requested, returned, missingIds }, provenance: {...} }` where `data` is in requested-dedupe order and `missingIds` lists requested-not-found/rejected-by-visibility records; `provenance` same as other v1 responses. No `pagination` object and **no `coverage` key** on this route.
-- **Errors:** `400 BAD_REQUEST/BAD_ID` for invalid/too many/unknown params; standard `429/500` envelopes.
+- **Errors:** `400 BAD_REQUEST/BAD_ID` for invalid/too many/conflicting params; standard `429/500` envelopes.
 - **Caching:** same `cachedOkResponse`/ETag/Cache-Control discipline (seed over the canonical sorted id set).
 
 _Depth:_ reuses `loadFullRecords`, `toCveItem`, `buildProvenance`, `cachedOkResponse` — route orchestrates validation + shaping only.
@@ -434,7 +434,7 @@ Allow clients (and internal consumers like watch) to retrieve many records in on
 
 - **Route:** `GET /api/v1/cves/batch` (dedicated route; `/api/v1/cves` keeps its list meaning and `coverage` semantics).
 - **Params:** `ids` required, comma-separated CVE IDs. Trim elements; drop empties; dedupe preserving first-seen requested order.
-- **Validation:** every element must match `CVE_ID_RE`; `1..50` unique ids (cap **50**). No other filter/pagination params are accepted on this route — unknown params are rejected, not ignored.
+- **Validation:** every element must match `CVE_ID_RE`; `1..50` unique ids (cap **50**). Known conflicting params are rejected; unknown params are ignored — the list/search params (`cursor`, `limit`, `severity`, `kev`, `epss`, `exploit`, `publishedStart`, `publishedEnd`, `vendor`, `q`) fail with `400 BAD_REQUEST` naming the param, while any other unknown parameter is ignored.
 - **Response 200:**
   ```json
   {
@@ -444,7 +444,7 @@ Allow clients (and internal consumers like watch) to retrieve many records in on
   }
   ```
   No `pagination` object and no `coverage` key. Records not found or not publicly visible under current rules appear in `resolution.missingIds` (never fabricated). Ordering deterministic.
-- **Errors:** `400 BAD_ID` (an element fails `CVE_ID_RE`) / `400 BAD_REQUEST` (missing, too many, or unknown/filter params); standard `429`/`500`.
+- **Errors:** `400 BAD_ID` (an element fails `CVE_ID_RE`) / `400 BAD_REQUEST` (missing, empty, repeated, too many, or a known conflicting param); standard `429`/`500`.
 - **Cache/headers:** `cachedOkResponse` with the ETag seed over the canonical sorted id set; security/rate headers as today.
 
 ### 9.3 Implementation design
@@ -597,7 +597,7 @@ flowchart TD
 
 1. **E3:** ingests CWE `CSV.zip` with the existing RFC4180 parser; no new production dependency; gates reduce to pack URL/version and attribution text.
 2. **E1:** secondary CVSS is rendered in the detail/expanded block only — never on compact list rows, never band-coloured, never filterable or sortable, always carrying the word “context”; the existing `hasAdp` flag folds into the new secondary block instead of shipping a parallel field.
-3. **E4:** uses a dedicated route `GET /api/v1/cves/batch` with required `ids` rather than a mode switch on `/api/v1/cves`, so the list envelope and its `coverage` key keep one meaning; bulk responses use `resolution: { requested, returned, missingIds }`, cap 50 ids, requested-order after dedupe, ETag seed over the canonical id set.
+3. **E4:** uses a dedicated route `GET /api/v1/cves/batch` with required `ids` rather than a mode switch on `/api/v1/cves`, so the list envelope and its `coverage` key keep one meaning; bulk responses use `resolution: { requested, returned, missingIds }`, cap 50 ids, requested-order after dedupe, known conflicting params rejected while unknown params are ignored, ETag seed over the canonical id set.
 4. **E5:** export serialises the current page only, labelled with its row count in the UI; CSV carries no `#` prefix rows (provenance stays in the JSON envelope and the UI) and the column order is documented; feed `since` is clamped to checkpoint retention and returns an explicit error when out of range.
 5. **E2:** maps `ransomware_known` as `1` → “known”, `0` → “unknown” (catalog says Unknown), `NULL` → “unstated”; never renders “no ransomware”.
 
