@@ -560,6 +560,51 @@ job and every visitor-facing read is purely local.
   CSV text (`CWE_CSV_MAX_BYTES`, also the value the importer passes as the zip
   entry cap) and **600 code points** per long field. No fetch, worker wiring,
   UI, or database write in this step.
+- **Acquisition and publication (step 2b).** `refreshCweCatalog(db, options)` in
+  `src/lib/cwe-import.ts` is the only writer of `cwe_entries` /
+  `cwe_catalog_meta`, and it composes fetch → `extractSingleEntryZip` →
+  `parseCsvRows` → `mapCweCsv` → one transaction. The pin is the “Research
+  Concepts” view, `https://cwe.mitre.org/data/csv/1000.csv.zip` (verified
+  2026-11-14: HTTP 200, `application/zip`, 644,612 bytes, one 3.2 MB CSV, 956
+  entries); `CWE_CSV_URL` may override it but must be an absolute https URL, so
+  the worker cannot be pointed at plaintext. Caps: **8 MiB** downloaded zip,
+  **64 MiB** extracted CSV entry, **16 MiB** parsed CSV text, **30 s** fetch,
+  **300 chars** per stored reason. `version` is `<view id>-<accepted entry
+  count>` (`1000-956`), because the published CSV carries no version marker;
+  `source_hash` (SHA-256 of the accepted zip bytes) is the exact pin.
+- **Refresh cadence.** MITRE republishes the pack rarely, so the worker does not
+  poll it on the hourly ingest cadence: an attempt is due only when the accepted
+  catalog's `retrieved_at` is more than **24 h** old (or the catalog is not
+  `ready`), tracked in-process and seeded from the meta row at boot. In practice
+  that is at most one HTTP request per day per process, and one per restart.
+  `CWE_REFRESH_ENABLED=false` disables it; `REFRESH_CWE_ONCE=true node
+  dist/worker.mjs` performs exactly one attempt (no gate) and exits non-zero if
+  it failed, which is also the on-demand retry for a stale catalog.
+- **Conditional fetch.** When the downloaded bytes hash to the accepted
+  `source_hash` nothing is parsed and nothing is written: the run reports
+  `unchanged` and the accepted pin (and every row's `updated_at`) stays put. The
+  one exception is a hash match on a row that is not `ready` while its entries
+  are still intact — a transient failure, not new data — where the pointer is
+  restored to `ready` without re-parsing. Re-downloading an unchanged pack is
+  therefore cheap and side-effect free.
+- **Failure semantics (last-known-good).** A refresh never deletes rows. Any
+  failure — non-https URL, HTTP error, timeout, oversize payload, unreadable zip,
+  malformed CSV, a CSV that maps to zero entries, or a database error — sets
+  `status='stale'` and stores a sanitised reason (single line, credentials
+  stripped from URLs, ≤300 chars) in `notes`, then returns
+  `{ status: "failed", reason }` instead of throwing. The read path already
+  treats `stale` as “no labels”, so a failed refresh withdraws the `ready` claim
+  while the previous rows remain available for the next successful publish.
+  The publish itself is ONE transaction (`DELETE` + inserts + meta upsert): a
+  failure mid-publish rolls the whole thing back, so the catalog is never seen
+  half-replaced. The refresh is deliberately **not** a scheduler source: it has
+  no fact-table impact, so it cannot contribute to `failed`/readiness or block
+  an import, and the worker only logs `cwe-refresh`, `cwe-refresh-unchanged`, or
+  `cwe-refresh-failed` before moving on.
+- **Published text is verbatim.** `summary`/`mitigation` carry MITRE's published
+  wording, including the `::PHASE:…::` markers the CSV uses inside “Potential
+  Mitigations”. Presentation is the read path's problem; the importer never
+  rewrites upstream text beyond stripping CR/LF and the 600-code-point cap.
 
 ## Retention (bounded growth)
 

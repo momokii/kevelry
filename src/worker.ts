@@ -47,6 +47,14 @@ import {
   type CveImportOutcome,
 } from "./lib/cve-import";
 import { openDatabase, type CveDatabase } from "./lib/db";
+import { getCweCatalogMeta } from "./lib/cwe-catalog";
+import {
+  CWE_REFRESH_INTERVAL_MS,
+  isCweRefreshDue,
+  refreshCweCatalog,
+  sanitizeCweReason,
+  type CweRefreshResult,
+} from "./lib/cwe-import";
 import { importSsvcFromCheckout, resolveSsvcCacheDir, syncSsvcCache } from "./lib/ssvc-import";
 import {
   EPSS_CURRENT_CSV_URL,
@@ -132,6 +140,12 @@ export interface SourceJobDeps {
   /** SSVC enrichment: injectable for tests (avoids a 380 MB clone). */
   ssvcImport?: (db: CveDatabase) => Promise<{ revision: string | null; parsed: number }>;
   ssvcCacheDir?: string;
+  /** CWE catalog refresh: injectable so tests never touch the network. */
+  cweRefresh?: (db: CveDatabase) => Promise<CweRefreshResult>;
+  /** Scheduled CWE refresh toggle; defaults to `CWE_REFRESH_ENABLED` (true). */
+  cweRefreshEnabled?: boolean;
+  cweFetcher?: typeof fetch;
+  cweUrl?: string;
 }
 
 /**
@@ -213,6 +227,94 @@ function refreshAggregatesForced(db: CveDatabase, log: LogFn = defaultLog): bool
     return false;
   }
 }
+
+/**
+ * Resolve whether the worker keeps the local CWE catalog fresh.
+ *
+ * Default true: the refresh is one conditional HTTP request per day at most.
+ * Deliberately lenient like the other `*_ONCE` toggles — only the exact string
+ * `false` disables it. A typo must not crash the worker over an optional
+ * maintenance job, which would defeat the fail-soft contract it exists for.
+ */
+export function resolveCweRefreshEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.CWE_REFRESH_ENABLED?.trim();
+  if (raw === undefined || raw === "") return true;
+  return raw !== "false";
+}
+
+export interface CweRefreshRunOptions {
+  db: CveDatabase;
+  fetcher?: typeof fetch;
+  url?: string;
+  now?: () => Date;
+  /** Fully injected refresh; overrides fetcher/url/now. */
+  refresh?: (db: CveDatabase) => Promise<CweRefreshResult>;
+  log?: LogFn;
+}
+
+/**
+ * One CWE refresh attempt with structured logging. Never throws: a rejected
+ * refresh is logged as `cwe-refresh-failed` and returned as a failed result, so
+ * a taxonomy problem can never fail an ingest cycle or block an import.
+ * Owns no scheduling; callers decide whether an attempt is due.
+ */
+export async function runCweRefreshOnce(options: CweRefreshRunOptions): Promise<CweRefreshResult> {
+  const log = options.log ?? defaultLog;
+  const refresh =
+    options.refresh ??
+    ((handle: CveDatabase) =>
+      refreshCweCatalog(handle, {
+        fetcher: options.fetcher,
+        url: options.url,
+        now: options.now,
+      }));
+
+  let result: CweRefreshResult;
+  try {
+    result = await refresh(options.db);
+  } catch (error) {
+    const reason = sanitizeCweReason(errorDetail(error));
+    log({ event: "cwe-refresh-failed", reason });
+    return { status: "failed", reason };
+  }
+
+  if (result.status === "refreshed") {
+    log({
+      event: "cwe-refresh",
+      version: result.version,
+      recordCount: result.recordCount,
+      sourceHash: result.sourceHash,
+      recovered: result.recovered,
+    });
+  } else if (result.status === "unchanged") {
+    log({
+      event: "cwe-refresh-unchanged",
+      version: result.version,
+      recordCount: result.recordCount,
+      sourceHash: result.sourceHash,
+    });
+  } else {
+    log({ event: "cwe-refresh-failed", reason: result.reason });
+  }
+  return result;
+}
+
+/**
+ * Gate anchor for the in-process cadence check: the accepted catalog's
+ * `retrieved_at` when it is `ready`, else null (always due). A failed or absent
+ * catalog must never suppress the next attempt.
+ */
+function cweGateAnchor(db: CveDatabase): string | null {
+  try {
+    const meta = getCweCatalogMeta(db);
+    return meta.status === "ready" ? meta.retrievedAt : null;
+  } catch {
+    return null;
+  }
+}
+
 function lowerWorkerPriority(): void {
   try {
     const setPriority = (os as unknown as { setPriority?: (pid: number, priority: number) => void })
@@ -439,6 +541,8 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   releaseHandlers: () => void;
   scheduleEnabled: boolean;
   ingestOnStart: boolean;
+  /** Resolves once every background CWE refresh this worker started has settled. */
+  cweSettled: () => Promise<void>;
 }> {
   const log = options.log ?? defaultLog;
   lowerWorkerPriority();
@@ -506,6 +610,38 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       return jobs.ssvc(ctx);
     },
   };
+  // CWE catalog maintenance rides the ingest cycle instead of being a fifth
+  // source: it is reference data with no fact-table impact, so it must never
+  // contribute to `failed`/readiness or block an import. The gate keeps the
+  // scheduled cost at one conditional HTTP request per 24h in this process; a
+  // restart re-checks at most once. Failures are logged and swallowed.
+  const cweRefreshEnabled = options.deps?.cweRefreshEnabled ?? resolveCweRefreshEnabled();
+  let cweLastAttemptAt: string | null = cweRefreshEnabled ? cweGateAnchor(db) : null;
+  let cweInFlight: Promise<void> | null = null;
+  const kickCweRefresh = (): Promise<void> => {
+    if (!cweRefreshEnabled) return Promise.resolve();
+    if (cweInFlight !== null) return cweInFlight;
+    const now = new Date();
+    if (!isCweRefreshDue(cweLastAttemptAt, now, CWE_REFRESH_INTERVAL_MS)) {
+      return Promise.resolve();
+    }
+    cweLastAttemptAt = now.toISOString();
+    cweInFlight = runCweRefreshOnce({
+      db,
+      fetcher: options.deps?.cweFetcher,
+      url: options.deps?.cweUrl,
+      refresh: options.deps?.cweRefresh,
+      log,
+    })
+      .then(() => undefined)
+      .catch(() => undefined)
+      .finally(() => {
+        cweInFlight = null;
+      });
+    return cweInFlight;
+  };
+  const cweSettled = (): Promise<void> => cweInFlight ?? Promise.resolve();
+
   // Assigned right after construction so the cycle hook can tell a settling
   // cycle from a shutdown-interrupted one.
   let schedulerRef: IngestionScheduler | null = null;
@@ -520,6 +656,9 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       // never fail the cycle or block the next import.
       if (schedulerRef?.getStatus().shuttingDown === true) return;
       writeDailyCheckpoint(db, { failed: outcome.failed, log });
+      // Taxonomy maintenance is independent of the fact sources: it runs after
+      // the cycle settled, unawaited, and its result never reaches `failed`.
+      void kickCweRefresh();
     },
   });
   schedulerRef = scheduler;
@@ -541,6 +680,10 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
 
   if (ingestOnStart) {
     await scheduler.runCycle();
+    // Let the boot cycle's taxonomy refresh land before the worker reports its
+    // manifest, so a first boot logs `cwe-refresh` (or its failure) exactly
+    // once and in order. Bounded by the fetch timeout, and fail-soft.
+    await kickCweRefresh();
     const health = scheduler.getStatus();
     for (const source of ["cve", "kev", "epss", "ssvc"] as const) {
       const status = health.sources[source];
@@ -576,6 +719,9 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
     });
   } else {
     ensureAggregates(db, log);
+    // No cycle runs in this mode, so a seeded volume still gets its taxonomy
+    // (one conditional request, gated by the accepted catalog's timestamp).
+    await kickCweRefresh();
     const health = scheduler.getStatus();
     log({
       event: "worker-idle",
@@ -584,7 +730,21 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       manifest: health.manifest,
     });
   }
-  return { db, scheduler, releaseHandlers, scheduleEnabled, ingestOnStart };
+  return { db, scheduler, releaseHandlers, scheduleEnabled, ingestOnStart, cweSettled };
+}
+
+/**
+ * One-off CWE catalog refresh without running an import cycle:
+ * `REFRESH_CWE_ONCE=true node dist/worker.mjs`. Opens the store, runs one
+ * fetch/parse/publish attempt (no cadence gate), logs `cwe-refresh`,
+ * `cwe-refresh-unchanged`, or `cwe-refresh-failed`, and exits 0 unless the
+ * attempt failed. Used to seed a live volume without waiting for the daily
+ * gate, or to retry a `stale` catalog on demand.
+ */
+export function resolveRefreshCweOnce(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.REFRESH_CWE_ONCE === "true";
 }
 
 /**
@@ -713,6 +873,29 @@ async function main(): Promise<void> {
       defaultLog({
         event: "worker-fatal",
         reason: "aggregate-refresh-failed",
+        error: errorDetail(error),
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (resolveRefreshCweOnce()) {
+    try {
+      const config = loadConfig();
+      const db = openDatabase({ dataDir: config.dataDir });
+      try {
+        const result = await runCweRefreshOnce({ db, log: defaultLog });
+        // A taxonomy refresh that failed must be visible to a shell script, so
+        // the one-off command reports it through the exit code. The scheduled
+        // path stays fail-soft and never does this.
+        process.exitCode = result.status === "failed" ? 1 : 0;
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      defaultLog({
+        event: "worker-fatal",
+        reason: "cwe-refresh-failed",
         error: errorDetail(error),
       });
       process.exitCode = 1;

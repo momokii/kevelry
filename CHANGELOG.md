@@ -7,6 +7,43 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **CWE catalog ingest with last-known-good (E3 step 2b).**
+  `refreshCweCatalog(db, options)` in `src/lib/cwe-import.ts` is now the only
+  writer of `cwe_entries` / `cwe_catalog_meta`: fetch → `extractSingleEntryZip`
+  → `parseCsvRows` → `mapCweCsv` → one transaction. The pin is MITRE's
+  “Research Concepts” view, `https://cwe.mitre.org/data/csv/1000.csv.zip`
+  (verified 2026-11-14: HTTP 200, `application/zip`, 644,612 bytes, one 3.2 MB
+  CSV, 956 accepted entries); `CWE_CSV_URL` may override it but must be an
+  absolute https URL. Caps: **8 MiB** downloaded zip, **64 MiB** extracted CSV
+  entry, **16 MiB** parsed CSV text, **30 s** fetch timeout, **300 chars** per
+  stored reason. `version` is `<view id>-<entry count>` (`1000-956`) because the
+  published CSV carries no version marker; `source_hash` (SHA-256 of the
+  accepted zip bytes) is the exact pin. Acquisition is **conditional**: when the
+  downloaded bytes hash to the accepted `source_hash` nothing is parsed and
+  nothing is written (`{ status: "unchanged" }`), and a hash match on a
+  non-`ready` row whose entries are intact restores `ready` without re-parsing.
+  **Publication is one transaction** (`DELETE` + inserts + meta upsert), so a
+  reader never sees a half-replaced taxonomy and a failure mid-publish rolls
+  back. Failure is **last-known-good**: entries are never deleted, the meta row
+  records `status='stale'` with a sanitised `notes` reason (single line,
+  credentials stripped, ≤300 chars), and the call returns
+  `{ status: "failed", reason }` instead of throwing. The worker hooks this as
+  maintenance that is *not* a scheduler source (it cannot contribute to
+  `failed`/readiness or block an import): at most one attempt per 24 h, gated by
+  the accepted `retrieved_at` and tracked in-process, awaited once at boot and
+  fired after each settled cycle, logging `cwe-refresh`,
+  `cwe-refresh-unchanged`, or `cwe-refresh-failed`. `CWE_REFRESH_ENABLED=false`
+  disables it and `REFRESH_CWE_ONCE=true node dist/worker.mjs` performs exactly
+  one attempt (exit 1 on failure) for seeding or retrying a stale catalog.
+  `tests/cwe-import.test.ts` drives everything through injected fetchers — no
+  network — covering publish, the unchanged no-write path, HTTP 500, timeout,
+  bad zip, oversize payload, mid-publish rollback, stale recovery, the
+  https-only URL rule, reason sanitisation, the cadence gate, and the one-shot
+  path; `tests/setup.ts` pins `CWE_REFRESH_ENABLED=false` so no test boot reaches
+  upstream. Source terms, the verified URL, and the safety properties are
+  documented in `docs/research/SOURCES.md`; cadence and failure semantics in
+  `docs/DATA_WORKFLOW.md`.
+
 - **Dependency-free CWE zip reader and CSV mapping (E3 step 2a).**
   `src/lib/zip.ts` reads a single-entry MITRE `CSV.zip` using only
   `node:zlib`: End of Central Directory, the central-directory record, then the

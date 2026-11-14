@@ -14,14 +14,15 @@ establish complete coverage, continuous availability, unlimited use, or future t
 
 ## Source Decisions
 
-| Source                   | Access                                                   | Public-use basis                                                                                                             | Confidence / decision                                                                                               |
-| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| CVE List V5              | Public Git repository, raw files and release downloads   | CVE terms permit reproduction, derivatives, display and distribution with MITRE copyright designation and license reproduced | High for current access/reuse; core                                                                                 |
-| CISA KEV                 | Public JSON/CSV and official GitHub mirror               | Catalog data is CC0 1.0; third-party links and government marks are not covered                                              | High for current access/reuse; core                                                                                 |
-| FIRST EPSS               | Free daily full CSV and small-batch API, no registration | FAQ requests product attribution; services terms permit specified cybersecurity uses with notices retained                   | High for access; medium for legal interpretation of a particular public deployment; core subject to purpose/notices |
-| NVD                      | Optional API/feeds                                       | Current detailed quota and reuse review not completed here                                                                   | Unverified optional enrichment; not a build prerequisite                                                            |
-| Shodan CVEDB             | Free API without account for non-commercial use          | Landing page requires enterprise licensing to make money                                                                     | Verified restriction; exclude from core                                                                             |
-| Social/PoC/vendor scores | Mixed and source-specific                                | No uniform free redistribution basis established                                                                             | Exclude from core; no popularity promise                                                                            |
+| Source                   | Access                                                   | Public-use basis                                                                                                                                   | Confidence / decision                                                                                               |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| CVE List V5              | Public Git repository, raw files and release downloads   | CVE terms permit reproduction, derivatives, display and distribution with MITRE copyright designation and license reproduced                       | High for current access/reuse; core                                                                                 |
+| CISA KEV                 | Public JSON/CSV and official GitHub mirror               | Catalog data is CC0 1.0; third-party links and government marks are not covered                                                                    | High for current access/reuse; core                                                                                 |
+| FIRST EPSS               | Free daily full CSV and small-batch API, no registration | FAQ requests product attribution; services terms permit specified cybersecurity uses with notices retained                                         | High for access; medium for legal interpretation of a particular public deployment; core subject to purpose/notices |
+| MITRE CWE                | Public per-view `CSV.zip` downloads, no registration     | CWE Terms of Use grant a non-exclusive, royalty-free license for any purpose provided MITRE's copyright designation and the license are reproduced | High for current access/reuse; core reference data (labels only)                                                    |
+| NVD                      | Optional API/feeds                                       | Current detailed quota and reuse review not completed here                                                                                         | Unverified optional enrichment; not a build prerequisite                                                            |
+| Shodan CVEDB             | Free API without account for non-commercial use          | Landing page requires enterprise licensing to make money                                                                                           | Verified restriction; exclude from core                                                                             |
+| Social/PoC/vendor scores | Mixed and source-specific                                | No uniform free redistribution basis established                                                                                                   | Exclude from core; no popularity promise                                                                            |
 
 Free access and permission to display are separate questions. Before ads, paid access,
 resale or other commercialization, recheck every source and clarify FIRST's terms.
@@ -128,6 +129,72 @@ conditions: do not interpret a cross-model jump as rising threat. A missing curr
 row is unknown, not zero and not permission to silently reuse yesterday's score.
 Partner exploitation telemetry behind the model is not redistributed by this feed.
 
+## MITRE CWE Contract
+
+First-party evidence: [downloads](https://cwe.mitre.org/data/downloads.html),
+[terms of use](https://cwe.mitre.org/about/termsofuse.html),
+[view 1000 definition](https://cwe.mitre.org/data/definitions/1000.html).
+
+CWE ids already travel with CVE and KEV rows. The catalog supplies only the
+**published labels and text** for ids the corpus already names; it is reference
+data, not a feed.
+
+Terms of Use, quoted: “CWE™ is free to use by any organization or individual for
+any research, development, and/or commercial purposes, per these CWE Terms of
+Use. Accordingly, The MITRE Corporation hereby grants you a non-exclusive,
+royalty-free license to use CWE for research, development, and commercial
+purposes. Any copy you make for such purposes is authorized on the condition
+that you reproduce MITRE’s copyright designation and this license in any such
+copy. CWE is a trademark of The MITRE Corporation.” The site disclaims warranty
+and accepts the data “as is”. Attribution therefore has two parts: reproduce
+MITRE’s copyright designation and the license text wherever the catalog is
+redistributed, and do not imply MITRE endorsement of this product.
+
+### Pinned acquisition
+
+MITRE publishes each CWE view as a zip containing exactly one RFC 4180 CSV. The
+importer pins **one** view, the research taxonomy that covers the ids in the
+corpus:
+
+| Item               | Verified value                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| View               | 1000 — “Research Concepts” (the full weakness taxonomy)                                                             |
+| URL                | `https://cwe.mitre.org/data/csv/1000.csv.zip`                                                                       |
+| Retrieval          | 2026-11-14, anonymous HTTPS GET                                                                                     |
+| HTTP status / type | `200` / `application/zip` (HEAD and GET agree)                                                                      |
+| Response size      | 644,612 bytes                                                                                                       |
+| Archive contents   | one entry, `1000.csv`, 3,328,644 bytes (957 physical lines, quoted fields contain line breaks)                      |
+| SHA-256 of the zip | `b3b8fc1bb6e2398ce4f1a7b0f5f74949f6cd568a26190d203e1103c3aafa6ff5`                                                  |
+| Accepted result    | 956 catalog entries, `version` `1000-956`, meta `status` `ready`; `CWE-79` resolves `known` with its published name |
+
+The narrower “Software Development” view (699, `https://cwe.mitre.org/data/csv/699.csv.zip`,
+`200`/`application/zip`, 301,303 bytes at the same check) was rejected as the
+pin: it omits weaknesses that appear in the CVE/KEV corpus, so resolving those
+ids would return `unmapped` for no reason. `CWE_CSV_URL` can point at another
+view (https only) for a controlled deployment, but the default is the research
+taxonomy.
+
+### Why this is safe to serve
+
+Republishing upstream bytes verbatim would make availability and correctness
+someone else’s problem. The importer therefore owns four properties:
+
+- **Pinned.** One constant URL, https-only, no redirects to arbitrary hosts and
+  no caller-supplied URL from a request. `CWE_CSV_URL` exists for mirrors and is
+  validated as an absolute https URL before any request.
+- **Hashed.** The exact downloaded bytes are recorded as `source_hash` next to the
+  accepted rows, so the served catalog is provably the pack it claims to be, and
+  a re-download can be compared without parsing.
+- **Cached.** Visitors never trigger a fetch: the catalog lives in SQLite
+  (`cwe_entries`, `cwe_catalog_meta`) and the read path is local-only.
+- **Last-known-good.** A failed refresh never deletes accepted rows; it records
+  `status='stale'` plus a sanitised reason, so the failure is visible without
+  destroying the previously accepted taxonomy.
+
+Bounds: 8 MiB on the downloaded zip, 64 MiB on the extracted CSV entry, 16 MiB
+on the parsed CSV text, 30 s on the fetch, and 300 characters on any stored or
+logged reason. The published pack is ~0.6 MiB, so every cap has wide headroom.
+
 ## Live Evidence Log
 
 Checked without keys on 2026-10-24:
@@ -146,11 +213,17 @@ Checked without keys on 2026-10-24:
   SHA-256 `a92f4b9f28006420a11db24c50c9e30290f9b54884c48fca9e87bf936d68cb62`.
   That hash identifies the downloaded bytes, not a publisher signature.
 - Sample `CVE-2026-109618`: `epss=0.1162`, `percentile=0.96047` in that CSV; API lookup
-  also returned successfully. Values are dated observations, not enduring facts.
-- Additional direct raw-record reads for `CVE-2026-109618` and `CVE-2026-109619`
+  also returned successfully. Values are dated observations, not enduring facts.- Additional direct raw-record reads for `CVE-2026-109618` and `CVE-2026-109619`
   showed a CNA CVSS v4.0 base **9.2** for each. Their CISA-ADP metrics included SSVC,
   not a CVSS metric. This checks representative primary-metric availability, not
   corpus-wide coverage or a guarantee that they lead an automated ranking.
+- CWE view 1000 (`/data/csv/1000.csv.zip`) returned HTTP 200, `application/zip`,
+  **644,612** compressed bytes and one **3,328,644**-byte `1000.csv`. Parsing it
+  published **956** entries; compressed SHA-256
+  `b3b8fc1bb6e2398ce4f1a7b0f5f74949f6cd568a26190d203e1103c3aafa6ff5`, which
+  identifies the downloaded bytes, not a publisher signature. `CWE-79` resolved
+  `known` with its published name and summary. View 699 was 301,303 bytes at the
+  same check and was not adopted as the pin.
 
 No full CVE bulk import, local database/search benchmark, production hosting cost,
 cross-source join completeness measurement, or long-running sync test has been run.

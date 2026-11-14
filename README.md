@@ -215,6 +215,9 @@ the app reads is listed there.
 | `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                              |
 | `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                |
 | `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                              |
+| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url (https only); blank uses the research taxonomy                                                        |
+| `CWE_REFRESH_ENABLED`     | no       | `true`                         | Refresh the local CWE catalog at most once per 24h (one conditional request; fail-soft)                                   |
+| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                   |
 | `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                    |
 | `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                  |
 | `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                   |
