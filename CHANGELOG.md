@@ -48,6 +48,23 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
   legacy alias, the all-missing null shape, and the absence of negated
   ransomware wording.
 
+- **KEV block labels, tri-state copy, and Playwright coverage (E2).** The
+  expanded Priority row's KEV block renders a labeled row per catalog fact
+  instead of one sentence: membership `Listed` / `Not listed`, `Date added
+  (catalog)`, `Due date (catalog, federal context)`, `Required action`
+  (catalog-supplied and wrapped), `Ransomware campaign use`, `Catalog name`, and
+  `CWEs` as monospace ID chips. The block branches on `ransomwareUse`, so the
+  three catalog states render distinctly — `Known (catalog)`, `Unknown
+  (catalog)` (the catalog's own value), `Not stated` (the field was absent) —
+  and the legacy `ransomwareKnown` boolean is no longer read by the UI. No state
+  is negated: "no ransomware", "not ransomware", and "no known ransomware"
+  never render. Absent fields say `Not provided` (never blank), the block's
+  HelpTip states that KEV is catalog membership evidence rather than
+  first-exploitation time or a universal SLA, and the block holds at 360px/200%
+  in both themes with a 44px keyboard-reachable HelpTip. Playwright seeds
+  known/unknown/unstated KEV rows and pins the exact labels, the banned phrases,
+  the focus-only HelpTip path, and the narrow dark layout.
+
 - **Secondary CVSS projection (`cvssSecondary`).** Every preserved metric the
   primary selector did not pick is now exposed on `CveItem` as one bounded,
   labeled block instead of being dropped. The projection hides the shape

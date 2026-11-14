@@ -387,21 +387,33 @@ keeps a short ordering summary rather than repeating the explainer.
 ### KEV signal block
 
 The KEV block renders in the expanded signal panel of a Priority row (and in any
-future inspector that shows KEV). It is never colour-only. Contract:
+future inspector that shows KEV). It is never colour-only: every state carries a
+word. Contract:
 
-- Rows are labeled and source-scoped: _Listed_, _Date added (catalog)_, _Due
-  date (catalog, federal context)_, _Required action_, _Ransomware campaign
-  use_, and _Catalog name_ when present; CWEs render as mono chips.
+- The membership state is exactly `Listed` or `Not listed`; the remaining rows
+  are labeled and source-scoped: _Date added (catalog)_, _Due date (catalog,
+  federal context)_, _Required action_ (catalog-supplied and wrapped),
+  _Ransomware campaign use_, _Catalog name_, and _CWEs_ as monospace ID chips
+  (names arrive with the E3 taxonomy; the ID is always the label).
 - _Ransomware campaign use_ renders one of three explicit catalog states —
-  `Known (catalog)`, `Unknown (catalog)`, `Not stated` — and never a negation:
-  an `unknown` or `unstated` entry never reads as ransomware-free. The compact
-  chip in the row header keeps its word (`known ransomware use`) rather than
-  relying on colour.
+  `Known (catalog)`, `Unknown (catalog)`, `Not stated`. The UI branches on the
+  tri-state `ransomwareUse`, never on the legacy boolean alias. `Unknown` is the
+  catalog's own value for a field it published; `Not stated` means the field was
+  absent. `unknown` and `unstated` never collapse, and no state is ever negated:
+  **never infer "no ransomware"** (nor "not ransomware", nor "no known
+  ransomware") from an unknown, unstated, or missing value.
+- The block's HelpTip states the scope plainly: KEV is catalog membership
+  evidence — not first-exploitation time, not a universal SLA — and repeats that
+  `Unknown` is the catalog's value while `Not stated` is absence.
 - Every value states its scope: the catalog-entry date is not first-exploit
   time, and the due date is a federal remediation deadline for the named
-  directive, not a universal SLA.
-- Absent fields follow the per-field "not provided" rule, never a misleading
-  blank.
+  directive, not a universal SLA. `requiredAction` is labeled as
+  catalog-supplied text, never as our remediation guidance.
+- Absent fields render the words `Not provided`, never a misleading blank. A
+  long `requiredAction` wraps/breaks instead of silently truncating.
+- A11y/layout: the HelpTip trigger is keyboard reachable (focus opens it, not
+  hover only) and keeps its 44px target; labels wrap, so the block holds at
+  360px and 200% zoom in both themes.
 - API counterpart: the `kev` block on `CveItem` (`listed`, `dateAdded`,
   `dueDate`, `requiredAction`, `vulnerabilityName`, `ransomwareUse`, the legacy
   `ransomwareKnown` alias, and `cwes`).

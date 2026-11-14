@@ -28,6 +28,74 @@
   font-size: 14px;
 }
 
+/* KEV block: labeled catalog rows. Labels wrap instead of forcing the block
+   wider than a 360px viewport; catalog text breaks anywhere. */
+.kevState {
+  margin-top: var(--ledger-space-1);
+}
+
+.kevList {
+  display: grid;
+  gap: var(--ledger-space-2);
+  margin: var(--ledger-space-2) 0 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+.kevList > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  min-width: 0;
+}
+
+@media (min-width: 700px) {
+  .kevList > div {
+    grid-template-columns: minmax(9rem, 38%) minmax(0, 1fr);
+    gap: var(--ledger-space-1) var(--ledger-space-2);
+    align-items: baseline;
+  }
+}
+
+.kevList dt {
+  font-size: 13px;
+  color: var(--ledger-ink-secondary);
+  overflow-wrap: break-word;
+}
+
+.kevList dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kevSource {
+  display: block;
+  font-size: 12px;
+  color: var(--ledger-ink-secondary);
+}
+
+.kevAction {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.kevCwes {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ledger-space-1);
+  margin: 0;
+  padding: 0;
+}
+
+.kevCweChip {
+  border: 1px solid var(--ledger-rule);
+  border-radius: 2px;
+  padding: 1px var(--ledger-space-1);
+  font-size: 12.5px;
+}
+
 .signalHead {
   display: flex;
   align-items: center;

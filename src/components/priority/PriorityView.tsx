@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
 import type { CvssSecondary } from "@/lib/cvss-projection";
 
 import { ExploitSignal } from "../ledger/ExploitSignal";
@@ -60,7 +61,11 @@ export interface PriorityRowData {
   kevListed: boolean;
   kevDateAdded: string | null;
   kevDueDate: string | null;
-  kevRansomwareKnown: boolean | null;
+  kevRequiredAction: string | null;
+  kevVulnerabilityName: string | null;
+  /** Catalog-stated use; the block branches on this, never on a boolean. */
+  kevRansomwareUse: KevRansomwareUse;
+  kevCwes: string[];
   ssvc: {
     exploitation: string;
     automatable: string;
@@ -150,11 +155,23 @@ export function cvssBandForScore(scoreText: string | null): CvssBand | null {
   return "low";
 }
 
-/** KEV membership state label. Listed keeps the exact "KEV listed" wording;
- * unlisted names the snapshot scope and never implies proof of safety. */
+/** KEV membership state label. Both states carry a word, so the block is never
+ * colour-only and absence never reads as a global fact. */
 export function kevStateText(listed: boolean): string {
-  return listed ? "KEV listed" : "Not listed in this KEV snapshot.";
+  return listed ? "Listed" : "Not listed";
 }
+
+/** Exact catalog wording per stored tri-state. `unknown` is the catalog's own
+ * Unknown value; `unstated` means the field was absent. Neither is a negation,
+ * and no state ever reads as a ransomware-free claim. */
+export const KEV_RANSOMWARE_USE_LABELS: Record<KevRansomwareUse, string> = {
+  known: "Known (catalog)",
+  unknown: "Unknown (catalog)",
+  unstated: "Not stated",
+};
+
+/** Absent catalog fields say so in words: never a blank, never an inference. */
+export const KEV_FIELD_ABSENT = "Not provided";
 
 export type CvssRowState = "known" | "legacy" | "adp-only" | "unscored";
 
@@ -376,41 +393,98 @@ export function PrioritySummary({
 }
 
 function KevSignal({ row }: { row: PriorityRowData }) {
+  const absent = <span className="ledger-meta">{KEV_FIELD_ABSENT}</span>;
+  const requiredAction =
+    row.kevRequiredAction !== null && row.kevRequiredAction.trim() !== ""
+      ? row.kevRequiredAction
+      : null;
+  const catalogName =
+    row.kevVulnerabilityName !== null && row.kevVulnerabilityName.trim() !== ""
+      ? row.kevVulnerabilityName
+      : null;
   return (
-    <div className={styles.signal} aria-label="KEV signal">
+    <div className={styles.signal} aria-label="KEV signal" data-testid="priority-row-kev">
       <div className={styles.signalHead}>
         <span className="ledger-label">KEV</span>
-        <HelpTip term="KEV" testId="priority-row-kev-help">
-          CISA Known Exploited Vulnerabilities catalog membership. Catalog dates mark catalog
-          addition, not proven first exploitation or current attack volume.
+        <HelpTip term="KEV (CISA catalog)" testId="priority-row-kev-help">
+          KEV is catalog membership evidence: membership and its dates are catalog facts, not
+          first-exploitation time, and the catalog due date is a federal remediation deadline, not
+          a universal SLA. <strong>Unknown (catalog)</strong> is the catalog&apos;s own value for a
+          field it published; <strong>Not stated</strong> means the field was absent from the
+          catalog entry. Neither state says ransomware use is absent.
         </HelpTip>
       </div>
-      {row.kevListed ? (
-        <p>
-          <strong className="ledger-emphasis">{kevStateText(true)}</strong>
-          {row.kevDateAdded !== null ? (
-            <>
-              {" on "}
+      <p className={styles.kevState}>
+        <strong className="ledger-emphasis" data-testid="priority-row-kev-state">
+          {kevStateText(row.kevListed)}
+        </strong>
+      </p>
+      <dl className={styles.kevList}>
+        <div>
+          <dt>Date added (catalog)</dt>
+          <dd>
+            {row.kevDateAdded !== null ? (
               <TimeText value={row.kevDateAdded} testId="priority-row-kev-date" />
-            </>
-          ) : null}
-          {row.kevDueDate !== null ? (
-            <>
-              {"; remediation due "}
+            ) : (
+              absent
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Due date (catalog, federal context)</dt>
+          <dd>
+            {row.kevDueDate !== null ? (
               <TimeText value={row.kevDueDate} testId="priority-row-kev-due" />
-            </>
-          ) : null}
-          {row.kevRansomwareKnown === true ? (
-            <>
-              {" · "}
-              <strong className="ledger-emphasis">known ransomware use</strong>
-            </>
-          ) : null}
-        </p>
-      ) : (
+            ) : (
+              absent
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Required action</dt>
+          <dd data-testid="priority-row-kev-required-action">
+            {requiredAction === null ? (
+              absent
+            ) : (
+              <>
+                <span className={styles.kevSource}>Catalog-supplied</span>
+                <span className={styles.kevAction}>{requiredAction}</span>
+              </>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Ransomware campaign use</dt>
+          <dd data-testid="priority-row-kev-ransomware">
+            {KEV_RANSOMWARE_USE_LABELS[row.kevRansomwareUse]}
+          </dd>
+        </div>
+        <div>
+          <dt>Catalog name</dt>
+          <dd data-testid="priority-row-kev-name">{catalogName ?? absent}</dd>
+        </div>
+        <div>
+          <dt>CWEs</dt>
+          <dd data-testid="priority-row-kev-cwes">
+            {row.kevCwes.length === 0 ? (
+              absent
+            ) : (
+              <ul className={styles.kevCwes}>
+                {row.kevCwes.map((cwe) => (
+                  <li key={cwe} className={`mono ${styles.kevCweChip}`}>
+                    {cwe}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {row.kevListed ? null : (
         <p>
-          <strong className="ledger-emphasis">Not listed</strong> in this KEV snapshot.{" "}
-          <em className="ledger-caveat">Absence is not proof of no exploitation.</em>
+          <em className="ledger-caveat">
+            Absence from this catalog snapshot is not proof that exploitation never happened.
+          </em>
         </p>
       )}
     </div>

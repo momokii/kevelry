@@ -8,6 +8,7 @@ import {
   cvssStateForRow,
   epssBarWidthPercent,
   formatSignedDeltaPp,
+  KEV_RANSOMWARE_USE_LABELS,
   kevStateText,
 } from "../src/components/priority/PriorityView";
 
@@ -69,9 +70,23 @@ describe("cvssBandForScore", () => {
 });
 
 describe("kevStateText", () => {
-  it("keeps the exact listed wording and names the snapshot scope otherwise", () => {
-    expect(kevStateText(true)).toBe("KEV listed");
-    expect(kevStateText(false)).toBe("Not listed in this KEV snapshot.");
+  it("gives both membership states a word, and the negative case a scope", () => {
+    expect(kevStateText(true)).toBe("Listed");
+    expect(kevStateText(false)).toBe("Not listed");
+  });
+});
+
+describe("KEV_RANSOMWARE_USE_LABELS", () => {
+  it("keeps the catalog's tri-state wording distinct and never negated", () => {
+    expect(KEV_RANSOMWARE_USE_LABELS).toEqual({
+      known: "Known (catalog)",
+      unknown: "Unknown (catalog)",
+      unstated: "Not stated",
+    });
+    expect(KEV_RANSOMWARE_USE_LABELS.unknown).not.toBe(KEV_RANSOMWARE_USE_LABELS.unstated);
+    for (const label of Object.values(KEV_RANSOMWARE_USE_LABELS)) {
+      expect(label.toLowerCase()).not.toMatch(/no (known )?ransomware|not ransomware/);
+    }
   });
 });
 

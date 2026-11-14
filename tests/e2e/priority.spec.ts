@@ -59,6 +59,7 @@ function serverDataDir(): string {
 function wipeFixtures(db: CveDatabase): void {
   db.runBoundedWrite(() => {
     const placeholders = IDS.map(() => "?").join(", ");
+    db.handle.prepare(`DELETE FROM kev_cwes WHERE cve_id IN (${placeholders})`).run(...IDS);
     db.handle.prepare(`DELETE FROM epss_daily WHERE cve_id IN (${placeholders})`).run(...IDS);
     db.handle.prepare(`DELETE FROM cvss_metrics WHERE cve_id IN (${placeholders})`).run(...IDS);
     db.handle.prepare(`DELETE FROM kev_entries WHERE cve_id IN (${placeholders})`).run(...IDS);
@@ -156,12 +157,29 @@ function seedPriorityFixtures(db: CveDatabase, scoreDate: string, prevDate: stri
     );
 
     const kev = db.handle.prepare(
-      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, due_date, ransomware_known, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO kev_entries (cve_id, date_added, catalog_date, due_date, required_action, vulnerability_name, ransomware_known, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
-    kev.run(IDS[0], day(-2), nowIso, day(5), 1, nowIso);
-    kev.run(IDS[1], day(-1), nowIso, day(40), 0, nowIso);
-    kev.run(IDS[3], day(-3), nowIso, day(-10), null, nowIso);
-    kev.run(IDS[6], day(-1), nowIso, day(-4), null, nowIso);
+    // Known: the catalog publishes every text field, so the block's labeled
+    // rows all carry catalog text (and a long action that must wrap).
+    kev.run(
+      IDS[0],
+      day(-2),
+      nowIso,
+      day(5),
+      "Apply updates per vendor instructions within the directive window; verify the fix in place.",
+      "Demo Service Command Injection",
+      1,
+      nowIso,
+    );
+    // Unknown: the catalog's own Unknown value, with no action or name text.
+    kev.run(IDS[1], day(-1), nowIso, day(40), null, null, 0, nowIso);
+    // Unstated: the catalog says nothing about ransomware use (stored NULL).
+    kev.run(IDS[3], day(-3), nowIso, day(-10), null, null, null, nowIso);
+    kev.run(IDS[6], day(-1), nowIso, day(-4), null, null, null, nowIso);
+
+    const kevCwe = db.handle.prepare("INSERT INTO kev_cwes (cve_id, cwe_id) VALUES (?, ?)");
+    kevCwe.run(IDS[0], "CWE-78");
+    kevCwe.run(IDS[0], "CWE-94");
 
     const epss = db.handle.prepare(
       "INSERT OR REPLACE INTO epss_daily (cve_id, score_date, model_version, epss, percentile) VALUES (?, ?, ?, ?, ?)",
@@ -241,6 +259,16 @@ async function renderedIds(page: Page, mode: string): Promise<string[]> {
   return rows.evaluateAll((els) =>
     els.map((el) => el.getAttribute("data-cve-id")).filter((id): id is string => id !== null),
   );
+}
+
+/** Expand one Priority row and hand back its KEV signal block. */
+async function openKevBlock(page: Page, id: string) {
+  const row = page.locator(`[data-cve-id="${id}"]`);
+  const toggle = row.getByRole("button").first();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  const block = row.getByTestId("priority-row-kev");
+  await expect(block).toBeVisible();
+  return block;
 }
 
 test.describe.serial("priority list views", () => {
@@ -347,7 +375,89 @@ test.describe.serial("priority list views", () => {
     const secondRow = rows.nth(1);
     await secondRow.getByRole("button").first().click();
     await expect(secondRow.getByTestId("priority-row-kev-due")).toBeVisible();
-    await expect(secondRow).toContainText("known ransomware use");
+    await expect(secondRow.getByTestId("priority-row-kev-ransomware")).toHaveText(
+      "Known (catalog)",
+    );
+  });
+
+  test("KEV block labels catalog facts and renders the tri-state explicitly", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=kev-due-soon");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+
+    // 1001: the catalog publishes every field. Labels are exact, and the
+    // membership state carries a word (never colour-only).
+    const known = await openKevBlock(page, "CVE-2099-1001");
+    await expect(known.getByTestId("priority-row-kev-state")).toHaveText("Listed");
+    await expect(known).toContainText("Date added (catalog)");
+    await expect(known).toContainText("Due date (catalog, federal context)");
+    await expect(known).toContainText("Required action");
+    await expect(known).toContainText("Ransomware campaign use");
+    await expect(known.getByTestId("priority-row-kev-date")).toHaveAttribute("dateTime", day(-2));
+    await expect(known.getByTestId("priority-row-kev-due")).toHaveAttribute("dateTime", day(5));
+    const action = known.getByTestId("priority-row-kev-required-action");
+    await expect(action).toContainText("Catalog-supplied");
+    await expect(action).toContainText("Apply updates per vendor instructions");
+    await expect(known.getByTestId("priority-row-kev-ransomware")).toHaveText("Known (catalog)");
+    await expect(known.getByTestId("priority-row-kev-name")).toHaveText(
+      "Demo Service Command Injection",
+    );
+    const cwes = known.getByTestId("priority-row-kev-cwes").locator("li");
+    await expect(cwes).toHaveText(["CWE-78", "CWE-94"]);
+    await expect(cwes.first()).toHaveClass(/mono/);
+
+    // 1002: the catalog's own Unknown value, visibly distinct from Not stated;
+    // absent text fields say "Not provided" instead of rendering blank.
+    const unknown = await openKevBlock(page, "CVE-2099-1002");
+    await expect(unknown.getByTestId("priority-row-kev-ransomware")).toHaveText("Unknown (catalog)");
+    await expect(unknown.getByTestId("priority-row-kev-required-action")).toHaveText(
+      "Not provided",
+    );
+    await expect(unknown.getByTestId("priority-row-kev-name")).toHaveText("Not provided");
+    await expect(unknown.getByTestId("priority-row-kev-cwes")).toHaveText("Not provided");
+
+    // 1004: the catalog states nothing — "Not stated", never collapsed into
+    // Unknown and never negated into a ransomware-free claim.
+    const unstated = await openKevBlock(page, "CVE-2099-1004");
+    await expect(unstated.getByTestId("priority-row-kev-state")).toHaveText("Listed");
+    await expect(unstated.getByTestId("priority-row-kev-ransomware")).toHaveText("Not stated");
+  });
+
+  test("KEV copy never infers a ransomware-free record", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=kev-due-soon");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+    for (const id of ["CVE-2099-1001", "CVE-2099-1002", "CVE-2099-1004"]) {
+      await openKevBlock(page, id);
+    }
+    const text = (await page.locator("body").innerText()).toLowerCase();
+    expect(text).not.toContain("no ransomware");
+    expect(text).not.toContain("not ransomware");
+    expect(text).not.toContain("no known ransomware");
+  });
+
+  test("KEV block holds at 360px in dark theme with a word for every state", async ({ page }) => {
+    await page.context().addCookies([
+      { name: "ui-theme", value: "dark", url: "http://localhost:3210" },
+    ]);
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.goto("/priority?view=kev-due-soon");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    const block = await openKevBlock(page, "CVE-2099-1001");
+    await expect(block.getByTestId("priority-row-kev-state")).toHaveText("Listed");
+    await expect(block).toContainText("Due date (catalog, federal context)");
+    await expect(block.getByTestId("priority-row-kev-ransomware")).toHaveText("Known (catalog)");
+    await expect(block).toContainText("Catalog-supplied");
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, "horizontal overflow from the KEV block").toBeLessThanOrEqual(1);
+    const blockOverflow = await block.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(blockOverflow, "KEV block scroll overflow").toBeLessThanOrEqual(1);
+    await page.screenshot({ path: `${EVIDENCE_DIR}/priority-kev-dark-360.png`, fullPage: true });
   });
 
   test("highest-forecast renders raw-probability order with score date and model", async ({
@@ -561,10 +671,20 @@ test.describe.serial("priority list views", () => {
     const kevTrigger = row.getByTestId("priority-row-kev-help-trigger");
     await kevTrigger.focus();
     await expect(kevTrigger).toBeFocused();
+    // Focus alone (no hover) must reveal the scope copy, and it names the
+    // tri-state honestly: catalog membership evidence, not first-exploit time
+    // and not a universal SLA.
+    const kevPanel = row.getByTestId("priority-row-kev-help-panel");
+    await expect(kevPanel).toBeVisible();
+    await expect(kevPanel).toContainText("catalog membership evidence");
+    await expect(kevPanel).toContainText("first-exploitation time");
+    await expect(kevPanel).toContainText("universal SLA");
+    await expect(kevPanel).toContainText("Unknown (catalog)");
+    await expect(kevPanel).toContainText("Not stated");
     await page.keyboard.press("Enter");
-    await expect(row.getByTestId("priority-row-kev-help-panel")).toBeVisible();
+    await expect(kevPanel).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(row.getByTestId("priority-row-kev-help-panel")).toBeHidden();
+    await expect(kevPanel).toBeHidden();
     const epssTrigger = row.getByTestId("priority-row-epss-help-trigger");
     await epssTrigger.focus();
     await page.keyboard.press("Enter");
