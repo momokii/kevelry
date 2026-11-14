@@ -13,7 +13,7 @@ Per-view pages:
 - [search.md](search.md) — ID and description search behind the explore view
 - [priority-lists.md](priority-lists.md) — the six named explainable orderings
 - [graph.md](graph.md) — KEV-cohort relationship graph with labeled links
-- [radar.md](radar.md) — observed change feed with before/after evidence
+- [radar.md](radar.md) — observed change feed with before/after evidence, and its RSS 2.0 endpoint
 - [replay.md](replay.md) — retained-checkpoint replay and checkpoint listing
 - [overview.md](overview.md) — publication-volume aggregates behind the charts
 - [status.md](status.md) — freshness, cohorts, notices, liveness
@@ -37,7 +37,10 @@ their own self-hosted copy and put their own access control in front of it.
 
 ## Conventions shared by every route
 
-Base path: `/api/v1`. All responses are JSON. Every success response carries:
+Base path: `/api/v1`. All responses are JSON except the RSS 2.0 change feed
+(`/api/v1/radar/feed.xml`), which returns `application/rss+xml` and carries the
+same rate-limit and security headers as the JSON routes. Every JSON success
+response carries:
 
 - `provenance.rankingPolicyVersion` — policy behind any ordering in the body
 - `provenance.sources.{cve,kev,epss}` — revision or version, score date and

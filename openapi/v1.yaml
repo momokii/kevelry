@@ -350,6 +350,81 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/RateLimited"
+  /api/v1/radar/feed.xml:
+    get:
+      operationId: getRadarFeed
+      summary: RSS 2.0 change feed
+      description: |
+        The same accepted change events as `GET /api/v1/radar`, serialized as
+        RSS 2.0 for anonymous pull subscribers. Items come from retained local
+        daily checkpoints only; reads never call upstream. Channel metadata and
+        item fields carry the feed's provenance: the acceptance window visually
+        stated in the channel description, the newest checkpoint's observation
+        time as `lastBuildDate`, and per-item `observedAt` and source revision.
+        `since` older than the 30-day checkpoint retention window is rejected
+        with `400 BAD_FILTER` naming the earliest allowed date, never answered
+        with an empty feed.
+      tags:
+        - Radar
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Only events from checkpoints on or after this UTC date (YYYY-MM-DD); bounded to checkpoint retention.
+          schema:
+            type: string
+            pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            example: "2026-10-17"
+        - name: kind
+          in: query
+          required: false
+          description: Filter by change kind.
+          schema:
+            $ref: "#/components/schemas/RadarKind"
+        - name: cveId
+          in: query
+          required: false
+          description: Restrict to one validated CVE ID.
+          schema:
+            type: string
+            pattern: "^CVE-[0-9]{4}-[0-9]{4,}$"
+            example: CVE-2026-109618
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: RSS 2.0 document with the filtered events, newest first.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/rss+xml:
+              schema:
+                type: string
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <rss version="2.0">
+                  <channel>
+                    <title>CVE Change Radar change feed</title>
+                    <lastBuildDate>Sat, 24 Oct 2026 04:00:00 GMT</lastBuildDate>
+                    <item>
+                      <title>CVE-2026-109618 — kev-added</title>
+                      <link>https://www.cve.org/CVERecord?id=CVE-2026-109618</link>
+                      <guid isPermaLink="false">radar-2026-10-23-0001</guid>
+                      <pubDate>Fri, 23 Oct 2026 04:00:00 GMT</pubDate>
+                      <description>kev.listed: false → true</description>
+                    </item>
+                  </channel>
+                </rss>
+        "304":
+          description: The retained checkpoint set and query shape are unchanged (If-None-Match).
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /api/v1/replay:
     get:
       operationId: replayCheckpoint

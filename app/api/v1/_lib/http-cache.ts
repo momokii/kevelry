@@ -33,7 +33,8 @@ export function getCacheSeed(db: CveDatabase | null, extra: string[] = []): stri
   );
 }
 
-function etagMatches(request: Request, etag: string): boolean {
+/** True when the request's If-None-Match list contains the given strong ETag. */
+export function etagMatches(request: Request, etag: string): boolean {
   const raw = request.headers.get("if-none-match");
   if (raw === null) return false;
   return raw

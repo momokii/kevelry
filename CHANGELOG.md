@@ -7,6 +7,28 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **RSS 2.0 change feed (E5).** `GET /api/v1/radar/feed.xml` serializes the
+  events `GET /api/v1/radar` already serves from retained checkpoints, for
+  anonymous pull subscribers. It reuses the JSON route's parsers and filters:
+  `since` (UTC `YYYY-MM-DD`), `kind`, `cveId`, and `limit` (default 50, max 200);
+  invalid values return the same `BAD_FILTER`/`BAD_LIMIT` codes. `since` older
+  than the 30-day checkpoint retention window is `400 BAD_FILTER` naming the
+  earliest allowed date — never an empty 200 that would read as "no changes".
+  Items are factual only: `<guid isPermaLink="false">` is the `eventId`,
+  `<title>` is `<cveId> — <kind>`, `<pubDate>` is the RFC 822 form of
+  `observedAt`, `<link>` is the canonical cve.org record, and `<description>`
+  lists `field: before → after` lines then `reason:` then `sourceRevision:`,
+  XML-escaped (`&`, `<`, `>`). The channel names accepted local snapshots and
+  the retention window and sets `<lastBuildDate>` from the newest checkpoint.
+  Success responses use `Content-Type: application/rss+xml; charset=utf-8`,
+  `Cache-Control`, and a strong `ETag` seeded from the retained checkpoint set
+  (newest date, oldest date, count) plus the validated query shape, so a repeat
+  request revalidates as `304`. The feed uses the shared rate-limit,
+  concurrency, request-bound, preflight, and security-header guards; errors
+  stay JSON. Docs updated in `docs/api/radar.md`, `docs/api/README.md`, and
+  `openapi/v1.yaml`. Export, UI subscribe controls, and Playwright remain out
+  of scope for this API-only step.
+
 - **Bulk CVE lookup route (E4).** `GET /api/v1/cves/batch?ids=CVE-…,CVE-…`
   returns up to 50 records in one bounded read. `ids` is required, trimmed,
   empties dropped, and deduped preserving first-seen order, so `data` is in
