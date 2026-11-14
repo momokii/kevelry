@@ -208,24 +208,24 @@ _Ingestion seam (worker-only):_ `loadPinnedOrRefreshCweCatalog(env, fs, db) -> {
 
 **Problem:** fetch N records in one call, bounded and deterministic, compatible with existing single-record/list semantics and guardrails.
 
-| Option                                                | Shape                                                                                                                                                                          | Hides                                 | Trade-offs                                                                                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A. Extend `GET /api/v1/cves?ids=` (chosen base)**   | Reuse list route: if `ids` present, operate in “by-id set” mode (mutually exclusive with cursor/filter semantics as defined) returning same `data[]` item shape + `provenance` | Batch load/dedupe/order/miss handling | _Simple surface_, discoverable, reuses auth/limits/record shaping. Must define clear precedence/validation to avoid ambiguous combos.               |
-| **B. `POST /api/v1/cves/batch` body**                 | JSON body `{ids:[]}`                                                                                                                                                           | —                                     | Semantically nice for large sets but breaks read-only GET/cache conventions and adds body parsing/CSRF-ish surface; unnecessary for capped small N. |
-| **C. `GET /api/v1/cves:batch` or `/cves/batch?ids=`** | New sub-route                                                                                                                                                                  | —                                     | Clean separation but duplicates routing/boilerplate; still fine, but A reuses more.                                                                 |
+| Option                                             | Shape                                                                                                                    | Hides                                 | Trade-offs                                                                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Extend `GET /api/v1/cves?ids=` (rejected)**   | Mode switch on the list route: when `ids` is present the same route returns a different envelope and a `coverage` object | Batch load/dedupe/order/miss handling | **Rejected:** one route with two envelopes; the `coverage` key is reused with different semantics (eligible cohort vs requested/returned/missing), a misuse hazard for clients. |
+| **B. `POST /api/v1/cves/batch` body**              | JSON body `{ids:[]}`                                                                                                     | —                                     | **Rejected:** a POST body breaks the read-only, cacheable GET convention for what is a pure read; adds body parsing/CSRF-ish surface.                                           |
+| **C. Dedicated `GET /api/v1/cves/batch` (chosen)** | Separate sub-route with its own envelope                                                                                 | Batch load/dedupe/order/miss handling | **Chosen:** each route keeps one meaning; the small routing/boilerplate cost buys an unambiguous contract.                                                                      |
 
-**Comparison:** B is poorest fit for a read-only, cacheable, GET-only v1. C is clean; **A chosen** for minimal surface + reuse, provided we make combinations explicit and strict.
+**Comparison:** A was rejected because a mode switch on `/api/v1/cves` gives one route two envelopes and reuses the `coverage` key with different semantics (eligible cohort vs requested/returned/missing), which is a misuse hazard. B was rejected because a POST body breaks the read-only GET/cacheable convention. **C is chosen** so each route keeps one meaning.
 
 **Chosen interface (HTTP):**
 
-- `GET /api/v1/cves?ids=CVE-...,CVE-...` (comma-separated, trimmed). (Alternative accepted form may be repeated `ids` params — **pick one canonical in impl, accept second as alias only if trivial**; spec defaults to comma-separated for simplicity.)
-- **Constraints:** `1 <= unique valid ids <= MAX_BULK_IDS` (recommended **50**, bounded well under URL/IN-clause/response budgets); each matches `CVE_ID_RE`; duplicates removed.
-- **Precedence/compat:** `ids` mode is **incompatible** with `cursor`, `severity`, `kev`, `epss`, `publishedStart`, `publishedEnd`, `limit` except maybe ignored — **spec choice:** reject combinations with `400 BAD_REQUEST` (“ids cannot be combined with pagination/filters”) to avoid ambiguity.
-- **Response:** `200 { data: CveItem[], found: string[], missing: string[], coverage: {...}, provenance: {...} }` where `data` contains found records in **deterministic order = requested order after dedupe** (predictable for clients) and `missing` lists requested-not-found/rejected-by-visibility deterministically; `provenance` same as other v1 responses. (No `pagination` object in ids mode.)
-- **Errors:** `400 BAD_REQUEST/BAD_ID/BAD_FILTER` for invalid/too many/conflicting params; standard `429/500` envelopes.
-- **Caching:** same `cachedOkResponse`/ETag/Cache-Control discipline (seed includes canonicalized ids set).
+- `GET /api/v1/cves/batch` with required `ids` (comma-separated, trimmed) — one canonical encoding, no repeated-param form.
+- **Constraints:** `1 <= unique valid ids <= 50` (bounded well under URL/IN-clause/response budgets); each matches `CVE_ID_RE`; duplicates removed preserving first-seen order.
+- **No filter/pagination params on this route:** anything besides `ids` (`cursor`, `severity`, `kev`, `epss`, `publishedStart`, `publishedEnd`, `limit`, …) is **rejected** with `400 BAD_REQUEST`, never ignored.
+- **Response:** `200 { data: CveItem[], resolution: { requested, returned, missingIds }, provenance: {...} }` where `data` is in requested-dedupe order and `missingIds` lists requested-not-found/rejected-by-visibility records; `provenance` same as other v1 responses. No `pagination` object and **no `coverage` key** on this route.
+- **Errors:** `400 BAD_REQUEST/BAD_ID` for invalid/too many/unknown params; standard `429/500` envelopes.
+- **Caching:** same `cachedOkResponse`/ETag/Cache-Control discipline (seed over the canonical sorted id set).
 
-_Depth:_ reuses `loadFullRecords`, `toCveItem`, provenance/coverage helpers — route orchestrates validation + shaping only.
+_Depth:_ reuses `loadFullRecords`, `toCveItem`, `buildProvenance`, `cachedOkResponse` — route orchestrates validation + shaping only.
 
 ### 5.4 E5 — Change feeds & bounded export
 
@@ -240,7 +240,7 @@ _Depth:_ reuses `loadFullRecords`, `toCveItem`, provenance/coverage helpers — 
 **Chosen (synthesized, A-leaning):**
 
 - **Feeds:** `GET /api/v1/radar/feed.xml` (RSS 2.0, primary) and `GET /api/v1/radar/feed.atom` (Atom 1.0) — snapshot-backed from retained checkpoints/radar events; query params subset: `since` (bounded by retention), `kind`, `cveId`, `limit` (capped, default small e.g. 50, max e.g. 200). Each item: stable `<guid>`/`<id>` = `eventId` (or deterministic composite), `<pubDate>`/`<updated>` = observedAt/checkpointDate, title/summary factual (CVE, kind, before→after fields) — **no invented prose**, link to canonical record/UI, sourceRevision in description/extension; channel/feed metadata includes provenance window and “accepted snapshot, not live upstream”. `Content-Type: application/rss+xml` / `application/atom+xml`, Cache-Control/ETag/Last-Modified aligned to snapshot seed.
-- **Export:** `format=csv|json` (default current behavior/json response when absent) on **bounded, already-paginated** list endpoints that naturally produce row sets: minimally `GET /api/v1/search` and selected priority/list endpoints as specified (e.g. `/api/v1/cves` list, priority) — **same filters/sort/pagination/caps apply**, export serializes the **current page/result set** (not unbounded). CSV: stable column order, header row, provenance/coverage emitted as leading comment lines `# key: value` or a companion metadata block convention (**pick one and document**; spec recommends first-line comments + documented schema) to avoid breaking parsers while carrying required context. JSON export = existing envelope (or `{data,provenance,coverage}`) with explicit content-disposition filename.
+- **Export:** `format=csv|json` (default current behavior/json response when absent) on **bounded, already-paginated** list endpoints that naturally produce row sets: minimally `GET /api/v1/search` and selected priority/list endpoints as specified (e.g. `/api/v1/cves` list, priority) — **same filters/sort/pagination/caps apply**, export serializes the **current page/result set** (not unbounded). CSV: stable documented column order, header row, explicit empty handling for nulls — **no `#` prefix rows**, the file is a header row plus data rows only; spreadsheet and SQL importers would read such rows as data. Provenance and coverage stay in the JSON export envelope and in the UI next to the export control. JSON export = existing envelope (or `{data,provenance,coverage}`) with explicit content-disposition filename.
 - **UI affordances:** “Subscribe” (RSS/Atom links) on Radar view; “Export CSV/JSON” on Explore/Search and applicable list views — real links/buttons, 44px targets, disabled with explanation when no rows/over constraints.
 
 _Depth:_ serializer modules (`radarFeed`, `csvExport`) hide formatting details; routes reuse existing query parsing, data fetch, and bounds.
@@ -382,7 +382,7 @@ Unit mapping (0/1/null, missing fields), API contract/back-compat, Playwright: l
 ### 8.5 Backend/module design
 
 - **`src/lib/cwe-catalog.ts` (reader, deep):** `getCweCatalogMeta(db)`, `resolveCweIds(db, ids[])` (batched `IN` over unique normalized IDs) → `CweRef` with `known|unmapped|taxonomy-unavailable`. Purely local, deterministic, never throws on bad IDs.
-- **`src/lib/cwe-import.ts` (writer/worker-only):** `refreshCweCatalog(...)` — download/verify/parse/normalize/upsert/publish meta. **Dependency gate (pre-impl, mandatory):** choose and approve an XML parse strategy (streaming parser dep or existing-safe approach) consistent with repo policy; enforce size/time bounds.
+- **`src/lib/cwe-import.ts` (writer/worker-only):** `refreshCweCatalog(...)` — download/verify/parse/normalize/upsert/publish meta. The ingest reads MITRE's `CSV.zip` with the existing RFC4180 CSV parser already used for EPSS (`parseEpssCsv` in `src/lib/epss-import.ts`), so no new production dependency and no XML/XSD parsing step is introduced; keep a bounded unzip (entry count, uncompressed size cap) and a version/hash pin.
 - **Normalization:** accept `CWE-79`, `79` (normalize), dedupe; reject/mark invalid IDs as unmapped.
 
 ### 8.6 API (additive)
@@ -432,28 +432,26 @@ Allow clients (and internal consumers like watch) to retrieve many records in on
 
 ### 9.2 API contract (chosen)
 
-- **Route:** `GET /api/v1/cves`
-- **Mode:** when `ids` is present → **bulk-by-id mode**.
-- **Params:** `ids` = comma-separated CVE IDs (canonical). Trim elements; drop empties; dedupe preserving first-seen requested order.
-- **Validation:** every element must match `CVE_ID_RE`; `1..MAX_BULK_IDS` unique (recommend **50**). **Reject** combination with `cursor|limit|severity|kev|epss|publishedStart|publishedEnd` (`400 BAD_REQUEST`, clear message). (No filter semantics in this mode.)
+- **Route:** `GET /api/v1/cves/batch` (dedicated route; `/api/v1/cves` keeps its list meaning and `coverage` semantics).
+- **Params:** `ids` required, comma-separated CVE IDs. Trim elements; drop empties; dedupe preserving first-seen requested order.
+- **Validation:** every element must match `CVE_ID_RE`; `1..50` unique ids (cap **50**). No other filter/pagination params are accepted on this route — unknown params are rejected, not ignored.
 - **Response 200:**
   ```json
   {
-    "data": [ /* CveItem for each found, in requested-dedupe order */ ],
-    "found": ["CVE-..."],
-    "missing": ["CVE-..."],
-    "coverage": { "requested": N, "returned": K, "missing": N-K },
-    "provenance": { ...same as v1... }
+    "data": [ /* CveItem, requested-dedupe order */ ],
+    "resolution": { "requested": N, "returned": K, "missingIds": ["CVE-..."] },
+    "provenance": { ...same shape as other v1 responses... }
   }
   ```
-  Records not found or not publicly visible under current rules appear in `missing` (not fabricated). Ordering deterministic.
-- **Errors:** `400` invalid/missing/too-many/conflicting; `429/500` standard. `413` not expected given cap but guardrails still apply.
-- **Cache/headers:** ETag/Cache-Control keyed by canonicalized ids; security/rate headers as today.
+  No `pagination` object and no `coverage` key. Records not found or not publicly visible under current rules appear in `resolution.missingIds` (never fabricated). Ordering deterministic.
+- **Errors:** `400 BAD_ID` (an element fails `CVE_ID_RE`) / `400 BAD_REQUEST` (missing, too many, or unknown/filter params); standard `429`/`500`.
+- **Cache/headers:** `cachedOkResponse` with the ETag seed over the canonical sorted id set; security/rate headers as today.
 
 ### 9.3 Implementation design
 
 - Reuse `loadFullRecords` (already chunked/batched), `toCveItem`, `buildProvenance`, `cachedOkResponse`, guardrails. No new DB tables.
-- Canonicalize ids set for cache seed: sorted unique or normalized request form (pick one, deterministic).
+- Do **not** reuse the list route's `coverage` key: bulk counts live under `resolution` only, so `coverage` keeps one meaning (eligible cohort).
+- Canonicalize the id set for the cache seed: sorted unique ids (deterministic).
 
 ### 9.4 Docs & clients
 
@@ -483,7 +481,7 @@ Let anonymous users/tools subscribe to accepted changes and export bounded resul
 ### 10.3 Bounded export
 
 - **Mechanism:** `format=csv|json` on bounded list endpoints (at minimum `GET /api/v1/search`; optionally `GET /api/v1/cves` list and priority list routes — implement consistently where row-set semantics match). **Same validation, filters, sort, pagination, caps**; exports the **returned page/set** (never unbounded).
-- **CSV:** UTF-8, header row, stable column order, RFC4180-safe quoting/escaping, explicit `null`/empty handling documented. Prepend provenance/coverage as `#` comment lines (`# generatedAt`, `# rankingPolicyVersion`, source revisions/stale flags, `# coverage.*`, `# exportedCount`) so context is preserved.
+- **CSV:** UTF-8, header row, stable documented column order, RFC4180-safe quoting/escaping, explicit empty handling for nulls. The file carries **no `#` prefix rows** — a header row plus data only — because spreadsheet and SQL importers render them as data rows. Provenance and coverage live in the JSON export envelope and in the UI next to the export control.
 - **JSON export:** same envelope as normal JSON response (`data`, `pagination`, `coverage`, `provenance`) with `Content-Disposition: attachment` filename including date/query hash hint.
 - **Limits:** reject/ignore `format` combos that would imply unbounded output; communicate “narrow filters or paginate” on empty/edge cases (normal API errors/messages).
 
@@ -494,7 +492,7 @@ Let anonymous users/tools subscribe to accepted changes and export bounded resul
 
 ### 10.5 Tests & docs
 
-- Feed XML/Atom well-formed and deterministic per snapshot; window/retention respected; params validated; cache headers. CSV column stability/escaping, provenance comments present, parity with JSON rows. UI links/actions accessible. Update `docs/api/radar.md`, search/list docs, OpenAPI where representable, api-docs page.
+- Feed XML/Atom well-formed and deterministic per snapshot; window/retention respected; params validated; cache headers. CSV column stability/escaping, documented empty handling, header-plus-data rows only, parity with JSON rows. UI links/actions accessible. Update `docs/api/radar.md`, search/list docs, OpenAPI where representable, api-docs page.
 
 ---
 
@@ -550,7 +548,7 @@ flowchart TD
 - [ ] UI spec: per-view placement, state matrix (default/empty/unknown/unmapped/stale/error), copy/HelpTips, keyboard/a11y, 360px/200%, dark tokens.
 - [ ] Ingest/worker behavior (E3): source pin, cadence, bounds, failure→last-known-good.
 - [ ] Test plan: unit fixtures/goldens, API, Playwright, perf/query check on representative corpus.
-- [ ] **E3 gate:** XML parse approach/dependency approved; attribution/source recorded. **E5:** feed/export schema & caps finalized.
+- [ ] **E3 gate:** pack URL/versioning + hash pin approved; attribution/source recorded (the parser question is closed — existing RFC4180 CSV parser). **E5:** feed/export schema & caps finalized.
 
 ### 12.2 Definition of Done (per epic)
 
@@ -589,18 +587,18 @@ flowchart TD
 
 ## 15. Open decisions (resolve at P0 / pre-impl, not during coding)
 
-1. **E1:** include `cvssSecondary` on compact list rows vs detail-only (payload/perf); exact `coverage` field names for secondary breakdown; final user-facing copy.
+1. **E1:** secondary CVSS placement `[resolved → §15.1.2]`. Still open: exact `coverage` field names for the secondary breakdown; final user-facing copy.
 2. **E2:** display-only vs add `ransomware`/due filters now (requires index + UX spec); exact field placement per compact view.
-3. **E3 (gate):** XML parser/dependency choice & bounds; pack URL/versioning/attribution; mitigation truncation length & disclosure UI (inline vs expand); whether to expose catalog status in global status/provenance.
-4. **E4:** `MAX_BULK_IDS` (recommend 50); canonical `ids` encoding; miss semantics (`missing[]` confirmed) and visibility of rejected records in bulk mode.
-5. **E5:** RSS-only vs RSS+Atom (plan assumes both; can trim to RSS if desired), feed/export default/max limits, CSV provenance format (comment block vs separate envelope convention), which list endpoints gain `format` in v3.0.
+3. **E3:** dependency choice & bounds `[resolved → §15.1.1]` (CSV ingest reuses the existing RFC4180 parser). Still open: pack URL/versioning/attribution; mitigation truncation length & disclosure UI (inline vs expand); whether to expose catalog status in global status/provenance.
+4. **E4:** `MAX_BULK_IDS`, `ids` encoding, and route shape `[resolved → §15.1.3]` (dedicated batch route, cap 50, requested order after dedupe, `resolution.missingIds`).
+5. **E5:** CSV provenance format `[resolved → §15.1.4]` (JSON envelope and UI only; the CSV file itself is header plus data). Still open: RSS-only vs RSS+Atom (plan assumes both; can trim to RSS if desired), feed/export default/max limits, which list endpoints gain `format` in v3.0.
 
 ### 15.1 Resolved P0 decisions (2026-11)
 
 1. **E3:** ingests CWE `CSV.zip` with the existing RFC4180 parser; no new production dependency; gates reduce to pack URL/version and attribution text.
 2. **E1:** secondary CVSS is rendered in the detail/expanded block only — never on compact list rows, never band-coloured, never filterable or sortable, always carrying the word “context”; the existing `hasAdp` flag folds into the new secondary block instead of shipping a parallel field.
-3. **E4:** uses a dedicated route `GET /api/v1/cves/batch?ids=` rather than a mode switch on `/api/v1/cves`, so the list envelope and its `coverage` key keep one meaning; bulk responses use `resolution: { requested, returned, missingIds }`, cap 50 ids, requested-order after dedupe, ETag seed over the canonical id set.
-4. **E5:** export serialises the current page only, labelled with its row count in the UI; CSV carries no `#` comment lines (provenance stays in the JSON envelope and the UI) and the column order is documented; feed `since` is clamped to checkpoint retention and returns an explicit error when out of range.
+3. **E4:** uses a dedicated route `GET /api/v1/cves/batch` with required `ids` rather than a mode switch on `/api/v1/cves`, so the list envelope and its `coverage` key keep one meaning; bulk responses use `resolution: { requested, returned, missingIds }`, cap 50 ids, requested-order after dedupe, ETag seed over the canonical id set.
+4. **E5:** export serialises the current page only, labelled with its row count in the UI; CSV carries no `#` prefix rows (provenance stays in the JSON envelope and the UI) and the column order is documented; feed `since` is clamped to checkpoint retention and returns an explicit error when out of range.
 5. **E2:** maps `ransomware_known` as `1` → “known”, `0` → “unknown” (catalog says Unknown), `NULL` → “unstated”; never renders “no ransomware”.
 
 ---
