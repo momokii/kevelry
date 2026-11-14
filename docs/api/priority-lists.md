@@ -69,6 +69,7 @@ curl "https://radar.example.org/api/v1/priority/rising-forecast?limit=2"
         "dueDate": "2026-11-13",
         "requiredAction": "Apply mitigations per vendor instructions.",
         "vulnerabilityName": null,
+        "ransomwareUse": "unstated",
         "ransomwareKnown": null,
         "cwes": ["CWE-78"]
       },

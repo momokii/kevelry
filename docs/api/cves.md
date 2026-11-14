@@ -105,6 +105,27 @@ Unknown EPSS is explicit null, never 0; a real zero is `"status": "known",
 excluded from dated views. Every response carries `provenance` and the
 rate-limit headers from the [README](README.md#limits).
 
+## KEV block
+
+`kev` rides on every `CveItem` and is self-describing per field. The shape is
+additive: existing keys keep their names and meaning.
+
+- `listed` is membership in the accepted KEV snapshot. Absence means not listed,
+  not proof of no exploitation.
+- `dateAdded`, `dueDate`, `requiredAction`, `vulnerabilityName`, and `cwes` are
+  catalog facts: the catalog-entry date (not first-exploit time), the catalog's
+  federal remediation deadline (not a universal SLA), and the catalog's own
+  text. Where the catalog is silent the value is `null` (or `[]` for `cwes`),
+  never an empty string.
+- `ransomwareUse` is `known` | `unknown` | `unstated`. `known` is the catalog's
+  Known, `unknown` is the catalog's own Unknown value (not an inference), and
+  `unstated` means the catalog states nothing. `unknown` and `unstated` are
+  distinct facts and are never collapsed: no response negates an `unknown` or
+  `unstated` entry into a ransomware-free claim.
+- `ransomwareKnown` remains as a legacy boolean alias for the same fact
+  (`true`/`false`/`null` for known/unknown/unstated). New clients should read
+  `ransomwareUse`.
+
 ## Secondary CVSS block
 
 `cvssSecondary` rides on every `CveItem` (list, detail, and search) and never

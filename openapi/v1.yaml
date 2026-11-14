@@ -1098,9 +1098,14 @@ components:
         - dueDate
         - requiredAction
         - vulnerabilityName
+        - ransomwareUse
         - ransomwareKnown
         - cwes
-      description: Membership in the accepted KEV snapshot. Absence means not listed, not proof of no exploitation.
+      description: >
+        Membership in the accepted KEV snapshot, self-describing per field. Absence means not
+        listed, not proof of no exploitation. Every value is a catalog fact: `dateAdded` is the
+        catalog-entry date (not first-exploit time) and `dueDate` is a federal remediation
+        deadline (not a universal SLA). Missing catalog text is `null`, never an empty string.
       properties:
         listed:
           type: boolean
@@ -1125,10 +1130,25 @@ components:
           nullable: true
           description: Catalog short name. Null when absent or not listed.
           example: null
+        ransomwareUse:
+          type: string
+          enum:
+            - known
+            - unknown
+            - unstated
+          description: >
+            Catalog-stated ransomware campaign use. `known` = the catalog says Known,
+            `unknown` = the catalog says Unknown (its own value, not an inference),
+            `unstated` = the catalog states nothing. `unknown` and `unstated` are distinct and
+            are never collapsed; `0` never means the use is absent.
+          example: unstated
         ransomwareKnown:
           type: boolean
           nullable: true
-          description: True when the catalog states ransomware use is Known, false when Unknown, null when unstated or not listed.
+          deprecated: true
+          description: >
+            Legacy alias for `ransomwareUse`, kept for back-compat: true when known, false when
+            unknown, null when unstated or not listed. New clients should read `ransomwareUse`.
           example: null
         cwes:
           type: array

@@ -278,7 +278,7 @@ _Depth:_ serializer modules (`radarFeed`, `csvExport`) hide formatting details; 
 ### 6.6 UI design (Research Console)
 
 - **Overview (`app/page.tsx`, `components/overview/StatStrip.tsx`):** keep “Unscored severity” stat; add subnote `X with ADP-published secondary (context) · Y with no published metric` with denominator = unscored cohort (or corpus segment) and “not low” retained. HelpTip explains “secondary, not used for ranking/eligibility”.
-- **Rows/lists (priority/search/explore/radar/replay summaries):** when `cvssPrimary` unknown/adp-only/legacy as today, render compact secondary chip: mono score + version + `ADP`/provider label + word “secondary (context)”. No severity-band promotion; use neutral/unknown-consistent styling tokens, not critical/high color.
+- **Rows/lists (priority/search/explore/radar/replay summaries):** when `cvssPrimary` unknown/adp-only/legacy as today, render compact secondary chip: mono score + version + `ADP`/provider label + word “secondary (context)”. No severity-band promotion; use neutral/unknown-consistent styling tokens, not critical/high color. **Superseded by §15.1.2:** the compact secondary chip on list rows is not implemented — secondary CVSS renders in the detail/expanded block only.
 - **Detail/expanded:** “Severity metrics” block: **Primary** (existing, labeled “CNA primary, worst CNA-provided scenario” per policy) and **Secondary (context only)** list (each: origin/provider, version, base, vector, copyable vector text) or explicit “No CNA or ADP metric published”.
 - **States:** `present` | `none` | `not-loaded` (should not occur). Each shows text.
 - **A11y/interaction:** chips focusable where interactive (tooltip), 44px targets, contrast in both themes, keyboard parity.

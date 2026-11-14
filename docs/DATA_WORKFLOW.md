@@ -97,6 +97,29 @@ Do not mix unrelated baselines or require an expired rolling delta log for recov
 - Historical analysis uses dated historical files or retained daily observations,
   never the assumption that the moving current-file URL preserves past versions.
 
+### Ransomware use: `kev_entries.ransomware_known`
+
+The catalog's `knownRansomwareCampaignUse` string is stored as an integer and
+projected as a tri-state. The mapping lives in exactly one place
+(`kevRansomwareUseOf` in `app/api/v1/_lib/records.ts`):
+
+| Stored | Catalog says | API `ransomwareUse` | Legacy `ransomwareKnown` |
+| ------ | ------------ | ------------------- | ------------------------ |
+| `1`    | Known        | `known`             | `true`                   |
+| `0`    | Unknown      | `unknown`           | `false`                  |
+| `NULL` | nothing      | `unstated`          | `null`                   |
+
+`0` and `NULL` are different facts and are never collapsed: `0` is the
+catalog's own Unknown value, `NULL` is the catalog saying nothing. Neither is a
+ransomware-free statement, and no surface renders one.
+
+KEV dates and text are catalog facts, not our analysis: `dateAdded` is when the
+catalog listed the entry (not first-exploit time), `dueDate` is the deadline for
+the named federal directive (not a universal SLA), and
+`requiredAction`/`vulnerabilityName` are quoted verbatim. Absent text is stored
+and served as `NULL`/`null`, never an empty string; the API block carries
+`ransomwareUse` additively and keeps `ransomwareKnown` as a legacy alias.
+
 ## Validation and Publication
 
 Validate records with the matching declared `dataVersion` schema. Accept known

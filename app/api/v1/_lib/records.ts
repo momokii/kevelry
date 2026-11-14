@@ -30,6 +30,47 @@ export function exploitReferencesOf(rawJson: string | null, cap = 5): Array<{ ur
   }
 }
 
+/**
+ * Catalog-stated ransomware use, as the catalog itself words it.
+ *
+ * `known`   - the catalog says Known.
+ * `unknown` - the catalog says Unknown (its own value, not our inference).
+ * `unstated` - the catalog states nothing (stored NULL).
+ *
+ * `unknown` and `unstated` are distinct states and are never collapsed:
+ * neither is ever negated into a claim that ransomware use is absent.
+ */
+export type KevRansomwareUse = "known" | "unknown" | "unstated";
+
+/**
+ * The one mapping from the stored `kev_entries.ransomware_known` integer:
+ * `1` -> "known", `0` -> "unknown", `NULL` -> "unstated".
+ *
+ * Any other non-null integer keeps the legacy reading (non-zero is Known), so
+ * the old boolean alias below cannot drift from this switch.
+ */
+export function kevRansomwareUseOf(value: number | null | undefined): KevRansomwareUse {
+  if (value === null || value === undefined) return "unstated";
+  return value === 0 ? "unknown" : "known";
+}
+
+/**
+ * Legacy `ransomwareKnown` boolean alias, derived from the tri-state above:
+ * known -> true, unknown -> false, unstated -> null. Kept for back-compat with
+ * consumers that predate `ransomwareUse`.
+ */
+export function legacyRansomwareKnown(use: KevRansomwareUse): boolean | null {
+  if (use === "known") return true;
+  if (use === "unknown") return false;
+  return null;
+}
+
+/** Absent catalog text is null, never an empty string. */
+function catalogText(value: string | null): string | null {
+  if (value === null || value.trim() === "") return null;
+  return value;
+}
+
 export interface FullRecord {
   cveId: string;
   state: string;
@@ -43,6 +84,9 @@ export interface FullRecord {
   kevDueDate: string | null;
   kevRequiredAction: string | null;
   kevVulnerabilityName: string | null;
+  /** Catalog-stated ransomware use; the single source for the KEV block. */
+  kevRansomwareUse: KevRansomwareUse;
+  /** Legacy alias derived from `kevRansomwareUse`, never a second mapping. */
   kevRansomwareKnown: boolean | null;
   kevCwes: string[];
   /** References the record tags as exploit material (never "verified PoC"). */
@@ -140,7 +184,7 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       dueDate: string | null;
       requiredAction: string | null;
       vulnerabilityName: string | null;
-      ransomwareKnown: boolean | null;
+      ransomwareUse: KevRansomwareUse;
     }
   >();
   const kevCwes = new Map<string, string[]>();
@@ -174,10 +218,10 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
     for (const row of kevRows) {
       kevDates.set(row.cve_id, row.date_added);
       kevEnrichment.set(row.cve_id, {
-        dueDate: row.due_date,
-        requiredAction: row.required_action,
-        vulnerabilityName: row.vulnerability_name,
-        ransomwareKnown: row.ransomware_known === null ? null : row.ransomware_known !== 0,
+        dueDate: catalogText(row.due_date),
+        requiredAction: catalogText(row.required_action),
+        vulnerabilityName: catalogText(row.vulnerability_name),
+        ransomwareUse: kevRansomwareUseOf(row.ransomware_known),
       });
     }
     const ssvcRows = db.handle
@@ -252,6 +296,8 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
     }));
     const primary = selectPrimaryCvss(metricInputs);
     const epss = epssById.get(cveId);
+    const kev = kevEnrichment.get(cveId);
+    const ransomwareUse = kev?.ransomwareUse ?? "unstated";
     out.push({
       cveId: row.cve_id,
       state: row.state,
@@ -262,10 +308,11 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       descriptionLang: row.description_lang,
       rawJson: row.raw_json,
       kevDateAdded: kevDates.get(cveId) ?? null,
-      kevDueDate: kevEnrichment.get(cveId)?.dueDate ?? null,
-      kevRequiredAction: kevEnrichment.get(cveId)?.requiredAction ?? null,
-      kevVulnerabilityName: kevEnrichment.get(cveId)?.vulnerabilityName ?? null,
-      kevRansomwareKnown: kevEnrichment.get(cveId)?.ransomwareKnown ?? null,
+      kevDueDate: kev?.dueDate ?? null,
+      kevRequiredAction: kev?.requiredAction ?? null,
+      kevVulnerabilityName: kev?.vulnerabilityName ?? null,
+      kevRansomwareUse: ransomwareUse,
+      kevRansomwareKnown: legacyRansomwareKnown(ransomwareUse),
       kevCwes: kevCwes.get(cveId) ?? [],
       exploitReferences: exploitReferencesOf(row.raw_json),
       ssvc: ssvcById.get(cveId) ?? null,
@@ -388,6 +435,10 @@ export function toCveItem(
       dueDate: record.kevDueDate,
       requiredAction: record.kevRequiredAction,
       vulnerabilityName: record.kevVulnerabilityName,
+      // Catalog-stated use: 1 -> known, 0 -> unknown (the catalog's own value),
+      // NULL -> unstated. Neither state is ever negated into an absence claim.
+      ransomwareUse: record.kevRansomwareUse,
+      // Legacy alias for the same fact; unknown is false, unstated is null.
       ransomwareKnown: record.kevRansomwareKnown,
       cwes: record.kevCwes,
     },

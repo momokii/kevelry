@@ -384,6 +384,28 @@ explainer above the list (what the three decision points mean, how the order is
 formed, the coverage caveat) and a recency window control; the right-hand rail
 keeps a short ordering summary rather than repeating the explainer.
 
+### KEV signal block
+
+The KEV block renders in the expanded signal panel of a Priority row (and in any
+future inspector that shows KEV). It is never colour-only. Contract:
+
+- Rows are labeled and source-scoped: _Listed_, _Date added (catalog)_, _Due
+  date (catalog, federal context)_, _Required action_, _Ransomware campaign
+  use_, and _Catalog name_ when present; CWEs render as mono chips.
+- _Ransomware campaign use_ renders one of three explicit catalog states —
+  `Known (catalog)`, `Unknown (catalog)`, `Not stated` — and never a negation:
+  an `unknown` or `unstated` entry never reads as ransomware-free. The compact
+  chip in the row header keeps its word (`known ransomware use`) rather than
+  relying on colour.
+- Every value states its scope: the catalog-entry date is not first-exploit
+  time, and the due date is a federal remediation deadline for the named
+  directive, not a universal SLA.
+- Absent fields follow the per-field "not provided" rule, never a misleading
+  blank.
+- API counterpart: the `kev` block on `CveItem` (`listed`, `dateAdded`,
+  `dueDate`, `requiredAction`, `vulnerabilityName`, `ransomwareUse`, the legacy
+  `ransomwareKnown` alias, and `cwes`).
+
 ### Unscored severity split (overview)
 
 The "Unscored severity" stat keeps its own value and note, and gains one

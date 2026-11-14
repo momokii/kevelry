@@ -31,6 +31,23 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
   plus the detail block (words "context only", no `badge-*`/band class, absent
   from the compact signal line).
 
+- **KEV ransomware tri-state and self-describing block (E2).**
+  `kev_entries.ransomware_known` is an integer, and its three states now have
+  one documented mapping (`kevRansomwareUseOf` in
+  `app/api/v1/_lib/records.ts`): `1` → `"known"`, `0` → `"unknown"` (the
+  catalog's own Unknown value), `NULL` → `"unstated"`. `0` and `NULL` are never
+  collapsed, and no output renders a ransomware-free claim from either. Every
+  `CveItem.kev` block gains `ransomwareUse` additively and keeps
+  `ransomwareKnown` as a legacy boolean alias (`true`/`false`/`null`) so
+  existing consumers are untouched. The block is self-describing: `listed`,
+  `dateAdded`, `dueDate`, `requiredAction`, `vulnerabilityName`, `cwes`, with
+  absent catalog text served as `null` (never `""`) and empty `cwes` as `[]`.
+  OpenAPI, `docs/api/cves.md`, and `docs/DATA_WORKFLOW.md` document the mapping
+  and that KEV dates/text are catalog facts, not first-exploit time or a
+  universal SLA. `tests/kev-ransomware.test.ts` pins the 1/0/NULL matrix, the
+  legacy alias, the all-missing null shape, and the absence of negated
+  ransomware wording.
+
 - **Secondary CVSS projection (`cvssSecondary`).** Every preserved metric the
   primary selector did not pick is now exposed on `CveItem` as one bounded,
   labeled block instead of being dropped. The projection hides the shape
