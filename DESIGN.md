@@ -192,9 +192,12 @@ compact result rows carry severity/KEV/EPSS chips and official-record actions.
 page's own query string and cursor plus `format=csv|json`, so the file is
 **page-bounded**: exactly the rows on screen, never the whole cohort and never a
 second scan. The label is the promise: the count equals the rendered rows and
-the file's data rows. Each control is disabled with a visible explanation when
-the page has no rows, or when the current state has no query or vendor filter
-for the search endpoint to export. Provenance and coverage stay in the JSON
+the file's data rows. Each control is disabled with a visible explanation only
+when the page has no rows. The default unfiltered Explore view is exportable:
+`format=csv|json` is the one request shape allowed to omit both `q` and
+`vendor`, and it serializes the same unfiltered first page (publication date
+descending, unknown dates last, the page's `limit`). A JSON request without
+`format` still requires `q` or `vendor`. Provenance and coverage stay in the JSON
 envelope (and beside the control) — the CSV file is a header row plus data rows,
 with no `#` comment lines, because spreadsheet and SQL importers would read them
 as data. The column contract lives in `docs/api/search.md`.

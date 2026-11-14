@@ -10,7 +10,10 @@ official links, missing and language states).
 Local FTS-backed search over accepted snapshots only. No nickname index is
 promised and no upstream fetch occurs. Either `q` (2–200 chars) or `vendor`
 (2–100 chars) must shape the query; results mirror the explore view row
-for row.
+for row. The one exception is export mode: a request carrying `format=csv` or
+`format=json` may omit both, and then serializes the unfiltered first page the
+default explore view renders. A JSON request without `format` keeps the
+`400 BAD_QUERY` requirement.
 
 ## Parameters
 
@@ -27,8 +30,22 @@ response echoes both `q` (empty for vendor-only searches) and `vendor`
 returned**. Validation, filters, ordering, `limit` and `cursor` are the ones
 described above: the export is the current page, never a dump, and there is no
 second scan or fan-out. An absent `format` keeps the JSON envelope exactly as
-before; any other value is `400 BAD_FILTER`. `/api/v1/search` still requires `q`
-or `vendor`, so there is always a query for the file to describe.
+before; any other value is `400 BAD_FILTER`.
+
+**Export-mode exception (explicit).** Export mode is the only shape that does
+not require `q` or `vendor`. Without either, `format=csv|json` serializes the
+same unfiltered first page `/explore` renders: publication date descending with
+unknown dates last, at most `limit` rows (default 50, capped at 200). This
+exists because the default explore view shows rows that must be exportable; the
+exception is scoped to `format=` and nothing else. A request with neither
+`q`/`vendor` nor `format` is still `400 BAD_QUERY`, and the error message states
+the export-mode exception.
+
+The bounds do not move: no unbounded dump, no cursor walking, no fan-out, one
+bounded service call per request, the same rate limit and concurrency guards,
+and the same cache/ETag headers. The default explore view states `limit=20` in
+its export link so the file holds exactly the rows on screen rather than the
+API's own default page size.
 
 Both formats are sent as attachments:
 
@@ -76,6 +93,8 @@ answers `304`.
 curl "https://radar.example.org/api/v1/search?q=openssl%20denial%20of%20service&limit=2"
 curl "https://radar.example.org/api/v1/search?vendor=microsoft&limit=2"
 curl -o kevelry-search.csv "https://radar.example.org/api/v1/search?q=openssl&limit=5&format=csv"
+# Export-mode exception: no q/vendor, the default explore first page (limit 20).
+curl -o kevelry-explore.csv "https://radar.example.org/api/v1/search?limit=20&format=csv"
 ```
 
 ```json

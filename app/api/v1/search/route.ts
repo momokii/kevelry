@@ -44,11 +44,19 @@ export async function GET(request: Request): Promise<Response> {
     assertRequestBounds(request);
     const params = new URL(request.url).searchParams;
     const vendor = parseVendor(params.get("vendor"));
-    // q stays required for text search, but a vendor-only filter cohort is
-    // a valid search: at least one of q/vendor must shape the query.
+    // `format` is parsed before the query check because export mode is the one
+    // documented exception: the Explore view renders an unfiltered first page,
+    // so its export link has no q/vendor and must still serialize that page.
+    const format = parseFormat(params.get("format"));
+    // Outside export mode q stays required for text search, but a vendor-only
+    // filter cohort is a valid search: at least one of q/vendor must shape it.
     const qRaw = params.get("q");
-    if (qRaw === null && vendor === null) {
-      throw new ApiError("BAD_QUERY", 400, "q is required and must be 2 to 200 characters.");
+    if (qRaw === null && vendor === null && format === null) {
+      throw new ApiError(
+        "BAD_QUERY",
+        400,
+        "q is required and must be 2 to 200 characters unless vendor or format=csv|json is present.",
+      );
     }
     const q = qRaw === null ? "" : parseQuery(qRaw);
     const limit = parseLimit(params.get("limit"));
@@ -60,7 +68,6 @@ export async function GET(request: Request): Promise<Response> {
     // Bounded export stays on this route so validation, filters, ordering and
     // the page caps are the ones already documented; `format` only changes the
     // serialization and adds attachment headers. Absent keeps the JSON body.
-    const format = parseFormat(params.get("format"));
     const start = parseDateBound(params.get("publishedStart"), "publishedStart");
     const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
     if (start !== null && end !== null && start >= end) {

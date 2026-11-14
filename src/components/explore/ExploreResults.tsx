@@ -275,15 +275,13 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
   const from = response.total === 0 ? 0 : response.offset + 1;
   const to = response.offset + response.items.length;
   const rowCount = response.items.length;
-  // `/api/v1/search` shapes one documented search; without `q` or `vendor`
-  // there is nothing for it to export, so the control explains instead of
-  // handing out a link that answers 400.
+  // Export mode is the one documented exception to the `q` requirement: the
+  // endpoint serializes the same unfiltered first page `/explore` renders, so
+  // the control only explains itself when the page genuinely has no rows.
   const exportDisabledReason =
     rowCount === 0
       ? "Nothing to export: this page has no rows. Narrow or clear the filters until results appear."
-      : linkParams.q === "" && linkParams.vendor === ""
-        ? "Export needs a query or a vendor filter: the search endpoint exports one search at a time. Type a query to export this page."
-        : null;
+      : null;
   const bands = SEVERITY_ORDER.map(
     (band) => `${bandShort(band)} ${formatInt(response.coverage.bySeverity[band])}`,
   ).join(", ");

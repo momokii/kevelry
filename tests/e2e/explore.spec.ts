@@ -666,6 +666,45 @@ test.describe("page-bounded export", () => {
     await page.screenshot({ path: `${EVIDENCE_DIR}/explore-export-360.png`, fullPage: true });
   });
 
+  test("default Explore view exports the unfiltered first page", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/explore");
+    await expect(page.getByTestId("explore-filters")).toHaveAttribute("data-hydrated", "true");
+    await expect(page.getByTestId("explore-results")).toBeVisible();
+
+    const rendered = await page.getByTestId("explore-row").count();
+    expect(rendered, "seeded fixture rows are rendered").toBeGreaterThan(0);
+    const count = `${rendered} ${rendered === 1 ? "row" : "rows"}`;
+    const renderedIds = await page.getByTestId("explore-row-id").allTextContents();
+
+    // No query and no vendor on this view: export must still be enabled.
+    const csv = page.getByTestId("explore-export-csv");
+    const json = page.getByTestId("explore-export-json");
+    await expect(csv).toBeVisible();
+    await expect(json).toBeVisible();
+    await expect(csv).not.toHaveAttribute("data-export-disabled", "true");
+    await expect(json).not.toHaveAttribute("data-export-disabled", "true");
+    await expect(csv).toContainText(`Export CSV (${count})`);
+    await expect(json).toContainText(`Export JSON (${count})`);
+    await expect(page.getByTestId("explore-export-note")).toContainText(`this page (${count})`);
+
+    const href = await csv.getAttribute("href");
+    expect(href ?? "", "default view export asks for CSV").toContain("format=csv");
+    expect(href ?? "", "export states the page limit").toContain("limit=20");
+    expect(href ?? "", "no query is needed to export").not.toContain("q=");
+    await expect(csv, "enabled export is a real link").toHaveAttribute("href", /format=csv/);
+
+    const download = await page.request.get(href ?? "");
+    expect(download.status()).toBe(200);
+    expect(download.headers()["content-type"]).toContain("text/csv");
+    const lines = (await download.text()).split("\r\n").filter((line) => line !== "");
+    expect(lines, "header plus the rendered rows").toHaveLength(rendered + 1);
+    const csvIds = lines.slice(1).map((line) => line.split(",")[0]);
+    expect(csvIds, "the file holds the rows on screen, in order").toEqual(
+      renderedIds.map((id) => id.trim()),
+    );
+  });
+
   test("export is disabled with an explanation when the page has no rows", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/explore?q=zzzzzzzzzz");

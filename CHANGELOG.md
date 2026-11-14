@@ -24,15 +24,21 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
   unknown value is `400 BAD_FILTER`. Exports share the JSON routes' ETag/304 and
   cache policy. Explore's results header adds `Export CSV` / `Export JSON`
   controls labelled with the page's row count (`Export CSV (20 rows)`), 44px
-  targets that link to `/api/v1/search` with the current query string and cursor
-  and are disabled with a visible explanation when the page has no rows or no
-  query/vendor filter to export. The Radar view adds a `Subscribe` block: a 44px
+  targets that link to `/api/v1/search` with the current query string, cursor,
+  and page `limit`; they are disabled with a visible explanation only when the
+  page genuinely has no rows. Export mode is the one documented exception to the
+  `q`/`vendor` requirement, so the default unfiltered Explore view is
+  exportable: `format=csv|json` without either serializes the same unfiltered
+  first page (same ordering and bounds), while a plain JSON request without
+  `format` still answers `400 BAD_QUERY` and the error message states the
+  exception. The Radar view adds a `Subscribe` block: a 44px
   link to `/api/v1/radar/feed.xml` with the RSS type plus a read-only URL field
   that selects itself on focus, so the feed URL is copy-able by keyboard. Docs
   updated in `docs/api/search.md`, `docs/api/radar.md`, `openapi/v1.yaml`, and
   `DESIGN.md`; tests cover quoting, the column/header contract, `limit`-bounded
   rows, filter parity with JSON (an `exploit=tagged` export cannot leak the
-  unfiltered set), the invalid-format error, and the controls at 360px.
+  unfiltered set), row-set parity between the page's own query path and the
+  unfiltered export, the invalid-format error, and the controls at 360px.
 
 - **RSS 2.0 change feed (E5).** `GET /api/v1/radar/feed.xml` serializes the
   events `GET /api/v1/radar` already serves from retained checkpoints, for

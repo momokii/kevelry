@@ -13,6 +13,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
+import { searchCves } from "../src/lib/search";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
 import { GET as getSearch } from "../app/api/v1/search/route";
@@ -244,5 +245,49 @@ describe("search export format", () => {
     expect(response.status).toBe(200);
     expect(await textOf(response)).toBe(`${SEARCH_EXPORT_COLUMNS.join(",")}\r\n`);
     expect(response.headers.get("content-disposition")).toMatch(/-0rows\.csv"$/);
+  });
+
+  it("exports the unfiltered first page without q/vendor, matching the page's own rows", async () => {
+    const db = makeDb();
+    // Seed more than one Explore page so a limit mismatch (page default 20 vs
+    // API default 50) cannot hide behind a small corpus.
+    for (let n = 1; n <= 24; n += 1) {
+      const day = String(n).padStart(2, "0");
+      seedRecord(db, `CVE-2099-02${day}`, {
+        title: `Unfiltered record ${day}`,
+        published: `2026-09-${day}T00:00:00.000Z`,
+      });
+    }
+
+    // Explore's default first page: no q, no vendor, limit 20. This is the
+    // page's own query path (`cachedExploreSearch` -> `searchCves`).
+    const pageLimit = 20;
+    const page = searchCves(db, { limit: pageLimit });
+    expect(page.items).toHaveLength(pageLimit);
+    const pageIds = page.items.map((item) => item.cveId);
+
+    // The export link the page renders always states its limit, so the file
+    // must be exactly those rows in the same order.
+    const response = await getSearch(new Request(`${BASE}?limit=${pageLimit}&format=csv`));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    const body = await textOf(response);
+    const lines = csvRecords(body);
+    expect(lines[0]).toBe(SEARCH_EXPORT_COLUMNS.join(","));
+    expect(lines, "header plus exactly the page's rows").toHaveLength(pageLimit + 1);
+    expect(csvColumn(body, 0).slice(1)).toEqual(pageIds);
+
+    const json = await getSearch(new Request(`${BASE}?limit=${pageLimit}&format=json`));
+    expect(json.status).toBe(200);
+    const exported = (await json.json()) as { data: Array<{ cveId: string }> };
+    expect(exported.data.map((row) => row.cveId)).toEqual(pageIds);
+
+    // The exception is scoped to `format`: the same request without it still
+    // demands q or vendor, and the error states the export-only exception.
+    const plain = await getSearch(new Request(`${BASE}?limit=${pageLimit}`));
+    expect(plain.status).toBe(400);
+    const error = (await plain.json()) as { code: string; message: string };
+    expect(error.code).toBe("BAD_QUERY");
+    expect(error.message).toContain("format=csv|json");
   });
 });

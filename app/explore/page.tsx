@@ -258,6 +258,9 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
       if (cursor !== undefined && cursor !== "") exportQuery.set("cursor", cursor);
       const exportHref = (format: "csv" | "json"): string => {
         const exportParams = new URLSearchParams(exportQuery);
+        // Always state the page's limit: the API default (50) differs from the
+        // Explore default (20), and the file must hold exactly the rows shown.
+        exportParams.set("limit", String(limit));
         exportParams.set("format", format);
         return `/api/v1/search?${exportParams.toString()}`;
       };

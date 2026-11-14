@@ -184,6 +184,10 @@ paths:
         excerpt (at most 320 Unicode code points plus an ellipsis), the official
         record link, and explicit missing/language states. Same filters as the
         explore site view. No nickname index is promised; no upstream fetch occurs.
+        Either `q` or `vendor` is required, except in export mode (`format=csv|json`),
+        which accepts neither and serializes the unfiltered first page the default
+        explore view renders. The exception is scoped to `format`; a plain JSON
+        request without `q`/`vendor` is still `400 BAD_QUERY`.
       tags:
         - Search
       parameters:
@@ -192,7 +196,10 @@ paths:
           required: false
           description: >-
             Search text or CVE ID. Minimum 2 characters, maximum 200. May be
-            omitted only when `vendor` shapes the query instead.
+            omitted only when `vendor` shapes the query instead, or when
+            `format=csv|json` requests export mode (which then serializes the
+            unfiltered first page). Outside export mode one of `q`/`vendor` is
+            required and its absence is `400 BAD_QUERY`.
           schema:
             type: string
             minLength: 2
@@ -204,7 +211,8 @@ paths:
           description: >-
             Vendor/product substring over KEV catalog labels (2-100
             characters). Only KEV-listed records carry these labels, so this
-            filter implies KEV membership. Either `q` or `vendor` is required.
+            filter implies KEV membership. Either `q` or `vendor` is required
+            outside export mode (`format=csv|json`).
           schema:
             type: string
             minLength: 2
@@ -226,7 +234,10 @@ paths:
             `format=csv` the same page is serialized as a header row plus data
             rows (RFC 4180 quoting, nulls as empty cells, no `#` comment lines);
             with `format=json` the envelope below is sent as an attachment.
-            Either way the file carries exactly this request's page.
+            Either way the file carries exactly this request's page. In export
+            mode `q`/`vendor` may both be absent: the page is then the
+            unfiltered first page `limit` rows long (publication date
+            descending, unknown dates last).
           headers:
             ETag:
               description: Strong validator seeded over the aggregate revision and the request shape.
@@ -777,7 +788,12 @@ components:
         attachment. Both carry `Content-Disposition` naming the UTC date and
         row count. Filters, ordering, `limit`, and `cursor` are unchanged, so
         the export is exactly this request's page — never an unbounded dump.
-        Absent keeps the plain JSON response; any other value is `400
+        Export mode is also the one shape that may omit both `q` and `vendor`:
+        it then serializes the unfiltered first page the default explore view
+        renders (same ordering, same `limit`; at most 200 rows, one bounded
+        service call). A request without `format` still requires `q` or
+        `vendor` and answers `400 BAD_QUERY` when both are absent. Absent
+        `format` keeps the plain JSON response; any other value is `400
         BAD_FILTER`.
       schema:
         type: string
