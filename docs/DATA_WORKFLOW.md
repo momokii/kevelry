@@ -530,8 +530,36 @@ job and every visitor-facing read is purely local.
   `src/lib/cwe-catalog.ts` only read SQLite: no fetch, no unzip, no parser, no
   cache. Inputs are normalized (`CWE-79`, `cwe-79`, `79` → `CWE-79`), deduped,
   and queried in bounded `IN` batches; no caller-supplied shape throws an
-  error. Acquisition and CSV parsing belong to the importer, which reuses the
-  RFC 4180 parser already shipped for EPSS.
+  error. Acquisition and CSV parsing are owned by the importer's parsing
+  modules (`src/lib/zip.ts`, `src/lib/cwe-import.ts`); this read path never
+  imports them.
+- **Acquisition parsing contract (importer step 2a, no fetch yet).** MITRE
+  publishes each view as `CSV.zip`. `src/lib/zip.ts` reads it with Node
+  built-ins only (`node:zlib`), no new production dependency: locate the End of
+  Central Directory, read the single central-directory record, then the one
+  local file header. Stored (method 0) and deflate (method 8 via
+  `inflateRawSync`) are supported. Sizes come from the central directory, never
+  from the local header, and every rejection is a typed `ZipExtractError` with
+  a stable code: `not-zip`, `entry-count` (zero or several entries),
+  `encrypted`, `unsupported-method`, `multi-disk`, `zip64`, `declared-size`,
+  `inflated-size`, or `corrupt`. The caller must pass `maxUncompressedBytes`;
+  the declared size is checked against it and the same value is handed to zlib
+  as `maxOutputLength`, so a small deflate stream that would expand past the
+  cap is stopped before it allocates. `src/lib/cwe-import.ts` then parses the
+  extracted CSV with a bounded RFC 4180 reader (`parseCsvRows`): quoted fields,
+  embedded commas and line breaks, doubled quotes, CRLF or LF, and a final line
+  without a newline. Blank lines are dropped; an unterminated quoted field or
+  text after a closing quote is a typed `CweImportError`, and input above
+  `CWE_CSV_MAX_BYTES` is rejected rather than truncated. `mapCweCsv` maps by
+  header name, case-insensitively (`cwe-id`/`id`, `name`, `abstraction`,
+  `status`, `description`, `mitigation`), ignores unknown columns, normalizes
+  ids with `normalizeCweId`, skips and counts rows whose id is unusable, whose
+  name is blank, or whose normalized id repeats, strips CR/LF inside fields to
+  single spaces, and truncates `summary`/`mitigation` at 600 Unicode code
+  points with `…` (absent fields stay `null`, not `""`). Caps: **16 MiB** for
+  CSV text (`CWE_CSV_MAX_BYTES`, also the value the importer passes as the zip
+  entry cap) and **600 code points** per long field. No fetch, worker wiring,
+  UI, or database write in this step.
 
 ## Retention (bounded growth)
 

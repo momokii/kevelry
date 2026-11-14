@@ -7,6 +7,28 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **Dependency-free CWE zip reader and CSV mapping (E3 step 2a).**
+  `src/lib/zip.ts` reads a single-entry MITRE `CSV.zip` using only
+  `node:zlib`: End of Central Directory, the central-directory record, then the
+  one local header; stored (0) and deflate (8) are supported, sizes come from
+  the central directory, and rejections are typed `ZipExtractError`s
+  (`not-zip`, `entry-count`, `encrypted`, `unsupported-method`, `multi-disk`,
+  `zip64`, `declared-size`, `inflated-size`, `corrupt`) instead of raw Node
+  errors. The required `maxUncompressedBytes` cap is enforced against the
+  declared size and passed to `inflateRawSync` as `maxOutputLength`, so a zip
+  bomb is stopped before it allocates. `src/lib/cwe-import.ts` adds a bounded
+  RFC 4180 reader (`parseCsvRows`, 16 MiB cap; quoted fields, embedded commas
+  and line breaks, doubled quotes, CRLF/LF, no final newline) and `mapCweCsv`,
+  which maps by header name (`cwe-id`/`id`, `name`, `abstraction`, `status`,
+  `description`, `mitigation`), ignores unknown columns, normalizes ids through
+  `normalizeCweId`, skips and counts rows with an unusable id, blank name, or
+  duplicate id, strips CR/LF to spaces, and truncates summary/mitigation at 600
+  code points with `…`. No fetch, worker wiring, UI, or database write in this
+  step. Tests in `tests/cwe-import.test.ts` build zip fixtures in-process
+  (stored, deflated, multi-entry, encrypted, declared-size, bomb) and cover CSV
+  quoting, CRLF/LF, header reordering, unknown columns, skipped ids, and
+  truncation.
+
 - **Local CWE taxonomy schema and reader (E3 step 1).** Migration 009 adds two
   additive tables: `cwe_catalog_meta` (a pinned one-row pointer to the accepted
   catalog with `version`, `source`, `source_hash`, `retrieved_at`, `status`,
