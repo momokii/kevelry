@@ -21,11 +21,61 @@ KEV-listed records carry these labels, so it implies KEV membership. The
 response echoes both `q` (empty for vendor-only searches) and `vendor`
 (null when unfiltered).
 
+## Bounded export (`format`)
+
+`format=csv` and `format=json` serialize **the page this request already
+returned**. Validation, filters, ordering, `limit` and `cursor` are the ones
+described above: the export is the current page, never a dump, and there is no
+second scan or fan-out. An absent `format` keeps the JSON envelope exactly as
+before; any other value is `400 BAD_FILTER`. `/api/v1/search` still requires `q`
+or `vendor`, so there is always a query for the file to describe.
+
+Both formats are sent as attachments:
+
+    Content-Disposition: attachment; filename="kevelry-search-<UTC date>-<n>rows.csv"
+    Content-Disposition: attachment; filename="kevelry-search-<UTC date>-<n>rows.json"
+
+`<n>` is the number of data rows in the file, so a saved file says how big the
+page it came from was.
+
+### CSV columns
+
+UTF-8, CRLF record separator, header row, then one row per record, in this
+stable order (additive changes only, never reordering):
+
+    cveId,title,state,publishedAt,updatedAt,severityBand,primaryCvssVersion,primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,exploitTagged,officialUrl
+
+- `severityBand` is the same primary-CNA band the site renders (`critical`,
+  `high`, `medium`, `low`, `none`, `legacy`, `unknown`); it is not a second,
+  export-only classification.
+- `primaryCvssVersion`/`primaryCvssScore` are the selected primary metric;
+  `epssValue`/`epssPercentile` are the accepted snapshot's decimals as stored
+  (never rounded into a different number).
+- `kevListed` and `exploitTagged` are `true`/`false`. `exploitTagged` means a
+  reference carries the publisher's `exploit` tag — a classification, not a
+  verified working exploit.
+- Quoting is RFC 4180: a field containing a comma, a double quote, CR or LF is
+  wrapped in double quotes and embedded quotes are doubled.
+- Null or absent values are **empty cells** — never `null`, `-` or `0` — so an
+  unknown KEV date or EPSS value is visibly absent instead of looking measured.
+- The file is a header row plus data rows, and nothing else. It carries **no
+  `#` comment lines**: spreadsheet and SQL importers would read those as data.
+  Provenance (`provenance`) and coverage (`coverage`) stay in the JSON envelope
+  and beside the export control in the UI.
+
+### JSON export
+
+`format=json` is the same envelope as the plain response (`q`, `vendor`, `data`,
+`pagination`, `coverage`, `provenance`) with the attachment header added. ETag
+and `Cache-Control` behave exactly like the JSON route, so a conditional repeat
+answers `304`.
+
 ## Example
 
 ```bash
 curl "https://radar.example.org/api/v1/search?q=openssl%20denial%20of%20service&limit=2"
 curl "https://radar.example.org/api/v1/search?vendor=microsoft&limit=2"
+curl -o kevelry-search.csv "https://radar.example.org/api/v1/search?q=openssl&limit=5&format=csv"
 ```
 
 ```json

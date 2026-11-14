@@ -1,11 +1,17 @@
 import { getAcceptedEpssDate } from "../../../../src/lib/priority";
 import { searchCves } from "../../../../src/lib/search";
+import {
+  exportFilename,
+  searchExportRow,
+  serializeSearchCsv,
+  type SearchExportRow,
+} from "../../../../src/lib/csv-export";
 import { getDb } from "../_lib/db-handle";
 import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot, searchBudgetExceeded } from "../_lib/guardrails";
 import { ApiError } from "../_lib/errors";
 import { errorResponse, reserveRateLimit } from "../_lib/responses";
-import { cachedOkResponse } from "../_lib/http-cache";
-import { encodeCursor, parseCursor, parseDateBound, parseEpss, parseExploit, parseKev, parseLimit, parseQuery, parseSeverity, parseVendor } from "../_lib/params";
+import { cachedOkResponse, cachedTextResponse } from "../_lib/http-cache";
+import { encodeCursor, parseCursor, parseDateBound, parseEpss, parseExploit, parseFormat, parseKev, parseLimit, parseQuery, parseSeverity, parseVendor } from "../_lib/params";
 import { buildProvenance } from "../_lib/provenance";
 import { loadFullRecords, toCveItem } from "../_lib/records";
 
@@ -51,6 +57,10 @@ export async function GET(request: Request): Promise<Response> {
     const kev = parseKev(params.get("kev"));
     const epss = parseEpss(params.get("epss"));
     const exploit = parseExploit(params.get("exploit"));
+    // Bounded export stays on this route so validation, filters, ordering and
+    // the page caps are the ones already documented; `format` only changes the
+    // serialization and adds attachment headers. Absent keeps the JSON body.
+    const format = parseFormat(params.get("format"));
     const start = parseDateBound(params.get("publishedStart"), "publishedStart");
     const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
     if (start !== null && end !== null && start >= end) {
@@ -94,31 +104,52 @@ export async function GET(request: Request): Promise<Response> {
     const records = loadFullRecords(db, page);
     const byId = new Map(records.map((record) => [record.cveId, record]));
     const scoreDate = getAcceptedEpssDate(db);
-    const data = page.map((cveId) => {
+    // One pass over this page's IDs builds both shapes, so the JSON data and
+    // the export rows are the same records in the same order: no fan-out, no
+    // second scan, no widening past `limit`.
+    const data: Array<Record<string, unknown>> = [];
+    const exportRows: SearchExportRow[] = [];
+    for (const cveId of page) {
       const record = byId.get(cveId);
-      if (record === undefined) return null;
-      return toCveItem(record, scoreDate, null);
-    });
-    const nowIso = new Date().toISOString();
-    return cachedOkResponse(
-      request,
-      db,
-      {
-        q,
-        vendor,
-        data: data.filter((row) => row !== null),
-        pagination: { limit, hasMore, nextCursor },
-        coverage: {
-          eligibleCohort: total,
-          returned: page.length,
-          unscored: unknownSeverity,
-          unknownEpss: total - epssKnown,
-          unknownDate,
+      if (record === undefined) continue;
+      data.push(toCveItem(record, scoreDate, null));
+      exportRows.push(searchExportRow(record));
+    }
+    const now = new Date();
+    if (format === "csv") {
+      const filename = exportFilename("search", "csv", now, exportRows.length);
+      return cachedTextResponse(
+        request,
+        db,
+        serializeSearchCsv(exportRows),
+        {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${filename}"`,
         },
-        provenance: buildProvenance(db, nowIso),
+        rate,
+      );
+    }
+    const payload = {
+      q,
+      vendor,
+      data,
+      pagination: { limit, hasMore, nextCursor },
+      coverage: {
+        eligibleCohort: total,
+        returned: page.length,
+        unscored: unknownSeverity,
+        unknownEpss: total - epssKnown,
+        unknownDate,
       },
-      rate,
-    );
+      provenance: buildProvenance(db, now.toISOString()),
+    };
+    if (format === "json") {
+      const filename = exportFilename("search", "json", now, exportRows.length);
+      return cachedOkResponse(request, db, payload, rate, {
+        headers: { "Content-Disposition": `attachment; filename="${filename}"` },
+      });
+    }
+    return cachedOkResponse(request, db, payload, rate);
   } catch (error) {
     if (error instanceof ApiError) {
       return errorResponse(request, error.code, error.message, db, error.details, rate);

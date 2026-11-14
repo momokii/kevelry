@@ -218,10 +218,24 @@ paths:
         - $ref: "#/components/parameters/Exploit"
         - $ref: "#/components/parameters/PublishedStart"
         - $ref: "#/components/parameters/PublishedEnd"
+        - $ref: "#/components/parameters/ExportFormat"
       responses:
         "200":
-          description: Ranked matches with excerpts, coverage, and provenance.
+          description: |
+            Ranked matches with excerpts, coverage, and provenance. With
+            `format=csv` the same page is serialized as a header row plus data
+            rows (RFC 4180 quoting, nulls as empty cells, no `#` comment lines);
+            with `format=json` the envelope below is sent as an attachment.
+            Either way the file carries exactly this request's page.
           headers:
+            ETag:
+              description: Strong validator seeded over the aggregate revision and the request shape.
+              schema:
+                type: string
+            Content-Disposition:
+              description: Present only when `format` is set; the filename names the UTC date and the page's row count.
+              schema:
+                type: string
             X-RateLimit-Limit:
               $ref: "#/components/headers/X-RateLimit-Limit"
             X-RateLimit-Remaining:
@@ -235,6 +249,12 @@ paths:
               examples:
                 matchPage:
                   $ref: "#/components/examples/SearchMatchPage"
+            text/csv:
+              schema:
+                type: string
+              example: |
+                cveId,title,state,publishedAt,updatedAt,severityBand,primaryCvssVersion,primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,exploitTagged,officialUrl
+                CVE-2026-109618,CVE-2026-109618,PUBLISHED,2026-10-20T14:02:00Z,2026-10-22T00:00:00Z,critical,4.0,9.2,true,2026-10-23,0.1162,0.96047,false,https://www.cve.org/CVERecord?id=CVE-2026-109618
         "400":
           $ref: "#/components/responses/BadRequest"
         "429":
@@ -743,6 +763,28 @@ components:
           - any
         default: any
         example: scored
+    ExportFormat:
+      name: format
+      in: query
+      required: false
+      description: >
+        Bounded export of the current page. `csv` returns
+        `text/csv; charset=utf-8` with the documented stable column order
+        (`cveId,title,state,publishedAt,updatedAt,severityBand,primaryCvssVersion,
+        primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,
+        exploitTagged,officialUrl`), RFC 4180 quoting, nulls as empty cells, and
+        no `#` comment rows. `json` returns the unchanged envelope as an
+        attachment. Both carry `Content-Disposition` naming the UTC date and
+        row count. Filters, ordering, `limit`, and `cursor` are unchanged, so
+        the export is exactly this request's page — never an unbounded dump.
+        Absent keeps the plain JSON response; any other value is `400
+        BAD_FILTER`.
+      schema:
+        type: string
+        enum:
+          - csv
+          - json
+        example: csv
     Exploit:
       name: exploit
       in: query

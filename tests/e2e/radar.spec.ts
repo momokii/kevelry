@@ -119,3 +119,46 @@ test("radar passes the task-24 accessibility audit", async ({ page }) => {
   await auditZoomReflow(page, "radar", `${A11Y_EVIDENCE_DIR}/radar-zoom-200.png`);
   await auditReducedMotion(page, "radar", `${A11Y_EVIDENCE_DIR}/radar-reduced-motion.png`);
 });
+
+test("subscribe control links to the RSS feed and offers a copy-able URL", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.goto("/radar");
+  await expect(page.getByTestId("radar-root")).toBeVisible();
+  await expect(page.getByTestId("radar-root")).toHaveAttribute("data-hydrated", "true", {
+    timeout: 60000,
+  });
+
+  const section = page.getByTestId("radar-subscribe");
+  await expect(section).toBeVisible();
+  await expect(section).toContainText("RSS");
+  const link = page.getByTestId("radar-subscribe-link");
+  await expect(link).toHaveAttribute("href", "/api/v1/radar/feed.xml");
+  await expect(link).toHaveAttribute("type", "application/rss+xml");
+  const box = await link.boundingBox();
+  expect(box?.height ?? 0, "subscribe link is a 44px target").toBeGreaterThanOrEqual(44);
+
+  const url = page.getByTestId("radar-subscribe-url");
+  await expect(url).toHaveValue(/\/api\/v1\/radar\/feed\.xml$/);
+  await url.focus();
+  await expect(url).toBeFocused();
+  const selection = await url.evaluate((element) => {
+    const input = element as HTMLInputElement;
+    return input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0);
+  });
+  expect(selection, "focus selects the whole feed URL for copying").toContain(
+    "/api/v1/radar/feed.xml",
+  );
+
+  // The advertised link really resolves to a live RSS document.
+  const feedUrl = new URL("/api/v1/radar/feed.xml", page.url()).toString();
+  const response = await page.request.get(feedUrl);
+  expect(response.status(), "feed route responds").toBe(200);
+  expect(response.headers()["content-type"] ?? "").toContain("application/rss+xml");
+  expect(await response.text()).toContain("<rss");
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow, "horizontal overflow with subscribe control at 360px").toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${EVIDENCE_DIR}/radar-subscribe-360.png`, fullPage: true });
+});

@@ -11,6 +11,14 @@ Newest events first. Optional `since` (UTC `YYYY-MM-DD` checkpoint floor),
 `kind`, and `cveId` narrow the feed; `cursor` and `limit` paginate the JSON
 route. Reads serve accepted local snapshots only; no upstream call is made.
 
+## Subscribe
+
+The radar view carries a `Subscribe` control: a real link to
+`/api/v1/radar/feed.xml` with `type="application/rss+xml"`, plus the same URL in
+a read-only field that selects itself on focus so it can be copied by keyboard.
+It is the base feed (no query); add `since`, `kind`, `cveId` or `limit` yourself
+if you want a narrower subscription.
+
 ## Kinds
 
 `kev-added`, `kev-removed`, `cna-changed`, `forecast-changed`, `corrected`,

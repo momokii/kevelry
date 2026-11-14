@@ -7,6 +7,33 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **Page-bounded CSV/JSON export and subscribe controls (E5).**
+  `GET /api/v1/search` now accepts `format=csv|json` and serializes **exactly
+  the page it already returned** — the same validation, filters, ordering,
+  `limit`, and `cursor`, with no fan-out and no second scan. `format=csv` answers
+  `text/csv; charset=utf-8` with `Content-Disposition: attachment;
+  filename="kevelry-search-<UTC date>-<n>rows.csv"` and the stable column order
+  `cveId,title,state,publishedAt,updatedAt,severityBand,primaryCvssVersion,
+  primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,
+  exploitTagged,officialUrl`, RFC 4180 quoting (comma, quote, CR, LF; embedded
+  quotes doubled), null/absent values as empty cells, and **no `#` comment
+  rows** — the file is a header row plus data rows only, because spreadsheet and
+  SQL importers would read comment rows as data. `format=json` is the unchanged
+  envelope (`q`, `vendor`, `data`, `pagination`, `coverage`, `provenance`) plus
+  the attachment headers; an absent `format` keeps today's JSON response and an
+  unknown value is `400 BAD_FILTER`. Exports share the JSON routes' ETag/304 and
+  cache policy. Explore's results header adds `Export CSV` / `Export JSON`
+  controls labelled with the page's row count (`Export CSV (20 rows)`), 44px
+  targets that link to `/api/v1/search` with the current query string and cursor
+  and are disabled with a visible explanation when the page has no rows or no
+  query/vendor filter to export. The Radar view adds a `Subscribe` block: a 44px
+  link to `/api/v1/radar/feed.xml` with the RSS type plus a read-only URL field
+  that selects itself on focus, so the feed URL is copy-able by keyboard. Docs
+  updated in `docs/api/search.md`, `docs/api/radar.md`, `openapi/v1.yaml`, and
+  `DESIGN.md`; tests cover quoting, the column/header contract, `limit`-bounded
+  rows, filter parity with JSON (an `exploit=tagged` export cannot leak the
+  unfiltered set), the invalid-format error, and the controls at 360px.
+
 - **RSS 2.0 change feed (E5).** `GET /api/v1/radar/feed.xml` serializes the
   events `GET /api/v1/radar` already serves from retained checkpoints, for
   anonymous pull subscribers. It reuses the JSON route's parsers and filters:

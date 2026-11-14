@@ -27,6 +27,61 @@ const FIELD_SYMBOLS: Record<string, string> = {
   unknown: "[?]",
 };
 
+const FEED_PATH = "/api/v1/radar/feed.xml";
+
+/**
+ * Subscribe affordance for the RSS change feed (v3 epic E5).
+ *
+ * A real link with the RSS type, plus a copy-able URL: the input selects its
+ * whole value on focus, so keyboard users can copy it without a clipboard
+ * permission prompt. The absolute URL is filled after hydration; the relative
+ * path is valid on its own and keeps the server render honest.
+ */
+function SubscribePanel() {
+  const [feedUrl, setFeedUrl] = useState(FEED_PATH);
+  useEffect(() => {
+    setFeedUrl(`${window.location.origin}${FEED_PATH}`);
+  }, []);
+  return (
+    <section
+      className="ledger-section"
+      aria-labelledby="radar-subscribe-heading"
+      data-testid="radar-subscribe"
+    >
+      <h2 id="radar-subscribe-heading">Subscribe</h2>
+      <div className="subscribe-row">
+        <a
+          className="btn"
+          href={FEED_PATH}
+          type="application/rss+xml"
+          rel="alternate"
+          title="RSS 2.0 change feed"
+          data-testid="radar-subscribe-link"
+        >
+          Subscribe to the RSS change feed
+        </a>
+        <label className="sr-only" htmlFor="radar-subscribe-url">
+          Feed URL
+        </label>
+        <input
+          id="radar-subscribe-url"
+          className="ledger-search-input subscribe-url"
+          type="url"
+          readOnly
+          value={feedUrl}
+          title={feedUrl}
+          onFocus={(event) => event.currentTarget.select()}
+          data-testid="radar-subscribe-url"
+        />
+      </div>
+      <p className="ledger-meta" data-testid="radar-subscribe-note">
+        RSS 2.0 (<code>application/rss+xml</code>), built from retained checkpoints only. Copy the
+        URL into any feed reader; it serves the same accepted change events as the JSON feed.
+      </p>
+    </section>
+  );
+}
+
 function rankText(rank: number | null): string {
   return rank === null ? "not listed" : `position ${String(rank + 1)}`;
 }
@@ -200,6 +255,7 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
           title="Change Radar"
           lede="What changed between two retained daily snapshots, with before and after evidence."
         />
+        <SubscribePanel />
         <div className="notice" data-testid="radar-unavailable">
           <span>Snapshot unavailable: no retained checkpoints to compare.</span>
         </div>
@@ -234,6 +290,8 @@ export function RadarFeed({ days }: { days: RadarUiDay[] }) {
           </span>
         }
       />
+
+      <SubscribePanel />
 
       <section className="ledger-section" aria-labelledby="radar-day-heading">
         <h2 id="radar-day-heading">Snapshot pair</h2>

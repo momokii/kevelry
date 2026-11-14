@@ -251,6 +251,16 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
           ? null
           : hrefWith(new URLSearchParams([...kept.entries(), ["cursor", response.nextCursor]]));
       const firstHref = response.offset > 0 ? hrefWith(kept) : null;
+      // Export links carry the current page exactly: the same query string and
+      // the same cursor, plus `format`. Nothing here can widen the result set —
+      // the route serializes only the rows this page already returned.
+      const exportQuery = new URLSearchParams(kept);
+      if (cursor !== undefined && cursor !== "") exportQuery.set("cursor", cursor);
+      const exportHref = (format: "csv" | "json"): string => {
+        const exportParams = new URLSearchParams(exportQuery);
+        exportParams.set("format", format);
+        return `/api/v1/search?${exportParams.toString()}`;
+      };
       outcome = {
         kind: "results",
         response,
@@ -259,6 +269,8 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Pro
         filtered,
         nextHref,
         firstHref,
+        exportCsvHref: exportHref("csv"),
+        exportJsonHref: exportHref("json"),
       };
     }
   } catch (error) {

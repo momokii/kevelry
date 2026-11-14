@@ -583,3 +583,102 @@ test("date presets apply a UTC range and the filter rail scrolls independently",
   await expect(page).toHaveURL(/dateEnd=\d{4}-\d{2}-\d{2}/);
   await expect(page.getByTestId("explore-date-start")).not.toHaveValue("");
 });
+
+test.describe("page-bounded export", () => {
+  test.beforeAll(() => {
+    deploySeed();
+  });
+
+  test.afterAll(() => {
+    restoreSeed();
+  });
+
+  test("export controls carry the current page and its row count", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/explore?q=description");
+    await expect(page.getByTestId("explore-results")).toBeVisible();
+    await expect(page.getByTestId("explore-filters")).toHaveAttribute("data-hydrated", "true");
+
+    const rendered = await page.getByTestId("explore-row").count();
+    expect(rendered, "seeded fixture rows are rendered").toBeGreaterThan(0);
+    const count = `${rendered} ${rendered === 1 ? "row" : "rows"}`;
+
+    const csv = page.getByTestId("explore-export-csv");
+    const json = page.getByTestId("explore-export-json");
+    await expect(csv).toBeVisible();
+    await expect(json).toBeVisible();
+    await expect(csv).toContainText(`Export CSV (${count})`);
+    await expect(json).toContainText(`Export JSON (${count})`);
+    await expect(page.getByTestId("explore-export-note")).toContainText(`this page (${count})`);
+
+    const csvHref = await csv.getAttribute("href");
+    expect(csvHref ?? "", "CSV export carries format=csv").toContain("format=csv");
+    expect(csvHref ?? "", "CSV export keeps the current query").toContain("q=description");
+    const jsonHref = await json.getAttribute("href");
+    expect(jsonHref ?? "", "JSON export carries format=json").toContain("format=json");
+    expect(jsonHref ?? "", "JSON export keeps the current query").toContain("q=description");
+
+    // 44px targets, keyboard reachable, and the link really downloads a file.
+    for (const control of [csv, json]) {
+      const box = await control.boundingBox();
+      expect(box?.height ?? 0, "export control is a 44px target").toBeGreaterThanOrEqual(44);
+      await control.focus();
+      await expect(control).toBeFocused();
+    }
+    const download = await page.request.get(csvHref ?? "");
+    expect(download.status()).toBe(200);
+    expect(download.headers()["content-type"]).toContain("text/csv");
+    const disposition = download.headers()["content-disposition"] ?? "";
+    const namedCount = /-(\d+)rows\.csv"/.exec(disposition)?.[1];
+    expect(namedCount, "filename names the row count").toBeDefined();
+    const body = await download.text();
+    const lines = body.split("\r\n").filter((line) => line !== "");
+    expect(lines[0]).toBe(
+      "cveId,title,state,publishedAt,updatedAt,severityBand,primaryCvssVersion,primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,exploitTagged,officialUrl",
+    );
+    // The file is one page: the row count in its name is its data-row count.
+    expect(lines, "header plus exactly the named rows").toHaveLength(Number(namedCount) + 1);
+    for (const line of lines) expect(line.startsWith("#")).toBe(false);
+
+    const over = await horizontalOverflow(page);
+    expect(over, "horizontal overflow with export controls").toBeLessThanOrEqual(1);
+  });
+
+  test("export stays usable at 360px and keeps filters in the link", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.goto("/explore?vendor=demovendor");
+    await expect(page.getByTestId("explore-results")).toBeVisible();
+    await expect(page.getByTestId("explore-filters")).toHaveAttribute("data-hydrated", "true");
+
+    const rendered = await page.getByTestId("explore-row").count();
+    expect(rendered).toBeGreaterThan(0);
+    const csv = page.getByTestId("explore-export-csv");
+    await expect(csv).toBeVisible();
+    await expect(csv).toContainText(`(${rendered} ${rendered === 1 ? "row" : "rows"})`);
+    const href = await csv.getAttribute("href");
+    expect(href ?? "", "vendor filter survives into the export").toContain("vendor=demovendor");
+    expect(href ?? "", "export asks for CSV").toContain("format=csv");
+    const box = await csv.boundingBox();
+    expect(box?.height ?? 0, "360px export target stays 44px tall").toBeGreaterThanOrEqual(44);
+
+    const over = await horizontalOverflow(page);
+    expect(over, "horizontal overflow at 360px with export controls").toBeLessThanOrEqual(1);
+    await page.screenshot({ path: `${EVIDENCE_DIR}/explore-export-360.png`, fullPage: true });
+  });
+
+  test("export is disabled with an explanation when the page has no rows", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/explore?q=zzzzzzzzzz");
+    await expect(page.getByTestId("explore-empty")).toBeVisible();
+    await expect(page.getByTestId("explore-row")).toHaveCount(0);
+
+    const csv = page.getByTestId("explore-export-csv");
+    const json = page.getByTestId("explore-export-json");
+    await expect(csv).toBeDisabled();
+    await expect(json).toBeDisabled();
+    await expect(csv).toHaveAttribute("data-export-disabled", "true");
+    await expect(csv).toContainText("(0 rows)");
+    await expect(page.getByTestId("explore-export-note")).toContainText("Nothing to export");
+    expect(await csv.getAttribute("href")).toBeNull();
+  });
+});

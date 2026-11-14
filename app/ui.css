@@ -2443,12 +2443,93 @@ a {
 
 .explore-result-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--ui-rule);
   padding-bottom: 12px;
   margin-bottom: 4px;
+}
+
+.explore-result-head > div:first-child {
+  min-width: 0;
+}
+
+.explore-result-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Page-bounded export controls (v3 E5): 44px targets, row count in the label. */
+.export-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.export-actions .btn {
+  min-height: 44px;
+}
+
+.export-actions .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.export-note {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 12px;
+  color: var(--ui-ink-3);
+  text-align: right;
+}
+
+/* RSS subscribe affordance (v3 E5): link plus copy-able feed URL. */
+.subscribe-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.subscribe-row .btn {
+  min-height: 44px;
+}
+
+.subscribe-url {
+  flex: 1 1 240px;
+  max-width: 46ch;
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .explore-result-tools,
+  .export-block {
+    align-items: flex-start;
+  }
+
+  .export-actions {
+    justify-content: flex-start;
+  }
+
+  .export-note {
+    text-align: left;
+  }
 }
 
 .explore-count {

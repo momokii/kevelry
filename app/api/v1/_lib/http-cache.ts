@@ -43,36 +43,79 @@ export function etagMatches(request: Request, etag: string): boolean {
     .includes(etag);
 }
 
+/** 304 revalidation response, sharing the success cache/security/rate layer. */
+function notModified(request: Request, etag: string, reservation?: RateReservation): Response {
+  const response = new Response(null, { status: 304 });
+  response.headers.set("ETag", etag);
+  response.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
+  applyRateHeaders(response, reservation ?? checkRateLimit(clientKeyFor(request)));
+  applySecurityHeaders(response);
+  applyCorsHeaders(request, response);
+  return response;
+}
+
 /**
  * Success response with Cache-Control and, when the aggregate cache has a
  * revision, a strong ETag + 304 on If-None-Match. Error paths must not use
- * this helper: error responses stay uncacheable.
+ * this helper: error responses stay uncacheable. `opts.headers` carries
+ * additive headers such as an export `Content-Disposition`.
  */
 export function cachedOkResponse(
   request: Request,
   db: CveDatabase | null,
   payload: Record<string, unknown>,
   reservation?: RateReservation,
-  opts: { seedParts?: string[] } = {},
+  opts: { seedParts?: string[]; headers?: Record<string, string> } = {},
 ): Response {
   const seed = getCacheSeed(db, opts.seedParts ?? [request.url]);
   if (seed === null) {
     const fallback = okResponse(request, payload, reservation);
     fallback.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
+    for (const [name, value] of Object.entries(opts.headers ?? {})) {
+      fallback.headers.set(name, value);
+    }
     return fallback;
   }
   const etag = etagFromSeed(seed);
-  if (etagMatches(request, etag)) {
-    const notModified = new Response(null, { status: 304 });
-    notModified.headers.set("ETag", etag);
-    notModified.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
-    applyRateHeaders(notModified, reservation ?? checkRateLimit(clientKeyFor(request)));
-    applySecurityHeaders(notModified);
-    applyCorsHeaders(request, notModified);
-    return notModified;
-  }
+  if (etagMatches(request, etag)) return notModified(request, etag, reservation);
   const response = okResponse(request, payload, reservation);
   response.headers.set("ETag", etag);
   response.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
+  for (const [name, value] of Object.entries(opts.headers ?? {})) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
+
+/**
+ * Non-JSON success body (the CSV export) under the same cache policy: the
+ * aggregate revision plus the request shape seed the ETag, so a revalidated
+ * export answers 304 exactly like the JSON routes.
+ */
+export function cachedTextResponse(
+  request: Request,
+  db: CveDatabase | null,
+  body: string,
+  headers: Record<string, string>,
+  reservation?: RateReservation,
+  opts: { seedParts?: string[] } = {},
+): Response {
+  const seed = getCacheSeed(db, opts.seedParts ?? [request.url]);
+  if (seed === null) {
+    const fallback = new Response(body, { headers });
+    fallback.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
+    applyRateHeaders(fallback, reservation ?? checkRateLimit(clientKeyFor(request)));
+    applySecurityHeaders(fallback);
+    applyCorsHeaders(request, fallback);
+    return fallback;
+  }
+  const etag = etagFromSeed(seed);
+  if (etagMatches(request, etag)) return notModified(request, etag, reservation);
+  const response = new Response(body, { headers });
+  response.headers.set("ETag", etag);
+  response.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
+  applyRateHeaders(response, reservation ?? checkRateLimit(clientKeyFor(request)));
+  applySecurityHeaders(response);
+  applyCorsHeaders(request, response);
   return response;
 }

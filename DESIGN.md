@@ -186,6 +186,19 @@ independently on desktop. UTC date fields pair with 7d/30d/90d/1y/All presets.
 Cohort composition shows severity meters, monthly counts, and signal coverage;
 compact result rows carry severity/KEV/EPSS chips and official-record actions.
 
+**Export control contract.** The results header carries two 44px controls,
+`Export CSV` and `Export JSON`, each labelled with the row count it will write
+(`Export CSV (20 rows)`). Both are real links to `/api/v1/search` carrying the
+page's own query string and cursor plus `format=csv|json`, so the file is
+**page-bounded**: exactly the rows on screen, never the whole cohort and never a
+second scan. The label is the promise: the count equals the rendered rows and
+the file's data rows. Each control is disabled with a visible explanation when
+the page has no rows, or when the current state has no query or vendor filter
+for the search endpoint to export. Provenance and coverage stay in the JSON
+envelope (and beside the control) — the CSV file is a header row plus data rows,
+with no `#` comment lines, because spreadsheet and SQL importers would read them
+as data. The column contract lives in `docs/api/search.md`.
+
 ### Priority
 
 Compact expandable table. The first five rows open their signal blocks; the rest
@@ -194,9 +207,12 @@ snapshot evidence. No composite score, ever.
 
 ### Radar / Replay
 
-Radar: snapshot pair, change-kind filter, feed on the left, sticky evidence
-inspector on the right. Replay: retained-checkpoint selector, historical banner,
-then the five replayed lists with the same row language.
+Radar: a `Subscribe` block (44px link to `/api/v1/radar/feed.xml` with the RSS
+type, plus the same absolute URL in a read-only input that selects itself on
+focus, so the URL is copy-able by keyboard alone), then the snapshot pair,
+change-kind filter, feed on the left, sticky evidence inspector on the right.
+Replay: retained-checkpoint selector, historical banner, then the five replayed
+lists with the same row language.
 
 ### Methodology / API docs
 

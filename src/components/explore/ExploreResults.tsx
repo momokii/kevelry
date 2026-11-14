@@ -24,6 +24,9 @@ export type ExploreOutcome =
       filtered: boolean;
       nextHref: string | null;
       firstHref: string | null;
+      /** Current page as an export link: same query, same cursor, page-bounded. */
+      exportCsvHref: string;
+      exportJsonHref: string;
     };
 
 /**
@@ -52,6 +55,82 @@ function percentileLabel(raw: string | null): string | null {
 
 function bandShort(band: (typeof SEVERITY_ORDER)[number]): string {
   return SEVERITY_LABELS[band].split(",")[0] ?? band;
+}
+
+/**
+ * Page-bounded export controls (v3 epic E5).
+ *
+ * Each control is a real link to the search endpoint with `format=`, carrying
+ * the query string and cursor of the page on screen, so the file always equals
+ * the visible rows. The label states the row count; provenance and coverage
+ * stay in the JSON envelope, never in the CSV file. When the page cannot be
+ * exported the control renders disabled with a visible explanation instead of
+ * a link that would fail.
+ */
+function ExportControls({
+  rowCount,
+  csvHref,
+  jsonHref,
+  disabledReason,
+}: {
+  rowCount: number;
+  csvHref: string;
+  jsonHref: string;
+  disabledReason: string | null;
+}) {
+  const count = `${formatInt(rowCount)} ${rowCount === 1 ? "row" : "rows"}`;
+  const noteId = "explore-export-note";
+  return (
+    <div className="export-block" data-testid="explore-export">
+      <div className="export-actions" role="group" aria-label="Export this page">
+        {disabledReason === null ? (
+          <>
+            <a
+              className="btn"
+              href={csvHref}
+              data-testid="explore-export-csv"
+            >
+              Export CSV ({count})
+            </a>
+            <a
+              className="btn"
+              href={jsonHref}
+              data-testid="explore-export-json"
+            >
+              Export JSON ({count})
+            </a>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn"
+              disabled
+              aria-describedby={noteId}
+              data-testid="explore-export-csv"
+              data-export-disabled="true"
+            >
+              Export CSV ({count})
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled
+              aria-describedby={noteId}
+              data-testid="explore-export-json"
+              data-export-disabled="true"
+            >
+              Export JSON ({count})
+            </button>
+          </>
+        )}
+      </div>
+      <p className="export-note" id={noteId} data-testid="explore-export-note">
+        {disabledReason ??
+          `Exports exactly this page (${count}), not the whole cohort. Provenance stays in the JSON envelope.`}
+      </p>
+    </div>
+  );
 }
 
 function ResultRow({ item }: { item: SearchResponse["items"][number] }) {
@@ -191,9 +270,20 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
     );
   }
 
-  const { response, facets, linkParams, filtered, nextHref, firstHref } = outcome;
+  const { response, facets, linkParams, filtered, nextHref, firstHref, exportCsvHref, exportJsonHref } =
+    outcome;
   const from = response.total === 0 ? 0 : response.offset + 1;
   const to = response.offset + response.items.length;
+  const rowCount = response.items.length;
+  // `/api/v1/search` shapes one documented search; without `q` or `vendor`
+  // there is nothing for it to export, so the control explains instead of
+  // handing out a link that answers 400.
+  const exportDisabledReason =
+    rowCount === 0
+      ? "Nothing to export: this page has no rows. Narrow or clear the filters until results appear."
+      : linkParams.q === "" && linkParams.vendor === ""
+        ? "Export needs a query or a vendor filter: the search endpoint exports one search at a time. Type a query to export this page."
+        : null;
   const bands = SEVERITY_ORDER.map(
     (band) => `${bandShort(band)} ${formatInt(response.coverage.bySeverity[band])}`,
   ).join(", ");
@@ -213,15 +303,23 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
             </span>
           </p>
         </div>
-        <details className="chart-info" data-testid="explore-ordering">
-          <summary>Ordering &amp; coverage</summary>
-          <div className="chart-info-panel">
-            <strong>Search ordering:</strong> text queries rank by the local index, then CVE ID.
-            Empty queries sort publication date descending with unknown dates last. Severity bands
-            narrow the cohort after the text, date, and signal match. Excerpts are capped at 320
-            code points. Coverage is exact over the matching cohort.
-          </div>
-        </details>
+        <div className="explore-result-tools">
+          <details className="chart-info" data-testid="explore-ordering">
+            <summary>Ordering &amp; coverage</summary>
+            <div className="chart-info-panel">
+              <strong>Search ordering:</strong> text queries rank by the local index, then CVE ID.
+              Empty queries sort publication date descending with unknown dates last. Severity
+              bands narrow the cohort after the text, date, and signal match. Excerpts are capped
+              at 320 code points. Coverage is exact over the matching cohort.
+            </div>
+          </details>
+          <ExportControls
+            rowCount={rowCount}
+            csvHref={exportCsvHref}
+            jsonHref={exportJsonHref}
+            disabledReason={exportDisabledReason}
+          />
+        </div>
       </div>
 
       <CohortVisualization

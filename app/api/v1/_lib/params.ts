@@ -114,6 +114,21 @@ export function parseExploit(raw: string | null): ExploitParam {
   return raw;
 }
 
+/**
+ * Bounded export format. Absent keeps the JSON envelope; `json` is the same
+ * envelope with attachment headers; `csv` is the header-plus-rows file.
+ * Any other value is `BAD_FILTER` — never silently ignored.
+ */
+export type ExportFormat = "csv" | "json";
+
+export function parseFormat(raw: string | null): ExportFormat | null {
+  if (raw === null || raw === "") return null;
+  if (raw !== "csv" && raw !== "json") {
+    throw new ApiError("BAD_FILTER", 400, "format must be csv or json.");
+  }
+  return raw;
+}
+
 export function parseDateBound(raw: string | null, name: string): string | null {
   if (raw === null || raw === "") return null;
   const ms = Date.parse(raw);
