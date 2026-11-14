@@ -151,6 +151,7 @@ export async function GET(request: Request): Promise<Response> {
       jsonUrl: withQuery(url.origin, JSON_FEED_PATH, query),
       lastBuildAt: newest?.observedAt ?? null,
       earliestAllowedDay: earliestAllowed,
+      hasRetainedCheckpoints: checkpoints.length > 0,
     });
     const lastModified = rfc822Timestamp(newest?.observedAt ?? null);
 

@@ -29,6 +29,25 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
   `openapi/v1.yaml`. Export, UI subscribe controls, and Playwright remain out
   of scope for this API-only step.
 
+- **Daily checkpoint writer (E5).** The worker now actually fills the
+  `checkpoints` table the Change Radar, replay, and RSS feed read. After every
+  ingestion cycle in which at least one source was accepted it freezes exactly
+  one checkpoint for the current UTC date; a second cycle on that date writes
+  none (checkpoints stay immutable), and a cycle where every source failed
+  writes none. Source pins are the accepted versions already recorded in
+  `sync_runs` (last succeeded run per source; for KEV the observed catalog date
+  the accepted catalog wrote), the policy version is `RADAR_POLICY_VERSION`,
+  and the per-view cap is the validated `CHECKPOINT_TOP_N` resolver, so the
+  daily write stays bounded. The write is fail-soft: a missing accepted pin, a
+  rejected bound, or a store error logs `checkpoint-write-failed` and the cycle
+  still completes, so a checkpoint fault can never fail an import or block the
+  next source. With no retained checkpoint the RSS channel `<description>` now
+  states "No change checkpoints are retained yet; this feed fills as the daily
+  checkpoint writer runs." instead of leaving an empty item list to read as
+  "no changes"; the response stays `200` with a valid empty channel. Tests
+  cover one write per UTC date, the repeat-cycle no-op, the all-failed cycle, a
+  logged write failure, and the empty-feed wording.
+
 - **Bulk CVE lookup route (E4).** `GET /api/v1/cves/batch?ids=CVE-…,CVE-…`
   returns up to 50 records in one bounded read. `ids` is required, trimmed,
   empties dropped, and deduped preserving first-seen order, so `data` is in

@@ -28,10 +28,24 @@ export interface RadarFeedMeta {
   lastBuildAt: string | null;
   /** Earliest checkpoint date the retention window still allows (YYYY-MM-DD). */
   earliestAllowedDay: string;
+  /**
+   * True when the store holds at least one checkpoint. False makes the channel
+   * description say the feed is not populated yet instead of letting a
+   * subscriber infer "no changes" from an empty item list.
+   */
+  hasRetainedCheckpoints: boolean;
   retentionDays?: number;
 }
 
 const CVE_RECORD_BASE = "https://www.cve.org/CVERecord";
+
+/**
+ * Channel description for a store that has never retained a checkpoint. It
+ * states the reason the item list is empty (the writer has not run yet) rather
+ * than leaving "empty" to read as "no changes".
+ */
+const EMPTY_STATE_DESCRIPTION =
+  "No change checkpoints are retained yet; this feed fills as the daily checkpoint writer runs.";
 
 /** XML text escaping: `&` first so the introduced entities stay literal. */
 export function escapeXml(value: string): string {
@@ -95,13 +109,17 @@ function itemXml(event: RadarFeedEvent): string {
  */
 export function buildRadarFeed(events: readonly RadarFeedEvent[], meta: RadarFeedMeta): string {
   const retentionDays = meta.retentionDays ?? RADAR_RETENTION_DAYS;
+  const windowText = `Limited to the ${retentionDays}-day checkpoint retention window (earliest allowed checkpoint ${escapeXml(meta.earliestAllowedDay)}). Reads never call upstream sources.`;
+  const description = meta.hasRetainedCheckpoints
+    ? `Accepted change events derived from local accepted daily CVE snapshots, limited to the ${retentionDays}-day checkpoint retention window (earliest allowed checkpoint ${escapeXml(meta.earliestAllowedDay)}). Reads never call upstream sources.`
+    : `${EMPTY_STATE_DESCRIPTION} ${windowText}`;
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
     "  <channel>",
     "    <title>CVE Change Radar change feed</title>",
     `    <link>${escapeXml(meta.jsonUrl)}</link>`,
-    `    <description>Accepted change events derived from local accepted daily CVE snapshots, limited to the ${retentionDays}-day checkpoint retention window (earliest allowed checkpoint ${escapeXml(meta.earliestAllowedDay)}). Reads never call upstream sources.</description>`,
+    `    <description>${description}</description>`,
     "    <language>en</language>",
     "    <generator>CVE Change Radar v1</generator>",
     `    <atom:link href="${escapeXml(meta.feedUrl)}" rel="self" type="application/rss+xml"/>`,

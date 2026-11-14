@@ -280,6 +280,69 @@ describe("runWorker", () => {
     expect(logs.some((entry) => entry.event === "worker-idle")).toBe(true);
   });
 
+  it("writes one daily checkpoint after an accepted cycle and none on a repeat cycle", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "worker-checkpoint-"));
+    tempDirs.push(dir);
+    const logs: WorkerLog[] = [];
+    const today = new Date().toISOString().slice(0, 10);
+    const recordRun = (handle: CveDatabase, source: string, revision: string): void => {
+      handle.runBoundedWrite(() => {
+        handle.handle
+          .prepare(
+            "INSERT INTO sync_runs (source, started_at, finished_at, status, revision, content_hash, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(
+            source,
+            new Date().toISOString(),
+            new Date().toISOString(),
+            "succeeded",
+            revision,
+            null,
+            null,
+          );
+      });
+    };
+
+    const { db, scheduler } = await runWorker({
+      dataDir: dir,
+      scheduleEnabled: false,
+      deps: {
+        cveImport: (handle) => {
+          recordRun(handle, "cve", "rev-worker-aaa");
+          return CVE_OUTCOME;
+        },
+        kevImport: async (handle) => {
+          recordRun(handle, "kev", "2026.11.14");
+          return KEV_RESULT;
+        },
+        epssImport: async (handle) => {
+          recordRun(handle, "epss", `${today}@v2025.03.14`);
+          return EPSS_RESULT;
+        },
+        ssvcImport: async () => ({ revision: "rev-ssvc", parsed: 1 }),
+      },
+      installHandlers: false,
+      log: (entry) => logs.push(entry),
+    });
+    openHandles.push(db);
+    track(scheduler);
+
+    const dates = (
+      db.handle.prepare("SELECT checkpoint_date FROM checkpoints").all() as Array<{
+        checkpoint_date: string;
+      }>
+    ).map((row) => row.checkpoint_date);
+    expect(dates).toEqual([today]);
+    expect(logs.filter((entry) => entry.event === "checkpoint-written")).toHaveLength(1);
+    expect(logs.some((entry) => entry.event === "checkpoint-write-failed")).toBe(false);
+
+    // A second cycle on the same UTC date must not add or overwrite a day.
+    await scheduler.runCycle();
+    const after = db.handle.prepare("SELECT COUNT(*) AS n FROM checkpoints").get() as { n: number };
+    expect(after.n).toBe(1);
+    expect(logs.filter((entry) => entry.event === "checkpoint-written")).toHaveLength(1);
+  });
+
   it("emits source-start for each source before its job runs", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "worker-start-"));
     tempDirs.push(dir);

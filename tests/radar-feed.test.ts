@@ -354,11 +354,34 @@ describe("radar RSS feed", () => {
       jsonUrl: "https://radar.test/api/v1/radar",
       lastBuildAt: null,
       earliestAllowedDay: "2026-10-15",
+      hasRetainedCheckpoints: true,
     });
     assertWellFormed(xml);
     expect(xml).toContain("AT&amp;T &lt;script&gt;alert(1)&lt;/script&gt; &gt; 5");
     expect(xml).not.toContain("<script>");
     expect(xml).toContain("reason: AT&amp;T");
+  });
+
+  it("states the empty state explicitly when no checkpoint is retained", async () => {
+    // A fresh store has never run the daily writer. An empty item list alone
+    // reads as "no changes", so the channel description must say why it is
+    // empty and must never claim that nothing changed.
+    makeDb();
+
+    const response = await getFeed(new Request(BASE));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/rss+xml; charset=utf-8");
+    const xml = await bodyOf(response);
+    assertWellFormed(xml);
+
+    const description = /<description>([\s\S]*?)<\/description>/.exec(xml)?.[1] ?? "";
+    expect(description).toContain(
+      "No change checkpoints are retained yet; this feed fills as the daily checkpoint writer runs.",
+    );
+    expect(description).toContain("30-day checkpoint retention window");
+    expect(description.toLowerCase()).not.toContain("no changes");
+    expect(xml.match(/<item>/g)).toBeNull();
+    expect(xml).not.toContain("<lastBuildDate>");
   });
 
   it("revalidates a repeat request with If-None-Match as 304", async () => {

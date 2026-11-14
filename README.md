@@ -404,6 +404,10 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
 
 - Change Radar and snapshot replay need accumulated daily checkpoints: a fresh
   database shows "history begins" until the first scheduled cycles run. The
+  worker writes at most one checkpoint per UTC date (after a cycle in which at
+  least one source was accepted), so the first checkpoint appears on the first
+  cycle rather than after days; while none is retained the feed description
+  says the feed is not populated yet instead of implying "no changes". The
   rising-forecast view additionally needs seven days of EPSS snapshots; with
   one snapshot it is explicitly empty rather than guessed.
 - Severity comes from CNA-provided CVSS only. Records with no CNA metric show

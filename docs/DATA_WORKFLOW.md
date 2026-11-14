@@ -153,6 +153,19 @@ completeness. Bounding keeps the daily write to seconds and the payload to
 kilobytes on a full-size corpus instead of pinning the worker and starving
 request handling.
 
+The checkpoint writer runs in the ingestion worker, never in a request. After
+every cycle in which at least one source was accepted it freezes exactly one
+checkpoint for the current UTC date. A second cycle on the same UTC date writes
+none, because checkpoints are immutable; a cycle where every source failed
+writes none, because it moved no accepted data. Source pins are the accepted
+versions the importers already recorded in `sync_runs` (the last succeeded run
+per source; for KEV the observed catalog date the accepted catalog wrote), the
+policy version is the current `RADAR_POLICY_VERSION`, and the per-view cap is
+the validated `CHECKPOINT_TOP_N` resolver. The write is fail-soft: a missing
+accepted pin, a rejected bound, or a store error is logged as
+`checkpoint-write-failed` and the cycle still completes, so a checkpoint fault
+never blocks an import or the next source.
+
 Retain source URI, revision/version/date, retrieval time, content hash, validation
 status, last attempt, last successful check, last accepted import and error status.
 A locally computed hash identifies bytes; it is not a publisher authenticity signature.

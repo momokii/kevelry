@@ -36,6 +36,7 @@ import { pathToFileURL } from "node:url";
 setDefaultResultOrder("ipv4first");
 
 import { createBackup, restoreBackup, verifyBackup } from "./lib/backup";
+import { writeDailyCheckpoint } from "./lib/checkpoint-writer";
 import { loadConfig } from "./lib/config";
 import { aggregatesAreCurrent, getAggregates, refreshAggregates } from "./lib/aggregates";
 import {
@@ -505,13 +506,23 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       return jobs.ssvc(ctx);
     },
   };
+  // Assigned right after construction so the cycle hook can tell a settling
+  // cycle from a shutdown-interrupted one.
+  let schedulerRef: IngestionScheduler | null = null;
   const scheduler = createWorkerScheduler(db, wrappedJobs, scheduleEnabled, {
     ...options.schedulerOptions,
     // Every cycle, not just the boot one, can change the accepted data.
-    onCycleComplete: () => {
+    onCycleComplete: (outcome) => {
       ensureAggregates(db, log);
+      // One retained checkpoint per UTC date, after a cycle in which at least
+      // one source was accepted. Fail-soft: the writer logs
+      // `checkpoint-write-failed` and returns, so a checkpoint problem can
+      // never fail the cycle or block the next import.
+      if (schedulerRef?.getStatus().shuttingDown === true) return;
+      writeDailyCheckpoint(db, { failed: outcome.failed, log });
     },
   });
+  schedulerRef = scheduler;
   const releaseHandlers =
     options.installHandlers === false ? () => {} : installShutdownHandlers(scheduler);
 

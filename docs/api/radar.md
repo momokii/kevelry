@@ -101,6 +101,16 @@ rejected with `400 BAD_FILTER`, and the message names the earliest allowed
 date. It is never answered with an empty feed, which would read as "no changes"
 for a window the service cannot look at.
 
+### Empty feed
+
+When no checkpoint is retained yet (a fresh volume before the daily writer has
+run), the feed still answers `200` with a valid, item-less channel, and the
+channel `<description>` states that explicitly: "No change checkpoints are
+retained yet; this feed fills as the daily checkpoint writer runs." An empty
+item list alone would read as "no changes", so the description never says
+that. The worker writes at most one checkpoint per UTC date, after a cycle in
+which at least one source was accepted.
+
 ### Item mapping
 
 | Element                      | Value                                                                              |
