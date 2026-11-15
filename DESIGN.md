@@ -520,15 +520,43 @@ these labels never depend on an upstream request completing.
 
 **Chip anatomy.** A CWE chip is two parts in one line: the mono id is the
 label (`CWE-94`, never a translated or prettified form) and the published name
-follows it, separated by `·`, only for `known` ids. The name is secondary
-type at the same baseline, wraps to a second line at 360px and 200% zoom
-instead of truncating, and is never a replacement for the id — a reader can
-always copy what the catalog actually published. `unmapped` and
-`taxonomy-unavailable` chips keep the same mono id plus a short state word
-(`not in taxonomy`, `taxonomy unavailable`) and never show a fabricated name or
-an invented link. Colour is not the state signal: the word is. A `known` chip
-links to `https://cwe.mitre.org/data/definitions/<n>.html`; only the id is
-linked, so the accessible name stays the id.
+follows it, separated by `·`, only for `known` ids. The name is secondary type
+at the same baseline and truncates with an ellipsis at a bounded width
+(~34ch); the id never truncates, never wraps mid-token, and is never replaced
+by the name, so a reader can always copy what the catalog actually published.
+The **whole chip is one link**, not just the id: it opens
+`https://cwe.mitre.org/data/definitions/<n>.html` in a new tab
+(`rel="noreferrer noopener"`), keeps a 44px target, and shows the keyboard
+focus ring. A `known` chip carries no severity colour, no band class, and no
+implied exploitability — the id and the catalog name are the entire claim.
+
+**States are words, never colours.**
+
+- `known` — id plus published name, linked to the canonical page.
+- `unmapped` — the id plus the literal words **not in the loaded catalog**, on
+the chip itself. A well-formed id keeps its canonical link; an input with no
+valid CWE shape is plain text with no fake URL. No invented name ever appears.
+- `taxonomy-unavailable` — every id still renders as its mono chip, and the
+words **taxonomy unavailable** appear **once at block level**, above the chips,
+never repeated per chip. No name is claimed.
+
+An empty or absent catalog is therefore a stated condition, not a missing row:
+an id is never hidden, never dropped from the list, and never rendered as an
+empty chip. Copy rules for the block: no severity colouring, no implied
+exploitability, and no "vulnerable to" phrasing — a CWE id names a weakness
+class, not a confirmed exploit.
+
+**Mitigation disclosure.** When a `known` id published mitigation text, the
+block offers a `<details>` disclosure labelled exactly
+`Mitigation (reference, MITRE CWE <version>)`, where `<version>` is the
+accepted catalog version from the payload meta (`cweCatalog.version`, e.g.
+`1000-956`) — never a hard-coded string, and never a version the payload did
+not state. The body holds the already-stripped mitigation text (no `::…::`
+marker ever renders) grouped by CWE id, plus a `HelpTip` saying this is
+published mitigation guidance shown for context and that applicability depends
+on the product. **Absence is not a claim:** a `known` id with no published
+mitigation contributes nothing to the disclosure, and an `unmapped` or
+`taxonomy-unavailable` id never produces one.
 
 **Marker stripping is a read-path rule.** MITRE's published `summary` and
 `mitigation` text carries internal control markers such as

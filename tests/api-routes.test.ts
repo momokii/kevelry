@@ -582,6 +582,50 @@ describe("CWE taxonomy enrichment (detail and priority only)", () => {
     expect(raw).not.toContain("::");
   });
 
+  it("exposes the accepted catalog meta on the detail and priority envelopes", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    seedCweCatalog(db);
+    seedRecord(db, "CVE-2099-0007", { kev: "2026-10-23", cwes: ["CWE-78"] });
+
+    const detail = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0007"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0007" }),
+    });
+    expect(detail.status).toBe(200);
+    const detailBody = await bodyOf(detail);
+    // Additive envelope block: the UI labels mitigation guidance with this
+    // version instead of hard-coding catalog text.
+    expect(detailBody.cweCatalog).toEqual({
+      status: "ready",
+      version: CWE_VERSION,
+      retrievedAt: STAMP,
+      source: "MITRE CWE",
+    });
+
+    const priority = await getPriority(
+      new Request("https://radar.test/api/v1/priority/known-exploited?limit=100"),
+      { params: Promise.resolve({ listName: "known-exploited" }) },
+    );
+    expect(priority.status).toBe(200);
+    expect((await bodyOf(priority)).cweCatalog).toEqual(detailBody.cweCatalog);
+  });
+
+  it("reports an absent catalog as empty with no version instead of inventing one", async () => {
+    const db = makeDb();
+    seedCorpus(db);
+    seedRecord(db, "CVE-2099-0007", { kev: "2026-10-23", cwes: ["CWE-78"] });
+
+    const detail = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-0007"), {
+      params: Promise.resolve({ cveId: "CVE-2099-0007" }),
+    });
+    expect((await bodyOf(detail)).cweCatalog).toEqual({
+      status: "empty",
+      version: null,
+      retrievedAt: null,
+      source: "MITRE CWE",
+    });
+  });
+
   it("deliberately omits cweDetails from search and list rows", async () => {
     const db = makeDb();
     seedCorpus(db);

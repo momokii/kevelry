@@ -20,6 +20,7 @@ import {
   type PriorityRowData,
 } from "@/components/priority/PriorityView";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
+import { getCweCatalogMeta, resolveCweRefsMany } from "@/lib/cwe-catalog";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { SsvcExplainer } from "@/components/priority/SsvcExplainer";
 import { Panel } from "@/components/shell/Panel";
@@ -90,13 +91,17 @@ function minus7Days(day: string): string | null {
   return new Date(ms - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+// `loadSnapshot` resolves the taxonomy refs for the whole page in one batched
+// lookup, so a row is built without them and gains them before it is returned.
+type PriorityRowBase = Omit<PriorityRowData, "kevCweDetails" | "kevCweCatalogVersion">;
+
 function toRow(
   item: PriorityItem,
   records: Map<string, FullRecord>,
   scoreDate: string | null,
   deltaById: Map<string, { deltaPp: string; previousDate: string }>,
   historyById: Map<string, EpssHistoryPoint[]> = new Map(),
-): PriorityRowData | null {
+): PriorityRowBase | null {
   const record = records.get(item.id);
   if (record === undefined) return null;
   const title =
@@ -222,7 +227,22 @@ export function loadSnapshot(
 
   const rows = items
     .map((item) => toRow(item, records, scoreDate, deltaById, historyById))
-    .filter((row): row is PriorityRowData => row !== null);
+    .filter((row): row is PriorityRowBase => row !== null);
+
+  // One batched taxonomy lookup for the whole rendered page, plus the accepted
+  // catalog meta the mitigation disclosure labels itself with. Both are read
+  // here rather than in the component: the block is presentational, and a
+  // stale/absent catalog still leaves every id in place as a ref.
+  const cweRefs = resolveCweRefsMany(
+    db,
+    rows.map((row) => row.kevCwes),
+  );
+  const cweCatalogVersion = getCweCatalogMeta(db).version;
+  const rowsWithCwes: PriorityRowData[] = rows.map((row, index) => ({
+    ...row,
+    kevCweDetails: cweRefs[index] ?? [],
+    kevCweCatalogVersion: cweCatalogVersion,
+  }));
 
   return {
     scoreDate,
@@ -233,7 +253,7 @@ export function loadSnapshot(
     displayLimit: limit,
     sinceDays,
     mode,
-    rows,
+    rows: rowsWithCwes,
     eligibleCohort: items.length,
     returned: rows.length,
     corpusUnscored: corpusCoverage.unscored,

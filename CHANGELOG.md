@@ -7,6 +7,40 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ### Added
 
+- **CWE chips, states, and mitigation disclosure in the Priority view (E3 step
+  3b).** The expanded Priority row now renders every `kev.cweDetails` ref from
+  the API instead of the raw id strings: the mono id is the label, and a
+  `known` id joins it with the published catalog name at a bounded width
+  (`CWE-79 · Improper Neutralization of Input During Web Page Generation …`).
+  The id never truncates, is never replaced by the name, and is never hidden.
+  The whole chip is one link to the canonical
+  `https://cwe.mitre.org/data/definitions/<n>.html` (`target="_blank"`,
+  `rel="noreferrer noopener"`), with a 44px target and a visible keyboard focus
+  ring; `unmapped` chips add the words **not in the loaded catalog**, and
+  `taxonomy-unavailable` says **taxonomy unavailable** once at block level so
+  each id still renders as its own chip. No severity colour, no band class, and
+  no "vulnerable to" phrasing: an id names a weakness class, not a confirmed
+  exploit. `known` ids that published mitigation text gain a `<details>`
+  disclosure labelled `Mitigation (reference, MITRE CWE <version>)`, with the
+  version read from a new additive `cweCatalog` envelope block
+  (`{status, version, retrievedAt, source}` on the detail and priority
+  responses) rather than hard-coded, the already-stripped body text, and a
+  `HelpTip` stating it is published guidance whose applicability depends on the
+  product. The page resolves every rendered row's ids in one batched catalog
+  lookup; the component stays presentational. Docs: `DESIGN.md` (chip anatomy,
+  the three states, disclosure contract), `docs/DATA_WORKFLOW.md` (catalog
+  provenance and the version-label rule), `openapi/v1.yaml` (`CweCatalog`),
+  `docs/api/cves.md`, `docs/api/priority-lists.md`, and `.env.example` /
+  `README.md` now describe `CWE_REFRESH_ENABLED` as **fail-closed** for config
+  parsing (fetch failure remains fail-soft/last-known-good). Tests:
+  `tests/priority-view.test.ts` covers the chip/name and disclosure-label
+  helpers; `tests/api-routes.test.ts` covers the `cweCatalog` envelope;
+  `tests/e2e/priority-cwe.spec.ts` covers a known chip's id, name, canonical
+  href and `rel`, an unmapped id, a single block-level `taxonomy unavailable`
+  with an empty catalog, the keyboard-opened disclosure (no `::`, names the
+  version, HelpTip present), and 360px/dark-theme readability asserted through
+  computed colours.
+
 - **CWE labels in API payloads with marker stripping and a fail-closed flag
   (E3 step 3a).** `GET /api/v1/cves/{cveId}` now serves a top-level
   `cweDetails: CweRef[]` alongside `kev.cwes` (same order, deduped after

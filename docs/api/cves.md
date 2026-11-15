@@ -223,6 +223,12 @@ curl "https://radar.example.org/api/v1/cves/CVE-2026-109618"
       }
     ]
   },
+  "cweCatalog": {
+    "status": "ready",
+    "version": "1000-956",
+    "retrievedAt": "2026-11-14T00:00:00.000Z",
+    "source": "MITRE CWE"
+  },
   "provenance": { "...": "..." }
 }
 ```
@@ -250,6 +256,12 @@ Contract:
   the key (and bulk/item parity accounts for it); see
   [priority lists](priority-lists.md#cwe-taxonomy-labels) for the one other
   surface that carries labels.
+- The response envelope also carries an additive `cweCatalog` block next to
+  `data`: `{ status, version, retrievedAt, source }` for the catalog that
+  labelled this record. `version` is the accepted `<view id>-<entry count>`
+  (e.g. `1000-956`) and is `null` when no catalog is accepted, so a client can
+  attribute mitigation guidance without hard-coding a catalog version. It is
+  provenance, never a verdict on the record.
 
 ## Secondary CVSS block
 

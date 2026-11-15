@@ -629,6 +629,16 @@ job and every visitor-facing read is purely local.
   search, and bulk rows stay ID-only (`kev.cwes`) by design, so page cost never
   grows with taxonomy lookups. States are never collapsed, and a failed refresh
   withdraws the `ready` claim without removing ids from any list.
+- **Catalog provenance in the envelope.** Both label-bearing responses also
+  carry an additive `cweCatalog: { status, version, retrievedAt, source }`
+  envelope block next to `data` (the detail route and every priority list).
+  `version` is the accepted `<view id>-<entry count>` (e.g. `1000-956`) and is
+  `null` when no catalog is accepted. Presentation rule that depends on it: the
+  priority row's mitigation disclosure labels itself
+  `Mitigation (reference, MITRE CWE <version>)` from this value — no surface
+  hard-codes a catalog version, and an absent version never invents one. The
+  mitigation body is the projected (marker-stripped) text, so no `::` marker
+  renders.
 
 ## Retention (bounded growth)
 

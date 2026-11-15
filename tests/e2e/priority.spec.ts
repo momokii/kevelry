@@ -402,9 +402,15 @@ test.describe.serial("priority list views", () => {
     await expect(known.getByTestId("priority-row-kev-name")).toHaveText(
       "Demo Service Command Injection",
     );
-    const cwes = known.getByTestId("priority-row-kev-cwes").locator("li");
-    await expect(cwes).toHaveText(["CWE-78", "CWE-94"]);
-    await expect(cwes.first()).toHaveClass(/mono/);
+    // Chips always carry the id; the published name joins it only when the
+    // ambient catalog knows the id, so this stays true with or without one.
+    const cwes = known
+      .getByTestId("priority-row-kev-cwes")
+      .locator('[data-testid="priority-row-kev-cwe-chip"]');
+    await expect(cwes).toHaveCount(2);
+    await expect(cwes.nth(0).getByTestId("priority-row-kev-cwe-id")).toHaveText("CWE-78");
+    await expect(cwes.nth(1).getByTestId("priority-row-kev-cwe-id")).toHaveText("CWE-94");
+    await expect(cwes.first().getByTestId("priority-row-kev-cwe-id")).toHaveClass(/mono/);
 
     // 1002: the catalog's own Unknown value, visibly distinct from Not stated;
     // absent text fields say "Not provided" instead of rendering blank.

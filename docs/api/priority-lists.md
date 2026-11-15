@@ -108,6 +108,12 @@ curl "https://radar.example.org/api/v1/priority/rising-forecast?limit=2"
     "unknownEpss": 12,
     "unknownDate": 0
   },
+  "cweCatalog": {
+    "status": "ready",
+    "version": "1000-956",
+    "retrievedAt": "2026-11-14T00:00:00.000Z",
+    "source": "MITRE CWE"
+  },
   "provenance": {
     "rankingPolicyVersion": "ranking-v1",
     "generatedAt": "2026-10-24T04:00:00Z",
@@ -175,3 +181,9 @@ Contract:
   [`cweDetails`](cves.md#cwe-taxonomy-labels-cwedetails).
 - Taxonomy labels are context: they never change ordering, coverage, filters, or
   eligibility, and they are resolved locally (no upstream request).
+- Every response also carries an additive envelope block, `cweCatalog`:
+  `{ status, version, retrievedAt, source }` for the catalog that labelled this
+  page. `version` is the accepted `<view id>-<entry count>` (e.g. `1000-956`)
+  and is `null` when no catalog is accepted; clients label published mitigation
+  guidance with this value instead of hard-coding a catalog version. It is
+  provenance, not a verdict, and changes nothing about ordering or eligibility.

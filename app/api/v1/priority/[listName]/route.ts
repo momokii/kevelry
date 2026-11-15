@@ -16,7 +16,7 @@ import { cachedOkResponse } from "../../_lib/http-cache";
 import { encodeCursor, parseCursor, parseLimit, paginateCapped } from "../../_lib/params";
 import { buildProvenance } from "../../_lib/provenance";
 import { coverageFor, loadFullRecords, toCveItem } from "../../_lib/records";
-import { resolveCweRefsMany } from "../../../../../src/lib/cwe-catalog";
+import { cweCatalogEnvelope, resolveCweRefsMany } from "../../../../../src/lib/cwe-catalog";
 import type { CveDatabase } from "../../../../../src/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -151,6 +151,8 @@ export async function GET(
             view.map((row) => row.item),
             page.length,
           ),
+          // Additive: which catalog (and version) labelled this page.
+          cweCatalog: cweCatalogEnvelope(db),
           provenance: buildProvenance(db, nowIso),
         },
         rate,
@@ -193,6 +195,8 @@ export async function GET(
         deltaPp: null,
         pagination: { limit, hasMore, nextCursor },
         coverage: coverageFor(items, page.length),
+        // Additive: which catalog (and version) labelled this page.
+        cweCatalog: cweCatalogEnvelope(db),
         provenance: buildProvenance(db, nowIso),
       },
       rate,

@@ -1408,6 +1408,42 @@ components:
             Canonical MITRE page for a well-formed id; the empty string when the input has no
             valid CWE shape (a fake link is never invented).
           example: https://cwe.mitre.org/data/definitions/78.html
+    CweCatalog:
+      type: object
+      required:
+        - status
+        - version
+        - retrievedAt
+        - source
+      description: >-
+        Provenance of the local MITRE CWE catalog that labelled this payload. Additive envelope
+        block: it never replaces a `CweRef` field. `status` is the read path's catalog verdict
+        (`ready` serves entries; `empty` means no accepted catalog has ever been published;
+        `stale`/`unavailable` are recorded failures), so a client can attribute `cweDetails`
+        without guessing which taxonomy it came from.
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - stale
+            - unavailable
+            - empty
+          example: ready
+        version:
+          type: string
+          nullable: true
+          description: Accepted catalog version (`<view id>-<entry count>`, e.g. `1000-956`). Null when no catalog is accepted.
+          example: 1000-956
+        retrievedAt:
+          type: string
+          nullable: true
+          description: When the accepted catalog was retrieved from MITRE. Null when no catalog is accepted.
+          example: "2026-11-14T00:00:00.000Z"
+        source:
+          type: string
+          description: Upstream identity of the catalog. Always `MITRE CWE` today.
+          example: MITRE CWE
     CvssPrimary:
       type: object
       required:
@@ -1703,6 +1739,8 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/CveDetail"
+        cweCatalog:
+          $ref: "#/components/schemas/CweCatalog"
         provenance:
           $ref: "#/components/schemas/Provenance"
     BulkResolution:
@@ -2093,6 +2131,8 @@ components:
           $ref: "#/components/schemas/Pagination"
         coverage:
           $ref: "#/components/schemas/Coverage"
+        cweCatalog:
+          $ref: "#/components/schemas/CweCatalog"
         provenance:
           $ref: "#/components/schemas/Provenance"
     RadarKind:

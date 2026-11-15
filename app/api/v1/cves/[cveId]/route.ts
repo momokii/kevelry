@@ -8,7 +8,7 @@ import { CVE_ID_RE } from "../../_lib/params";
 import { buildProvenance } from "../../_lib/provenance";
 import { detailExtras, loadFullRecords, toCveItem } from "../../_lib/records";
 import { loadEpssHistory } from "../../_lib/epss-history";
-import { resolveCweRefs } from "../../../../../src/lib/cwe-catalog";
+import { resolveCweRefs, cweCatalogEnvelope } from "../../../../../src/lib/cwe-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +68,9 @@ export async function GET(
           // Lists omit it for cost; null means no observations were retained.
           epssHistory: history.get(cveId) ?? null,
         },
+        // Additive envelope provenance for the taxonomy block above: the accepted
+        // catalog version is what the UI labels mitigation guidance with.
+        cweCatalog: cweCatalogEnvelope(db),
         provenance: buildProvenance(db, nowIso),
       },
       rate,

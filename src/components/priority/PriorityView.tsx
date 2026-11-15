@@ -11,6 +11,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
+import type { CweRef } from "@/lib/cwe-catalog";
 import type { CvssSecondary } from "@/lib/cvss-projection";
 
 import { ExploitSignal } from "../ledger/ExploitSignal";
@@ -66,6 +67,15 @@ export interface PriorityRowData {
   /** Catalog-stated use; the block branches on this, never on a boolean. */
   kevRansomwareUse: KevRansomwareUse;
   kevCwes: string[];
+  /**
+   * Taxonomy labels for `kevCwes`, resolved server-side (one batched lookup
+   * per page). One ref per id, in the same order, so an id never disappears
+   * from the block even when the catalog is absent or does not know it.
+   */
+  kevCweDetails: CweRef[];
+  /** Accepted catalog version from the payload meta; labels the mitigation
+   * disclosure. Never hard-coded in the component. Null when no catalog. */
+  kevCweCatalogVersion: string | null;
   ssvc: {
     exploitation: string;
     automatable: string;
@@ -172,6 +182,42 @@ export const KEV_RANSOMWARE_USE_LABELS: Record<KevRansomwareUse, string> = {
 
 /** Absent catalog fields say so in words: never a blank, never an inference. */
 export const KEV_FIELD_ABSENT = "Not provided";
+
+/** Id plus state word for an id the loaded catalog does not carry. */
+export const CWE_UNMAPPED_STATE = "not in the loaded catalog";
+
+/** Said once at block level for every id; never repeated per chip. */
+export const CWE_TAXONOMY_UNAVAILABLE = "taxonomy unavailable";
+
+/** Published name for a `known` chip, trimmed; null when the taxonomy
+ * published none (or the id is unmapped / taxonomy-unavailable). */
+export function cweChipName(cwe: CweRef): string | null {
+  if (cwe.status !== "known") return null;
+  if (typeof cwe.name !== "string") return null;
+  const name = cwe.name.trim();
+  return name === "" ? null : name;
+}
+
+/** Mitigation text that may be disclosed: only `known` ids whose taxonomy
+ * published non-empty guidance. Marker stripping already happened server-side. */
+export function cweMitigations(cwes: readonly CweRef[]): Array<{ id: string; mitigation: string }> {
+  const out: Array<{ id: string; mitigation: string }> = [];
+  for (const cwe of cwes) {
+    if (cwe.status !== "known") continue;
+    if (typeof cwe.mitigation !== "string") continue;
+    const mitigation = cwe.mitigation.trim();
+    if (mitigation === "") continue;
+    out.push({ id: cwe.id, mitigation });
+  }
+  return out;
+}
+
+/** Disclosure label. The catalog version comes from the payload meta; when the
+ * payload carries none the label states the reference without inventing one. */
+export function cweMitigationLabel(version: string | null): string {
+  const label = "Mitigation (reference, MITRE CWE";
+  return version === null ? `${label})` : `${label} ${version})`;
+}
 
 export type CvssRowState = "known" | "legacy" | "adp-only" | "unscored";
 
@@ -392,6 +438,125 @@ export function PrioritySummary({
   );
 }
 
+/** One CWE chip: mono id, plus the published name when the taxonomy knows the
+ * id. The id is never truncated and always rendered; the name truncates with an
+ * ellipsis at a bounded width. Colour is never the state signal. */
+function CweChip({ cwe }: { cwe: CweRef }) {
+  const name = cweChipName(cwe);
+  const unmapped = cwe.status === "unmapped";
+  const label = [cwe.id, name, unmapped ? CWE_UNMAPPED_STATE : null].filter(
+    (part): part is string => part !== null,
+  );
+  const body = (
+    <>
+      <span className={`mono ${styles.cweChipId}`} data-testid="priority-row-kev-cwe-id">
+        {cwe.id}
+      </span>
+      {name !== null ? (
+        <span className={styles.cweChipName} title={name} data-testid="priority-row-kev-cwe-name">
+          {`· ${name}`}
+        </span>
+      ) : null}
+      {unmapped ? (
+        <span className={styles.cweChipState} data-testid="priority-row-kev-cwe-state">
+          {CWE_UNMAPPED_STATE}
+        </span>
+      ) : null}
+    </>
+  );
+  // An input with no valid CWE shape has no canonical page: plain text, never a
+  // fake link. The id still renders, so nothing is ever silently dropped.
+  if (cwe.url === "") {
+    return (
+      <span
+        className={styles.cweChip}
+        data-testid="priority-row-kev-cwe-chip"
+        data-cwe-state={cwe.status}
+      >
+        {body}
+      </span>
+    );
+  }
+  return (
+    <a
+      className={styles.cweChip}
+      href={cwe.url}
+      target="_blank"
+      rel="noreferrer noopener"
+      aria-label={`${label.join(": ")} — MITRE CWE definition, opens in a new tab`}
+      data-testid="priority-row-kev-cwe-chip"
+      data-cwe-state={cwe.status}
+    >
+      {body}
+    </a>
+  );
+}
+
+/** The CWE row of the KEV block: chips for every id plus, at block level, one
+ * statement when no accepted catalog is available. Mitigation text is published
+ * reference material, so it stays behind a disclosure with its catalog version. */
+function CweBlock({ row }: { row: PriorityRowData }) {
+  const refs = row.kevCweDetails;
+  const mitigations = cweMitigations(refs);
+  const taxonomyUnavailable = refs.some((cwe) => cwe.status === "taxonomy-unavailable");
+  // Defensive only: the page resolves every id, so refs always cover kevCwes.
+  // If a caller ever omits the details, the ids still render as plain chips.
+  if (refs.length === 0) {
+    return (
+      <ul className={styles.kevCwes}>
+        {row.kevCwes.map((id) => (
+          <li key={id} className={`mono ${styles.cweChipFallback}`}>
+            {id}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <div className={styles.cweBlock} data-testid="priority-row-kev-cwe-block">
+      {taxonomyUnavailable ? (
+        <p className={styles.cweBlockState} data-testid="priority-row-kev-cwe-taxonomy">
+          {CWE_TAXONOMY_UNAVAILABLE}
+        </p>
+      ) : null}
+      <ul className={styles.kevCwes}>
+        {refs.map((cwe) => (
+          <li key={cwe.id} className={styles.kevCweChip}>
+            <CweChip cwe={cwe} />
+          </li>
+        ))}
+      </ul>
+      {mitigations.length > 0 ? (
+        <details
+          className={styles.cweMitigation}
+          data-testid="priority-row-kev-cwe-mitigation"
+        >
+          <summary data-testid="priority-row-kev-cwe-mitigation-summary">
+            {cweMitigationLabel(row.kevCweCatalogVersion)}
+          </summary>
+          <div className={styles.cweMitigationBody}>
+            <p className={styles.cweMitigationNote}>
+              <HelpTip term="CWE mitigation" testId="priority-row-kev-cwe-mitigation-help">
+                Published mitigation guidance from the MITRE CWE catalog, shown for context.
+                Whether it applies depends on the product and the specific implementation.
+              </HelpTip>{" "}
+              Published guidance for context; applicability depends on the product.
+            </p>
+            {mitigations.map((item) => (
+              <div key={item.id} className={styles.cweMitigationItem}>
+                <p className={`mono ${styles.cweMitigationId}`}>{item.id}</p>
+                <p className={styles.cweMitigationText} data-testid="priority-row-kev-cwe-mitigation-text">
+                  {item.mitigation}
+                </p>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function KevSignal({ row }: { row: PriorityRowData }) {
   const absent = <span className="ledger-meta">{KEV_FIELD_ABSENT}</span>;
   const requiredAction =
@@ -466,17 +631,7 @@ function KevSignal({ row }: { row: PriorityRowData }) {
         <div>
           <dt>CWEs</dt>
           <dd data-testid="priority-row-kev-cwes">
-            {row.kevCwes.length === 0 ? (
-              absent
-            ) : (
-              <ul className={styles.kevCwes}>
-                {row.kevCwes.map((cwe) => (
-                  <li key={cwe} className={`mono ${styles.kevCweChip}`}>
-                    {cwe}
-                  </li>
-                ))}
-              </ul>
-            )}
+            {row.kevCwes.length === 0 ? absent : <CweBlock row={row} />}
           </dd>
         </div>
       </dl>

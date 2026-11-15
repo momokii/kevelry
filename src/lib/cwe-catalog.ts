@@ -163,6 +163,28 @@ interface CweEntryRow {
   mitigation: string | null;
 }
 
+/** The catalog provenance block the API envelopes carry next to resolved refs.
+ * Additive: it states which catalog (and version) labelled this payload, so a
+ * client can attribute mitigation text without hard-coding a version. */
+export interface CweCatalogEnvelope {
+  status: CweCatalogStatus;
+  version: string | null;
+  retrievedAt: string | null;
+  source: string;
+}
+
+/** Project the meta row for a payload envelope. Never throws: an absent or
+ * unreadable catalog reports `empty`/`unavailable` with null version/date. */
+export function cweCatalogEnvelope(db: CveDatabase): CweCatalogEnvelope {
+  const meta = getCweCatalogMeta(db);
+  return {
+    status: meta.status,
+    version: meta.version,
+    retrievedAt: meta.retrievedAt,
+    source: meta.source,
+  };
+}
+
 /**
  * Resolve caller-supplied CWE ids against the accepted catalog.
  *
