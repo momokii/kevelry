@@ -223,7 +223,7 @@ the app reads is listed there.
 | `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                           |
 | `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                         |
 | `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                              |
-| `SITE_URL`                | no       | loopback fallback              | Public origin for sitemap/canonical/social cards; blank means unset                                                       |
+| `SITE_URL`                | no       | loopback fallback              | Public origin for sitemap/canonical/social cards and absolute feed links; blank means derive from proxy headers            |
 | `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                  |
 | `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                        |
 | `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
@@ -326,8 +326,10 @@ How the database works here, and the rules that follow from it:
   only if you accept a full re-import per revision.
 - The platform sets `$PORT`; the image honors it. Set `SITE_URL` to the real
   public origin (a custom domain, or the automatic
-  `https://<service>-<hash>-<region>.a.run.app`) so sitemap and social cards
-  point at it. Leave it blank only for private deployments.
+  `https://<service>-<hash>-<region>.a.run.app`) so sitemap, social cards, and
+  the RSS feed's channel/self links point at it. Leave it blank only for private
+  deployments; the feed then uses the proxy headers, and omits those links when
+  the host is unusable rather than advertising the bind address.
 - Cloud SQL / Postgres is **not** supported: the storage contract is a local
   SQLite file (`better-sqlite3`), which is what keeps self-hosting to one
   volume. The honest cost comparison is one always-on instance versus one

@@ -24,6 +24,7 @@ import { errorResponse, reserveRateLimit } from "../../_lib/responses";
 import { CACHE_CONTROL_HEADER, etagFromSeed, etagMatches } from "../../_lib/http-cache";
 import { parseDay, parseLimit } from "../../_lib/params";
 import { buildRadarEvents, parseCveIdParam, parseRadarKind } from "../../_lib/radar-api";
+import { resolvePublicBaseUrl } from "../../../../../src/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -146,9 +147,13 @@ export async function GET(request: Request): Promise<Response> {
     );
 
     const query = canonicalQuery(since, kind, cveId, limitRaw, limit);
+    // `url.origin` is the bind address (0.0.0.0) under the standalone server,
+    // so absolute links come from configuration or proxy headers; null means
+    // the public origin is unknown and the serializer omits those links.
+    const publicBase = resolvePublicBaseUrl(request.headers);
     const body = buildRadarFeed(events, {
-      feedUrl: withQuery(url.origin, FEED_PATH, query),
-      jsonUrl: withQuery(url.origin, JSON_FEED_PATH, query),
+      feedUrl: publicBase === null ? null : withQuery(publicBase, FEED_PATH, query),
+      jsonUrl: publicBase === null ? null : withQuery(publicBase, JSON_FEED_PATH, query),
       lastBuildAt: newest?.observedAt ?? null,
       earliestAllowedDay: earliestAllowed,
       hasRetainedCheckpoints: checkpoints.length > 0,

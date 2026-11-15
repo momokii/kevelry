@@ -135,6 +135,20 @@ snapshots within the retention window; the channel link points at the JSON
 route with the same filters. Items carry no invented narrative: only the
 diff's fields, reason, and source revision.
 
+### Absolute links (`SITE_URL`)
+
+`<channel><link>` and `<atom:link rel="self">` must be absolute, so the feed
+takes its origin from `SITE_URL` first (trailing slash stripped). On a reverse
+proxy without `SITE_URL`, it falls back to `x-forwarded-proto` (default
+`https`) plus `x-forwarded-host`, then `host`. The standalone server binds
+`0.0.0.0`, so those header values decide whether the links are usable at all:
+when the resolved host is `0.0.0.0`, `127.0.0.1`, `localhost`, `::`, or empty —
+or `SITE_URL` is not an `http(s)` origin — both links are **omitted on
+purpose**. A relative or bind-address link is worse than none: it would send a
+subscriber to an address that only exists inside the container. Set `SITE_URL`
+on any proxied deployment. Item `<link>` values stay the absolute
+`https://www.cve.org/CVERecord?id=<cveId>` URLs regardless.
+
 ### HTTP behaviour
 
 `Content-Type: application/rss+xml; charset=utf-8`. Success responses carry

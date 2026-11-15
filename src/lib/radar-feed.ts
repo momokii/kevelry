@@ -20,10 +20,14 @@ export interface RadarFeedEvent {
 }
 
 export interface RadarFeedMeta {
-  /** Absolute URL of this feed request, including its query. */
-  feedUrl: string;
-  /** Absolute URL of the JSON change feed with the same filters. */
-  jsonUrl: string;
+  /**
+   * Absolute URL of this feed request, including its query, or null when the
+   * public origin is unknown. Null omits `<atom:link rel="self">`: a relative
+   * or bind-address link is worse than none for a subscriber.
+   */
+  feedUrl: string | null;
+  /** Absolute URL of the JSON change feed with the same filters, or null. */
+  jsonUrl: string | null;
   /** `observedAt` of the newest retained checkpoint, or null when none exist. */
   lastBuildAt: string | null;
   /** Earliest checkpoint date the retention window still allows (YYYY-MM-DD). */
@@ -118,12 +122,21 @@ export function buildRadarFeed(events: readonly RadarFeedEvent[], meta: RadarFee
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
     "  <channel>",
     "    <title>CVE Change Radar change feed</title>",
-    `    <link>${escapeXml(meta.jsonUrl)}</link>`,
+  ];
+  // The channel link and the Atom self link are absolute URLs. When the public
+  // origin is unknown the resolver says so; omitting them beats publishing the
+  // `0.0.0.0` bind address under which the standalone server answers.
+  if (meta.jsonUrl !== null) lines.push(`    <link>${escapeXml(meta.jsonUrl)}</link>`);
+  lines.push(
     `    <description>${description}</description>`,
     "    <language>en</language>",
     "    <generator>CVE Change Radar v1</generator>",
-    `    <atom:link href="${escapeXml(meta.feedUrl)}" rel="self" type="application/rss+xml"/>`,
-  ];
+  );
+  if (meta.feedUrl !== null) {
+    lines.push(
+      `    <atom:link href="${escapeXml(meta.feedUrl)}" rel="self" type="application/rss+xml"/>`,
+    );
+  }
   const lastBuildDate = rfc822Timestamp(meta.lastBuildAt);
   if (lastBuildDate !== null) lines.push(`    <lastBuildDate>${lastBuildDate}</lastBuildDate>`);
   for (const event of events) lines.push(itemXml(event));

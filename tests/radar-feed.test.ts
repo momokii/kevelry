@@ -9,11 +9,15 @@
 // are escaped, that the content type is RSS, and that a repeat request with
 // If-None-Match revalidates as 304. Fixture IDs are invented CVE-2099 values;
 // nothing here touches the network.
+//
+// Absolute links (v3 epic E5): the standalone server binds 0.0.0.0, so channel
+// links must come from SITE_URL or the proxy headers, and must be omitted —
+// never published as the bind address — when the public origin is unknown.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
@@ -24,10 +28,14 @@ import {
 } from "../src/lib/radar-feed";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
+import { resolvePublicBaseUrl } from "../src/lib/site-url";
 import { GET as getFeed, OPTIONS as optionsFeed } from "../app/api/v1/radar/feed.xml/route";
 
 const tempDirs: string[] = [];
 const openDbs: CveDatabase[] = [];
+// Ambient SITE_URL must not leak across cases: every absolute-link test sets
+// the value it needs and the original is restored afterwards.
+const ENV_SITE_URL = process.env.SITE_URL;
 
 const STAMP = "2026-11-14T00:00:00.000Z";
 const MODEL = "v2026.06.15";
@@ -57,6 +65,8 @@ function makeDb(): CveDatabase {
 afterEach(() => {
   resetDbOverride();
   resetHardeningState();
+  if (ENV_SITE_URL === undefined) delete process.env.SITE_URL;
+  else process.env.SITE_URL = ENV_SITE_URL;
   while (openDbs.length > 0) {
     try {
       (openDbs.pop() as CveDatabase).close();
@@ -408,5 +418,192 @@ describe("radar RSS feed", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("x-frame-options")).toBe("DENY");
     expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
+  });
+});
+
+function headersOf(record: Record<string, string>): Headers {
+  return new Headers(record);
+}
+
+/** Every `<link>` element in the document, in order. */
+function channelAndItemLinks(xml: string): string[] {
+  return [...xml.matchAll(/<link>([^<]*)<\/link>/g)].map((match) => match[1] ?? "");
+}
+
+describe("public base URL resolution", () => {
+  it("returns SITE_URL when it is a usable absolute origin", () => {
+    expect(resolvePublicBaseUrl(new Headers(), { SITE_URL: "https://example.org" })).toBe(
+      "https://example.org",
+    );
+    // SITE_URL wins over whatever the proxy headers claim.
+    expect(
+      resolvePublicBaseUrl(headersOf({ "x-forwarded-host": "evil.test" }), {
+        SITE_URL: "https://example.org",
+      }),
+    ).toBe("https://example.org");
+  });
+
+  it("strips a trailing slash, including after a path prefix", () => {
+    expect(resolvePublicBaseUrl(new Headers(), { SITE_URL: "https://example.org/" })).toBe(
+      "https://example.org",
+    );
+    expect(resolvePublicBaseUrl(new Headers(), { SITE_URL: "https://example.org/radar/" })).toBe(
+      "https://example.org/radar",
+    );
+    expect(resolvePublicBaseUrl(new Headers(), { SITE_URL: "https://example.org:8443///" })).toBe(
+      "https://example.org:8443",
+    );
+  });
+
+  it("derives the origin from proxy headers when SITE_URL is unset", () => {
+    const headers = headersOf({
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "radar.example.org",
+      host: "app:3000",
+    });
+    expect(resolvePublicBaseUrl(headers, {})).toBe("https://radar.example.org");
+  });
+
+  it("falls back to host, defaults the scheme to https, and takes the first proxy value", () => {
+    expect(resolvePublicBaseUrl(headersOf({ host: "radar.example.org" }), {})).toBe(
+      "https://radar.example.org",
+    );
+    expect(
+      resolvePublicBaseUrl(
+        headersOf({ "x-forwarded-proto": "http", "x-forwarded-host": "radar.example.org:8080" }),
+        {},
+      ),
+    ).toBe("http://radar.example.org:8080");
+    expect(
+      resolvePublicBaseUrl(
+        headersOf({ "x-forwarded-host": "radar.example.org, internal:3000" }),
+        {},
+      ),
+    ).toBe("https://radar.example.org");
+  });
+
+  it("returns null for the bind address, loopback, and an empty host", () => {
+    for (const host of [
+      "0.0.0.0:3000",
+      "127.0.0.1:3000",
+      "localhost:3000",
+      "[::]:3000",
+      "[::1]:3000",
+      "",
+    ]) {
+      expect(resolvePublicBaseUrl(headersOf({ host }), {}), host).toBeNull();
+    }
+    expect(
+      resolvePublicBaseUrl(headersOf({ "x-forwarded-host": "localhost:3000" }), {}),
+    ).toBeNull();
+    // An unusable forwarded host falls through to the usable one, never out.
+    expect(
+      resolvePublicBaseUrl(
+        headersOf({ "x-forwarded-host": "0.0.0.0:3000", host: "radar.example.org" }),
+        {},
+      ),
+    ).toBe("https://radar.example.org");
+  });
+
+  it("rejects a SITE_URL that is not a usable http(s) origin", () => {
+    for (const siteUrl of [
+      "javascript:alert(1)",
+      "data:text/html,hi",
+      "ftp://example.org",
+      "https://user:pass@example.org",
+      "https://example.org/?a=1",
+      "http://localhost:3000",
+      "http://0.0.0.0:3000",
+      "https://",
+      "   ",
+    ]) {
+      expect(resolvePublicBaseUrl(new Headers(), { SITE_URL: siteUrl }), siteUrl).toBeNull();
+    }
+  });
+
+  it("never throws, even without a Headers object", () => {
+    expect(resolvePublicBaseUrl(undefined as unknown as Headers, {})).toBeNull();
+    expect(resolvePublicBaseUrl(headersOf({ "x-forwarded-proto": "javascript" }), {})).toBeNull();
+  });
+});
+
+describe("radar RSS feed absolute links", () => {
+  beforeEach(() => {
+    delete process.env.SITE_URL;
+  });
+
+  it("publishes SITE_URL as the channel link and the Atom self link", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+    process.env.SITE_URL = "https://example.org";
+
+    const xml = await bodyOf(await getFeed(new Request(`${BASE}?limit=1`)));
+    assertWellFormed(xml);
+    expect(xml).toContain("<link>https://example.org/api/v1/radar?limit=1</link>");
+    expect(xml).toContain(
+      '<atom:link href="https://example.org/api/v1/radar/feed.xml?limit=1" rel="self" type="application/rss+xml"/>',
+    );
+    // Item links stay the absolute canonical CVE record URLs.
+    expect(channelAndItemLinks(xml)).toContain("https://www.cve.org/CVERecord?id=CVE-2099-0002");
+  });
+
+  it("derives both links from the proxy headers when SITE_URL is unset", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const xml = await bodyOf(
+      await getFeed(
+        new Request(BASE, {
+          headers: { "x-forwarded-proto": "https", "x-forwarded-host": "radar.example.org" },
+        }),
+      ),
+    );
+    assertWellFormed(xml);
+    expect(xml).toContain("<link>https://radar.example.org/api/v1/radar</link>");
+    expect(xml).toContain(
+      '<atom:link href="https://radar.example.org/api/v1/radar/feed.xml" rel="self" type="application/rss+xml"/>',
+    );
+  });
+
+  it("omits both links instead of publishing the bind address", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const headers = headersOf({ host: "0.0.0.0:3000" });
+    expect(resolvePublicBaseUrl(headers, {})).toBeNull();
+    const xml = await bodyOf(await getFeed(new Request(BASE, { headers })));
+    assertWellFormed(xml);
+    expect(xml).not.toContain("<atom:link");
+    expect(xml).not.toContain("0.0.0.0");
+    // No channel link either: every remaining <link> is an item's cve.org URL.
+    const links = channelAndItemLinks(xml);
+    expect(links.length).toBe(2);
+    for (const link of links) expect(link).toMatch(/^https:\/\/www\.cve\.org\/CVERecord\?id=/);
+  });
+
+  it("never emits // for a SITE_URL with a trailing slash", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+    process.env.SITE_URL = "https://example.org/";
+
+    const xml = await bodyOf(await getFeed(new Request(BASE)));
+    assertWellFormed(xml);
+    expect(xml).not.toContain("https://example.org//");
+    expect(xml).toContain("<link>https://example.org/api/v1/radar</link>");
+    expect(xml).toContain('href="https://example.org/api/v1/radar/feed.xml"');
+  });
+
+  it("treats a javascript: SITE_URL as unusable and emits no link", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+    process.env.SITE_URL = "javascript:alert(1)";
+
+    expect(resolvePublicBaseUrl(new Headers(), process.env)).toBeNull();
+    const xml = await bodyOf(await getFeed(new Request(BASE)));
+    assertWellFormed(xml);
+    expect(xml).not.toContain("javascript:");
+    expect(xml).not.toContain("<atom:link");
+    const links = channelAndItemLinks(xml);
+    for (const link of links) expect(link).toMatch(/^https:\/\/www\.cve\.org\/CVERecord\?id=/);
   });
 });

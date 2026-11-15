@@ -27,6 +27,11 @@ services:
       APP_ENV: production
       NODE_ENV: production
       PORT: "3000"
+      # Public origin for absolute links: the sitemap, canonical/social cards,
+      # and the RSS feed's channel + Atom self link. Blank means unset, and the
+      # feed then falls back to the proxy headers (or omits the links rather
+      # than advertising the 0.0.0.0 bind address).
+      SITE_URL: ${SITE_URL:-}
       DATA_DIR: /data
       # Ingestion schedule: true (default) runs the worker's initial import
       # immediately on boot and keeps refreshing on the scheduler intervals.
