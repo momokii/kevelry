@@ -5,6 +5,9 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ## Unreleased (v3.0.0)
 
+All five v3 epics are implemented and verified locally; nothing here is tagged
+or version-bumped yet, and the release decision belongs to the owner.
+
 ### Added
 
 - **CWE chips, states, and mitigation disclosure in the Priority view (E3 step

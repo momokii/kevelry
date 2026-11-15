@@ -15,9 +15,11 @@ Radar** and replayable history. One self-contained Docker image, one container,
 and a versioned read-only API so other platforms (or your own self-hosted copy)
 can consume the same data.
 
-> **Status: v1 released and serving with scheduled refresh on (CVE + KEV hourly,
-> EPSS daily).** 371 unit + 84 Playwright tests green; lint, typecheck, build, and
-> secret-scan run on every push via CI. See [Build gates](#build-gates-all-done).
+> **Status: v2.0.2 released and serving with scheduled refresh on (CVE + KEV hourly,
+> EPSS + CISA SSVC daily); the v3 epics (E1–E5) are implemented and awaiting the
+> owner's release decision.** 580 unit tests (3 skipped) and 123 Playwright tests
+> (1 skipped) green; lint, typecheck, build, and secret-scan run on every push via
+> CI. See [Build gates](#build-gates-all-done).
 
 ![Overview: corpus hero, freshness, and publication volume](docs/images/overview.png)
 ![Search: explained filters with live cohort composition](docs/images/explore.png)
@@ -44,8 +46,27 @@ can consume the same data.
   Impact) stored verbatim and shown beside the other signals, with an in-page explainer, a
   recency window (30/90/365 days over the KEV catalog date), and newest-confirmation-first
   ordering. Never blended, never guessed: a record without a published block says so.
+- **Secondary CVSS:** every metric the primary selector did not pick is served as a
+  labeled `cvssSecondary` block — context only, never a band, a filter, or a ranking
+  input — and the overview splits the unscored cohort into `secondaryOnly` and
+  `noMetric` instead of one ambiguous number.
+- **KEV facts, not inferences:** the expanded Priority row labels each catalog fact it
+  has (listed, date added, due date, required action, catalog name, CWEs) and keeps
+  ransomware use tri-state — `Known (catalog)`, `Unknown (catalog)`, `Not stated` — so
+  an absent field never renders as "no ransomware".
+- **CWE labels:** every CWE id a record carries resolves against a local MITRE catalog
+  (view 1000 `CSV.zip`, refreshed at most once per 24 h and skipped when the bytes hash
+  unchanged). The detail route serves `cweDetails`; Priority chips show the published
+  name, link to the canonical definition, and open the published mitigation text when
+  there is one. Three states stay distinct — `known`, `unmapped`,
+  `taxonomy-unavailable` — and an id is never dropped, renamed, or turned into a
+  severity claim.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
+- **Subscriptions and exports:** `/api/v1/radar/feed.xml` serves those same retained
+  changes as RSS 2.0 for pull subscribers, and Explore exports exactly the page on
+  screen as CSV or JSON (`format=csv|json`, RFC 4180 quoting) — page-bounded, never
+  the whole cohort.
 - **Relation graph:** KEV-listed records linked by shared CWEs, vendor labels, and
   reference hosts — labeled edges, ego focus, bounded cohort, keyboard inspector.
 - **Watch:** browser-private starred records with a hydrating view. No account,
@@ -215,11 +236,13 @@ the app reads is listed there.
 | `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                              |
 | `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                |
 | `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                              |
-| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url (https only); blank uses the research taxonomy                                                        |
+| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft             |
 | `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                          |
 | `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                   |
 | `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                    |
 | `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                  |
+| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it  |
+| `RESTORE_DIR`             | no*      | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything |
 | `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                   |
 | `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                     |
 | `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                              |
@@ -445,8 +468,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (432 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (107 passing, 1 skipped)
+npm test                # vitest suite (580 passing, 3 skipped)
+npx playwright test     # end-to-end browser tests (123 passing, 1 skipped)
 npx prettier --write <paths>  # format touched files
 
 The benchmark writes its evidence receipt to a temporary file by default; set
@@ -473,9 +496,11 @@ Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml
 | `GET /api/v1/overview`            | Published-CVE volume buckets with date basis                                                            |
 | `GET /api/v1/cves`                | Paginated CVE records                                                                                   |
 | `GET /api/v1/cves/{cveId}`        | One CVE record with references                                                                          |
-| `GET /api/v1/search?q=...`        | CVE ID and description search                                                                           |
+| `GET /api/v1/cves/batch?ids=...`  | Up to 50 records in one bounded read, with `resolution.missingIds` for absent ids                       |
+| `GET /api/v1/search?q=...`        | CVE ID and description search; `format=csv\|json` exports the page it returned                          |
 | `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast`, `kev-due-soon`, `ssvc-active` |
 | `GET /api/v1/radar`               | Change feed with before/after evidence                                                                  |
+| `GET /api/v1/radar/feed.xml`      | The same retained changes as an RSS 2.0 feed                                                            |
 | `GET /api/v1/graph`               | Bounded KEV-cohort relation graph with labeled links                                                    |
 | `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                                                        |
 | `GET /api/v1/replay/checkpoints`  | List available checkpoints                                                                              |

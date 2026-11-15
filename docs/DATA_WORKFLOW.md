@@ -644,9 +644,9 @@ job and every visitor-facing read is purely local.
 
 Every table is bounded by the corpus except `epss_daily`, which gains one row per
 scored CVE per accepted score date. At the current corpus that is ~400k rows and
-~85 MB (table plus indexes) per day, so an unbounded table would reach tens of
-millions of rows within months and inflate both the volume and the nightly
-backup.
+~40 MB (table plus indexes, the migration-008 shape) per day, so an unbounded
+table would reach tens of millions of rows within months and inflate both the
+volume and the nightly backup.
 
 The window is `EPSS_RETENTION_DAYS` (whole UTC days counted back from the
 accepted score date, default **45**, range 30-3650; a malformed value is rejected,
