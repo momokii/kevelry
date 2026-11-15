@@ -15,15 +15,18 @@ Radar** and replayable history. One self-contained Docker image, one container,
 and a versioned read-only API so other platforms (or your own self-hosted copy)
 can consume the same data.
 
-> **Status: v2.0.2 released and serving with scheduled refresh on (CVE + KEV hourly,
-> EPSS + CISA SSVC daily); the v3 epics (E1–E5) are implemented and awaiting the
-> owner's release decision.** 580 unit tests (3 skipped) and 123 Playwright tests
-> (1 skipped) green; lint, typecheck, build, and secret-scan run on every push via
-> CI. See [Build gates](#build-gates-all-done).
+> **Status: `2.0.2` (built 2026-11-11, and what `latest` points at) is the newest
+> image a reader can pull from Docker Hub. `v3.0.0` (epics E1–E5) is implemented,
+> verified, and deployed on this host with scheduled refresh on (CVE + KEV hourly,
+> EPSS + CISA SSVC daily), but it is not yet published as an image tag.** 592 unit
+> tests pass (3 skipped) and 123 Playwright tests pass (1 skipped), measured
+> 2026-11-15; lint, typecheck, build, and secret-scan run on every push via CI. See
+> [Build gates](#build-gates-all-done); the v3 scope is specified in
+> [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
 
-![Overview: corpus hero, freshness, and publication volume](docs/images/overview.png)
-![Search: explained filters with live cohort composition](docs/images/explore.png)
-![Priority: one expanded known-exploited row with labeled signals](docs/images/priority.png)
+![Overview: corpus total, freshness stats, and the publication-volume panel](docs/images/overview.png)
+![Search: exploit-tagged rows with severity/KEV badges and exploit reference links](docs/images/explore.png)
+![Priority: one expanded known-exploited row with KEV catalog labels, CWE chips, and the secondary CVSS block](docs/images/priority.png)
 
 ## What it does
 
@@ -52,15 +55,19 @@ can consume the same data.
   `noMetric` instead of one ambiguous number.
 - **KEV facts, not inferences:** the expanded Priority row labels each catalog fact it
   has (listed, date added, due date, required action, catalog name, CWEs) and keeps
-  ransomware use tri-state — `Known (catalog)`, `Unknown (catalog)`, `Not stated` — so
-  an absent field never renders as "no ransomware".
+  `kev.ransomwareUse` tri-state — `Known (catalog)`, `Unknown (catalog)`,
+  `Not stated` — so an absent field never renders as "no ransomware".
 - **CWE labels:** every CWE id a record carries resolves against a local MITRE catalog
-  (view 1000 `CSV.zip`, refreshed at most once per 24 h and skipped when the bytes hash
-  unchanged). The detail route serves `cweDetails`; Priority chips show the published
-  name, link to the canonical definition, and open the published mitigation text when
-  there is one. Three states stay distinct — `known`, `unmapped`,
-  `taxonomy-unavailable` — and an id is never dropped, renamed, or turned into a
-  severity claim.
+  (view 1000 `CSV.zip`, stored by migration 009, refreshed at most once per 24 h and
+  skipped when the bytes hash unchanged; the accepted catalog reports its version as
+  `<view id>-<entry count>`, e.g. `1000-956`). The detail route serves `cweDetails`;
+  Priority chips show the published name, link to the canonical definition, and open
+  the published mitigation text when there is one. Three states stay distinct —
+  `known`, `unmapped`, `taxonomy-unavailable` — and an id is never dropped, renamed,
+  or turned into a severity claim.
+- **Bulk lookup:** `GET /api/v1/cves/batch?ids=…` returns up to 50 records in one
+  bounded read and names every id it could not resolve in `resolution.missingIds`, so
+  a client cannot mistake an absent record for an empty one.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
 - **Subscriptions and exports:** `/api/v1/radar/feed.xml` serves those same retained
@@ -72,8 +79,10 @@ can consume the same data.
 - **Watch:** browser-private starred records with a hydrating view. No account,
   no server record.
 - **Dark console:** persisted light/dark theme across every surface.
-- **Snapshot replay:** a retained daily checkpoint plus policy version shows
-  what the site displayed and why (bounded observed history, no fabricated past).
+- **Snapshot replay:** the worker writes at most one checkpoint per UTC date, after a
+  cycle in which at least one source was accepted; a retained checkpoint plus policy
+  version then shows what the site displayed and why (bounded observed history, no
+  fabricated past).
 - **Public read-only API + docs:** the same local snapshots the website reads,
   versioned routes, OpenAPI plus human docs. Public writes stay out of scope.
 - **Methodology and data status:** pipeline, signal-relationship, and ordering
@@ -166,13 +175,18 @@ flowchart TB
 
 ## Data sources and why this is feasible
 
-All three feeds are free to access today (checked 2026-10-24; recheck terms before launch or monetization):
+The three core feeds are free to access today (checked 2026-10-24; recheck terms before launch or monetization):
 
 | Source                                                                   | What we take                                                          | Reuse basis                                                                                                                   |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | [CVE List V5](https://github.com/CVEProject/cvelistV5)                   | Records, descriptions, dates, references, available CNA/ADP metrics   | CVE Terms: no-charge reproduction, derivatives, display, distribution, reproduce MITRE copyright designation and license      |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited membership, date added, catalog metadata              | CC0 1.0 for catalog data; third-party links and CISA/DHS marks not covered                                                    |
 | [FIRST EPSS](https://www.first.org/epss/data)                            | Daily exploitation probability, percentile, score date, model version | Free, no registration; FAQ asks attribution; services terms permit specified preventative-security uses with notices retained |
+
+Enrichment adds two more local sources: CISA Vulnrichment for SSVC decision points
+(KEV cohort only, daily) and the MITRE CWE catalog for weakness names and published
+mitigations (at most once per 24 h). Neither is fetched at request time; the CWE
+terms and limits are in `docs/research/SOURCES.md`.
 
 Why no paid feed is needed: the site's value is **transparent ordering and
 evidence**, not proprietary telemetry. KEV is confirmed-exploitation evidence,
@@ -192,6 +206,12 @@ Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md
 Current release: **2.0.2** (2026-11-11) — see [CHANGELOG.md](CHANGELOG.md) for the
 full list, upgrade notes, and what 2.0.0 deliberately does not claim.
 
+`v3.0.0` is implemented and deployed on this host, and its entries sit under
+`Unreleased (v3.0.0)` in the changelog, but it is **not yet published as an image
+tag**: `2.0.2` and `latest` are still the newest tags on Docker Hub (both built
+2026-11-11), so `2.0.2` is what a reader can pull today. The v3 scope is specified in
+[`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
+
 ## Quick start
 
 Prerequisites: Docker with Compose v2, about 12 GB free disk at peak (image
@@ -207,7 +227,8 @@ docker compose logs -f app    # watch first-boot ingestion progress
 Ready means: `GET /api/v1/health` returns 200 and `GET /api/v1/status`
 shows the first snapshots accepted. KEV/EPSS land in seconds-to-minutes; the
 gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
-initializing state until then. Live scale here: 396,841 CVEs, 1,762 KEV, 396,966 EPSS.
+initializing state until then. Live scale here: 406,598 published CVEs, 1,781
+KEV-listed, and 406,543 with an EPSS score in the 15 Nov 2026 snapshot.
 
 ## Configuration
 
@@ -223,7 +244,7 @@ the app reads is listed there.
 | `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                           |
 | `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                         |
 | `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                              |
-| `SITE_URL`                | no       | loopback fallback              | Public origin for sitemap/canonical/social cards and absolute feed links; blank means derive from proxy headers            |
+| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; the feed uses it for absolute links, else proxy headers, and omits links when the host is unusable |
 | `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                  |
 | `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                        |
 | `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
@@ -440,7 +461,9 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
   one snapshot it is explicitly empty rather than guessed.
 - Severity comes from CNA-provided CVSS only. Records with no CNA metric show
   "unscored" even when an ADP or NVD score exists; severity filters and the
-  new-critical list exclude them by policy.
+  new-critical list exclude them by policy. The overview splits that cohort into
+  `secondaryOnly` (an ADP metric exists and is shown as context) and `noMetric`
+  (nothing published), so the two are never added into one ambiguous number.
 - Filtered result lists report coverage over the bounded fetch, while
   unfiltered lists report exact cohort counts.
 - Snapshot checkpoints retain the top `CHECKPOINT_TOP_N` entries per view
@@ -470,22 +493,23 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest suite (580 passing, 3 skipped)
-npx playwright test     # end-to-end browser tests (123 passing, 1 skipped)
+npm test                # vitest (592 passing, 3 skipped on 2026-11-15)
+npx playwright test     # browser suite (123 passing, 1 skipped on 2026-11-15)
 npx prettier --write <paths>  # format touched files
+```
 
-The benchmark writes its evidence receipt to a temporary file by default; set
-`scripts/health-watch.sh <base-url>` polls `/api/v1/health` and exits non-zero
-when the instance is unreachable, reports a non-ok status, or has a stale/failed
-source — install it on a 15-minute cron and let cron mail the failure. Set
+The benchmark writes its evidence receipt to a temporary file by default. Set
 `BENCH_WRITE_EVIDENCE=1` to refresh the committed
-`.omo/evidence/task-30-cve-change-radar.results.json`.
+`.omo/evidence/task-30-cve-change-radar.results.json` instead.
+
+`scripts/health-watch.sh <base-url>` polls `/api/v1/health` and exits non-zero when
+the instance is unreachable, reports a non-ok status, or has a stale/failed source —
+install it on a 15-minute cron and let cron mail the failure.
 
 `npm run format:check` currently reports pre-existing repository-wide Markdown/test
 formatting drift (66 files); use Prettier on touched files. `npm audit` reports three
 dev-only findings in the Vitest toolchain; the production image excludes dev
 dependencies. Both are tracked under TASK-002.
-```
 
 ## API
 
