@@ -15,14 +15,18 @@ Radar** and replayable history. One self-contained Docker image, one container,
 and a versioned read-only API so other platforms (or your own self-hosted copy)
 can consume the same data.
 
-> **Status: `2.0.2` (built 2026-11-11, and what `latest` points at) is the newest
-> image a reader can pull from Docker Hub. `v3.0.0` (epics E1–E5) is implemented,
-> verified, and deployed on this host with scheduled refresh on (CVE + KEV hourly,
-> EPSS + CISA SSVC daily), but it is not yet published as an image tag.** 592 unit
-> tests pass (3 skipped) and 123 Playwright tests pass (1 skipped), measured
-> 2026-11-15; lint, typecheck, build, and secret-scan run on every push via CI. See
-> [Build gates](#build-gates-all-done); the v3 scope is specified in
-> [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
+> **Status: `3.0.0` (built 2026-11-15) is the newest image a reader can pull from
+> Docker Hub, and `latest` points at it. `2.0.2` (2026-11-11) remains available as
+> the previous release.** E1 exposes the secondary/ADP CVSS metrics the primary
+> selector did not pick, labeled as context that never affects ranking. E2 turns
+> the KEV block into labeled catalog facts with a ransomware tri-state. E3 adds a
+> local CWE taxonomy (migration 009) so chips carry catalog names, states, and
+> published mitigation text. E4 adds bulk lookup at `GET /api/v1/cves/batch`. E5
+> adds an RSS 2.0 change feed, a daily checkpoint writer, and page-bounded CSV/JSON
+> export. 592 unit tests pass (3 skipped) and 123 Playwright tests pass (1
+> skipped), measured 2026-11-15; lint, typecheck, build, and secret-scan run on
+> every push via CI. See [Build gates](#build-gates-all-done); the v3 scope is
+> specified in [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
 
 ![Overview: corpus total, freshness stats, and the publication-volume panel](docs/images/overview.png)
 ![Search: exploit-tagged rows with severity/KEV badges and exploit reference links](docs/images/explore.png)
@@ -203,13 +207,16 @@ Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md
 
 ## Release
 
-Current release: **2.0.2** (2026-11-11) — see [CHANGELOG.md](CHANGELOG.md) for the
+Current release: **3.0.0** (2026-11-15) — see [CHANGELOG.md](CHANGELOG.md) for the
 full list, upgrade notes, and what 2.0.0 deliberately does not claim.
 
-`v3.0.0` is implemented and deployed on this host, and its entries sit under
-`Unreleased (v3.0.0)` in the changelog, but it is **not yet published as an image
-tag**: `2.0.2` and `latest` are still the newest tags on Docker Hub (both built
-2026-11-11), so `2.0.2` is what a reader can pull today. The v3 scope is specified in
+`3.0.0` is published as an image tag and `latest` resolves to it; `2.0.2`
+(2026-11-11) remains available as the previous release. The 3.0.0 upgrade notes
+cover migration 009 applying on the next write open, the one-time aggregate cache
+v6 refresh, the first CWE catalog fetch (pinned MITRE `1000.csv.zip`, ~644 KB,
+cached locally and hash-conditional after that), and checkpoint history that
+starts on the first UTC day of
+running 3.0.0. The v3 scope is specified in
 [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
 
 ## Quick start
@@ -307,11 +314,12 @@ Open `http://100.124.184.116:3100` in the browser.
 ### Public deployment
 
 The release artifact is **one self-contained image** — published as
-[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`2.0.2` and
-`latest` point at the same digest; prefer the versioned tag). Pull and
+[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`3.0.0`, and
+`latest` now resolves to it; prefer the versioned tag — `2.0.2` stays available as
+the previous release). Pull and
 `docker run` it anywhere with the env vars below. To publish your own build:
-`docker tag cve-change-radar:local USER/kevelry:2.0.2 && docker push
-USER/kevelry:2.0.2`. It runs
+`docker tag cve-change-radar:local USER/kevelry:3.0.0 && docker push
+USER/kevelry:3.0.0`. It runs
 the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
 container as non-root, listening on `$PORT` (default 3000) with data in
 `/data`. Two supported shapes:
@@ -320,7 +328,7 @@ container as non-root, listening on `$PORT` (default 3000) with data in
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:2.0.2 \
+  --image docker.io/kelanach/kevelry:3.0.0 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app

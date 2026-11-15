@@ -3,10 +3,9 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
-## Unreleased (v3.0.0)
+## 3.0.0 — 2026-11-15
 
-All five v3 epics are implemented and verified locally; nothing here is tagged
-or version-bumped yet, and the release decision belongs to the owner.
+All five v3 epics are implemented, verified, and shipped in this release.
 
 ### Added
 
@@ -315,6 +314,22 @@ or version-bumped yet, and the release decision belongs to the owner.
   Tests cover the ADP-only, CNA+ADP (primary excluded), multi-ADP ordering and
   cap, legacy-only, none, malformed-value, and determinism cases, plus an API
   shape assertion that `cvssSecondary` is additive and `cvssPrimary` unchanged.
+
+### Upgrade notes
+
+- **Migration 009 applies on the next write open** of the database (the first
+  boot or cycle after upgrading). There is no manual migration step and no
+  downtime beyond a normal restart.
+- **The aggregate cache version is now v6**, so the first cycle after upgrading
+  performs one full refresh. Expect one slower first render; later page loads
+  use the refreshed cached snapshot as before.
+- **The CWE catalog is fetched once on the first cycle** — a ~644 KB download of
+  the pinned MITRE `1000.csv.zip` — and is hash-conditional afterwards (one
+  conditional request per 24 h). `CWE_REFRESH_ENABLED=false` skips the fetch, and
+  the UI stays readable with ids only.
+- **The checkpoint writer starts producing one row per UTC date**, so Change
+  Radar, Replay, and the feed have no history before the first day of running
+  3.0.0. History accumulates from that date forward.
 
 ## 2.0.2 — 2026-11-11
 
