@@ -315,6 +315,10 @@ All five v3 epics are implemented, verified, and shipped in this release.
   cap, legacy-only, none, malformed-value, and determinism cases, plus an API
   shape assertion that `cvssSecondary` is additive and `cvssPrimary` unchanged.
 
+### Documentation
+
+- Reconciled the standards, the API docs, and the v3 plan with shipped behaviour: the `app/api/v1/_lib/shared.ts` split, the CWE ingest's own `parseCsvRows` (not `parseEpssCsv`), `hasAdp` kept as a deprecated alias, the `cvssSecondary` scope, and export-mode `q`/`vendor`. No behaviour change.
+
 ### Upgrade notes
 
 - **Migration 009 applies on the next write open** of the database (the first

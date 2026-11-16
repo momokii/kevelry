@@ -265,7 +265,10 @@ Contract:
 
 ## Secondary CVSS block
 
-`cvssSecondary` rides on every `CveItem` (list, detail, and search) and never
+`cvssSecondary` rides on every record-shaped `CveItem` the routes serve: list,
+search, detail, priority, and bulk. Radar feed and replay items are not
+`CveItem`s and carry `cvssPrimary` only, because a snapshot stores the primary
+CVSS triple and nothing to project a secondary block from. The block never
 replaces `cvssPrimary`. That is a payload contract, not a UI one: in the
 console only the expanded Priority row renders the block, while Explore and
 Watch rows stay static lists. Contract:

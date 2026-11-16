@@ -9,10 +9,14 @@ without explicit user approval.
 
 - Public surface is a read-only website plus anonymous GET `/api/v1/*`; there is no
   login, write endpoint, upload, or user data store.
-- API controls in `app/api/v1/_lib/shared.ts`: 600 requests/minute/IP, 32 concurrent
+- API controls in `app/api/v1/_lib/**`: 600 requests/minute/IP, 32 concurrent
   requests, bounded URL length/parameter count, strict identifier validation,
   parameterized SQLite reads, ETag/304, `no-referrer`, `nosniff`, `DENY` framing,
-  and a strict JSON CSP on API responses.
+  and a strict JSON CSP on API responses. Owner per control: `guardrails.ts`
+  (rate limit, concurrency, request bounds, security headers), `http-cache.ts`
+  (ETag and `Cache-Control`), `errors.ts` (error taxonomy), `params.ts`
+  (validation). The former `app/api/v1/_lib/shared.ts` was split into these
+  modules.
 - Page HTML relies on React escaping and a strict link allow-list for upstream
   references. It does **not** currently send a page-level CSP; do not claim one.
 - The container runs as non-root `nextjs`, has no Docker socket, and is capped at
