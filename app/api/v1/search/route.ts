@@ -7,11 +7,29 @@ import {
   type SearchExportRow,
 } from "../../../../src/lib/csv-export";
 import { getDb } from "../_lib/db-handle";
-import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot, searchBudgetExceeded } from "../_lib/guardrails";
+import {
+  acquireConcurrencySlot,
+  assertRequestBounds,
+  preflightResponse,
+  releaseConcurrencySlot,
+  searchBudgetExceeded,
+} from "../_lib/guardrails";
 import { ApiError } from "../_lib/errors";
 import { errorResponse, reserveRateLimit } from "../_lib/responses";
 import { cachedOkResponse, cachedTextResponse } from "../_lib/http-cache";
-import { encodeCursor, parseCursor, parseDateBound, parseEpss, parseExploit, parseFormat, parseKev, parseLimit, parseQuery, parseSeverity, parseVendor } from "../_lib/params";
+import {
+  encodeCursor,
+  parseCursor,
+  parseDateBound,
+  parseEpss,
+  parseExploit,
+  parseFormat,
+  parseKev,
+  parseLimit,
+  parseQuery,
+  parseSeverity,
+  parseVendor,
+} from "../_lib/params";
 import { buildProvenance } from "../_lib/provenance";
 import { loadFullRecords, toCveItem } from "../_lib/records";
 

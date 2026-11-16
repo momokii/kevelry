@@ -527,25 +527,25 @@ function CweBlock({ row }: { row: PriorityRowData }) {
         ))}
       </ul>
       {mitigations.length > 0 ? (
-        <details
-          className={styles.cweMitigation}
-          data-testid="priority-row-kev-cwe-mitigation"
-        >
+        <details className={styles.cweMitigation} data-testid="priority-row-kev-cwe-mitigation">
           <summary data-testid="priority-row-kev-cwe-mitigation-summary">
             {cweMitigationLabel(row.kevCweCatalogVersion)}
           </summary>
           <div className={styles.cweMitigationBody}>
             <p className={styles.cweMitigationNote}>
               <HelpTip term="CWE mitigation" testId="priority-row-kev-cwe-mitigation-help">
-                Published mitigation guidance from the MITRE CWE catalog, shown for context.
-                Whether it applies depends on the product and the specific implementation.
+                Published mitigation guidance from the MITRE CWE catalog, shown for context. Whether
+                it applies depends on the product and the specific implementation.
               </HelpTip>{" "}
               Published guidance for context; applicability depends on the product.
             </p>
             {mitigations.map((item) => (
               <div key={item.id} className={styles.cweMitigationItem}>
                 <p className={`mono ${styles.cweMitigationId}`}>{item.id}</p>
-                <p className={styles.cweMitigationText} data-testid="priority-row-kev-cwe-mitigation-text">
+                <p
+                  className={styles.cweMitigationText}
+                  data-testid="priority-row-kev-cwe-mitigation-text"
+                >
                   {item.mitigation}
                 </p>
               </div>
@@ -573,8 +573,8 @@ function KevSignal({ row }: { row: PriorityRowData }) {
         <span className="ledger-label">KEV</span>
         <HelpTip term="KEV (CISA catalog)" testId="priority-row-kev-help">
           KEV is catalog membership evidence: membership and its dates are catalog facts, not
-          first-exploitation time, and the catalog due date is a federal remediation deadline, not
-          a universal SLA. <strong>Unknown (catalog)</strong> is the catalog&apos;s own value for a
+          first-exploitation time, and the catalog due date is a federal remediation deadline, not a
+          universal SLA. <strong>Unknown (catalog)</strong> is the catalog&apos;s own value for a
           field it published; <strong>Not stated</strong> means the field was absent from the
           catalog entry. Neither state says ransomware use is absent.
         </HelpTip>
@@ -753,8 +753,8 @@ function CvssSecondaryBlock({ row }: { row: PriorityRowData }) {
         <HelpTip term="secondary CVSS" testId="priority-row-cvss-secondary-help">
           Metrics the CNA did not publish as the primary selection: ADP-published, or extra CNA
           metrics. They are shown as published and are context only — they never rank, order,
-          filter, or decide eligibility, and they never replace the primary. No band is derived
-          from them.
+          filter, or decide eligibility, and they never replace the primary. No band is derived from
+          them.
         </HelpTip>
       </div>
       {metrics.length > 0 ? (

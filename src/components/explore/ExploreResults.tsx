@@ -85,18 +85,10 @@ function ExportControls({
       <div className="export-actions" role="group" aria-label="Export this page">
         {disabledReason === null ? (
           <>
-            <a
-              className="btn"
-              href={csvHref}
-              data-testid="explore-export-csv"
-            >
+            <a className="btn" href={csvHref} data-testid="explore-export-csv">
               Export CSV ({count})
             </a>
-            <a
-              className="btn"
-              href={jsonHref}
-              data-testid="explore-export-json"
-            >
+            <a className="btn" href={jsonHref} data-testid="explore-export-json">
               Export JSON ({count})
             </a>
           </>
@@ -270,8 +262,16 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
     );
   }
 
-  const { response, facets, linkParams, filtered, nextHref, firstHref, exportCsvHref, exportJsonHref } =
-    outcome;
+  const {
+    response,
+    facets,
+    linkParams,
+    filtered,
+    nextHref,
+    firstHref,
+    exportCsvHref,
+    exportJsonHref,
+  } = outcome;
   const from = response.total === 0 ? 0 : response.offset + 1;
   const to = response.offset + response.items.length;
   const rowCount = response.items.length;
@@ -306,9 +306,9 @@ export function ExploreResults({ outcome }: { outcome: ExploreOutcome }) {
             <summary>Ordering &amp; coverage</summary>
             <div className="chart-info-panel">
               <strong>Search ordering:</strong> text queries rank by the local index, then CVE ID.
-              Empty queries sort publication date descending with unknown dates last. Severity
-              bands narrow the cohort after the text, date, and signal match. Excerpts are capped
-              at 320 code points. Coverage is exact over the matching cohort.
+              Empty queries sort publication date descending with unknown dates last. Severity bands
+              narrow the cohort after the text, date, and signal match. Excerpts are capped at 320
+              code points. Coverage is exact over the matching cohort.
             </div>
           </details>
           <ExportControls

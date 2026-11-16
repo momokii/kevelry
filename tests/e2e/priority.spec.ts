@@ -415,7 +415,9 @@ test.describe.serial("priority list views", () => {
     // 1002: the catalog's own Unknown value, visibly distinct from Not stated;
     // absent text fields say "Not provided" instead of rendering blank.
     const unknown = await openKevBlock(page, "CVE-2099-1002");
-    await expect(unknown.getByTestId("priority-row-kev-ransomware")).toHaveText("Unknown (catalog)");
+    await expect(unknown.getByTestId("priority-row-kev-ransomware")).toHaveText(
+      "Unknown (catalog)",
+    );
     await expect(unknown.getByTestId("priority-row-kev-required-action")).toHaveText(
       "Not provided",
     );
@@ -443,9 +445,9 @@ test.describe.serial("priority list views", () => {
   });
 
   test("KEV block holds at 360px in dark theme with a word for every state", async ({ page }) => {
-    await page.context().addCookies([
-      { name: "ui-theme", value: "dark", url: "http://localhost:3210" },
-    ]);
+    await page
+      .context()
+      .addCookies([{ name: "ui-theme", value: "dark", url: "http://localhost:3210" }]);
     await page.setViewportSize({ width: 360, height: 900 });
     await page.goto("/priority?view=kev-due-soon");
     await expect(page.getByTestId("priority-root")).toBeVisible();
@@ -550,9 +552,9 @@ test.describe.serial("priority list views", () => {
   });
 
   test("secondary CVSS detail block holds at 360px in dark theme", async ({ page }) => {
-    await page.context().addCookies([
-      { name: "ui-theme", value: "dark", url: "http://localhost:3210" },
-    ]);
+    await page
+      .context()
+      .addCookies([{ name: "ui-theme", value: "dark", url: "http://localhost:3210" }]);
     await page.setViewportSize({ width: 360, height: 900 });
     await page.goto("/priority?view=highest-forecast");
     await expect(page.getByTestId("priority-root")).toBeVisible();

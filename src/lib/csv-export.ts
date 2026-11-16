@@ -81,8 +81,7 @@ export function serializeSearchCsv(rows: readonly SearchExportRow[]): string {
  * band the UI renders — never a second, export-only classification.
  */
 export function searchExportRow(record: SearchExportRecord): SearchExportRow {
-  const title =
-    record.title !== null && record.title.trim() !== "" ? record.title : record.cveId;
+  const title = record.title !== null && record.title.trim() !== "" ? record.title : record.cveId;
   return {
     cveId: record.cveId,
     title,
