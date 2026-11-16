@@ -426,6 +426,11 @@ Logs: `docker compose logs -f app` shows web plus worker output
 `ingest-cycle` completion line per source, `worker-idle`/`worker-scheduled`
 when it parks).
 
+Restart latency: the first request to a data-heavy page after a restart can
+take a few seconds while the initial import cycle runs and settles — `/explore`
+measured ≈2.5–3.0 s cold versus ≈0.03 s warm on this quiet 12-CPU/22 GB host,
+so a slow first page is not a fault.
+
 Update vs rebuild: plain `docker compose up -d` starts the existing image
 and **never rebuilds**. After source edits, run `docker compose build &&
 docker compose up -d`.

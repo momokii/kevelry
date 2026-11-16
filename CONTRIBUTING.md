@@ -26,6 +26,12 @@ npm run typecheck       # tsc --noEmit (must pass)
 npx prettier --write <touched files>
 ```
 
+A hard-killed `npm test` (Ctrl-C on a hung suite, a stopped container) can leave
+orphaned `node (vitest` workers behind, and later runs then fail on
+`[vitest-worker]` timeouts. Check with `ps -eo pid,cmd | grep "node (vitest"`
+and kill only the workers whose cwd is this repo — never a blanket
+`pkill vitest`, which would take out other projects.
+
 Every behavior change adds or updates a test; bug fixes add a regression
 test. The Security Gate in `.claude/SECURITY_STANDARDS.md` applies to every
 change (input validation at the boundary, parameterized queries, no secrets
