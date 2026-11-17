@@ -248,7 +248,8 @@ Contract:
 - Published `summary`/`mitigation` text is MITRE's wording with its `::…::`
   control markers (e.g. `::PHASE:Implementation::`) removed at projection time.
   Those markers are publishing markup, not content: no API payload contains
-  `::`. Stored rows are untouched, so a later reader can still see the original.
+  `::`. The importer strips them too, before its 600-code-point cap, so a stored
+  row cannot keep a half-truncated marker.
 - Labels are presentation context. They never change ranking, severity bands,
   filters, or eligibility, and resolving them is a local read — no upstream
   request is made to serve this block.

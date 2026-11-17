@@ -537,11 +537,11 @@ implied exploitability — the id and the catalog name are the entire claim.
 
 - `known` — id plus published name, linked to the canonical page.
 - `unmapped` — the id plus the literal words **not in the loaded catalog**, on
-the chip itself. A well-formed id keeps its canonical link; an input with no
-valid CWE shape is plain text with no fake URL. No invented name ever appears.
+  the chip itself. A well-formed id keeps its canonical link; an input with no
+  valid CWE shape is plain text with no fake URL. No invented name ever appears.
 - `taxonomy-unavailable` — every id still renders as its mono chip, and the
-words **taxonomy unavailable** appear **once at block level**, above the chips,
-never repeated per chip. No name is claimed.
+  words **taxonomy unavailable** appear **once at block level**, above the chips,
+  never repeated per chip. No name is claimed.
 
 An empty or absent catalog is therefore a stated condition, not a missing row:
 an id is never hidden, never dropped from the list, and never rendered as an
@@ -561,13 +561,15 @@ on the product. **Absence is not a claim:** a `known` id with no published
 mitigation contributes nothing to the disclosure, and an `unmapped` or
 `taxonomy-unavailable` id never produces one.
 
-**Marker stripping is a read-path rule.** MITRE's published `summary` and
-`mitigation` text carries internal control markers such as
-`::PHASE:Implementation::`. They are publishing markup, not content, so the
-projection strips every `::…::` run, collapses the resulting whitespace, and
-trims — at read time only. Stored catalog rows keep MITRE's verbatim wording
-(see [DATA_WORKFLOW](docs/DATA_WORKFLOW.md)), a marker-only field is absent
-rather than empty, and no surface displays `::`.
+**Marker stripping is a shared rule: ingest and read path.** MITRE's published
+`summary` and `mitigation` text carries internal control markers such as
+`::PHASE:Implementation::`. They are publishing markup, not content, so both
+layers strip them: the importer removes every `::…::` run _before_ the
+600-code-point cap — otherwise the cap can cut a pair in half and strand its
+opener — and the projection strips again on the way out, including a trailing
+unterminated marker segment, then collapses whitespace and trims. A marker-only
+field is absent rather than empty, no surface displays `::`, and no stored row
+can hold a partial marker (see [DATA_WORKFLOW](docs/DATA_WORKFLOW.md)).
 
 **Graph chips.** The relation graph renders CWEs in four places — the shared-CWE
 group labels, the landing view's hub attributes, the group drill-down title, and

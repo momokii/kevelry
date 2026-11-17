@@ -174,7 +174,9 @@ Contract:
   CWE shape), or `taxonomy-unavailable`. The three states are never collapsed.
 - Published `summary`/`mitigation` arrives with MITRE's `::…::` control markers
   stripped at projection time. Those markers are publishing markup, not content,
-  so no payload contains `::`; stored catalog rows keep MITRE's verbatim text.
+  so no payload contains `::`; the importer strips them before its
+  600-code-point cap as well, so a stored row never keeps a half-truncated
+  marker.
 - Priority rows are the only list-shaped surface with labels. `GET /api/v1/cves`,
   search, and bulk rows stay ID-only; the per-record detail route carries the
   same labels as top-level

@@ -131,9 +131,31 @@ describe("stripCweMarkers", () => {
     expect(stripCweMarkers("  ::PHASE:A:: ::PHASE:B::  ")).toBe("");
   });
 
+  it("drops an unterminated trailing marker so a truncated pair never leaks", () => {
+    expect(
+      stripCweMarkers(
+        "Design throttling into the architecture.::PHASE:Implementation:DESCRIPTION:Explicitly de",
+      ),
+    ).toBe("Design throttling into the architecture.");
+    expect(
+      stripCweMarkers(
+        "::PHASE:Architecture and Design::Design it. ::PHASE:Implementation:DESCRIPTION:Then bu",
+      ),
+    ).toBe("Design it.");
+  });
+
+  it("returns an empty string when the only marker is unterminated", () => {
+    expect(stripCweMarkers("::PHASE:Implementation:DESCRIPTION:Explicitly de")).toBe("");
+    expect(stripCweMarkers("::")).toBe("");
+  });
+
   it("leaves text without markers unchanged", () => {
     expect(stripCweMarkers("Use a vetted library or framework.")).toBe(
       "Use a vetted library or framework.",
+    );
+    // No marker, nothing dropped, and a single colon is not a marker.
+    expect(stripCweMarkers("Phase: implementation. Ratio 1:2.")).toBe(
+      "Phase: implementation. Ratio 1:2.",
     );
   });
 

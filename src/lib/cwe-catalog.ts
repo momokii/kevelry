@@ -63,14 +63,27 @@ const CANONICAL_CWE_ID_RE = /^CWE-([1-9]\d*)$/;
 const CWE_MARKER_RE = /::(?:(?!::)[\s\S])*?::/g;
 
 /**
- * Remove MITRE's `::…::` control markers from published taxonomy text, collapse
- * runs of whitespace to one space, and trim. Pure and total: never throws, and
- * marker-only text becomes the empty string. Applied at projection time only;
- * stored rows keep MITRE's verbatim wording.
+ * A `::` with no closing `::`. After every closed pair is gone, the only `::`
+ * left is one whose pair was truncated away — by the 600-code-point cap, or by
+ * upstream publishing a half marker — so it opens a marker that never ends and
+ * everything from it to the end of the string is markup, not content.
+ */
+const CWE_DANGLING_MARKER_RE = /::[\s\S]*$/;
+
+/**
+ * Remove MITRE's `::…::` control markers from published taxonomy text, drop a
+ * trailing unterminated marker segment, collapse runs of whitespace to one
+ * space, and trim. Pure and total: never throws, and marker-only text becomes
+ * the empty string. Applied on the read path and, before the length cap, at
+ * ingest — so neither a stored row nor a payload can carry a partial marker.
  */
 export function stripCweMarkers(text: string): string {
   if (typeof text !== "string") return "";
-  return text.replace(CWE_MARKER_RE, " ").replace(/\s+/g, " ").trim();
+  return text
+    .replace(CWE_MARKER_RE, " ")
+    .replace(CWE_DANGLING_MARKER_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**

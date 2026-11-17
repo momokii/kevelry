@@ -427,6 +427,79 @@ describe("mapCweCsv", () => {
     expect(entry?.mitigation?.endsWith("…")).toBe(true);
   });
 
+  // Regression: the cap used to be applied to MITRE's raw text, so a
+  // `::PHASE:…::` pair that straddled code point 600 was cut in half and the
+  // dangling opener was stored. CWE-502 on the live catalog ended in
+  // "…::PHASE:Implementation:DESCRIPTION:Explicitly define a final des…".
+  // Markers are now removed BEFORE the cap, so the stored value never holds a
+  // partial marker.
+  it("strips markers before the cap, so a marker cut mid-pair is never stored", () => {
+    const head = "::PHASE:Architecture_and_Design::";
+    const filler = "Design throttling mechanisms into the system architecture. ";
+    const second = "::PHASE:Implementation:DESCRIPTION:";
+    // Place the second (unterminated) marker so the 600-point cap cuts it in
+    // half, which is the live shape this bug shipped.
+    const padLength = 595 - head.length;
+    const padding = filler.repeat(Math.ceil(padLength / filler.length)).slice(0, padLength);
+    const raw = `${head}${padding}${second}`;
+
+    expect(raw.slice(590, 600)).toBe("ms in::PHA");
+
+    const { entries } = mapCweCsv(
+      parseCsvRows(
+        [
+          "CWE-ID,Name,Description,Potential Mitigations",
+          `502,Deserialization of Untrusted Data,Summary text.,${raw}`,
+        ].join("\n"),
+      ),
+    );
+    const stored = entries[0]?.mitigation ?? "";
+
+    // Old code stored `raw.slice(0, 600) + "…"`, i.e. "…::PHA…".
+    expect(stored).not.toContain("::");
+    expect(stored).not.toContain("PHASE");
+    expect(stored.startsWith("Design throttling")).toBe(true);
+    expect(stored).toBe(padding.trim());
+  });
+
+  it("still applies the 600-code-point cap to the stripped text", () => {
+    const raw = `::PHASE:Architecture_and_Design::${"Design throttling. ".repeat(50)}::PHASE:Implementation::`;
+
+    const { entries } = mapCweCsv([
+      ["CWE-ID", "Name", "Potential Mitigations"],
+      ["400", "Uncontrolled Resource Consumption", raw],
+    ]);
+    const stored = entries[0]?.mitigation ?? "";
+
+    expect(stored).not.toContain("::");
+    expect(stored).toHaveLength(CWE_MITIGATION_MAX_CHARS + 1);
+    expect(stored.endsWith("…")).toBe(true);
+  });
+
+  it("stores no mitigation when the published field is markers only", () => {
+    const { entries } = mapCweCsv([
+      ["CWE-ID", "Name", "Potential Mitigations"],
+      ["79", "Cross-site Scripting", "::PHASE:Implementation::"],
+    ]);
+
+    expect(entries[0]?.mitigation).toBeNull();
+  });
+
+  it("strips markers from summary and mitigation text under the cap", () => {
+    const { entries } = mapCweCsv([
+      ["CWE-ID", "Name", "Description", "Potential Mitigations"],
+      [
+        "502",
+        "Deserialization of Untrusted Data",
+        "::PHASE:Implementation::The product deserializes untrusted data.",
+        "::PHASE:Architecture and Design::Use safe deserialization. ::PHASE:Implementation::Validate input.",
+      ],
+    ]);
+
+    expect(entries[0]?.summary).toBe("The product deserializes untrusted data.");
+    expect(entries[0]?.mitigation).toBe("Use safe deserialization. Validate input.");
+  });
+
   it("keeps text of exactly 600 code points without an ellipsis", () => {
     const exact = "c".repeat(CWE_SUMMARY_MAX_CHARS);
     const { entries } = mapCweCsv([

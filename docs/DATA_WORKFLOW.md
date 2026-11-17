@@ -412,10 +412,10 @@ so readers rebuild instead of serving a payload with missing keys. Refresh rules
     ranking, or eligibility rule.
   - `noMetric` — no valid CNA metric and no valid ADP metric. A data gap,
     never low severity.
-  The two are an exact partition: `secondaryOnly + noMetric === unscored`
-  holds on every snapshot and is asserted in `tests/aggregates-coverage.test.ts`.
-  `/api/v1/overview` exposes both in its `coverage` block as additive fields;
-  other list endpoints keep the five-key coverage they had.
+    The two are an exact partition: `secondaryOnly + noMetric === unscored`
+    holds on every snapshot and is asserted in `tests/aggregates-coverage.test.ts`.
+    `/api/v1/overview` exposes both in its `coverage` block as additive fields;
+    other list endpoints keep the five-key coverage they had.
 - One-off refresh without an import cycle:
   `REFRESH_AGGREGATES_ONCE=true node dist/worker.mjs`
   (Compose: `docker compose exec app env REFRESH_AGGREGATES_ONCE=true node
@@ -570,7 +570,7 @@ job and every visitor-facing read is purely local.
   the worker cannot be pointed at plaintext. Caps: **8 MiB** downloaded zip,
   **64 MiB** extracted CSV entry, **16 MiB** parsed CSV text, **30 s** fetch,
   **300 chars** per stored reason. `version` is `<view id>-<accepted entry
-  count>` (`1000-956`), because the published CSV carries no version marker;
+count>` (`1000-956`), because the published CSV carries no version marker;
   `source_hash` (SHA-256 of the accepted zip bytes) is the exact pin.
 - **Refresh cadence.** MITRE republishes the pack rarely, so the worker does not
   poll it on the hourly ingest cadence: an attempt is due only when the accepted
@@ -578,7 +578,7 @@ job and every visitor-facing read is purely local.
   `ready`), tracked in-process and seeded from the meta row at boot. In practice
   that is at most one HTTP request per day per process, and one per restart.
   `CWE_REFRESH_ENABLED=false` disables it; `REFRESH_CWE_ONCE=true node
-  dist/worker.mjs` performs exactly one attempt (no gate) and exits non-zero if
+dist/worker.mjs` performs exactly one attempt (no gate) and exits non-zero if
   it failed, which is also the on-demand retry for a stale catalog. The toggle
   is **fail-closed**: only the exact strings `true` and `false` (after trim) are
   accepted. An absent variable keeps the default ON — the job is already
@@ -608,16 +608,18 @@ job and every visitor-facing read is purely local.
   no fact-table impact, so it cannot contribute to `failed`/readiness or block
   an import, and the worker only logs `cwe-refresh`, `cwe-refresh-unchanged`, or
   `cwe-refresh-failed` before moving on.
-- **Published text is verbatim at rest, markers stripped at projection.**
-  `summary`/`mitigation` carry MITRE's published wording, including the
-  `::PHASE:…::` markers the CSV uses inside “Potential Mitigations”. The
-  importer never rewrites upstream text beyond stripping CR/LF and the
-  600-code-point cap, so stored rows stay verbatim. The read path applies
-  `stripCweMarkers` when it projects a `CweRef`: every `::…::` run (opened by a
-  doubled colon, closed by the next doubled colon, single colons allowed
-  inside) is removed, whitespace is collapsed, and the result is trimmed. A
-  field that ends up empty is omitted rather than emitted as `""`; nothing here
-  throws, so malformed text degrades to text instead of failing a response.
+- **Markers are stripped at ingest and again at projection.** `summary`/
+  `mitigation` carry MITRE's published wording, including the `::PHASE:…::`
+  markers the CSV uses inside “Potential Mitigations”. Those markers are
+  publishing markup, so the importer strips them **before** the 600-code-point
+  cap: truncating raw text can cut a pair in half and strand its opener, and a
+  stored value must never hold a partial marker. The read path applies
+  `stripCweMarkers` again when it projects a `CweRef`: every `::…::` run (opened
+  by a doubled colon, closed by the next doubled colon, single colons allowed
+  inside) is removed, a trailing unterminated marker segment is dropped, and
+  the result has its whitespace collapsed and is trimmed. A field that ends up
+  empty is omitted rather than emitted as `""`; nothing here throws, so
+  malformed text degrades to text instead of failing a response.
 - **Taxonomy states in payloads.** The three read states appear exactly where a
   reader is inspecting one record: `GET /api/v1/cves/{cveId}` serves a top-level
   `cweDetails: CweRef[]` aligned with (and deduped like) `kev.cwes`, and every
