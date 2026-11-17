@@ -127,61 +127,78 @@ test("centering draws the ego graph with grouped attributes and a way back", asy
   await expect(page.getByTestId("graph-landing")).toBeVisible();
 });
 
-test("+N more opens the complete attribute list in a dialog", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/graph");
-  const hub = await topHub(page);
-  if (hub === null || hub.degree === 0) {
-    test.skip(true, "no linked KEV cohort in this database");
-    return;
-  }
-  await page.goto(`/graph?focus=${encodeURIComponent(hub.id)}`);
+// The baseline cohort is four records sharing one vendor and one CWE, and the
+// drawing cap in `GraphView` (ATTR_CAP = 6) sits above that, so no attribute
+// group can ever overflow: the "+N more" trigger does not exist against the
+// suite's standard corpus and a top-level run skips this journey forever. The
+// dense cohort below is the smallest fixture that exceeds the cap, so it is
+// deployed here explicitly instead of borrowed from another spec.
+test.describe("graph complete attribute list", () => {
+  test.beforeAll(() => {
+    deployE2eCorpus(buildBaselineDbFile(DENSE_COHORT_SIZE));
+  });
 
-  // The dialog wrapper and its children share the `graph-more-` testid prefix,
-  // so the trigger is selected by its button role — otherwise the locator can
-  // resolve to the always-present closed dialog and the click never completes.
-  const trigger = page.locator("[data-testid^='graph-more-'][role='button']").first();
-  if ((await trigger.count()) === 0) {
-    test.skip(true, "this cohort has no attribute group above the drawing cap");
-    return;
-  }
-  await trigger.click();
+  test.afterAll(() => {
+    resetToBaseline();
+  });
 
-  const dialog = page.getByTestId("graph-more-dialog");
-  await expect(dialog).toBeVisible();
-  const items = dialog.locator("[data-testid^='graph-more-item-']");
-  expect(await items.count()).toBeGreaterThan(2);
-  // Every listed record links back into the graph.
-  await expect(items.first()).toHaveAttribute("href", /focus=CVE-/);
-  // Rows carry real context, not bare identifiers.
-  const firstRow = dialog.locator(".graph-dialog-row").first();
-  await expect(firstRow.locator(".graph-dialog-title")).not.toBeEmpty();
-  await expect(firstRow.locator(".graph-dialog-meta")).toContainText(/Published|unknown/);
-  await expect(firstRow.locator(".graph-dialog-badges")).toContainText(
-    /EPSS|unscored|critical|high|medium|low|legacy/,
-  );
-  // The dialog is a member list, not a record detail: severity is a badge per
-  // row and the secondary CVSS block never appears here.
-  await expect(dialog.getByTestId("priority-row-cvss-secondary")).toHaveCount(0);
-  await expect(dialog.getByText("context only")).toHaveCount(0);
+  test("+N more opens the complete attribute list in a dialog", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/graph");
+    const hub = await topHub(page);
+    if (hub === null || hub.degree === 0) {
+      test.skip(true, "no linked KEV cohort in this database");
+      return;
+    }
+    await page.goto(`/graph?focus=${encodeURIComponent(hub.id)}`);
 
-  // A long group gets real affordances, not an endless scroll.
-  await expect(dialog.getByTestId("graph-more-count")).toContainText("group holds");
-  await expect(dialog.getByTestId("graph-more-list").locator("li")).toHaveCount(10);
-  await dialog.getByTestId("graph-more-next").click();
-  await expect(dialog.getByTestId("graph-more-page")).toContainText("Page 2 of");
-  await dialog.getByTestId("graph-more-prev").click();
-  await expect(dialog.getByTestId("graph-more-page")).toContainText("Page 1 of");
+    // The dialog wrapper and its children share the `graph-more-` testid prefix,
+    // so the trigger is selected by its button role — otherwise the locator can
+    // resolve to the always-present closed dialog and the click never completes.
+    const trigger = page.locator("[data-testid^='graph-more-'][role='button']").first();
+    if ((await trigger.count()) === 0) {
+      test.skip(true, "this cohort has no attribute group above the drawing cap");
+      return;
+    }
+    await trigger.click();
 
-  // Filtering narrows the set and resets to page 1.
-  const firstId =
-    (await dialog.locator("[data-testid^='graph-more-item-']").first().textContent())?.trim() ?? "";
-  await dialog.getByTestId("graph-more-filter").fill(firstId);
-  await expect(dialog.getByTestId("graph-more-list").locator("li")).toHaveCount(1);
+    const dialog = page.getByTestId("graph-more-dialog");
+    await expect(dialog).toBeVisible();
+    const items = dialog.locator("[data-testid^='graph-more-item-']");
+    expect(await items.count()).toBeGreaterThan(2);
+    // Every listed record links back into the graph.
+    await expect(items.first()).toHaveAttribute("href", /focus=CVE-/);
+    // Rows carry real context, not bare identifiers.
+    const firstRow = dialog.locator(".graph-dialog-row").first();
+    await expect(firstRow.locator(".graph-dialog-title")).not.toBeEmpty();
+    await expect(firstRow.locator(".graph-dialog-meta")).toContainText(/Published|unknown/);
+    await expect(firstRow.locator(".graph-dialog-badges")).toContainText(
+      /EPSS|unscored|critical|high|medium|low|legacy/,
+    );
+    // The dialog is a member list, not a record detail: severity is a badge per
+    // row and the secondary CVSS block never appears here.
+    await expect(dialog.getByTestId("priority-row-cvss-secondary")).toHaveCount(0);
+    await expect(dialog.getByText("context only")).toHaveCount(0);
 
-  // Escape closes and returns focus to the page.
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
+    // A long group gets real affordances, not an endless scroll.
+    await expect(dialog.getByTestId("graph-more-count")).toContainText("group holds");
+    await expect(dialog.getByTestId("graph-more-list").locator("li")).toHaveCount(10);
+    await dialog.getByTestId("graph-more-next").click();
+    await expect(dialog.getByTestId("graph-more-page")).toContainText("Page 2 of");
+    await dialog.getByTestId("graph-more-prev").click();
+    await expect(dialog.getByTestId("graph-more-page")).toContainText("Page 1 of");
+
+    // Filtering narrows the set and resets to page 1.
+    const firstId =
+      (await dialog.locator("[data-testid^='graph-more-item-']").first().textContent())?.trim() ??
+      "";
+    await dialog.getByTestId("graph-more-filter").fill(firstId);
+    await expect(dialog.getByTestId("graph-more-list").locator("li")).toHaveCount(1);
+
+    // Escape closes and returns focus to the page.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
 });
 
 test("an unknown focus is refused with a message, not a broken graph", async ({ page }) => {
