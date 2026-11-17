@@ -15,6 +15,12 @@ import type { KevRansomwareUse } from "../../app/api/v1/_lib/records";
 
 import type { CweRef } from "./cwe-catalog";
 
+/** Id plus state word for an id the loaded catalog does not carry. */
+export const CWE_UNMAPPED_STATE = "not in the loaded catalog";
+
+/** Said once at block level for every id; never repeated per chip. */
+export const CWE_TAXONOMY_UNAVAILABLE = "taxonomy unavailable";
+
 /** Exact catalog wording per stored tri-state. `unknown` is the catalog's own
  * Unknown value; `unstated` means the field was absent. Neither is a negation,
  * and no state ever reads as a ransomware-free claim. */

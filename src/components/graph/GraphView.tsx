@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import type { GraphCohort, GraphEdgeKind, GraphGroup, GraphSummary } from "@/lib/graph";
+import type { CweRef } from "@/lib/cwe-catalog";
+import { CWE_TAXONOMY_UNAVAILABLE, CWE_UNMAPPED_STATE, cweChipName } from "@/lib/cwe-display";
 
 const GROUP_META: Record<GraphEdgeKind, { label: string; hint: string }> = {
   cwe: { label: "Shared CWE", hint: "Same catalog weakness class" },
@@ -66,12 +68,14 @@ function DialogBody({
   centerId,
   limit,
   summaries,
+  cweDetails,
   onClose,
 }: {
   group: GraphGroup;
   centerId: string;
   limit: number;
   summaries: Record<string, GraphSummary>;
+  cweDetails: Record<string, CweRef>;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -135,7 +139,7 @@ function DialogBody({
         <div>
           <div className="eyebrow">{GROUP_META[group.kind].label}</div>
           <h2 id="graph-dialog-title" className="mono">
-            {group.value}
+            {group.kind === "cwe" ? cweText(cweRefFor(cweDetails, group.value)) : group.value}
           </h2>
           <p className="chart-note">
             {group.cves.length} KEV-listed records share this with {centerId}.{" "}
@@ -291,12 +295,14 @@ function MoreDialog({
   centerId,
   limit,
   summaries,
+  cweDetails,
   onClose,
 }: {
   group: GraphGroup | null;
   centerId: string;
   limit: number;
   summaries: Record<string, GraphSummary>;
+  cweDetails: Record<string, CweRef>;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -326,6 +332,7 @@ function MoreDialog({
           centerId={centerId}
           limit={limit}
           summaries={summaries}
+          cweDetails={cweDetails}
           onClose={onClose}
         />
       )}
@@ -521,31 +528,98 @@ function EgoGraph({
   );
 }
 
+/**
+ * The resolved ref for one rendered CWE value. The payload covers every id the
+ * cohort references; the fallback is defensive only and never invents a name
+ * or a URL — an uncovered value still renders its id, in plain text.
+ */
+function cweRefFor(details: Record<string, CweRef>, value: string): CweRef {
+  return details[value] ?? { id: value, status: "unmapped", url: "" };
+}
+
+/**
+ * One CWE chip: the mono id, plus the published name when the catalog knows it.
+ * The id never truncates and is never replaced by the name; only the name
+ * ellipsizes, at a bounded width. Colour is never the state signal, and the
+ * whole chip is one link to the canonical MITRE page (`rel="noreferrer
+ * noopener"`, 44px target) with the state words as text when unmapped.
+ */
+function CweChip({ cwe }: { cwe: CweRef }) {
+  const name = cweChipName(cwe);
+  const unmapped = cwe.status === "unmapped";
+  const label = [cwe.id, name, unmapped ? CWE_UNMAPPED_STATE : null].filter(
+    (part): part is string => part !== null,
+  );
+  const body = (
+    <>
+      <span className="mono graph-cwe-id" data-testid="graph-cwe-id">
+        {cwe.id}
+      </span>
+      {name !== null ? (
+        <span className="graph-cwe-name" title={name} data-testid="graph-cwe-name">
+          {`· ${name}`}
+        </span>
+      ) : null}
+      {unmapped ? (
+        <span className="graph-cwe-state" data-testid="graph-cwe-state">
+          {CWE_UNMAPPED_STATE}
+        </span>
+      ) : null}
+    </>
+  );
+  // An input with no valid CWE shape has no canonical page: plain text, never
+  // a fake link. The id still renders, so nothing is silently dropped.
+  if (cwe.url === "") {
+    return (
+      <span className="graph-cwe-chip" data-cwe-state={cwe.status} data-testid="graph-cwe-chip">
+        {body}
+      </span>
+    );
+  }
+  return (
+    <a
+      className="graph-cwe-chip"
+      href={cwe.url}
+      target="_blank"
+      rel="noreferrer noopener"
+      aria-label={`${label.join(": ")} — MITRE CWE definition, opens in a new tab`}
+      data-cwe-state={cwe.status}
+      data-testid="graph-cwe-chip"
+    >
+      {body}
+    </a>
+  );
+}
+
+/** Text form for table and dialog surfaces: id plus the published name when the
+ * catalog knows it, and the unmapped wording when it does not. The
+ * taxonomy-unavailable words stay block level, never repeated per row. */
+function cweText(cwe: CweRef): string {
+  const name = cweChipName(cwe);
+  if (name !== null) return `${cwe.id} · ${name}`;
+  return cwe.status === "unmapped" ? `${cwe.id} · ${CWE_UNMAPPED_STATE}` : cwe.id;
+}
+
 function GroupColumn({
   group,
   centerId,
   limit,
+  cweDetails,
 }: {
   group: GraphGroup;
   centerId: string;
   limit: number;
+  cweDetails: Record<string, CweRef>;
 }) {
   const meta = GROUP_META[group.kind];
-  const cweNumber = group.kind === "cwe" ? group.value.replace("CWE-", "") : null;
   return (
     <section className="graph-group" data-testid={`graph-group-${group.kind}-${group.value}`}>
       <header className="graph-group-head">
         <strong className="graph-group-value">
-          {cweNumber === null ? (
-            group.value
+          {group.kind === "cwe" ? (
+            <CweChip cwe={cweRefFor(cweDetails, group.value)} />
           ) : (
-            <a
-              href={`https://cwe.mitre.org/data/definitions/${cweNumber}.html`}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              {group.value}
-            </a>
+            group.value
           )}
         </strong>
         <span className="graph-group-count">
@@ -658,6 +732,16 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
   const [more, setMore] = useState<GraphGroup | null>(null);
   const centerNode =
     cohort.focus === null ? null : (cohort.nodes.find((node) => node.id === cohort.focus) ?? null);
+  // One statement per view when the catalog cannot label any id — never one
+  // note per chip, and never a name the catalog did not publish.
+  const taxonomyUnavailable = Object.values(cohort.cweDetails).some(
+    (cwe) => cwe.status === "taxonomy-unavailable",
+  );
+  const taxonomyNote = taxonomyUnavailable ? (
+    <p className="chart-note graph-cwe-taxonomy" data-testid="graph-cwe-taxonomy">
+      {CWE_TAXONOMY_UNAVAILABLE}
+    </p>
+  ) : null;
 
   if (cohort.focus === null) {
     return (
@@ -689,6 +773,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
             Center
           </button>
         </form>
+        {taxonomyNote}
         {cohort.hubs.length === 0 ? (
           <div className="empty-state" data-testid="graph-empty">
             <strong>No KEV cohort to rank</strong>
@@ -724,9 +809,16 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
                       <span className="graph-evidence-kind">
                         {GROUP_META[attribute.kind].label}
                       </span>
-                      <span className="graph-evidence-chip">
-                        {attribute.value} · {attribute.cves.length}
-                      </span>
+                      {attribute.kind === "cwe" ? (
+                        <>
+                          <CweChip cwe={cweRefFor(cohort.cweDetails, attribute.value)} />
+                          <span className="graph-evidence-count">{attribute.cves.length}</span>
+                        </>
+                      ) : (
+                        <span className="graph-evidence-chip">
+                          {attribute.value} · {attribute.cves.length}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -827,6 +919,8 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
         {cohort.truncated ? " · bounded, not complete" : ""}. Click any CVE to re-center on it.
       </p>
 
+      {taxonomyNote}
+
       {groupsByKind.length === 0 ? (
         <div className="empty-state" data-testid="graph-no-links">
           <strong>No labeled links for this record</strong>
@@ -858,6 +952,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
                     group={group}
                     centerId={cohort.focus ?? ""}
                     limit={limit}
+                    cweDetails={cohort.cweDetails}
                   />
                 ))}
               </div>
@@ -883,7 +978,11 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
               {cohort.groups.map((group) => (
                 <tr key={`${group.kind}:${group.value}`}>
                   <th scope="row">{GROUP_META[group.kind].label}</th>
-                  <td>{group.value}</td>
+                  <td>
+                    {group.kind === "cwe"
+                      ? cweText(cweRefFor(cohort.cweDetails, group.value))
+                      : group.value}
+                  </td>
                   <td>{group.cves.length}</td>
                   <td className="mono">{group.cves.join(", ")}</td>
                 </tr>
@@ -897,6 +996,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
         centerId={cohort.focus ?? ""}
         limit={limit}
         summaries={cohort.summaries}
+        cweDetails={cohort.cweDetails}
         onClose={() => setMore(null)}
       />
       <p className="chart-note">

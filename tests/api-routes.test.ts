@@ -897,6 +897,33 @@ describe("v1 graph route", () => {
     expect(oversized.status).toBe(400);
     expect((await bodyOf(oversized)).code).toBe("BAD_LIMIT");
   });
+
+  it("adds cweDetails and the catalog envelope without changing existing fields", async () => {
+    const db = makeDb();
+    seedRecord(db, "CVE-2099-0001", { kev: "2026-10-23", cwes: ["CWE-78"] });
+    seedRecord(db, "CVE-2099-0002", { kev: "2026-10-23", cwes: ["CWE-78"] });
+
+    const response = await getGraph(
+      new Request("https://radar.test/api/v1/graph?focus=CVE-2099-0001&limit=50"),
+    );
+    expect(response.status).toBe(200);
+    const body = await bodyOf(response);
+    // Existing ID-only fields keep their shape and meaning.
+    const cweGroup = (body.groups as Array<Record<string, unknown>>).find(
+      (group) => group.kind === "cwe",
+    );
+    expect(cweGroup?.value).toBe("CWE-78");
+    expect(body.cweDetails).toEqual({
+      "CWE-78": {
+        id: "CWE-78",
+        status: "taxonomy-unavailable",
+        url: "https://cwe.mitre.org/data/definitions/78.html",
+      },
+    });
+    // No accepted catalog in this fixture, so the envelope says so instead of
+    // claiming a version it never read.
+    expect(body.cweCatalog).toMatchObject({ status: "empty", version: null, retrievedAt: null });
+  });
 });
 
 describe("v1 radar and replay routes", () => {

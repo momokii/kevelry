@@ -9,6 +9,14 @@ All five v3 epics are implemented, verified, and shipped in this release.
 
 ### Added
 
+- **CWE names in the relation graph (E3).** The graph payload now carries the
+  additive `cweDetails` (keyed by normalized `CWE-<n>`, covering every id the
+  cohort references) plus the `cweCatalog` envelope, resolved in one batched
+  catalog lookup per response, and the shared-CWE group labels, hub attribute
+  chips, drill-down title and data table render `CWE-416 · Use After Free` with
+  the canonical MITRE link, `not in the loaded catalog` for an unmapped id, and
+  one block-level `taxonomy unavailable` note when no catalog is loaded.
+
 - **CWE chips, states, and mitigation disclosure in the Priority view (E3 step
   3b).** The expanded Priority row now renders every `kev.cweDetails` ref from
   the API instead of the raw id strings: the mono id is the label, and a

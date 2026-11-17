@@ -39,6 +39,30 @@ Each edge also carries `evidence` naming the concrete shared attributes:
 and edge caps ride in the response (`coverage` + `truncated`); nothing is
 sampled silently.
 
+## CWE labels (`cweDetails`)
+
+The graph adds `cweDetails`, an object keyed by normalized `CWE-<n>` that labels
+every CWE id the payload references — in `edges[].evidence.cwes`, in `groups`,
+and in `hubs[].topAttributes`. It is additive: `groups[].value` and
+`edges[].evidence.cwes` keep their ID-only shape and meaning. The whole cohort
+resolves in one batched catalog lookup per response, never one lookup per node,
+and an id is never omitted or blank.
+
+Each value is a `CweRef` with exactly one of three states:
+
+- `known` — `name` (and any `abstraction`/`summary`/`mitigation` the taxonomy
+  published) plus the canonical `url`.
+- `unmapped` — the id is absent from the accepted catalog (or has no valid CWE
+  shape). It keeps its id and, for a well-formed id, its canonical `url`; no
+  name is invented.
+- `taxonomy-unavailable` — no accepted catalog is loaded. Every referenced id
+  is still present as a ref carrying its canonical `url`; no name is claimed.
+
+Published `summary`/`mitigation` text arrives with MITRE's `::…::` control
+markers already removed, so no response carries `::`. `cweCatalog` states which
+catalog labelled the payload (`{status, version, retrievedAt, source}`); it is
+context, never a verdict, and changes nothing about the edges or the bounds.
+
 ## Example
 
 ```bash
@@ -72,6 +96,20 @@ curl "https://radar.example.org/api/v1/graph?limit=2"
   ],
   "coverage": { "eligibleCohort": 1762, "returned": 1, "edgeCount": 1 },
   "truncated": true,
+  "cweDetails": {
+    "CWE-94": {
+      "id": "CWE-94",
+      "status": "known",
+      "name": "Improper Control of Generation of Code ('Code Injection')",
+      "url": "https://cwe.mitre.org/data/definitions/94.html"
+    }
+  },
+  "cweCatalog": {
+    "status": "ready",
+    "version": "1000-956",
+    "retrievedAt": "2026-10-20T00:00:00Z",
+    "source": "MITRE CWE"
+  },
   "provenance": {
     "rankingPolicyVersion": "ranking-v1",
     "generatedAt": "2026-10-24T04:00:00Z",

@@ -90,6 +90,8 @@ export async function GET(request: Request): Promise<Response> {
         groups: cohort.groups,
         hubs: cohort.hubs,
         summaries: cohort.summaries,
+        cweDetails: cohort.cweDetails,
+        cweCatalog: cohort.cweCatalog,
         coverage: {
           eligibleCohort: cohort.eligibleCohort,
           returned: cohort.focus === null ? cohort.hubs.length : cohort.nodes.length,

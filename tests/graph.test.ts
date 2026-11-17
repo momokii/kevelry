@@ -4,7 +4,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
-import { buildKevGraph, GRAPH_DEFAULT_NODE_LIMIT, GRAPH_MAX_EDGES } from "../src/lib/graph";
+import { normalizeCweId } from "../src/lib/cwe-catalog";
+import {
+  buildKevGraph,
+  GRAPH_DEFAULT_NODE_LIMIT,
+  GRAPH_MAX_EDGES,
+  type GraphCohort,
+} from "../src/lib/graph";
 
 const tempDirs: string[] = [];
 const openDbs: CveDatabase[] = [];
@@ -268,5 +274,140 @@ describe("graph summaries", () => {
       kevDueDate: null,
     });
     expect(graph.summaries["CVE-2099-0001"]?.kevDueDate).toBe("2026-11-10");
+  });
+});
+
+describe("graph CWE labels", () => {
+  function seedReadyCatalog(db: CveDatabase): void {
+    db.runBoundedWrite(() => {
+      db.handle
+        .prepare(
+          "INSERT OR REPLACE INTO cwe_catalog_meta (id, version, source, source_hash, retrieved_at, status, record_count, notes) " +
+            "VALUES (1, ?, 'MITRE CWE', ?, ?, 'ready', 2, NULL)",
+        )
+        .run("1000-2", "b".repeat(64), STAMP);
+      const entry = db.handle.prepare(
+        "INSERT OR REPLACE INTO cwe_entries (cwe_id, name, abstraction, status, summary, mitigation, version, updated_at) " +
+          "VALUES (?, ?, 'Base', 'Stable', NULL, ?, '1000-2', ?)",
+      );
+      // Markers are stored verbatim; the read path is what must strip them.
+      entry.run(
+        "CWE-78",
+        "Improper Neutralization of Special Elements used in an OS Command",
+        "::PHASE:Implementation::Escape arguments before invoking the shell.",
+        STAMP,
+      );
+      entry.run(
+        "CWE-79",
+        "Improper Neutralization of Input During Web Page Generation",
+        null,
+        STAMP,
+      );
+    });
+  }
+
+  /** Independent walk of every CWE reference the payload exposes. */
+  function referencedCwes(graph: GraphCohort): string[] {
+    const seen = new Set<string>();
+    const add = (raw: string): void => {
+      seen.add(normalizeCweId(raw) ?? raw.trim());
+    };
+    for (const edge of graph.edges) for (const cwe of edge.evidence.cwes) add(cwe);
+    for (const group of graph.groups) if (group.kind === "cwe") add(group.value);
+    for (const hub of graph.hubs) {
+      for (const attribute of hub.topAttributes) {
+        if (attribute.kind === "cwe") add(attribute.value);
+      }
+    }
+    return [...seen].sort();
+  }
+
+  function seedLinkedCohort(db: CveDatabase): void {
+    seedRecord(db, "CVE-2099-0001");
+    seedRecord(db, "CVE-2099-0002");
+    seedRecord(db, "CVE-2099-0003");
+    seedKev(db, "CVE-2099-0001", { cwes: ["CWE-78", "CWE-79", "CWE-416"] });
+    seedKev(db, "CVE-2099-0002", { cwes: ["CWE-78"] });
+    seedKev(db, "CVE-2099-0003", { cwes: ["CWE-79", "CWE-416"] });
+  }
+
+  it("covers exactly the referenced CWEs, deduped, with names and stripped mitigation", () => {
+    const db = makeDb();
+    seedLinkedCohort(db);
+    seedReadyCatalog(db);
+
+    const graph = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 10 });
+    const referenced = referencedCwes(graph);
+    expect(referenced).toEqual(["CWE-416", "CWE-78", "CWE-79"]);
+    // One entry per referenced id: no duplicates, nothing extra, nothing missing.
+    expect(Object.keys(graph.cweDetails).sort()).toEqual(referenced);
+
+    expect(graph.cweDetails["CWE-78"]).toMatchObject({
+      id: "CWE-78",
+      status: "known",
+      name: "Improper Neutralization of Special Elements used in an OS Command",
+      url: "https://cwe.mitre.org/data/definitions/78.html",
+    });
+    // CWE-416 is well-formed but absent from the accepted catalog: the id is
+    // kept, linked, and never given an invented name.
+    expect(graph.cweDetails["CWE-416"]).toEqual({
+      id: "CWE-416",
+      status: "unmapped",
+      url: "https://cwe.mitre.org/data/definitions/416.html",
+    });
+    for (const ref of Object.values(graph.cweDetails)) {
+      if (ref.mitigation !== undefined) expect(ref.mitigation).not.toContain("::");
+    }
+    expect(graph.cweDetails["CWE-78"]?.mitigation).toBe(
+      "Escape arguments before invoking the shell.",
+    );
+  });
+
+  it("labels hub attributes on the landing view from the same batched resolution", () => {
+    const db = makeDb();
+    seedLinkedCohort(db);
+    seedReadyCatalog(db);
+
+    const graph = buildKevGraph(db, { nodeLimit: 10 });
+    const referenced = referencedCwes(graph);
+    expect(referenced.length).toBeGreaterThan(0);
+    expect(Object.keys(graph.cweDetails).sort()).toEqual(referenced);
+    expect(graph.cweDetails["CWE-78"]?.name).toBe(
+      "Improper Neutralization of Special Elements used in an OS Command",
+    );
+  });
+
+  it("keeps every referenced id as taxonomy-unavailable when no catalog is loaded", () => {
+    const db = makeDb();
+    seedLinkedCohort(db);
+
+    const graph = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 10 });
+    const referenced = referencedCwes(graph);
+    expect(referenced).toEqual(["CWE-416", "CWE-78", "CWE-79"]);
+    expect(Object.keys(graph.cweDetails).sort()).toEqual(referenced);
+    for (const id of referenced) {
+      const ref = graph.cweDetails[id];
+      // Never omitted, never blank: the id, its state, and its canonical URL.
+      expect(ref).toEqual({
+        id,
+        status: "taxonomy-unavailable",
+        url: `https://cwe.mitre.org/data/definitions/${id.slice("CWE-".length)}.html`,
+      });
+      expect(ref).not.toHaveProperty("name");
+    }
+    expect(graph.cweCatalog).toMatchObject({ status: "empty", version: null, retrievedAt: null });
+  });
+
+  it("reports the catalog envelope that labelled the payload", () => {
+    const db = makeDb();
+    seedLinkedCohort(db);
+    seedReadyCatalog(db);
+
+    const graph = buildKevGraph(db, { focus: "CVE-2099-0001", nodeLimit: 10 });
+    expect(graph.cweCatalog).toMatchObject({
+      status: "ready",
+      version: "1000-2",
+      retrievedAt: STAMP,
+    });
   });
 });

@@ -2090,6 +2090,8 @@ components:
         - groups
         - hubs
         - summaries
+        - cweDetails
+        - cweCatalog
         - coverage
         - truncated
         - provenance
@@ -2122,6 +2124,25 @@ components:
           description: Context keyed by CVE id for every record the groups or hubs reference.
           additionalProperties:
             $ref: "#/components/schemas/GraphSummary"
+        cweDetails:
+          type: object
+          description: >-
+            Published taxonomy label for every CWE id the payload references, keyed by
+            normalized `CWE-<n>`. Additive: `groups[].value` and `edges[].evidence.cwes`
+            keep their ID-only shape and meaning. Resolved in one batched lookup per
+            response, and every referenced id is present — with `taxonomy-unavailable`
+            plus its canonical URL when no accepted catalog is loaded, never omitted or
+            blank.
+          additionalProperties:
+            $ref: "#/components/schemas/CweRef"
+          example:
+            CWE-94:
+              id: CWE-94
+              status: known
+              name: Improper Control of Generation of Code ('Code Injection')
+              url: https://cwe.mitre.org/data/definitions/94.html
+        cweCatalog:
+          $ref: "#/components/schemas/CweCatalog"
         coverage:
           type: object
           required:

@@ -370,7 +370,10 @@ layout (same data always draws the same picture, so positions are stable for
 keyboard users). Rules:
 
 - The middle column is always labelled with the attribute value and its
-  record count; a count without its denominator is a defect.
+  record count; a count without its denominator is a defect. A shared-CWE
+  label is a [CWE chip](#cwe-taxonomy-labels) — `CWE-416 · Use After Free` —
+  never a bare id, and the same chip labels the grouped lists, the hub
+  attributes and the drill-down title.
 - Line colour encodes the link kind (shared CWE / vendor / reference host) and a
   legend names all three; the drawing never relies on colour alone.
 - Only the first few leaves per attribute are drawn; the remainder collapses
@@ -565,6 +568,17 @@ projection strips every `::…::` run, collapses the resulting whitespace, and
 trims — at read time only. Stored catalog rows keep MITRE's verbatim wording
 (see [DATA_WORKFLOW](docs/DATA_WORKFLOW.md)), a marker-only field is absent
 rather than empty, and no surface displays `::`.
+
+**Graph chips.** The relation graph renders CWEs in four places — the shared-CWE
+group labels, the landing view's hub attributes, the group drill-down title, and
+the data table — and all four use the same anatomy and the same three states as
+the priority block: the mono id, `·` plus the published name for `known` ids
+(id fixed, name ellipsized), **not in the loaded catalog** on an `unmapped`
+chip, and **taxonomy unavailable** once per view when the catalog is absent
+(never per chip). A graph CWE chip is the whole link target: canonical MITRE
+page, `rel="noreferrer noopener"`, 44px target, visible focus ring, and no
+severity colour. `cweDetails` keys the labels and `groups[].value` stays
+ID-only, so a client can always read the id the edge actually matched on.
 
 **List rows stay ID-only.** The label block is deliberately not projected onto
 list, search, or bulk rows: those pages are unbounded enough that a per-row

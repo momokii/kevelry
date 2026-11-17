@@ -1,4 +1,11 @@
 import { chunk, type CveDatabase } from "./db";
+import {
+  cweCatalogEnvelope,
+  normalizeCweId,
+  resolveCweRefs,
+  type CweCatalogEnvelope,
+  type CweRef,
+} from "./cwe-catalog";
 import { getAcceptedEpssDate } from "./priority";
 import { compareDecimalStrings, selectPrimaryCvss } from "./ranking";
 import { severityBandFor } from "./search";
@@ -67,6 +74,17 @@ export interface GraphCohort {
   hubs: GraphHub[];
   /** Context for every id referenced by groups or hubs, keyed by CVE id. */
   summaries: Record<string, GraphSummary>;
+  /**
+   * Published taxonomy label for every CWE id this cohort references, keyed by
+   * normalized `CWE-<n>` (or the trimmed raw value when the id has no valid
+   * shape). Additive: `groups[].value` and `edges[].evidence.cwes` keep their
+   * ID-only shape and meaning. Resolved in one batched lookup per response, and
+   * every referenced id is present — with `taxonomy-unavailable` plus its
+   * canonical URL when no accepted catalog is loaded, never omitted or blank.
+   */
+  cweDetails: Record<string, CweRef>;
+  /** Which catalog (and version) labelled `cweDetails`. */
+  cweCatalog: CweCatalogEnvelope;
   eligibleCohort: number;
   truncated: boolean;
 }
@@ -292,6 +310,33 @@ function evidenceBetween(
 }
 
 /**
+ * Every CWE id this cohort references, one entry per normalized id, sorted so
+ * the payload key order is deterministic. Nodes and summaries carry no CWE
+ * field today; walking all four references keeps the collection exact rather
+ * than assumed, and covers hub attributes (the landing page's CWE chips).
+ */
+function referencedCweIds(cohort: {
+  edges: readonly GraphEdge[];
+  groups: readonly GraphGroup[];
+  hubs: readonly GraphHub[];
+}): string[] {
+  const seen = new Set<string>();
+  const add = (raw: string): void => {
+    const key = normalizeCweId(raw) ?? raw.trim();
+    if (key === "" || seen.has(key)) return;
+    seen.add(key);
+  };
+  for (const edge of cohort.edges) for (const cwe of edge.evidence.cwes) add(cwe);
+  for (const group of cohort.groups) if (group.kind === "cwe") add(group.value);
+  for (const hub of cohort.hubs) {
+    for (const attribute of hub.topAttributes) {
+      if (attribute.kind === "cwe") add(attribute.value);
+    }
+  }
+  return [...seen].sort();
+}
+
+/**
  * Build the bounded relationship graph, always ego-centered: an explicit
  * `focus` selects its neighborhood, otherwise the center is the highest-EPSS
  * KEV record. A centerless hairball reads as noise, so there is no uncentered
@@ -513,9 +558,23 @@ export function buildKevGraph(
     groups,
     hubs,
     summaries,
+    cweDetails: cweDetailsOf(db, referencedCweIds({ edges, groups, hubs })),
+    cweCatalog: cweCatalogEnvelope(db),
     eligibleCohort: cohort.length,
     truncated: truncated || edges.length >= GRAPH_MAX_EDGES,
   };
+}
+
+/**
+ * Label every referenced id in ONE batched catalog lookup — never one query per
+ * node. `resolveCweRefs` already guarantees one ref per requested id, so an
+ * absent or non-ready catalog yields `taxonomy-unavailable` refs with their
+ * canonical URL instead of a missing or blank entry.
+ */
+function cweDetailsOf(db: CveDatabase, ids: readonly string[]): Record<string, CweRef> {
+  const out: Record<string, CweRef> = {};
+  for (const ref of resolveCweRefs(db, ids)) out[ref.id] = ref;
+  return out;
 }
 
 function intersects(a: Set<string> | undefined, b: Set<string> | undefined): boolean {

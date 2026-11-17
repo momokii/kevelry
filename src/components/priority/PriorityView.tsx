@@ -14,7 +14,17 @@ import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
 import type { CweRef } from "@/lib/cwe-catalog";
 import type { CvssSecondary } from "@/lib/cvss-projection";
 
-import { KEV_RANSOMWARE_USE_LABELS, cweChipName, cweMitigations } from "../../lib/cwe-display";
+import {
+  CWE_TAXONOMY_UNAVAILABLE,
+  CWE_UNMAPPED_STATE,
+  KEV_RANSOMWARE_USE_LABELS,
+  cweChipName,
+  cweMitigations,
+} from "../../lib/cwe-display";
+
+// The state words live in `cwe-display.ts` so every renderer states them once;
+// re-exported here to keep this module's existing import surface intact.
+export { CWE_TAXONOMY_UNAVAILABLE, CWE_UNMAPPED_STATE };
 import { ExploitSignal } from "../ledger/ExploitSignal";
 import { HelpTip } from "../ledger/HelpTip";
 import { TimeText } from "../ledger/TimeText";
@@ -174,12 +184,6 @@ export function kevStateText(listed: boolean): string {
 
 /** Absent catalog fields say so in words: never a blank, never an inference. */
 export const KEV_FIELD_ABSENT = "Not provided";
-
-/** Id plus state word for an id the loaded catalog does not carry. */
-export const CWE_UNMAPPED_STATE = "not in the loaded catalog";
-
-/** Said once at block level for every id; never repeated per chip. */
-export const CWE_TAXONOMY_UNAVAILABLE = "taxonomy unavailable";
 
 /** Disclosure label. The catalog version comes from the payload meta; when the
  * payload carries none the label states the reference without inventing one. */
