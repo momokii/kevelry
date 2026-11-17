@@ -40,11 +40,12 @@
 //   Related Weaknesses, ...), so unknown columns are ignored. Ids are
 //   normalized with the same `normalizeCweId` the read path uses, rows with an
 //   unusable id or a blank name are skipped and counted rather than thrown on,
-//   and `summary`/`mitigation` are stripped of MITRE's `::…::` control markers
+//   and `summary`/`mitigation` are reduced to their prose (MITRE wraps each
+//   mitigation run in `::PHASE:<phase>[:STRATEGY:<strategy>]:DESCRIPTION:<prose>::`)
 //   and then truncated at 600 code points with an ellipsis so a very long
-//   published description cannot bloat a row. Stripping runs BEFORE the cap:
-//   truncating raw text can cut a `::PHASE:…::` pair in half and strand its
-//   opener in the stored value, which is how `::` reached live payloads.
+//   published description cannot bloat a row. Reducing runs BEFORE the cap:
+//   truncating raw text can cut a marker in half and strand its fields in the
+//   stored value, and the marker's prose — which is the content — would be lost.
 
 import { createHash } from "node:crypto";
 
@@ -304,8 +305,8 @@ function cell(row: readonly string[], index: number): string {
  * on, so one bad upstream row cannot abort a whole catalog.
  *
  * Published text is normalised before the length cap, in this order: CR/LF to
- * single spaces, `::…::` markers removed, then truncation. A field that is
- * markers only becomes null, exactly like an absent field.
+ * single spaces, marker runs reduced to the prose they carry, then truncation.
+ * A field that is markers only becomes null, exactly like an absent field.
  */
 export function mapCweCsv(rows: string[][]): CweCsvMapping {
   const headerIndex = rows.findIndex((row) => !isBlankRow(row));

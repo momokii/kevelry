@@ -427,13 +427,12 @@ describe("mapCweCsv", () => {
     expect(entry?.mitigation?.endsWith("…")).toBe(true);
   });
 
-  // Regression: the cap used to be applied to MITRE's raw text, so a
-  // `::PHASE:…::` pair that straddled code point 600 was cut in half and the
-  // dangling opener was stored. CWE-502 on the live catalog ended in
-  // "…::PHASE:Implementation:DESCRIPTION:Explicitly define a final des…".
-  // Markers are now removed BEFORE the cap, so the stored value never holds a
-  // partial marker.
-  it("strips markers before the cap, so a marker cut mid-pair is never stored", () => {
+  // Regression: the cap used to be applied to MITRE's raw text, so a marker
+  // that straddled code point 600 was cut in half and its fields were stored.
+  // CWE-330 on the live catalog still ends in "…ppropriate.::P…". Markers are
+  // reduced to their prose BEFORE the cap, so the stored value never holds a
+  // partial marker — and the prose in front of the cut is kept, not deleted.
+  it("reduces markers before the cap, so a cut marker is never stored", () => {
     const head = "::PHASE:Architecture_and_Design::";
     const filler = "Design throttling mechanisms into the system architecture. ";
     const second = "::PHASE:Implementation:DESCRIPTION:";
@@ -498,6 +497,79 @@ describe("mapCweCsv", () => {
 
     expect(entries[0]?.summary).toBe("The product deserializes untrusted data.");
     expect(entries[0]?.mitigation).toBe("Use safe deserialization. Validate input.");
+  });
+
+  // The published grammar is
+  // `::PHASE:<phase>[:STRATEGY:<strategy>]:DESCRIPTION:<prose>::`: the prose is
+  // INSIDE the marker run. Reducing a run to the prose it carries is what keeps
+  // a stored mitigation non-empty; pairing markers off instead deletes the
+  // prose with the markup and leaves `PHASE:…:DESCRIPTION:` behind, which is
+  // what emptied 333 of 692 stored mitigations on the live catalog.
+  it("stores the prose a phase marker carries, not its fields", () => {
+    const fixtures: Array<[string, string | null]> = [
+      // One run.
+      [
+        "::PHASE:System Configuration:DESCRIPTION:Use TLS for every page.::",
+        "Use TLS for every page.",
+      ],
+      // Two runs are joined in publication order.
+      [
+        "::PHASE:Architecture and Design:DESCRIPTION:Design it.::PHASE:Implementation:DESCRIPTION:Then build it.::",
+        "Design it. Then build it.",
+      ],
+      // An optional STRATEGY field sits in front of the prose.
+      [
+        "::PHASE:Implementation:STRATEGY:Input Validation:DESCRIPTION:Validate every input.::",
+        "Validate every input.",
+      ],
+      // A tag-only run carries no prose and is dropped.
+      [
+        "::PHASE:Implementation:DESCRIPTION:Validate input.::PHASE:Implementation::",
+        "Validate input.",
+      ],
+      // The cap cut the last run inside its marker: no partial tag, prose kept.
+      ["::PHASE:Implementation:DESCRIPTION:Validate input.::P…", "Validate input."],
+      // Plain text is unchanged, single colons included.
+      ["Use a vetted library or framework.", "Use a vetted library or framework."],
+      ["Ratio 1:2.", "Ratio 1:2."],
+      // Marker-only text stores nothing at all.
+      ["::PHASE:Implementation:DESCRIPTION:", null],
+      ["::", null],
+    ];
+
+    for (const [raw, expected] of fixtures) {
+      const { entries } = mapCweCsv([
+        ["CWE-ID", "Name", "Potential Mitigations"],
+        ["79", "Cross-site Scripting", raw],
+      ]);
+      expect(entries[0]?.mitigation).toBe(expected);
+    }
+  });
+
+  it("never stores a marker field, whatever the published text", () => {
+    const fixtures = [
+      "::PHASE:System Configuration:DESCRIPTION:Use TLS.::",
+      "::PHASE:Architecture and Design:DESCRIPTION:Design it.::PHASE:Implementation:DESCRIPTION:Then build it.::",
+      "::PHASE:Implementation:STRATEGY:Input Validation:DESCRIPTION:Validate input.::",
+      "::PHASE::DESCRIPTION:Pre-design: use a bounds-checked language.::",
+      "::PHASE:Implementation:DESCRIPTION:Prefer std::unique_ptr.::",
+      "::PHASE:Implementation:DESCRIPTION:Use a vetted library.::P…",
+      "::PHASE:Architecture and Design:STRATE…",
+      "::PHASE:Implementation::",
+      "::",
+    ];
+
+    for (const raw of fixtures) {
+      const { entries } = mapCweCsv([
+        ["CWE-ID", "Name", "Description", "Potential Mitigations"],
+        ["79", "Cross-site Scripting", raw, raw],
+      ]);
+      for (const stored of [entries[0]?.summary, entries[0]?.mitigation]) {
+        expect(stored ?? "").not.toContain("PHASE");
+        expect(stored ?? "").not.toContain("DESCRIPTION");
+        expect(stored ?? "").not.toContain("::");
+      }
+    }
   });
 
   it("keeps text of exactly 600 code points without an ellipsis", () => {

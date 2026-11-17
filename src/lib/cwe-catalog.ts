@@ -55,35 +55,90 @@ const CWE_ID_RE = /^(?:CWE-)?0*(\d{1,6})$/i;
 const CANONICAL_CWE_ID_RE = /^CWE-([1-9]\d*)$/;
 
 /**
- * MITRE's published CSV wraps remediation phases in `::PHASE:<name>::` and uses
- * the same `::…::` shape for other control markers. Opened by `::`, closed by
- * the next `::`; the inner text may itself contain single colons (e.g.
- * `::PHASE:Architecture and Design::`), so only a doubled colon terminates it.
+ * MITRE's published remediation grammar, read back from the catalog itself:
+ *
+ *   ::PHASE:<phase>[:STRATEGY:<strategy>]:DESCRIPTION:<prose>::
+ *
+ * `::` opens and closes each marker run, `<phase>` and `<strategy>` are free
+ * text (they carry spaces and commas: `Architecture and Design Operation`,
+ * `Attack Surface Reduction, Environment Hardening`), `STRATEGY` is optional,
+ * and one field can carry several runs. A run with no `DESCRIPTION` carries no
+ * prose at all. So a marker does NOT end at the next `::` in a way that can be
+ * paired off: the prose sits between the opener and the closing `::`, and the
+ * value is capped at 600 code points, which can leave the last run cut inside
+ * its own marker (`::PHASE:`, `::P…`). Prose can also contain `::` itself
+ * (`std::auto_ptr`). Splitting on `::` and classifying each segment keeps the
+ * prose, which a pair regex deletes along with the markup it sat between.
  */
-const CWE_MARKER_RE = /::(?:(?!::)[\s\S])*?::/g;
+const CWE_MARKER_DELIMITER = "::";
+
+/** The field that introduces a run's prose. Prose is everything after it. */
+const CWE_DESCRIPTION_FIELD = "DESCRIPTION:";
+const CWE_DESCRIPTION_PREFIX = `:${CWE_DESCRIPTION_FIELD}`;
+
+/** A segment that opens with one of these keys is markup, never prose. */
+const CWE_TAG_KEY_RE = /^(?:PHASE|STRATEGY|DESCRIPTION)(?::|$)/;
+
+/** A `:DESCRIPTION:` field can only follow a run that a key opened. */
+const CWE_MARKER_OPEN_RE = /^(?:PHASE|STRATEGY):/;
 
 /**
- * A `::` with no closing `::`. After every closed pair is gone, the only `::`
- * left is one whose pair was truncated away — by the 600-code-point cap, or by
- * upstream publishing a half marker — so it opens a marker that never ends and
- * everything from it to the end of the string is markup, not content.
+ * A truncation remnant: the code-point cap landed inside a marker and left a
+ * bare upper-case field name (or the start of one) with no body — `PHASE`,
+ * `PHASE:`, `PHAS…`, `P…`. Only consulted for the final segment, because the
+ * cap can only cut the end of the field; dropped so a stored half-marker never
+ * leaks into prose.
  */
-const CWE_DANGLING_MARKER_RE = /::[\s\S]*$/;
+const CWE_TRUNCATED_MARKER_RE = /^[A-Z][A-Z0-9_]*:?(?:…)?$/;
 
 /**
- * Remove MITRE's `::…::` control markers from published taxonomy text, drop a
- * trailing unterminated marker segment, collapse runs of whitespace to one
- * space, and trim. Pure and total: never throws, and marker-only text becomes
- * the empty string. Applied on the read path and, before the length cap, at
- * ingest — so neither a stored row nor a payload can carry a partial marker.
+ * The prose one `::`-delimited segment contributes; `null` means it is markup.
+ *
+ * Text before the first `::` was never inside a marker, so it is prose.
+ * Everything after one is prose only when the segment ends a marker run: the
+ * part after `:DESCRIPTION:` (dropping the `PHASE`/`STRATEGY` fields in front
+ * of it), the part after a bare `DESCRIPTION:` (an empty phase name makes
+ * `::PHASE::DESCRIPTION:…`, which splits there), or any segment a marker key
+ * does not open — that last case is how prose containing `::` survives.
+ */
+function cweSegmentProse(segment: string, isFirst: boolean, isLast: boolean): string | null {
+  if (segment.trim() === "") return null;
+  if (isFirst) return segment;
+
+  const descriptionAt = segment.indexOf(CWE_DESCRIPTION_PREFIX);
+  if (descriptionAt !== -1 && CWE_MARKER_OPEN_RE.test(segment)) {
+    return segment.slice(descriptionAt + CWE_DESCRIPTION_PREFIX.length);
+  }
+  if (segment.startsWith(CWE_DESCRIPTION_FIELD)) {
+    return segment.slice(CWE_DESCRIPTION_FIELD.length);
+  }
+  // A marker key with no `DESCRIPTION:` is a tag-only run or a run the cap cut
+  // before its prose: either way it contributes nothing.
+  if (CWE_TAG_KEY_RE.test(segment)) return null;
+  if (isLast && CWE_TRUNCATED_MARKER_RE.test(segment)) return null;
+  return segment;
+}
+
+/**
+ * Recover the prose from published taxonomy text: drop MITRE's `::`-delimited
+ * marker fields, keep the prose they carry, join the pieces with one space,
+ * collapse whitespace, and trim. Pure and total: never throws, and marker-only
+ * text becomes the empty string. Applied on the read path and, before the
+ * length cap, at ingest — so neither a stored row nor a payload can carry a
+ * marker, a marker's fields, or a partial marker left by truncation.
  */
 export function stripCweMarkers(text: string): string {
   if (typeof text !== "string") return "";
-  return text
-    .replace(CWE_MARKER_RE, " ")
-    .replace(CWE_DANGLING_MARKER_RE, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const segments = text.split(CWE_MARKER_DELIMITER);
+  let last = segments.length - 1;
+  while (last > 0 && (segments[last] ?? "").trim() === "") last -= 1;
+
+  const pieces: string[] = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const prose = cweSegmentProse(segments[index] ?? "", index === 0, index === last);
+    if (prose !== null) pieces.push(prose);
+  }
+  return pieces.join(" ").replace(/\s+/g, " ").trim();
 }
 
 /**

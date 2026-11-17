@@ -112,13 +112,63 @@ function seedKnownCatalog(db: CveDatabase): void {
 }
 
 describe("stripCweMarkers", () => {
-  it("removes a phase marker in the middle of a sentence", () => {
-    expect(stripCweMarkers("Review the code ::PHASE:Implementation:: before shipping.")).toBe(
-      "Review the code before shipping.",
+  // The published grammar, taken from the catalog itself:
+  //   ::PHASE:<phase>[:STRATEGY:<strategy>]:DESCRIPTION:<prose>::
+  // The prose sits INSIDE the marker run, so it is the part that must survive.
+  // Every fixture below is shaped after a real stored value.
+
+  const FIXTURES = [
+    "::PHASE:System Configuration:DESCRIPTION:Use TLS for access-controlled pages.::",
+    "::PHASE:Architecture and Design:DESCRIPTION:Design it.::PHASE:Implementation:DESCRIPTION:Then build it.::",
+    "::PHASE:Implementation:STRATEGY:Input Validation:DESCRIPTION:Validate every input.::",
+    "::PHASE::DESCRIPTION:Pre-design: use a bounds-checked language.::",
+    "::PHASE:Architecture and Design::Design it. ::PHASE:Implementation::Then build it.",
+    "::PHASE:Implementation:DESCRIPTION:Prefer std::unique_ptr over raw pointers.::",
+    "::PHASE:Implementation:DESCRIPTION:Use a vetted library.::P…",
+    "::PHASE:Architecture and Design:STRATE…",
+    "::PHASE:",
+    "::PHASE:Implementation::",
+    "::",
+    "",
+    "Use a vetted library or framework.",
+  ];
+
+  it("returns the prose of a single phase run", () => {
+    expect(
+      stripCweMarkers(
+        "::PHASE:System Configuration:DESCRIPTION:Use TLS for access-controlled pages.::",
+      ),
+    ).toBe("Use TLS for access-controlled pages.");
+  });
+
+  it("joins the prose of every phase run", () => {
+    expect(
+      stripCweMarkers(
+        "::PHASE:Architecture and Design:DESCRIPTION:Design it.::PHASE:Implementation:DESCRIPTION:Then build it.::",
+      ),
+    ).toBe("Design it. Then build it.");
+  });
+
+  it("drops the optional STRATEGY field and keeps the prose behind it", () => {
+    expect(
+      stripCweMarkers(
+        "::PHASE:Implementation:STRATEGY:Input Validation:DESCRIPTION:Validate every input.::",
+      ),
+    ).toBe("Validate every input.");
+  });
+
+  it("keeps the prose of a run whose phase name is empty", () => {
+    expect(stripCweMarkers("::PHASE::DESCRIPTION:Pre-design: use a bounds-checked language.::")).toBe(
+      "Pre-design: use a bounds-checked language.",
     );
   });
 
-  it("removes every marker, including names that contain a single colon", () => {
+  it("drops a tag-only segment and keeps the prose around it", () => {
+    expect(stripCweMarkers("Review the code ::PHASE:Implementation:: before shipping.")).toBe(
+      "Review the code before shipping.",
+    );
+    expect(stripCweMarkers("::PHASE:Implementation::")).toBe("");
+    expect(stripCweMarkers("  ::PHASE:A:: ::PHASE:B::  ")).toBe("");
     expect(
       stripCweMarkers(
         "::PHASE:Architecture and Design::Design it. ::PHASE:Implementation::Then build it.",
@@ -126,27 +176,40 @@ describe("stripCweMarkers", () => {
     ).toBe("Design it. Then build it.");
   });
 
-  it("returns an empty string when the text is markers only", () => {
-    expect(stripCweMarkers("::PHASE:Implementation::")).toBe("");
-    expect(stripCweMarkers("  ::PHASE:A:: ::PHASE:B::  ")).toBe("");
+  it("keeps the prose before a marker the cap cut in half, and drops the remnant", () => {
+    expect(stripCweMarkers("Design throttling into the architecture.::PHASE:")).toBe(
+      "Design throttling into the architecture.",
+    );
+    expect(stripCweMarkers("::PHASE:Implementation:DESCRIPTION:Use a vetted library.::P…")).toBe(
+      "Use a vetted library.",
+    );
+    expect(stripCweMarkers("::PHASE:Implementation:DESCRIPTION:Use a vetted library.::PHAS…")).toBe(
+      "Use a vetted library.",
+    );
+    // A run cut off before its DESCRIPTION carries no prose at all.
+    expect(stripCweMarkers("::PHASE:Architecture and Design:STRATE…")).toBe("");
   });
 
-  it("drops an unterminated trailing marker so a truncated pair never leaks", () => {
+  it("keeps prose that itself contains a doubled colon", () => {
+    // Real values describe `std::auto_ptr`; the split must not lose the tail.
     expect(
-      stripCweMarkers(
-        "Design throttling into the architecture.::PHASE:Implementation:DESCRIPTION:Explicitly de",
-      ),
-    ).toBe("Design throttling into the architecture.");
-    expect(
-      stripCweMarkers(
-        "::PHASE:Architecture and Design::Design it. ::PHASE:Implementation:DESCRIPTION:Then bu",
-      ),
-    ).toBe("Design it.");
+      stripCweMarkers("::PHASE:Implementation:DESCRIPTION:Prefer std::unique_ptr over raw pointers.::"),
+    ).toBe("Prefer std unique_ptr over raw pointers.");
   });
 
-  it("returns an empty string when the only marker is unterminated", () => {
-    expect(stripCweMarkers("::PHASE:Implementation:DESCRIPTION:Explicitly de")).toBe("");
+  it("never returns a marker field, whatever the input", () => {
+    for (const fixture of FIXTURES) {
+      const prose = stripCweMarkers(fixture);
+      expect(prose).not.toContain("PHASE");
+      expect(prose).not.toContain("DESCRIPTION");
+      expect(prose).not.toContain("::");
+    }
+  });
+
+  it("returns an empty string for marker-only and empty input", () => {
+    expect(stripCweMarkers("::PHASE:Implementation:DESCRIPTION:")).toBe("");
     expect(stripCweMarkers("::")).toBe("");
+    expect(stripCweMarkers("")).toBe("");
   });
 
   it("leaves text without markers unchanged", () => {
@@ -302,6 +365,27 @@ describe("resolveCweIds", () => {
     expect(ref.summary).toBe("The product fails to neutralize input.");
     expect(ref.mitigation).toBe("Use structure. Encode output.");
     expect(JSON.stringify(ref)).not.toContain("::");
+  });
+
+  it("projects the prose a stored phase marker carries, at projection time", () => {
+    // The shape the catalog actually stores: prose inside `::PHASE:…:DESCRIPTION:`,
+    // followed by a run the 600-code-point cap cut inside its marker.
+    const db = makeDatabase();
+    seedMeta(db);
+    seedEntry(db, {
+      id: "CWE-79",
+      name: "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
+      summary: "::PHASE:Implementation:DESCRIPTION:The product fails to neutralize input.::",
+      mitigation:
+        "::PHASE:Architecture and Design:DESCRIPTION:Use structure.::PHASE:Implementation:STRATEGY:Input Validation:DESCRIPTION:Encode output.::P…",
+    });
+
+    const ref = resolveCweIds(db, ["CWE-79"]).get("CWE-79") as CweRef;
+    expect(ref.summary).toBe("The product fails to neutralize input.");
+    expect(ref.mitigation).toBe("Use structure. Encode output.");
+    expect(JSON.stringify(ref)).not.toContain("::");
+    expect(JSON.stringify(ref)).not.toContain("PHASE");
+    expect(JSON.stringify(ref)).not.toContain("DESCRIPTION");
   });
 
   it("omits a marker-only field instead of projecting empty text", () => {
