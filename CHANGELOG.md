@@ -3,6 +3,42 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 3.0.1 — 2026-11-17
+
+### Security
+
+- **Next.js 16.4.3 → 16.4.5** for CVE-2026-119348 (GHSA-pc58-hwjq-p385).
+  `npm audit --omit=dev` is clean.
+
+### Added
+
+- **Atom 1.0 change feed** at `GET /api/v1/radar/feed.atom`, conforming to
+  RFC 4287 and built from the same retained checkpoints as the RSS feed.
+- **CWE names in the relation graph.** The graph payload now carries
+  `cweDetails` plus the `cweCatalog` envelope, so shared-CWE groups, hub chips,
+  and drill-down labels read `CWE-416 · Use After Free`.
+
+### Fixed
+
+- **CWE phase markers leaking into payloads, then mitigations parsing to
+  empty.** The importer strips marker runs before the 600-code-point cap, and
+  the read path parses `::PHASE:`/`:DESCRIPTION:` segments instead of deleting
+  `::…::` pairs. Across the 692 stored mitigations this took empty results from
+  333 to 0 and left 692 non-empty, with no `::PHASE` or `PHASE:` text in any
+  payload.
+
+### Changed
+
+- **One `withApiRoute` wrapper** now serves all 14 API routes, replacing the
+  repeated guard sequence; duplicated display and feed helpers are
+  consolidated, and the v3 files are formatted with Prettier.
+
+### Upgrade notes
+
+- No migration: the schema stays at 009 and existing volumes need no action.
+- No API contract change: every 3.0.1 addition is additive, and the wrapper is
+  structural only.
+
 ## 3.0.0 — 2026-11-15
 
 All five v3 epics are implemented, verified, and shipped in this release.
