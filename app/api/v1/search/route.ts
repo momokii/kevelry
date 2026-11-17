@@ -6,16 +6,9 @@ import {
   serializeSearchCsv,
   type SearchExportRow,
 } from "../../../../src/lib/csv-export";
-import { getDb } from "../_lib/db-handle";
-import {
-  acquireConcurrencySlot,
-  assertRequestBounds,
-  preflightResponse,
-  releaseConcurrencySlot,
-  searchBudgetExceeded,
-} from "../_lib/guardrails";
+import { apiPreflight, withApiRoute } from "../_lib/api-route";
+import { searchBudgetExceeded } from "../_lib/guardrails";
 import { ApiError } from "../_lib/errors";
-import { errorResponse, reserveRateLimit } from "../_lib/responses";
 import { cachedOkResponse, cachedTextResponse } from "../_lib/http-cache";
 import {
   encodeCursor,
@@ -36,158 +29,119 @@ import { loadFullRecords, toCveItem } from "../_lib/records";
 export const dynamic = "force-dynamic";
 
 export async function OPTIONS(request: Request): Promise<Response> {
-  return preflightResponse(request);
+  return apiPreflight(request);
 }
 
-export async function GET(request: Request): Promise<Response> {
-  let db = null;
-  try {
-    db = getDb();
-  } catch {
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", null);
-  }
-  const rate = reserveRateLimit(request, db);
-  if (rate instanceof Response) return rate;
-  if (!acquireConcurrencySlot()) {
-    return errorResponse(
-      request,
-      "RATE_LIMITED",
-      "Server is busy. Retry after 60 seconds.",
-      db,
-      undefined,
-      rate,
+export const GET = withApiRoute(async ({ request, db, rate }) => {
+  const params = new URL(request.url).searchParams;
+  const vendor = parseVendor(params.get("vendor"));
+  // `format` is parsed before the query check because export mode is the one
+  // documented exception: the Explore view renders an unfiltered first page,
+  // so its export link has no q/vendor and must still serialize that page.
+  const format = parseFormat(params.get("format"));
+  // Outside export mode q stays required for text search, but a vendor-only
+  // filter cohort is a valid search: at least one of q/vendor must shape it.
+  const qRaw = params.get("q");
+  if (qRaw === null && vendor === null && format === null) {
+    throw new ApiError(
+      "BAD_QUERY",
+      400,
+      "q is required and must be 2 to 200 characters unless vendor or format=csv|json is present.",
     );
   }
-  try {
-    assertRequestBounds(request);
-    const params = new URL(request.url).searchParams;
-    const vendor = parseVendor(params.get("vendor"));
-    // `format` is parsed before the query check because export mode is the one
-    // documented exception: the Explore view renders an unfiltered first page,
-    // so its export link has no q/vendor and must still serialize that page.
-    const format = parseFormat(params.get("format"));
-    // Outside export mode q stays required for text search, but a vendor-only
-    // filter cohort is a valid search: at least one of q/vendor must shape it.
-    const qRaw = params.get("q");
-    if (qRaw === null && vendor === null && format === null) {
-      throw new ApiError(
-        "BAD_QUERY",
-        400,
-        "q is required and must be 2 to 200 characters unless vendor or format=csv|json is present.",
-      );
-    }
-    const q = qRaw === null ? "" : parseQuery(qRaw);
-    const limit = parseLimit(params.get("limit"));
-    const offset = parseCursor(params.get("cursor"));
-    const severity = parseSeverity(params.get("severity"));
-    const kev = parseKev(params.get("kev"));
-    const epss = parseEpss(params.get("epss"));
-    const exploit = parseExploit(params.get("exploit"));
-    // Bounded export stays on this route so validation, filters, ordering and
-    // the page caps are the ones already documented; `format` only changes the
-    // serialization and adds attachment headers. Absent keeps the JSON body.
-    const start = parseDateBound(params.get("publishedStart"), "publishedStart");
-    const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
-    if (start !== null && end !== null && start >= end) {
-      throw new ApiError(
-        "BAD_DATE_RANGE",
-        400,
-        "publishedStart must be earlier than publishedEnd.",
-      );
-    }
-    // Single bounded service call: searchCves paginates in the service and
-    // returns the total/coverage for the whole match set, so the route must
-    // not fan out over every page. The old fan-out re-ran the full FTS scan
-    // once per 100 rows (hundreds of full scans for common terms) and tripped
-    // the 3s budget into a 500; it also amplified the unbounded IN clause
-    // inside the service. One call keeps warm responses under 5s.
-    // The wall-clock budget is still honored up front: an exhausted budget
-    // (e.g. forced to 0) refuses the search with a generic 500.
-    if (searchBudgetExceeded(Date.now())) {
-      throw new ApiError("INTERNAL", 500, "Unexpected failure handling the request.");
-    }
-    const result = searchCves(db, {
-      q,
-      dateStart: start ?? undefined,
-      dateEnd: end ?? undefined,
-      severity: severity === null ? undefined : [severity],
-      kev: kev === "listed" ? "only" : kev === "not-listed" ? "excluded" : "all",
-      epss: epss === "scored" ? "present" : epss === "unscored" ? "absent" : "all",
-      // `tagged` is the publisher's reference classification, never a PoC claim.
-      exploit: exploit === "tagged" ? "tagged" : "all",
-      vendor: vendor ?? undefined,
-      limit,
-      cursor: offset === 0 ? null : encodeCursor(offset),
-    });
-    const total = result.total;
-    const unknownSeverity = result.coverage.unknownSeverity;
-    const epssKnown = result.coverage.epssKnown;
-    const unknownDate = result.coverage.unknownDate;
-    const page = result.items.map((item) => item.cveId);
-    const hasMore = result.nextCursor !== null;
-    const nextCursor = result.nextCursor;
-    const records = loadFullRecords(db, page);
-    const byId = new Map(records.map((record) => [record.cveId, record]));
-    const scoreDate = getAcceptedEpssDate(db);
-    // One pass over this page's IDs builds both shapes, so the JSON data and
-    // the export rows are the same records in the same order: no fan-out, no
-    // second scan, no widening past `limit`.
-    const data: Array<Record<string, unknown>> = [];
-    const exportRows: SearchExportRow[] = [];
-    for (const cveId of page) {
-      const record = byId.get(cveId);
-      if (record === undefined) continue;
-      data.push(toCveItem(record, scoreDate, null));
-      exportRows.push(searchExportRow(record));
-    }
-    const now = new Date();
-    if (format === "csv") {
-      const filename = exportFilename("search", "csv", now, exportRows.length);
-      return cachedTextResponse(
-        request,
-        db,
-        serializeSearchCsv(exportRows),
-        {
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${filename}"`,
-        },
-        rate,
-      );
-    }
-    const payload = {
-      q,
-      vendor,
-      data,
-      pagination: { limit, hasMore, nextCursor },
-      coverage: {
-        eligibleCohort: total,
-        returned: page.length,
-        unscored: unknownSeverity,
-        unknownEpss: total - epssKnown,
-        unknownDate,
+  const q = qRaw === null ? "" : parseQuery(qRaw);
+  const limit = parseLimit(params.get("limit"));
+  const offset = parseCursor(params.get("cursor"));
+  const severity = parseSeverity(params.get("severity"));
+  const kev = parseKev(params.get("kev"));
+  const epss = parseEpss(params.get("epss"));
+  const exploit = parseExploit(params.get("exploit"));
+  // Bounded export stays on this route so validation, filters, ordering and
+  // the page caps are the ones already documented; `format` only changes the
+  // serialization and adds attachment headers. Absent keeps the JSON body.
+  const start = parseDateBound(params.get("publishedStart"), "publishedStart");
+  const end = parseDateBound(params.get("publishedEnd"), "publishedEnd");
+  if (start !== null && end !== null && start >= end) {
+    throw new ApiError("BAD_DATE_RANGE", 400, "publishedStart must be earlier than publishedEnd.");
+  }
+  // Single bounded service call: searchCves paginates in the service and
+  // returns the total/coverage for the whole match set, so the route must
+  // not fan out over every page. The old fan-out re-ran the full FTS scan
+  // once per 100 rows (hundreds of full scans for common terms) and tripped
+  // the 3s budget into a 500; it also amplified the unbounded IN clause
+  // inside the service. One call keeps warm responses under 5s.
+  // The wall-clock budget is still honored up front: an exhausted budget
+  // (e.g. forced to 0) refuses the search with a generic 500.
+  if (searchBudgetExceeded(Date.now())) {
+    throw new ApiError("INTERNAL", 500, "Unexpected failure handling the request.");
+  }
+  const result = searchCves(db, {
+    q,
+    dateStart: start ?? undefined,
+    dateEnd: end ?? undefined,
+    severity: severity === null ? undefined : [severity],
+    kev: kev === "listed" ? "only" : kev === "not-listed" ? "excluded" : "all",
+    epss: epss === "scored" ? "present" : epss === "unscored" ? "absent" : "all",
+    // `tagged` is the publisher's reference classification, never a PoC claim.
+    exploit: exploit === "tagged" ? "tagged" : "all",
+    vendor: vendor ?? undefined,
+    limit,
+    cursor: offset === 0 ? null : encodeCursor(offset),
+  });
+  const total = result.total;
+  const unknownSeverity = result.coverage.unknownSeverity;
+  const epssKnown = result.coverage.epssKnown;
+  const unknownDate = result.coverage.unknownDate;
+  const page = result.items.map((item) => item.cveId);
+  const hasMore = result.nextCursor !== null;
+  const nextCursor = result.nextCursor;
+  const records = loadFullRecords(db, page);
+  const byId = new Map(records.map((record) => [record.cveId, record]));
+  const scoreDate = getAcceptedEpssDate(db);
+  // One pass over this page's IDs builds both shapes, so the JSON data and
+  // the export rows are the same records in the same order: no fan-out, no
+  // second scan, no widening past `limit`.
+  const data: Array<Record<string, unknown>> = [];
+  const exportRows: SearchExportRow[] = [];
+  for (const cveId of page) {
+    const record = byId.get(cveId);
+    if (record === undefined) continue;
+    data.push(toCveItem(record, scoreDate, null));
+    exportRows.push(searchExportRow(record));
+  }
+  const now = new Date();
+  if (format === "csv") {
+    const filename = exportFilename("search", "csv", now, exportRows.length);
+    return cachedTextResponse(
+      request,
+      db,
+      serializeSearchCsv(exportRows),
+      {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
-      provenance: buildProvenance(db, now.toISOString()),
-    };
-    if (format === "json") {
-      const filename = exportFilename("search", "json", now, exportRows.length);
-      return cachedOkResponse(request, db, payload, rate, {
-        headers: { "Content-Disposition": `attachment; filename="${filename}"` },
-      });
-    }
-    return cachedOkResponse(request, db, payload, rate);
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return errorResponse(request, error.code, error.message, db, error.details, rate);
-    }
-    return errorResponse(
-      request,
-      "INTERNAL",
-      "Unexpected failure handling the request.",
-      db,
-      undefined,
       rate,
     );
-  } finally {
-    releaseConcurrencySlot();
   }
-}
+  const payload = {
+    q,
+    vendor,
+    data,
+    pagination: { limit, hasMore, nextCursor },
+    coverage: {
+      eligibleCohort: total,
+      returned: page.length,
+      unscored: unknownSeverity,
+      unknownEpss: total - epssKnown,
+      unknownDate,
+    },
+    provenance: buildProvenance(db, now.toISOString()),
+  };
+  if (format === "json") {
+    const filename = exportFilename("search", "json", now, exportRows.length);
+    return cachedOkResponse(request, db, payload, rate, {
+      headers: { "Content-Disposition": `attachment; filename="${filename}"` },
+    });
+  }
+  return cachedOkResponse(request, db, payload, rate);
+});

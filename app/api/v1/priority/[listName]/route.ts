@@ -8,10 +8,8 @@ import {
   getNewCritical,
   getRisingForecast,
 } from "../../../../../src/lib/priority";
-import { getDb } from "../../_lib/db-handle";
-import { acquireConcurrencySlot, assertRequestBounds, preflightResponse, releaseConcurrencySlot } from "../../_lib/guardrails";
+import { apiPreflight, withApiRoute } from "../../_lib/api-route";
 import { ApiError } from "../../_lib/errors";
-import { errorResponse, reserveRateLimit } from "../../_lib/responses";
 import { cachedOkResponse } from "../../_lib/http-cache";
 import { encodeCursor, parseCursor, parseLimit, paginateCapped } from "../../_lib/params";
 import { buildProvenance } from "../../_lib/provenance";
@@ -22,7 +20,7 @@ import type { CveDatabase } from "../../../../../src/lib/db";
 export const dynamic = "force-dynamic";
 
 export async function OPTIONS(request: Request): Promise<Response> {
-  return preflightResponse(request);
+  return apiPreflight(request);
 }
 
 const LISTS = [
@@ -73,30 +71,8 @@ function withKevCweDetails(
   }));
 }
 
-export async function GET(
-  request: Request,
-  context: { params: Promise<{ listName: string }> },
-): Promise<Response> {
-  let db = null;
-  try {
-    db = getDb();
-  } catch {
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", null);
-  }
-  const rate = reserveRateLimit(request, db);
-  if (rate instanceof Response) return rate;
-  if (!acquireConcurrencySlot()) {
-    return errorResponse(
-      request,
-      "RATE_LIMITED",
-      "Server is busy. Retry after 60 seconds.",
-      db,
-      undefined,
-      rate,
-    );
-  }
-  try {
-    assertRequestBounds(request);
+export const GET = withApiRoute<[{ params: Promise<{ listName: string }> }]>(
+  async ({ request, db, rate }, context) => {
     const { listName } = await context.params;
     if (!(LISTS as readonly string[]).includes(listName)) {
       const safe = /^[a-z-]{1,64}$/.test(listName) ? listName : "?";
@@ -201,19 +177,5 @@ export async function GET(
       },
       rate,
     );
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return errorResponse(request, error.code, error.message, db, error.details, rate);
-    }
-    return errorResponse(
-      request,
-      "INTERNAL",
-      "Unexpected failure handling the request.",
-      db,
-      undefined,
-      rate,
-    );
-  } finally {
-    releaseConcurrencySlot();
-  }
-}
+  },
+);

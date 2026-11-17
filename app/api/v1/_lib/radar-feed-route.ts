@@ -11,21 +11,17 @@ import {
   type RadarFeedMeta,
 } from "../../../../src/lib/radar-feed";
 import { resolvePublicBaseUrl } from "../../../../src/lib/site-url";
-import { getDb } from "./db-handle";
+import { withApiRoute } from "./api-route";
 import { ApiError } from "./errors";
 import {
-  acquireConcurrencySlot,
   applyCorsHeaders,
   applyRateHeaders,
   applySecurityHeaders,
-  assertRequestBounds,
-  releaseConcurrencySlot,
   type RateReservation,
 } from "./guardrails";
 import { CACHE_CONTROL_HEADER, etagFromSeed, etagMatches } from "./http-cache";
 import { parseDay, parseLimit } from "./params";
 import { buildRadarEvents, parseCveIdParam, parseRadarKind } from "./radar-api";
-import { errorResponse, reserveRateLimit } from "./responses";
 
 /** Per-format wiring a feed route supplies to the shared handler. */
 export interface RadarFeedFormat {
@@ -88,33 +84,12 @@ function feedResponse(
 /**
  * Serves one Change Radar feed: same query parameters, validation, retention
  * clamp, ordering, event selection, cache policy, and guards for every format.
- * The route owns only the `GET`/`OPTIONS` exports; this function owns the
- * request lifecycle.
+ * The route owns only the `GET`/`OPTIONS` exports; the shared `withApiRoute`
+ * wrapper owns the guard sequence and this handler owns the feed body, so the
+ * 304 + cache + security header path stays exactly as it was.
  */
-export async function handleRadarFeed(
-  request: Request,
-  format: RadarFeedFormat,
-): Promise<Response> {
-  let db = null;
-  try {
-    db = getDb();
-  } catch {
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", null);
-  }
-  const rate = reserveRateLimit(request, db);
-  if (rate instanceof Response) return rate;
-  if (!acquireConcurrencySlot()) {
-    return errorResponse(
-      request,
-      "RATE_LIMITED",
-      "Server is busy. Retry after 60 seconds.",
-      db,
-      undefined,
-      rate,
-    );
-  }
-  try {
-    assertRequestBounds(request);
+export const handleRadarFeed = withApiRoute<[RadarFeedFormat]>(
+  async ({ request, db, rate }, format) => {
     const url = new URL(request.url);
     const params = url.searchParams;
     const limitRaw = params.get("limit");
@@ -182,19 +157,5 @@ export async function handleRadarFeed(
       return feedResponse(request, format, null, 304, etag, lastModified, rate);
     }
     return feedResponse(request, format, body, 200, etag, lastModified, rate);
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return errorResponse(request, error.code, error.message, db, error.details, rate);
-    }
-    return errorResponse(
-      request,
-      "INTERNAL",
-      "Unexpected failure handling the request.",
-      db,
-      undefined,
-      rate,
-    );
-  } finally {
-    releaseConcurrencySlot();
-  }
-}
+  },
+);
