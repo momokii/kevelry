@@ -26,8 +26,10 @@ can consume the same data.
 > published mitigation text. E4 adds bulk lookup at `GET /api/v1/cves/batch`. E5
 > adds RSS 2.0 and Atom 1.0 change feeds, a daily checkpoint writer, and page-bounded
 > CSV/JSON export. 622 unit tests pass (3 skipped) and 126 Playwright tests pass (2
-> skipped), measured 2026-11-17; lint, typecheck, build, and secret-scan run on
-> every push via CI. See [Build gates](#build-gates-all-done); the v3 scope is
+> skipped: both are relation-graph journeys, which only assert the drawn cohort when
+> the local database holds KEV records that share an attribute), measured 2026-11-17;
+> lint, typecheck, build, and secret-scan run on every push via CI. See
+> [Build gates](#build-gates-all-done); the v3 scope is
 > specified in [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
 
 ![Overview: corpus total, freshness stats, and the publication-volume panel](docs/images/overview.png)
@@ -238,8 +240,10 @@ docker compose logs -f app    # watch first-boot ingestion progress
 Ready means: `GET /api/v1/health` returns 200 and `GET /api/v1/status`
 shows the first snapshots accepted. KEV/EPSS land in seconds-to-minutes; the
 gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
-initializing state until then. Live scale here: 406,598 published CVEs, 1,781
-KEV-listed, and 406,543 with an EPSS score in the 15 Nov 2026 snapshot.
+initializing state until then. Live scale here: roughly 400,000 published CVEs,
+about 1,800 KEV-listed, and roughly 400,000 carrying an EPSS score. `/methodology`
+reads those counts from the live database, so it is the place for the exact
+current figures and the snapshot date they came from.
 
 ## Configuration
 
