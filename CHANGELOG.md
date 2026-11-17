@@ -3,6 +3,35 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 3.0.2 — 2026-11-17
+
+### Fixed
+
+- **The `/graph` attribute dialog ignored Escape once the filter had focus.** The
+  filter is a `type="search"` input, so the browser consumed the first Escape to
+  clear the field itself: the dialog never received `cancel` and stayed open. The
+  input now clears the filter and closes the dialog on the first Escape, without
+  `preventDefault`, so the native close path still runs. Covered by an
+  unconditional regression test that arms the swallowed-Escape path, then asserts
+  the dialog closed and the filter was dropped for the next open.
+
+### Changed (tests only)
+
+- **The e2e suite runs against its own fixture corpus.** `global-setup` seeds
+  `.e2e/data` and `global-teardown` removes it, and the Playwright dev server
+  starts with `DATA_DIR=./.e2e/data`, `SCHEDULE_ENABLED=false` and
+  `INGEST_ON_START=false`. The suite no longer reads or writes the checkout's
+  `data/cve.db`, so a spec that swaps its corpus cannot disturb a running
+  instance, and full-suite counts are deterministic: 128 passed / 1 skipped,
+  measured twice. No runtime change.
+
+### Upgrade notes
+
+- No migration: the schema stays at 009 and existing volumes need no action.
+- No API contract change: the fix is a client-side key handler.
+- No config change: the Compose environment contract and `/data` layout are
+  unchanged.
+
 ## 3.0.1 — 2026-11-17
 
 ### Security
