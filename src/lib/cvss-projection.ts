@@ -16,7 +16,14 @@
 //   and vector ASCII (a stable tie-break for identical rows).
 // - Bounded to MAX_SECONDARY_METRICS entries.
 
-import { compareDecimalStrings, type CvssVersion } from "./ranking";
+import {
+  asciiCompare,
+  compareDecimalStrings,
+  cvssVersionRank,
+  isCvssVersion,
+  isValidCvssScore,
+  type CvssVersion,
+} from "./ranking";
 
 export const MAX_SECONDARY_METRICS = 4;
 
@@ -42,14 +49,6 @@ const PRESENT_NOTE =
 const NONE_NOTE =
   "No secondary (ADP or non-selected CNA) metric is published. Any secondary would be context only and is not used for ranking or eligibility.";
 
-const VERSION_PREFERENCE: readonly CvssVersion[] = ["4.0", "3.1", "3.0", "2.0"];
-const VERSION_RANK: Readonly<Record<string, number>> = {
-  "4.0": 0,
-  "3.1": 1,
-  "3.0": 2,
-  "2.0": 3,
-};
-
 interface Candidate {
   origin: "CNA" | "ADP";
   provider: string | null;
@@ -64,28 +63,10 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function isCvssVersion(value: unknown): value is CvssVersion {
-  return typeof value === "string" && VERSION_PREFERENCE.includes(value as CvssVersion);
-}
-
-/** Same validity rule as the primary selector: in-range plain decimal, exact text kept. */
-function isCvssScore(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const low = compareDecimalStrings(value, "0");
-  const high = compareDecimalStrings(value, "10");
-  return low !== null && high !== null && low >= 0 && high <= 0;
-}
-
 function providerOf(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
-}
-
-function asciiCompare(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
 }
 
 function toCandidate(metric: unknown, index: number): Candidate | null {
@@ -93,7 +74,7 @@ function toCandidate(metric: unknown, index: number): Candidate | null {
   const origin = row.origin;
   if (origin !== "CNA" && origin !== "ADP") return null;
   if (!isCvssVersion(row.version)) return null;
-  if (!isCvssScore(row.baseScore)) return null;
+  if (!isValidCvssScore(row.baseScore)) return null;
   const order =
     typeof row.sourceOrder === "number" && Number.isFinite(row.sourceOrder)
       ? row.sourceOrder
@@ -140,7 +121,7 @@ function equalsPrimary(
 
 function orderCandidates(a: Candidate, b: Candidate): number {
   if (a.origin !== b.origin) return a.origin === "ADP" ? -1 : 1;
-  const version = (VERSION_RANK[a.version] ?? 99) - (VERSION_RANK[b.version] ?? 99);
+  const version = cvssVersionRank(a.version) - cvssVersionRank(b.version);
   if (version !== 0) return version;
   const score = compareDecimalStrings(b.baseScore, a.baseScore);
   if (score !== null && score !== 0) return score;

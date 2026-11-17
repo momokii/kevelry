@@ -143,7 +143,13 @@ describe("search export CSV", () => {
       epssText: "0.1162",
       epssPercentile: "0.96047",
       exploitReferences: [{ url: "https://example.test/poc" }],
-      primary: { version: "4.0", baseScore: "9.2", vector: "CVSS:4.0/AV:N" },
+      primary: {
+        origin: "CNA",
+        version: "4.0",
+        baseScore: "9.2",
+        vector: "CVSS:4.0/AV:N",
+        label: "worst CNA-provided scenario",
+      },
     });
     expect(mapped).toEqual({
       cveId: "CVE-2099-0007",

@@ -49,7 +49,7 @@ export interface SearchExportRecord {
   epssText: string | null;
   epssPercentile: string | null;
   exploitReferences: ReadonlyArray<unknown>;
-  primary: { version: string; baseScore: string; vector: string } | null;
+  primary: PrimaryCvss | null;
 }
 
 export const CSV_RECORD_SEPARATOR = "\r\n";
@@ -88,9 +88,9 @@ export function searchExportRow(record: SearchExportRecord): SearchExportRow {
     state: record.state,
     publishedAt: record.publishedAt,
     updatedAt: record.dateUpdated,
-    // The band function reads only the version and score; stored versions are
-    // the validated CVSS set, so the structural record satisfies it.
-    severityBand: severityBandFor(record.primary as PrimaryCvss | null),
+    // The band function reads the stored primary as ranking selected it, so the
+    // record carries the selected metric itself: no cast, no second validation.
+    severityBand: severityBandFor(record.primary),
     primaryCvssVersion: record.primary === null ? null : record.primary.version,
     primaryCvssScore: record.primary === null ? null : record.primary.baseScore,
     kevListed: record.kevDateAdded === null ? "false" : "true",

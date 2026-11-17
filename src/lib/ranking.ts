@@ -27,8 +27,19 @@ export interface PrimaryCvss {
   label: "worst CNA-provided scenario";
 }
 
-const VERSION_PREFERENCE: readonly CvssVersion[] = ["4.0", "3.1", "3.0", "2.0"];
+/** The one statement of the CVSS version preference: earlier wins. */
+export const VERSION_PREFERENCE: readonly CvssVersion[] = ["4.0", "3.1", "3.0", "2.0"];
 const MODERN_VERSIONS: ReadonlySet<string> = new Set(["4.0", "3.1", "3.0"]);
+
+/** Membership in the preference list, so no caller re-states the set. */
+export function isCvssVersion(value: unknown): value is CvssVersion {
+  return typeof value === "string" && VERSION_PREFERENCE.includes(value as CvssVersion);
+}
+
+/** Position in `VERSION_PREFERENCE`; lower wins. The only numeric version rank. */
+export function cvssVersionRank(version: CvssVersion): number {
+  return VERSION_PREFERENCE.indexOf(version);
+}
 
 // ---------------------------------------------------------------------------
 // Exact decimal arithmetic. A decimal string "12.340" parses to
@@ -82,7 +93,7 @@ function isValidEpss(value: unknown): value is string {
   return typeof value === "string" && isInRange(value, "1");
 }
 
-function isValidCvssScore(value: unknown): value is string {
+export function isValidCvssScore(value: unknown): value is string {
   return typeof value === "string" && isInRange(value, "10");
 }
 
@@ -132,7 +143,7 @@ function idOf(row: unknown): string {
   return typeof id === "string" ? id : "";
 }
 
-function asciiCompare(a: string, b: string): -1 | 0 | 1 {
+export function asciiCompare(a: string, b: string): -1 | 0 | 1 {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
@@ -171,8 +182,7 @@ interface ValidCnaMetric {
 function toValidCnaMetric(metric: unknown, index: number): ValidCnaMetric | null {
   const row = asRecord(metric);
   if (row.origin !== "CNA") return null;
-  if (typeof row.version !== "string") return null;
-  if (!VERSION_PREFERENCE.includes(row.version as CvssVersion)) return null;
+  if (!isCvssVersion(row.version)) return null;
   if (!isValidCvssScore(row.baseScore)) return null;
   const order =
     typeof row.sourceOrder === "number" && Number.isFinite(row.sourceOrder)
@@ -194,7 +204,9 @@ export function selectPrimaryCvss(metrics: unknown): PrimaryCvss | null {
     if (metric !== null) valid.push(metric);
   }
   if (valid.length === 0) return null;
-  const bestVersion = VERSION_PREFERENCE.find((version) => valid.some((m) => m.version === version));
+  const bestVersion = VERSION_PREFERENCE.find((version) =>
+    valid.some((m) => m.version === version),
+  );
   if (bestVersion === undefined) return null;
   const pool = valid.filter((m) => m.version === bestVersion);
   pool.sort((a, b) => {

@@ -2,7 +2,7 @@ import { chunk, type CveDatabase } from "../../../../src/lib/db";
 import { projectSecondaryCvss, type CvssSecondary } from "../../../../src/lib/cvss-projection";
 import { exploitReferenceUrls } from "../../../../src/lib/exploit-ref";
 import { getAcceptedEpssDate, type PriorityItem } from "../../../../src/lib/priority";
-import { selectPrimaryCvss } from "../../../../src/lib/ranking";
+import { selectPrimaryCvss, type PrimaryCvss } from "../../../../src/lib/ranking";
 import {
   DESCRIPTION_MISSING_LABEL,
   excerptDescription,
@@ -102,7 +102,7 @@ export interface FullRecord {
   epssText: string | null;
   epssPercentile: string | null;
   epssModel: string | null;
-  primary: { version: string; baseScore: string; vector: string } | null;
+  primary: PrimaryCvss | null;
   /**
    * Every other preserved metric, bounded and labeled "context only".
    * Never a second primary: ranking/eligibility read `primary` alone.
@@ -319,10 +319,7 @@ export function loadFullRecords(db: CveDatabase, ids: readonly string[]): FullRe
       epssText: epss?.epss ?? null,
       epssPercentile: epss?.percentile ?? null,
       epssModel: epss?.model_version ?? null,
-      primary:
-        primary === null
-          ? null
-          : { version: primary.version, baseScore: primary.baseScore, vector: primary.vector },
+      primary,
       cvssSecondary: projectSecondaryCvss(metricInputs, primary),
       hasAdp: metrics.some((metric) => metric.origin === "ADP"),
     });
