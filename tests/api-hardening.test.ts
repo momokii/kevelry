@@ -18,7 +18,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
-import { acquireConcurrencySlot, checkRateLimit, clientKeyFor, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS, releaseConcurrencySlot, resetHardeningState, setAllowedOrigins, setMaxConcurrentRequests, setSearchBudgetMs } from "../app/api/v1/_lib/guardrails";
+import {
+  acquireConcurrencySlot,
+  checkRateLimit,
+  clientKeyFor,
+  RATE_LIMIT_MAX,
+  RATE_LIMIT_WINDOW_SECONDS,
+  releaseConcurrencySlot,
+  resetHardeningState,
+  setAllowedOrigins,
+  setMaxConcurrentRequests,
+  setSearchBudgetMs,
+} from "../app/api/v1/_lib/guardrails";
 import { ApiError } from "../app/api/v1/_lib/errors";
 import { encodeCursor, parseCursor } from "../app/api/v1/_lib/params";
 import { encodeOffsetCursor } from "../src/lib/search";
@@ -504,7 +515,7 @@ describe("no raw database routes", () => {
       }
     };
     walk(root);
-    expect(routeFiles.length).toBe(13);
+    expect(routeFiles.length).toBe(14);
     for (const file of routeFiles) {
       const text = readFileSync(file, "utf8");
       expect(text, file).not.toMatch(/DATA_DIR|dataDir|\.db\b|openDatabase/);
@@ -518,6 +529,7 @@ describe("no raw database routes", () => {
       await import("../app/api/v1/priority/[listName]/route"),
       await import("../app/api/v1/radar/route"),
       await import("../app/api/v1/radar/feed.xml/route"),
+      await import("../app/api/v1/radar/feed.atom/route"),
       await import("../app/api/v1/replay/route"),
       await import("../app/api/v1/replay/checkpoints/route"),
       await import("../app/api/v1/overview/route"),

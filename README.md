@@ -22,8 +22,8 @@ can consume the same data.
 > the KEV block into labeled catalog facts with a ransomware tri-state. E3 adds a
 > local CWE taxonomy (migration 009) so chips carry catalog names, states, and
 > published mitigation text. E4 adds bulk lookup at `GET /api/v1/cves/batch`. E5
-> adds an RSS 2.0 change feed, a daily checkpoint writer, and page-bounded CSV/JSON
-> export. 592 unit tests pass (3 skipped) and 123 Playwright tests pass (1
+> adds RSS 2.0 and Atom 1.0 change feeds, a daily checkpoint writer, and page-bounded
+> CSV/JSON export. 592 unit tests pass (3 skipped) and 123 Playwright tests pass (1
 > skipped), measured 2026-11-15; lint, typecheck, build, and secret-scan run on
 > every push via CI. See [Build gates](#build-gates-all-done); the v3 scope is
 > specified in [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
@@ -74,10 +74,11 @@ can consume the same data.
   a client cannot mistake an absent record for an empty one.
 - **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
   list membership changes, with the reason shown.
-- **Subscriptions and exports:** `/api/v1/radar/feed.xml` serves those same retained
-  changes as RSS 2.0 for pull subscribers, and Explore exports exactly the page on
-  screen as CSV or JSON (`format=csv|json`, RFC 4180 quoting) — page-bounded, never
-  the whole cohort.
+- **Subscriptions and exports:** `/api/v1/radar/feed.xml` and
+  `/api/v1/radar/feed.atom` serve those same retained changes as RSS 2.0 and
+  Atom 1.0 for pull subscribers, and Explore exports exactly the page on screen
+  as CSV or JSON (`format=csv|json`, RFC 4180 quoting) — page-bounded, never the
+  whole cohort.
 - **Relation graph:** KEV-listed records linked by shared CWEs, vendor labels, and
   reference hosts — labeled edges, ego focus, bounded cohort, keyboard inspector.
 - **Watch:** browser-private starred records with a hydrating view. No account,
@@ -242,38 +243,38 @@ KEV-listed, and 406,543 with an EPSS score in the 15 Nov 2026 snapshot.
 `.env` is gitignored; `.env.example` is the committed template. Every variable
 the app reads is listed there.
 
-| Variable                  | Required | Default                        | Meaning                                                                                                                   |
-| ------------------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                 | yes      | `production`                   | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                     |
-| `NODE_ENV`                | no       | `production`                   | Node profile, kept in step with `APP_ENV`                                                                                 |
-| `DATA_DIR`                | yes      | `/data`                        | Database and snapshot directory inside the container                                                                      |
-| `SCHEDULE_ENABLED`        | yes      | `true`                         | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                       |
-| `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                           |
-| `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                         |
-| `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                              |
-| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; the feed uses it for absolute links, else proxy headers, and omits links when the host is unusable |
-| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                  |
-| `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                        |
-| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB) |
-| `CVE_REPO_CACHE_RESET`    | no       | `false`                        | `true` wipes the cache and re-clones clean on the next cycle                                                              |
-| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`                     | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                   |
-| `CHECKPOINT_TOP_N`        | no       | `500`                          | Entries kept per view in each daily Change Radar checkpoint                                                               |
-| `PRIORITY_PAGE_LIMIT`     | no       | `100`                          | QA-only display cap for priority views (1–1000)                                                                           |
-| `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                               |
-| `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                            |
-| `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                              |
-| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                |
-| `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                              |
-| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft             |
-| `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                          |
-| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                   |
-| `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                    |
-| `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                  |
-| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it  |
-| `RESTORE_DIR`             | no*      | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything |
-| `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                   |
-| `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                     |
-| `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                              |
+| Variable                  | Required | Default                        | Meaning                                                                                                                                     |
+| ------------------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                 | yes      | `production`                   | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                                       |
+| `NODE_ENV`                | no       | `production`                   | Node profile, kept in step with `APP_ENV`                                                                                                   |
+| `DATA_DIR`                | yes      | `/data`                        | Database and snapshot directory inside the container                                                                                        |
+| `SCHEDULE_ENABLED`        | yes      | `true`                         | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                                         |
+| `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                                             |
+| `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                                           |
+| `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                                                |
+| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; feeds use it for absolute links, else proxy headers, and omit links when the host is unusable |
+| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                                    |
+| `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                                          |
+| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB)                   |
+| `CVE_REPO_CACHE_RESET`    | no       | `false`                        | `true` wipes the cache and re-clones clean on the next cycle                                                                                |
+| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`                     | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                                     |
+| `CHECKPOINT_TOP_N`        | no       | `500`                          | Entries kept per view in each daily Change Radar checkpoint                                                                                 |
+| `PRIORITY_PAGE_LIMIT`     | no       | `100`                          | QA-only display cap for priority views (1–1000)                                                                                             |
+| `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                                                 |
+| `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                                              |
+| `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                                                |
+| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                                  |
+| `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                                                |
+| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft                             |
+| `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                            |
+| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                     |
+| `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                                      |
+| `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                                    |
+| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it                   |
+| `RESTORE_DIR`             | no*      | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything                  |
+| `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                                     |
+| `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                                       |
+| `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                                                |
 
 `.env.example` is a local-development template (`APP_ENV=development`,
 `DATA_DIR=./data`); Compose and the image default to production (`APP_ENV=production`,
@@ -356,9 +357,9 @@ How the database works here, and the rules that follow from it:
 - The platform sets `$PORT`; the image honors it. Set `SITE_URL` to the real
   public origin (a custom domain, or the automatic
   `https://<service>-<hash>-<region>.a.run.app`) so sitemap, social cards, and
-  the RSS feed's channel/self links point at it. Leave it blank only for private
-  deployments; the feed then uses the proxy headers, and omits those links when
-  the host is unusable rather than advertising the bind address.
+  the change feeds' self/alternate links point at it. Leave it blank only for
+  private deployments; the feeds then use the proxy headers, and omit those
+  links when the host is unusable rather than advertising the bind address.
 - Cloud SQL / Postgres is **not** supported: the storage contract is a local
   SQLite file (`better-sqlite3`), which is what keeps self-hosting to one
   volume. The honest cost comparison is one always-on instance versus one
@@ -468,8 +469,9 @@ Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` vol
   database shows "history begins" until the first scheduled cycles run. The
   worker writes at most one checkpoint per UTC date (after a cycle in which at
   least one source was accepted), so the first checkpoint appears on the first
-  cycle rather than after days; while none is retained the feed description
-  says the feed is not populated yet instead of implying "no changes". The
+  cycle rather than after days; while none is retained the RSS `<description>`
+  and Atom `<subtitle>` say the feed is not populated yet instead of implying
+  "no changes". The
   rising-forecast view additionally needs seven days of EPSS snapshots; with
   one snapshot it is explicitly empty rather than guessed.
 - Severity comes from CNA-provided CVSS only. Records with no CNA metric show
@@ -540,6 +542,7 @@ Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml
 | `GET /api/v1/priority/{listName}` | `known-exploited`, `highest-forecast`, `new-critical`, `rising-forecast`, `kev-due-soon`, `ssvc-active` |
 | `GET /api/v1/radar`               | Change feed with before/after evidence                                                                  |
 | `GET /api/v1/radar/feed.xml`      | The same retained changes as an RSS 2.0 feed                                                            |
+| `GET /api/v1/radar/feed.atom`     | The same retained changes as an Atom 1.0 feed                                                           |
 | `GET /api/v1/graph`               | Bounded KEV-cohort relation graph with labeled links                                                    |
 | `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                                                        |
 | `GET /api/v1/replay/checkpoints`  | List available checkpoints                                                                              |

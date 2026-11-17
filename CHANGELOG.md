@@ -87,7 +87,7 @@ All five v3 epics are implemented, verified, and shipped in this release.
   records `status='stale'` with a sanitised `notes` reason (single line,
   credentials stripped, ≤300 chars), and the call returns
   `{ status: "failed", reason }` instead of throwing. The worker hooks this as
-  maintenance that is *not* a scheduler source (it cannot contribute to
+  maintenance that is _not_ a scheduler source (it cannot contribute to
   `failed`/readiness or block an import): at most one attempt per 24 h, gated by
   the accepted `retrieved_at` and tracked in-process, awaited once at boot and
   fired after each settled cycle, logging `cwe-refresh`,
@@ -149,10 +149,10 @@ All five v3 epics are implemented, verified, and shipped in this release.
   the page it already returned** — the same validation, filters, ordering,
   `limit`, and `cursor`, with no fan-out and no second scan. `format=csv` answers
   `text/csv; charset=utf-8` with `Content-Disposition: attachment;
-  filename="kevelry-search-<UTC date>-<n>rows.csv"` and the stable column order
+filename="kevelry-search-<UTC date>-<n>rows.csv"` and the stable column order
   `cveId,title,state,publishedAt,updatedAt,severityBand,primaryCvssVersion,
-  primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,
-  exploitTagged,officialUrl`, RFC 4180 quoting (comma, quote, CR, LF; embedded
+primaryCvssScore,kevListed,kevDateAdded,epssValue,epssPercentile,
+exploitTagged,officialUrl`, RFC 4180 quoting (comma, quote, CR, LF; embedded
   quotes doubled), null/absent values as empty cells, and **no `#` comment
   rows** — the file is a header row plus data rows only, because spreadsheet and
   SQL importers would read comment rows as data. `format=json` is the unchanged
@@ -199,6 +199,23 @@ All five v3 epics are implemented, verified, and shipped in this release.
   `openapi/v1.yaml`. Export, UI subscribe controls, and Playwright remain out
   of scope for this API-only step.
 
+- **Atom 1.0 change feed (E5).** `GET /api/v1/radar/feed.atom` serializes the
+  same retained change events as the RSS feed into an RFC 4287 document for
+  subscribers that prefer Atom. It shares the RSS route's query parsers, 30-day
+  retention clamp, event selection and ordering, ETag seed, conditional `304`,
+  cache policy, and guardrails; only the serializer, content type
+  (`application/atom+xml; charset=utf-8`), feed path, and ETag discriminator
+  differ. Feed `id`, `title`, `updated`, and `author/name` satisfy RFC 4287
+  §4.1.1, entries carry `id` (the same `eventId` as the RSS `<guid>`), `title`,
+  RFC 3339 `updated` (§3.3), `summary`, and an alternate cve.org link (§4.1.2),
+  and `rel="self"` / `rel="alternate"` are omitted when the public origin is
+  unknown, exactly like RSS. Docs: `docs/research/atom-feed.md`,
+  `docs/api/radar.md`, `openapi/v1.yaml`, README, and the Radar subscribe
+  control now offering both formats at 44px with the retention note. Tests:
+  `tests/radar-feed.test.ts` (well-formedness, required elements, cross-format
+  id equality, RFC 3339 dates, escaping, retention `400`, `304`) and
+  `tests/e2e/radar.spec.ts` (both links and both routes at 360px).
+
 - **Daily checkpoint writer (E5).** The worker now actually fills the
   `checkpoints` table the Change Radar, replay, and RSS feed read. After every
   ingestion cycle in which at least one source was accepted it freezes exactly
@@ -223,7 +240,7 @@ All five v3 epics are implemented, verified, and shipped in this release.
   empties dropped, and deduped preserving first-seen order, so `data` is in
   requested order; every element must match `CVE-YYYY-NNNN+` and the cap is 50
   unique IDs. The envelope is `{ data, resolution: { requested, returned,
-  missingIds }, provenance }`: absent and not-publicly-visible IDs are listed
+missingIds }, provenance }`: absent and not-publicly-visible IDs are listed
   in `resolution.missingIds` (requested order) instead of being fabricated or
   failing the whole request with a `404`. The route deliberately does **not**
   reuse the list route's `coverage` key, which keeps its single meaning
@@ -252,7 +269,7 @@ All five v3 epics are implemented, verified, and shipped in this release.
   `/api/v1/overview` exposes both in its `coverage` block; every existing field
   keeps its name and meaning (list endpoints are unchanged). The overview's
   "Unscored severity" stat gains the subnote `X with ADP secondary (context) ·
-  Y with no published metric` with the unscored cohort as denominator and a
+Y with no published metric` with the unscored cohort as denominator and a
   `HelpTip` stating secondary is context only and never used for ranking or
   eligibility — no band colour, no filter. The expanded Priority severity block
   gains a "Secondary (context only)" group listing each metric's origin/
@@ -284,11 +301,11 @@ All five v3 epics are implemented, verified, and shipped in this release.
 - **KEV block labels, tri-state copy, and Playwright coverage (E2).** The
   expanded Priority row's KEV block renders a labeled row per catalog fact
   instead of one sentence: membership `Listed` / `Not listed`, `Date added
-  (catalog)`, `Due date (catalog, federal context)`, `Required action`
+(catalog)`, `Due date (catalog, federal context)`, `Required action`
   (catalog-supplied and wrapped), `Ransomware campaign use`, `Catalog name`, and
   `CWEs` as monospace ID chips. The block branches on `ransomwareUse`, so the
   three catalog states render distinctly — `Known (catalog)`, `Unknown
-  (catalog)` (the catalog's own value), `Not stated` (the field was absent) —
+(catalog)` (the catalog's own value), `Not stated` (the field was absent) —
   and the legacy `ransomwareKnown` boolean is no longer read by the UI. No state
   is negated: "no ransomware", "not ransomware", and "no known ransomware"
   never render. Absent fields say `Not provided` (never blank), the block's

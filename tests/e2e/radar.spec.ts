@@ -120,7 +120,7 @@ test("radar passes the task-24 accessibility audit", async ({ page }) => {
   await auditReducedMotion(page, "radar", `${A11Y_EVIDENCE_DIR}/radar-reduced-motion.png`);
 });
 
-test("subscribe control links to the RSS feed and offers a copy-able URL", async ({ page }) => {
+test("subscribe control links to both feeds and offers copy-able URLs", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 });
   await page.goto("/radar");
   await expect(page.getByTestId("radar-root")).toBeVisible();
@@ -130,35 +130,69 @@ test("subscribe control links to the RSS feed and offers a copy-able URL", async
 
   const section = page.getByTestId("radar-subscribe");
   await expect(section).toBeVisible();
-  await expect(section).toContainText("RSS");
-  const link = page.getByTestId("radar-subscribe-link");
-  await expect(link).toHaveAttribute("href", "/api/v1/radar/feed.xml");
-  await expect(link).toHaveAttribute("type", "application/rss+xml");
-  const box = await link.boundingBox();
-  expect(box?.height ?? 0, "subscribe link is a 44px target").toBeGreaterThanOrEqual(44);
+  // Both formats and both media types are visible, not implied.
+  await expect(section).toContainText("RSS 2.0");
+  await expect(section).toContainText("application/rss+xml");
+  await expect(section).toContainText("Atom 1.0");
+  await expect(section).toContainText("application/atom+xml");
+  await expect(section).toContainText("checkpoint retention window");
 
-  const url = page.getByTestId("radar-subscribe-url");
-  await expect(url).toHaveValue(/\/api\/v1\/radar\/feed\.xml$/);
-  await url.focus();
-  await expect(url).toBeFocused();
-  const selection = await url.evaluate((element) => {
+  const rss = page.getByTestId("radar-subscribe-link");
+  const atom = page.getByTestId("radar-subscribe-atom-link");
+  await expect(rss).toHaveAttribute("href", "/api/v1/radar/feed.xml");
+  await expect(rss).toHaveAttribute("type", "application/rss+xml");
+  await expect(atom).toHaveAttribute("href", "/api/v1/radar/feed.atom");
+  await expect(atom).toHaveAttribute("type", "application/atom+xml");
+  for (const [name, link] of [
+    ["RSS", rss],
+    ["Atom", atom],
+  ] as const) {
+    const box = await link.boundingBox();
+    expect(box?.height ?? 0, `${name} subscribe link is a 44px target`).toBeGreaterThanOrEqual(44);
+    await link.focus();
+    await expect(link, `${name} subscribe link is keyboard reachable`).toBeFocused();
+  }
+
+  const rssUrl = page.getByTestId("radar-subscribe-url");
+  await expect(rssUrl).toHaveValue(/\/api\/v1\/radar\/feed\.xml$/);
+  await rssUrl.focus();
+  await expect(rssUrl).toBeFocused();
+  const selection = await rssUrl.evaluate((element) => {
     const input = element as HTMLInputElement;
     return input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0);
   });
   expect(selection, "focus selects the whole feed URL for copying").toContain(
     "/api/v1/radar/feed.xml",
   );
+  const atomUrl = page.getByTestId("radar-subscribe-atom-url");
+  await expect(atomUrl).toHaveValue(/\/api\/v1\/radar\/feed\.atom$/);
+  await atomUrl.focus();
+  const atomSelection = await atomUrl.evaluate((element) => {
+    const input = element as HTMLInputElement;
+    return input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0);
+  });
+  expect(atomSelection, "focus selects the whole Atom URL for copying").toContain(
+    "/api/v1/radar/feed.atom",
+  );
 
-  // The advertised link really resolves to a live RSS document.
-  const feedUrl = new URL("/api/v1/radar/feed.xml", page.url()).toString();
-  const response = await page.request.get(feedUrl);
-  expect(response.status(), "feed route responds").toBe(200);
-  expect(response.headers()["content-type"] ?? "").toContain("application/rss+xml");
-  expect(await response.text()).toContain("<rss");
+  // Both advertised links really resolve to live documents.
+  const rssResponse = await page.request.get(
+    new URL("/api/v1/radar/feed.xml", page.url()).toString(),
+  );
+  expect(rssResponse.status(), "RSS feed route responds").toBe(200);
+  expect(rssResponse.headers()["content-type"] ?? "").toContain("application/rss+xml");
+  expect(await rssResponse.text()).toContain("<rss");
+
+  const atomResponse = await page.request.get(
+    new URL("/api/v1/radar/feed.atom", page.url()).toString(),
+  );
+  expect(atomResponse.status(), "Atom feed route responds").toBe(200);
+  expect(atomResponse.headers()["content-type"] ?? "").toContain("application/atom+xml");
+  expect(await atomResponse.text()).toContain("<feed");
 
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
-  expect(overflow, "horizontal overflow with subscribe control at 360px").toBeLessThanOrEqual(1);
+  expect(overflow, "horizontal overflow with subscribe controls at 360px").toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${EVIDENCE_DIR}/radar-subscribe-360.png`, fullPage: true });
 });

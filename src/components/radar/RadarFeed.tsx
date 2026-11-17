@@ -27,21 +27,87 @@ const FIELD_SYMBOLS: Record<string, string> = {
   unknown: "[?]",
 };
 
-const FEED_PATH = "/api/v1/radar/feed.xml";
+const RSS_FEED_PATH = "/api/v1/radar/feed.xml";
+const ATOM_FEED_PATH = "/api/v1/radar/feed.atom";
 
 /**
- * Subscribe affordance for the RSS change feed (v3 epic E5).
+ * Both pull formats the Radar offers. The media type is rendered next to each
+ * link so the choice is not implied by the button label alone; the paths are
+ * the routes' real, relative hrefs, valid before hydration.
+ */
+const FEED_OPTIONS = [
+  {
+    id: "rss",
+    path: RSS_FEED_PATH,
+    label: "RSS 2.0 change feed",
+    mediaType: "application/rss+xml",
+    linkTestId: "radar-subscribe-link",
+    urlTestId: "radar-subscribe-url",
+    inputId: "radar-subscribe-url",
+    title: "RSS 2.0 change feed",
+  },
+  {
+    id: "atom",
+    path: ATOM_FEED_PATH,
+    label: "Atom 1.0 change feed",
+    mediaType: "application/atom+xml",
+    linkTestId: "radar-subscribe-atom-link",
+    urlTestId: "radar-subscribe-atom-url",
+    inputId: "radar-subscribe-atom-url",
+    title: "Atom 1.0 change feed",
+  },
+] as const;
+
+/**
+ * One subscribe option: a real link carrying the feed's media type plus a
+ * copy-able absolute URL. The input selects its whole value on focus, so a
+ * keyboard user can copy it without a clipboard permission prompt; the
+ * relative path is a valid href before hydration and the absolute URL is
+ * filled after it.
+ */
+function SubscribeOption({ option }: { option: (typeof FEED_OPTIONS)[number] }) {
+  const [feedUrl, setFeedUrl] = useState<string>(option.path);
+  useEffect(() => {
+    setFeedUrl(`${window.location.origin}${option.path}`);
+  }, [option.path]);
+  return (
+    <li className="subscribe-option">
+      <a
+        className="btn"
+        href={option.path}
+        type={option.mediaType}
+        rel="alternate"
+        title={option.title}
+        data-testid={option.linkTestId}
+      >
+        {option.label}
+      </a>
+      <code className="subscribe-media-type">{option.mediaType}</code>
+      <label className="sr-only" htmlFor={option.inputId}>
+        {option.label} URL
+      </label>
+      <input
+        id={option.inputId}
+        className="ledger-search-input subscribe-url"
+        type="url"
+        readOnly
+        value={feedUrl}
+        title={feedUrl}
+        onFocus={(event) => event.currentTarget.select()}
+        data-testid={option.urlTestId}
+      />
+    </li>
+  );
+}
+
+/**
+ * Subscribe affordance for the change feeds (v3 epic E5).
  *
- * A real link with the RSS type, plus a copy-able URL: the input selects its
- * whole value on focus, so keyboard users can copy it without a clipboard
- * permission prompt. The absolute URL is filled after hydration; the relative
- * path is valid on its own and keeps the server render honest.
+ * Offers RSS 2.0 and Atom 1.0 side by side with their media types visible,
+ * each a keyboard-reachable 44px link with a copy-able URL, and states the one
+ * limit a subscriber must know: the feed is bounded by checkpoint retention.
  */
 function SubscribePanel() {
-  const [feedUrl, setFeedUrl] = useState(FEED_PATH);
-  useEffect(() => {
-    setFeedUrl(`${window.location.origin}${FEED_PATH}`);
-  }, []);
   return (
     <section
       className="ledger-section"
@@ -49,34 +115,16 @@ function SubscribePanel() {
       data-testid="radar-subscribe"
     >
       <h2 id="radar-subscribe-heading">Subscribe</h2>
-      <div className="subscribe-row">
-        <a
-          className="btn"
-          href={FEED_PATH}
-          type="application/rss+xml"
-          rel="alternate"
-          title="RSS 2.0 change feed"
-          data-testid="radar-subscribe-link"
-        >
-          Subscribe to the RSS change feed
-        </a>
-        <label className="sr-only" htmlFor="radar-subscribe-url">
-          Feed URL
-        </label>
-        <input
-          id="radar-subscribe-url"
-          className="ledger-search-input subscribe-url"
-          type="url"
-          readOnly
-          value={feedUrl}
-          title={feedUrl}
-          onFocus={(event) => event.currentTarget.select()}
-          data-testid="radar-subscribe-url"
-        />
-      </div>
+      <ul className="subscribe-options">
+        {FEED_OPTIONS.map((option) => (
+          <SubscribeOption key={option.id} option={option} />
+        ))}
+      </ul>
       <p className="ledger-meta" data-testid="radar-subscribe-note">
-        RSS 2.0 (<code>application/rss+xml</code>), built from retained checkpoints only. Copy the
-        URL into any feed reader; it serves the same accepted change events as the JSON feed.
+        Both feeds serve the same accepted change events as the JSON feed, built from retained
+        checkpoints only and limited to the 30-day checkpoint retention window; a <code>since</code>{" "}
+        older than that window is rejected instead of answered with an empty feed. Copy either URL
+        into a feed reader.
       </p>
     </section>
   );

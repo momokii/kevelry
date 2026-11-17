@@ -37,10 +37,11 @@ their own self-hosted copy and put their own access control in front of it.
 
 ## Conventions shared by every route
 
-Base path: `/api/v1`. All responses are JSON except the RSS 2.0 change feed
-(`/api/v1/radar/feed.xml`), which returns `application/rss+xml` and carries the
-same rate-limit and security headers as the JSON routes. Every JSON success
-response carries:
+Base path: `/api/v1`. All responses are JSON except the change feeds:
+`/api/v1/radar/feed.xml` returns `application/rss+xml` and
+`/api/v1/radar/feed.atom` returns `application/atom+xml`; both carry the same
+rate-limit and security headers as the JSON routes. Every JSON success response
+carries:
 
 - `provenance.rankingPolicyVersion` — policy behind any ordering in the body
 - `provenance.sources.{cve,kev,epss}` — revision or version, score date and

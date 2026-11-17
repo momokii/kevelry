@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { writeCheckpoint } from "../src/lib/radar";
 import {
+  buildRadarAtomFeed,
   buildRadarFeed,
   earliestAllowedCheckpointDate,
   type RadarFeedEvent,
@@ -30,6 +31,10 @@ import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
 import { resolvePublicBaseUrl } from "../src/lib/site-url";
 import { GET as getFeed, OPTIONS as optionsFeed } from "../app/api/v1/radar/feed.xml/route";
+import {
+  GET as getAtomFeed,
+  OPTIONS as optionsAtomFeed,
+} from "../app/api/v1/radar/feed.atom/route";
 
 const tempDirs: string[] = [];
 const openDbs: CveDatabase[] = [];
@@ -41,6 +46,7 @@ const STAMP = "2026-11-14T00:00:00.000Z";
 const MODEL = "v2026.06.15";
 const SCORE_DATE = "2026-11-14";
 const BASE = "https://radar.test/api/v1/radar/feed.xml";
+const ATOM_BASE = "https://radar.test/api/v1/radar/feed.atom";
 
 function utcDay(offsetDays: number): string {
   const now = new Date();
@@ -605,5 +611,250 @@ describe("radar RSS feed absolute links", () => {
     expect(xml).not.toContain("<atom:link");
     const links = channelAndItemLinks(xml);
     for (const link of links) expect(link).toMatch(/^https:\/\/www\.cve\.org\/CVERecord\?id=/);
+  });
+});
+
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** The document's feed-level `<updated>`, which precedes any entry. */
+function atomFeedUpdated(xml: string): string {
+  return /<updated>([^<]+)<\/updated>/.exec(xml)?.[1] ?? "";
+}
+
+/** Every `<entry>` block in document order. */
+function atomEntries(xml: string): string[] {
+  return xml.split("<entry>").slice(1);
+}
+
+describe("radar Atom feed", () => {
+  it("serves well-formed Atom with required feed and entry elements", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const response = await getAtomFeed(new Request(ATOM_BASE));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/atom+xml; charset=utf-8");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-ratelimit-limit")).toBe("600");
+    const xml = await bodyOf(response);
+    assertWellFormed(xml);
+
+    // RFC 4287 §4.1.1: namespace, id, title, updated, author/name.
+    expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
+    expect(xml).toContain('<title type="text">CVE Change Radar change feed</title>');
+    expect(xml).toContain("<author>");
+    expect(xml).toContain("<name>Kevelry</name>");
+    expect(atomFeedUpdated(xml)).toBe(`${D3}T04:00:00.000Z`);
+    expect(atomFeedUpdated(xml)).toMatch(RFC3339_RE);
+    // The provenance text RSS puts in <description> is the Atom subtitle.
+    expect(xml).toContain('<subtitle type="text">Accepted change events');
+    expect(xml).toContain("30-day checkpoint retention window");
+    expect(xml).not.toContain("GMT");
+
+    const entries = atomEntries(xml);
+    expect(entries).toHaveLength(2);
+    const newest = entries[0] ?? "";
+    expect(newest).toContain(`<id>radar-${D2}-`);
+    expect(newest).toContain('<title type="text">CVE-2099-0002 — kev-added</title>');
+    expect(newest).toMatch(new RegExp(`<updated>${D2}T04:00:00\\.000Z</updated>`));
+    expect(/<updated>([^<]+)<\/updated>/.exec(newest)?.[1] ?? "").toMatch(RFC3339_RE);
+    expect(newest).toContain('<summary type="text">');
+    expect(newest).toContain("kev.listed: false → true");
+    expect(newest).toContain(`kev.dateAdded: null → ${D2}`);
+    expect(newest).toContain("reason: KEV membership added");
+    expect(newest).toContain("sourceRevision: kev-");
+    expect(newest).toContain(
+      'rel="alternate" type="text/html" href="https://www.cve.org/CVERecord?id=CVE-2099-0002"',
+    );
+    // Newest entry first, matching the RSS ordering.
+    expect(entries[1] ?? "").toContain("CVE-2099-0001");
+  });
+
+  it("reuses the RSS guid values as entry ids so one change matches across formats", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const rss = await bodyOf(await getFeed(new Request(BASE)));
+    const atom = await bodyOf(await getAtomFeed(new Request(ATOM_BASE)));
+    const guids = [...rss.matchAll(/<guid isPermaLink="false">([^<]+)<\/guid>/g)].map(
+      (match) => match[1] ?? "",
+    );
+    const entryIds = [...atom.matchAll(/<entry>[\s\S]*?<id>([^<]+)<\/id>/g)].map(
+      (match) => match[1] ?? "",
+    );
+    expect(guids).toHaveLength(2);
+    expect(entryIds).toEqual(guids);
+  });
+
+  it("caps entries at limit and rejects oversized or zero limits like RSS", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const one = await bodyOf(await getAtomFeed(new Request(`${ATOM_BASE}?limit=1`)));
+    assertWellFormed(one);
+    expect(atomEntries(one)).toHaveLength(1);
+    expect(one).toContain("CVE-2099-0002");
+    expect(one).not.toContain("CVE-2099-0001");
+
+    for (const limit of ["0", "201"]) {
+      const response = await getAtomFeed(new Request(`${ATOM_BASE}?limit=${limit}`));
+      expect(response.status, limit).toBe(400);
+      expect(((await response.json()) as { code: string }).code).toBe("BAD_LIMIT");
+    }
+  });
+
+  it("narrows by since, kind, and cveId exactly like RSS", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const bySince = await bodyOf(await getAtomFeed(new Request(`${ATOM_BASE}?since=${D2}`)));
+    expect(atomEntries(bySince)).toHaveLength(1);
+    expect(bySince).toContain("CVE-2099-0002");
+
+    const byKind = await bodyOf(await getAtomFeed(new Request(`${ATOM_BASE}?kind=kev-added`)));
+    expect(atomEntries(byKind)).toHaveLength(2);
+
+    const emptyKind = await bodyOf(await getAtomFeed(new Request(`${ATOM_BASE}?kind=rejected`)));
+    expect(atomEntries(emptyKind)).toHaveLength(0);
+
+    const byCve = await bodyOf(await getAtomFeed(new Request(`${ATOM_BASE}?cveId=CVE-2099-0001`)));
+    expect(atomEntries(byCve)).toHaveLength(1);
+    expect(byCve).toContain("CVE-2099-0001");
+  });
+
+  it("rejects a since older than the retention window with the earliest date", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const earliestBefore = earliestAllowedCheckpointDate(new Date());
+    const response = await getAtomFeed(new Request(`${ATOM_BASE}?since=2020-01-01`));
+    const earliestAfter = earliestAllowedCheckpointDate(new Date());
+    expect(response.status).toBe(400);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    const body = (await response.json()) as { code: string; message: string };
+    expect(body.code).toBe("BAD_FILTER");
+    expect(body.message).toContain("30-day checkpoint retention window");
+    const named = body.message.match(/earliest allowed date is (\d{4}-\d{2}-\d{2})/)?.[1];
+    expect([earliestBefore, earliestAfter]).toContain(named);
+  });
+
+  it("escapes &, <, and > in summary text", () => {
+    const reason = "AT&T <script>alert(1)</script> > 5";
+    const event: RadarFeedEvent = {
+      eventId: "radar-2026-11-14-0001",
+      observedAt: "2026-11-14T04:00:00.000Z",
+      kind: "corrected",
+      cveId: "CVE-2099-0001",
+      changes: [{ field: "record.state", before: null, after: "PUBLISHED" }],
+      sourceRevision: "cve-rev-feed-aaa",
+      reason,
+    };
+    const xml = buildRadarAtomFeed([event], {
+      feedUrl: "https://radar.test/api/v1/radar/feed.atom",
+      jsonUrl: "https://radar.test/api/v1/radar",
+      lastBuildAt: null,
+      earliestAllowedDay: "2026-10-15",
+      hasRetainedCheckpoints: true,
+    });
+    assertWellFormed(xml);
+    expect(xml).toContain("AT&amp;T &lt;script&gt;alert(1)&lt;/script&gt; &gt; 5");
+    expect(xml).not.toContain("<script>");
+    expect(xml).toContain("reason: AT&amp;T");
+  });
+
+  it("stays valid and explicit when no checkpoint is retained", async () => {
+    makeDb();
+
+    const response = await getAtomFeed(new Request(ATOM_BASE));
+    expect(response.status).toBe(200);
+    const xml = await bodyOf(response);
+    assertWellFormed(xml);
+    expect(xml).toContain("No change checkpoints are retained yet; this feed fills");
+    expect(atomFeedUpdated(xml)).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+    expect(atomEntries(xml)).toHaveLength(0);
+  });
+
+  it("revalidates a repeat request with If-None-Match as 304", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const first = await getAtomFeed(new Request(ATOM_BASE));
+    const etag = first.headers.get("etag");
+    expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
+    expect(first.headers.get("cache-control")).toContain("public");
+
+    const cached = await getAtomFeed(
+      new Request(ATOM_BASE, { headers: { "if-none-match": etag ?? "" } }),
+    );
+    expect(cached.status).toBe(304);
+    expect(await cached.text()).toBe("");
+    expect(cached.headers.get("etag")).toBe(etag);
+
+    // The tag is format-scoped: an Atom validator never revalidates RSS.
+    const rss = await getFeed(new Request(BASE));
+    expect(rss.headers.get("etag")).not.toBe(etag);
+  });
+
+  it("answers OPTIONS with the shared preflight and security headers", async () => {
+    const response = await optionsAtomFeed(new Request(ATOM_BASE, { method: "OPTIONS" }));
+    expect(response.status).toBe(204);
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
+  });
+});
+
+describe("radar Atom feed absolute links", () => {
+  beforeEach(() => {
+    delete process.env.SITE_URL;
+  });
+
+  it("publishes the feed URL as its id and self link, with a JSON alternate", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+    process.env.SITE_URL = "https://example.org";
+
+    const xml = await bodyOf(await getAtomFeed(new Request(`${ATOM_BASE}?limit=1`)));
+    assertWellFormed(xml);
+    expect(xml).toContain(`<id>https://example.org/api/v1/radar/feed.atom?limit=1</id>`);
+    expect(xml).toContain(
+      'rel="self" type="application/atom+xml" href="https://example.org/api/v1/radar/feed.atom?limit=1"',
+    );
+    expect(xml).toContain(
+      'rel="alternate" type="application/json" href="https://example.org/api/v1/radar?limit=1"',
+    );
+    expect(atomEntries(xml)).toHaveLength(1);
+  });
+
+  it("omits both links instead of publishing the bind address", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+
+    const headers = headersOf({ host: "0.0.0.0:3000" });
+    expect(resolvePublicBaseUrl(headers, {})).toBeNull();
+    const xml = await bodyOf(await getAtomFeed(new Request(ATOM_BASE, { headers })));
+    assertWellFormed(xml);
+    // No feed-level self/alternate link: the only links are entry alternates.
+    expect(xml).not.toContain('rel="self"');
+    expect(xml).not.toContain('type="application/json"');
+    expect(xml).not.toContain("0.0.0.0");
+    expect(xml).toContain("<id>urn:cve-radar:feed:change-radar</id>");
+    const links = atomEntries(xml).map(
+      (entry) => /<link rel="alternate" type="text\/html" href="([^"]+)"/.exec(entry)?.[1] ?? "",
+    );
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link).toMatch(/^https:\/\/www\.cve\.org\/CVERecord\?id=/);
+  });
+
+  it("treats a javascript: SITE_URL as unusable and emits no absolute link", async () => {
+    const db = makeDb();
+    seedRadarFeed(db);
+    process.env.SITE_URL = "javascript:alert(1)";
+
+    expect(resolvePublicBaseUrl(new Headers(), process.env)).toBeNull();
+    const xml = await bodyOf(await getAtomFeed(new Request(ATOM_BASE)));
+    assertWellFormed(xml);
+    expect(xml).not.toContain("javascript:");
+    expect(xml).not.toContain('rel="self"');
+    expect(xml).toContain("<id>urn:cve-radar:feed:change-radar</id>");
   });
 });

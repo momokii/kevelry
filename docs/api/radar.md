@@ -6,6 +6,7 @@ Site views covered: radar feed and the before/after evidence inspector.
 
     GET /api/v1/radar
     GET /api/v1/radar/feed.xml
+    GET /api/v1/radar/feed.atom
 
 Newest events first. Optional `since` (UTC `YYYY-MM-DD` checkpoint floor),
 `kind`, and `cveId` narrow the feed; `cursor` and `limit` paginate the JSON
@@ -13,11 +14,14 @@ route. Reads serve accepted local snapshots only; no upstream call is made.
 
 ## Subscribe
 
-The radar view carries a `Subscribe` control: a real link to
-`/api/v1/radar/feed.xml` with `type="application/rss+xml"`, plus the same URL in
-a read-only field that selects itself on focus so it can be copied by keyboard.
-It is the base feed (no query); add `since`, `kind`, `cveId` or `limit` yourself
-if you want a narrower subscription.
+The radar view carries a `Subscribe` control offering both pull formats side by
+side, each a real link with its media type visible and a read-only field that
+selects itself on focus so the URL can be copied by keyboard: RSS 2.0
+(`type="application/rss+xml"`, `/api/v1/radar/feed.xml`) and Atom 1.0
+(`type="application/atom+xml"`, `/api/v1/radar/feed.atom`). Both are the base
+feed (no query); add `since`, `kind`, `cveId` or `limit` yourself if you want a
+narrower subscription. The control states the one limit that matters: items are
+bounded by checkpoint retention.
 
 ## Kinds
 
@@ -157,3 +161,67 @@ on any proxied deployment. Item `<link>` values stay the absolute
 request with `If-None-Match` revalidates as `304`. The feed uses the shared
 rate-limit, concurrency, request-bound, preflight, and security-header guards;
 errors stay JSON with the usual error catalog.
+
+## Atom 1.0 change feed
+
+    GET /api/v1/radar/feed.atom
+
+The same accepted change events, from the same retained checkpoints, in the same
+newest-first order, serialized as Atom 1.0 ([RFC 4287](https://www.rfc-editor.org/rfc/rfc4287.txt)).
+It shares the RSS route's query parameters, validation, retention clamp, event
+selection, ETag seed, and guards; only the serializer, `Content-Type`, feed path,
+and ETag discriminator differ. `since` (UTC `YYYY-MM-DD`), `kind`, and `cveId`
+narrow identically, there is no cursor, and `limit` keeps the same bounds
+(default 50, max 200). Reads never call upstream.
+
+```bash
+curl "https://radar.example.org/api/v1/radar/feed.atom?since=2026-10-17&kind=kev-added&limit=2"
+```
+
+### Feed and entry mapping
+
+| Element                        | Value                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| feed `<id>`                    | The feed's own absolute URL (fixed `urn:cve-radar:feed:change-radar` when the public origin is unknown)                   |
+| feed `<title>`                 | `CVE Change Radar change feed`                                                                                            |
+| feed `<subtitle>`              | The same accepted-snapshot and retention-window provenance text as the RSS `<description>`                                |
+| feed `<updated>`               | RFC 3339 form of the newest retained checkpoint's `observedAt`; the retention-window start when no checkpoint is retained |
+| feed `<author><name>`          | `Kevelry` — the site, never a person                                                                                      |
+| feed `<link rel="self">`       | The Atom URL with the request's canonical filters, `type="application/atom+xml"`                                          |
+| feed `<link rel="alternate">`  | The JSON change feed URL with the same filters, `type="application/json"`                                                 |
+| entry `<id>`                   | The same `eventId` the RSS `<guid isPermaLink="false">` uses                                                              |
+| entry `<title type="text">`    | `<cveId> — <kind>`                                                                                                        |
+| entry `<updated>`              | RFC 3339 form of the checkpoint's `observedAt` (never RFC 822)                                                            |
+| entry `<summary type="text">`  | `field: before → after` lines, then `reason:`, then `sourceRevision:`, XML-escaped                                        |
+| entry `<link rel="alternate">` | `https://www.cve.org/CVERecord?id=<cveId>`                                                                                |
+
+The feed-level `<author>` covers every entry (RFC 4287 §4.1.1), and text
+constructs carry `type="text"` (§3.1.1). The entry `<id>` values are the opaque
+stable `eventId` strings shared with RSS, kept identical across formats on
+purpose; `docs/research/atom-feed.md` records the RFC 4287 §4.2.6 IRI
+conformance note behind that choice.
+
+### Retention clamp
+
+The same 30-day checkpoint window applies. A `since` older than it is rejected
+with `400 BAD_FILTER`, and the message names the earliest allowed date; it is
+never answered with an empty feed. An unpopulated store still answers a valid
+Atom document: the `<subtitle>` states that no checkpoints are retained yet, and
+`<updated>` is the retention-window start rather than a fabricated freshness.
+
+### HTTP behaviour
+
+`Content-Type: application/atom+xml; charset=utf-8`. Success responses carry the
+same `Cache-Control`, strong `ETag` (checkpoint set plus query shape plus the
+format discriminator), and `304` revalidation as RSS; a validator minted for one
+format does not revalidate the other. The feed uses the shared rate-limit,
+concurrency, request-bound, preflight, and security-header guards, and errors
+stay JSON with the usual error catalog.
+
+### Absolute links (`SITE_URL`)
+
+Exactly as for RSS: the self and alternate links are absolute and come from
+`SITE_URL`, then the proxy headers, then `host`. When the resolved host is
+unusable (`0.0.0.0`, loopback, `localhost`, `::`, empty) those links are omitted
+on purpose rather than advertising the bind address. Item links stay absolute
+`www.cve.org` URLs.
