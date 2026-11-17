@@ -8,12 +8,10 @@ import {
   resetToBaseline,
 } from "./corpus";
 
-// Relation graph journey, deliberately fixture-free: it seeds nothing itself.
-// It asserts the contract on the suite's standard corpus (tests/e2e/corpus.ts),
-// deployed here so the branches below depend on that data alone — before the
-// corpus moved under .e2e/, whatever the previous spec left in data/cve.db
-// decided whether the skip guards fired, and the skip count moved between a
-// standalone run and a full-suite run.
+// Relation graph journey. It pins the served corpus to the suite's baseline
+// (tests/e2e/corpus.ts) in beforeAll, and the "+N more" case deploys a dense
+// cohort that shares one vendor and CWE, then resets back to baseline. Nothing
+// is left for the next spec to inherit, and no branch depends on a skip guard.
 //   - landing ranks hubs and never pre-fills a center
 //   - centering draws the ego graph, grouped attributes, and the reading guide
 //   - "+N more" opens the complete attribute list in a dialog

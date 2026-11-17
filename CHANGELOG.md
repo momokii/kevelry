@@ -22,8 +22,9 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
   starts with `DATA_DIR=./.e2e/data`, `SCHEDULE_ENABLED=false` and
   `INGEST_ON_START=false`. The suite no longer reads or writes the checkout's
   `data/cve.db`, so a spec that swaps its corpus cannot disturb a running
-  instance, and full-suite counts are deterministic: 128 passed / 1 skipped,
-  measured twice. No runtime change.
+  instance, and full-suite counts are deterministic: 129 passed / 0 skipped,
+  with no guard left to skip. The `+N more` journey now deploys a dense cohort
+  so the attribute group clears the drawing cap. No runtime change.
 
 ### Upgrade notes
 

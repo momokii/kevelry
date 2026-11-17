@@ -27,7 +27,7 @@ can consume the same data.
 > local CWE taxonomy (migration 009) so chips carry catalog names, states, and
 > published mitigation text. E4 adds bulk lookup at `GET /api/v1/cves/batch`. E5
 > adds RSS 2.0 and Atom 1.0 change feeds, a daily checkpoint writer, and page-bounded
-> CSV/JSON export. 622 unit tests pass (3 skipped) and 128 Playwright tests pass (1
+> CSV/JSON export. 622 unit tests pass (3 skipped) and 129 Playwright tests pass (0
 > skipped), measured 2026-11-17;
 > lint, typecheck, build, and secret-scan run on every push via CI. See
 > [Build gates](#build-gates-all-done); the v3 scope is
@@ -518,7 +518,7 @@ npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
 npm test                # vitest (622 passing, 3 skipped on 2026-11-17)
-npx playwright test     # browser suite (128 passing, 1 skipped on 2026-11-17)
+npx playwright test     # browser suite (129 passing, 0 skipped on 2026-11-17)
 npx prettier --write <paths>  # format touched files
 ```
 
