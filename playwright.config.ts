@@ -19,7 +19,9 @@ export default defineConfig({
     command:
       "DATA_DIR=./.e2e/data SCHEDULE_ENABLED=false INGEST_ON_START=false npm run dev -- --port 3210",
     url: "http://localhost:3210/showcase",
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: a dev server already on 3210 would serve the checkout's
+    // data/ instead of the seeded .e2e corpus. The suite owns the port.
+    reuseExistingServer: false,
     timeout: 120 * 1000,
   },
 });
