@@ -7,6 +7,7 @@ import {
   DESCRIPTION_MISSING_LABEL,
   excerptDescription,
   officialCveLink,
+  recordTitle,
   severityBandFor,
 } from "../../../../src/lib/search";
 import type { EpssParam, KevParam, SeverityParam } from "./params";
@@ -384,8 +385,7 @@ export function toCveItem(
   epssModel: string | null,
 ): Record<string, unknown> {
   const excerpt = excerptFields(record);
-  const title =
-    typeof record.title === "string" && record.title.trim() !== "" ? record.title : record.cveId;
+  const title = recordTitle(record.title, record.cveId);
   const epss =
     record.epssText === null
       ? { status: "unknown", value: null, percentile: null, scoreDate: null, modelVersion: null }

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { deflateRawSync } from "node:zlib";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CWE_CSV_MAX_BYTES,
@@ -930,8 +930,10 @@ describe("worker CWE refresh hook", () => {
     tempDirs.push(dir);
     const calls = { count: 0 };
     const logs: WorkerLog[] = [];
+    const unchanged = (): WorkerLog[] =>
+      logs.filter((entry) => entry.event === "cwe-refresh-unchanged");
 
-    const { db, scheduler, cweSettled } = await runWorker({
+    const { db, scheduler } = await runWorker({
       dataDir: dir,
       scheduleEnabled: false,
       deps: workerDeps(calls),
@@ -943,14 +945,16 @@ describe("worker CWE refresh hook", () => {
     databases.push(db);
 
     try {
-      await cweSettled();
+      // The refresh is unawaited by the cycle, so the observable outcome is its
+      // own log line: wait for that rather than for an internal promise.
+      await vi.waitFor(() => expect(unchanged()).toHaveLength(1));
       expect(calls.count).toBe(1);
 
       await scheduler.runCycle();
-      await cweSettled();
-      // The gate suppresses the second attempt, so there is exactly one log.
+      // The gate is consulted synchronously as the cycle settles, so the count
+      // is final here: the second attempt is suppressed, not merely pending.
       expect(calls.count).toBe(1);
-      expect(logs.filter((entry) => entry.event === "cwe-refresh-unchanged")).toHaveLength(1);
+      expect(unchanged()).toHaveLength(1);
     } finally {
       await scheduler.shutdown();
     }
@@ -961,7 +965,7 @@ describe("worker CWE refresh hook", () => {
     tempDirs.push(dir);
     const logs: WorkerLog[] = [];
 
-    const { db, scheduler, cweSettled } = await runWorker({
+    const { db, scheduler } = await runWorker({
       dataDir: dir,
       scheduleEnabled: false,
       deps: {
@@ -978,13 +982,15 @@ describe("worker CWE refresh hook", () => {
     databases.push(db);
 
     try {
-      await cweSettled();
+      // A failed refresh is observed as its own event, never as a thrown cycle.
+      await vi.waitFor(() => {
+        expect(logs.some((entry) => entry.event === "cwe-refresh-failed")).toBe(true);
+      });
       const cycles = logs.filter((entry) => entry.event === "ingest-cycle");
       expect(cycles).toHaveLength(4);
       for (const cycle of cycles) {
         expect(cycle.ok).toBe(true);
       }
-      expect(logs.some((entry) => entry.event === "cwe-refresh-failed")).toBe(true);
     } finally {
       await scheduler.shutdown();
     }

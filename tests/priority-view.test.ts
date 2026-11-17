@@ -6,17 +6,15 @@ import { describe, expect, it } from "vitest";
 import {
   CWE_TAXONOMY_UNAVAILABLE,
   CWE_UNMAPPED_STATE,
-  cweChipName,
   cweMitigationLabel,
-  cweMitigations,
   cvssBandForScore,
   cvssStateForRow,
   epssBarWidthPercent,
   formatSignedDeltaPp,
-  KEV_RANSOMWARE_USE_LABELS,
   kevStateText,
 } from "../src/components/priority/PriorityView";
 import type { CweRef } from "../src/lib/cwe-catalog";
+import { KEV_RANSOMWARE_USE_LABELS, cweChipName, cweMitigations } from "../src/lib/cwe-display";
 
 describe("epssBarWidthPercent", () => {
   it("passes the real percentage through for the bar width", () => {

@@ -14,6 +14,7 @@ import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
 import type { CweRef } from "@/lib/cwe-catalog";
 import type { CvssSecondary } from "@/lib/cvss-projection";
 
+import { KEV_RANSOMWARE_USE_LABELS, cweChipName, cweMitigations } from "../../lib/cwe-display";
 import { ExploitSignal } from "../ledger/ExploitSignal";
 import { HelpTip } from "../ledger/HelpTip";
 import { TimeText } from "../ledger/TimeText";
@@ -171,15 +172,6 @@ export function kevStateText(listed: boolean): string {
   return listed ? "Listed" : "Not listed";
 }
 
-/** Exact catalog wording per stored tri-state. `unknown` is the catalog's own
- * Unknown value; `unstated` means the field was absent. Neither is a negation,
- * and no state ever reads as a ransomware-free claim. */
-export const KEV_RANSOMWARE_USE_LABELS: Record<KevRansomwareUse, string> = {
-  known: "Known (catalog)",
-  unknown: "Unknown (catalog)",
-  unstated: "Not stated",
-};
-
 /** Absent catalog fields say so in words: never a blank, never an inference. */
 export const KEV_FIELD_ABSENT = "Not provided";
 
@@ -188,29 +180,6 @@ export const CWE_UNMAPPED_STATE = "not in the loaded catalog";
 
 /** Said once at block level for every id; never repeated per chip. */
 export const CWE_TAXONOMY_UNAVAILABLE = "taxonomy unavailable";
-
-/** Published name for a `known` chip, trimmed; null when the taxonomy
- * published none (or the id is unmapped / taxonomy-unavailable). */
-export function cweChipName(cwe: CweRef): string | null {
-  if (cwe.status !== "known") return null;
-  if (typeof cwe.name !== "string") return null;
-  const name = cwe.name.trim();
-  return name === "" ? null : name;
-}
-
-/** Mitigation text that may be disclosed: only `known` ids whose taxonomy
- * published non-empty guidance. Marker stripping already happened server-side. */
-export function cweMitigations(cwes: readonly CweRef[]): Array<{ id: string; mitigation: string }> {
-  const out: Array<{ id: string; mitigation: string }> = [];
-  for (const cwe of cwes) {
-    if (cwe.status !== "known") continue;
-    if (typeof cwe.mitigation !== "string") continue;
-    const mitigation = cwe.mitigation.trim();
-    if (mitigation === "") continue;
-    out.push({ id: cwe.id, mitigation });
-  }
-  return out;
-}
 
 /** Disclosure label. The catalog version comes from the payload meta; when the
  * payload carries none the label states the reference without inventing one. */

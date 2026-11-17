@@ -209,6 +209,16 @@ export function officialCveLink(cveId: string): string {
   return `https://www.cve.org/CVERecord?id=${cveId}`;
 }
 
+/**
+ * Display title for a stored record: the published title, or the CVE id when
+ * no title was published (absent, empty, or whitespace only). The JSON item,
+ * the priority row and the CSV export read this one rule, so a record never
+ * renders a blank heading and the three shapes cannot drift apart.
+ */
+export function recordTitle(title: string | null | undefined, cveId: string): string {
+  return typeof title === "string" && title.trim() !== "" ? title : cveId;
+}
+
 function normalizeLangLabel(lang: unknown): string {
   if (typeof lang !== "string") return "unknown";
   const trimmed = lang.trim();

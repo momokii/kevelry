@@ -325,6 +325,9 @@ function cweGateAnchor(db: CveDatabase): string | null {
     const meta = getCweCatalogMeta(db);
     return meta.status === "ready" ? meta.retrievedAt : null;
   } catch {
+    // A meta read that throws is read as "no anchor", which makes the next
+    // attempt always due. Letting the error escape would fail worker boot over
+    // reference data that has no bearing on the fact sources.
     return null;
   }
 }
@@ -555,8 +558,6 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   releaseHandlers: () => void;
   scheduleEnabled: boolean;
   ingestOnStart: boolean;
-  /** Resolves once every background CWE refresh this worker started has settled. */
-  cweSettled: () => Promise<void>;
 }> {
   const log = options.log ?? defaultLog;
   lowerWorkerPriority();
@@ -649,13 +650,15 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       log,
     })
       .then(() => undefined)
+      // Logged and deliberately swallowed: the refresh already reports its own
+      // outcome, and this promise is unawaited by the cycle, so a rejection here
+      // would surface as an unhandled rejection nobody can act on.
       .catch(() => undefined)
       .finally(() => {
         cweInFlight = null;
       });
     return cweInFlight;
   };
-  const cweSettled = (): Promise<void> => cweInFlight ?? Promise.resolve();
 
   // Assigned right after construction so the cycle hook can tell a settling
   // cycle from a shutdown-interrupted one.
@@ -671,8 +674,6 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       // never fail the cycle or block the next import.
       if (schedulerRef?.getStatus().shuttingDown === true) return;
       writeDailyCheckpoint(db, { failed: outcome.failed, log });
-      // Taxonomy maintenance is independent of the fact sources: it runs after
-      // the cycle settled, unawaited, and its result never reaches `failed`.
       void kickCweRefresh();
     },
   });
@@ -745,7 +746,7 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       manifest: health.manifest,
     });
   }
-  return { db, scheduler, releaseHandlers, scheduleEnabled, ingestOnStart, cweSettled };
+  return { db, scheduler, releaseHandlers, scheduleEnabled, ingestOnStart };
 }
 
 /**

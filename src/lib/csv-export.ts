@@ -10,7 +10,7 @@
 // it is never written. Column order is a contract (docs/api/search.md).
 
 import type { PrimaryCvss } from "./ranking";
-import { officialCveLink, severityBandFor } from "./search";
+import { officialCveLink, recordTitle, severityBandFor } from "./search";
 
 /** Stable documented column order; additive changes only, never reordering. */
 export const SEARCH_EXPORT_COLUMNS = [
@@ -81,7 +81,7 @@ export function serializeSearchCsv(rows: readonly SearchExportRow[]): string {
  * band the UI renders — never a second, export-only classification.
  */
 export function searchExportRow(record: SearchExportRecord): SearchExportRow {
-  const title = record.title !== null && record.title.trim() !== "" ? record.title : record.cveId;
+  const title = recordTitle(record.title, record.cveId);
   return {
     cveId: record.cveId,
     title,

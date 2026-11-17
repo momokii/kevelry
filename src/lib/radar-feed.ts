@@ -113,10 +113,10 @@ function itemXml(event: RadarFeedEvent): string {
  */
 export function buildRadarFeed(events: readonly RadarFeedEvent[], meta: RadarFeedMeta): string {
   const retentionDays = meta.retentionDays ?? RADAR_RETENTION_DAYS;
-  const windowText = `Limited to the ${retentionDays}-day checkpoint retention window (earliest allowed checkpoint ${escapeXml(meta.earliestAllowedDay)}). Reads never call upstream sources.`;
+  const windowText = `${retentionDays}-day checkpoint retention window (earliest allowed checkpoint ${escapeXml(meta.earliestAllowedDay)}). Reads never call upstream sources.`;
   const description = meta.hasRetainedCheckpoints
-    ? `Accepted change events derived from local accepted daily CVE snapshots, limited to the ${retentionDays}-day checkpoint retention window (earliest allowed checkpoint ${escapeXml(meta.earliestAllowedDay)}). Reads never call upstream sources.`
-    : `${EMPTY_STATE_DESCRIPTION} ${windowText}`;
+    ? `Accepted change events derived from local accepted daily CVE snapshots, limited to the ${windowText}`
+    : `${EMPTY_STATE_DESCRIPTION} Limited to the ${windowText}`;
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',

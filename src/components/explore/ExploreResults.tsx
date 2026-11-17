@@ -58,6 +58,46 @@ function bandShort(band: (typeof SEVERITY_ORDER)[number]): string {
 }
 
 /**
+ * One export control: a link when the page can be exported, a disabled button
+ * with the visible reason attached when it cannot. The label, test id and
+ * description wiring exist here once, so both states stay announced alike.
+ */
+function ExportControl({
+  format,
+  count,
+  href,
+  noteId,
+}: {
+  format: "CSV" | "JSON";
+  count: string;
+  /** Target of the export link, or null when the page cannot be exported. */
+  href: string | null;
+  noteId: string;
+}) {
+  const testId = `explore-export-${format.toLowerCase()}`;
+  const label = `Export ${format} (${count})`;
+  if (href === null) {
+    return (
+      <button
+        type="button"
+        className="btn"
+        disabled
+        aria-describedby={noteId}
+        data-testid={testId}
+        data-export-disabled="true"
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <a className="btn" href={href} data-testid={testId}>
+      {label}
+    </a>
+  );
+}
+
+/**
  * Page-bounded export controls (v3 epic E5).
  *
  * Each control is a real link to the search endpoint with `format=`, carrying
@@ -80,42 +120,22 @@ function ExportControls({
 }) {
   const count = `${formatInt(rowCount)} ${rowCount === 1 ? "row" : "rows"}`;
   const noteId = "explore-export-note";
+  const disabled = disabledReason !== null;
   return (
     <div className="export-block" data-testid="explore-export">
       <div className="export-actions" role="group" aria-label="Export this page">
-        {disabledReason === null ? (
-          <>
-            <a className="btn" href={csvHref} data-testid="explore-export-csv">
-              Export CSV ({count})
-            </a>
-            <a className="btn" href={jsonHref} data-testid="explore-export-json">
-              Export JSON ({count})
-            </a>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="btn"
-              disabled
-              aria-describedby={noteId}
-              data-testid="explore-export-csv"
-              data-export-disabled="true"
-            >
-              Export CSV ({count})
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled
-              aria-describedby={noteId}
-              data-testid="explore-export-json"
-              data-export-disabled="true"
-            >
-              Export JSON ({count})
-            </button>
-          </>
-        )}
+        <ExportControl
+          format="CSV"
+          count={count}
+          href={disabled ? null : csvHref}
+          noteId={noteId}
+        />
+        <ExportControl
+          format="JSON"
+          count={count}
+          href={disabled ? null : jsonHref}
+          noteId={noteId}
+        />
       </div>
       <p className="export-note" id={noteId} data-testid="explore-export-note">
         {disabledReason ??
