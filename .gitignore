@@ -26,6 +26,9 @@ tmp/
 # Local dev database and retained-snapshot volume contents (never commit)
 data/
 
+# Playwright's own corpus: the e2e dev server reads this, never data/
+.e2e/
+
 # Agent execution state and local config backups (keep drafts/plans versioned)
 .omo/run-continuation/
 .omo/runtime/

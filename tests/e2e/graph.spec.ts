@@ -1,23 +1,58 @@
 import { expect, test } from "@playwright/test";
 
-// Relation graph journey, deliberately fixture-free. The graph reads whatever
-// KEV cohort the shared dev database holds; seeding rows here would leak into
-// other suites (they assert exact priority orders, and pages cache for 60s).
-// These tests therefore assert the contract on real data:
+import {
+  BASELINE_COHORT_SIZE,
+  DENSE_COHORT_SIZE,
+  buildBaselineDbFile,
+  deployE2eCorpus,
+  resetToBaseline,
+} from "./corpus";
+
+// Relation graph journey, deliberately fixture-free: it seeds nothing itself.
+// It asserts the contract on the suite's standard corpus (tests/e2e/corpus.ts),
+// deployed here so the branches below depend on that data alone — before the
+// corpus moved under .e2e/, whatever the previous spec left in data/cve.db
+// decided whether the skip guards fired, and the skip count moved between a
+// standalone run and a full-suite run.
 //   - landing ranks hubs and never pre-fills a center
 //   - centering draws the ego graph, grouped attributes, and the reading guide
 //   - "+N more" opens the complete attribute list in a dialog
 //   - an unknown focus is refused with a message
 
+// The server must be reading the suite's own corpus, never the checkout's
+// data/cve.db (which a deployed instance may hold open). The marker revision is
+// seeded only by the baseline builder, so this fails loudly instead of quietly
+// asserting against someone else's data.
+test.beforeAll(async ({ request }) => {
+  resetToBaseline();
+  const response = await request.get("/api/v1/overview");
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as {
+    coverage: { eligibleCohort: number };
+    provenance: { sources: { cve: { revision: string | null } } };
+  };
+  expect(
+    body.provenance.sources.cve.revision,
+    "the dev server must read DATA_DIR=.e2e/data, not data/cve.db",
+  ).toBe("rev-e2e-baseline");
+  expect(body.coverage.eligibleCohort).toBe(BASELINE_COHORT_SIZE);
+});
+
 /**
- * Most-connected hub on the landing page. Other suites leave their own KEV
- * fixtures in the shared database, so the first row is not guaranteed to have
- * links; scanning for the highest degree keeps these tests meaningful.
+ * Most-connected hub on the landing page. The baseline corpus gives every KEV
+ * record the same vendor and CWE, so degrees tie; the scan still sorts instead
+ * of trusting row order, and a corpus with no cohort yields null.
  */
 async function topHub(
   page: import("@playwright/test").Page,
 ): Promise<{ id: string; degree: number } | null> {
   const hubs = page.getByTestId("graph-hubs");
+  // Wait for the landing to settle on one of its two honest outcomes. Unlike
+  // an assertion, isVisible() does not wait, so without this a streamed page
+  // can still be mid-render when the check runs.
+  await expect(
+    page.locator('[data-testid="graph-hubs"], [data-testid="graph-empty"]').first(),
+  ).toBeVisible();
   if (!(await hubs.isVisible())) return null;
   const rows = await hubs.locator("li").evaluateAll((items) =>
     items.map((item) => {
@@ -102,7 +137,10 @@ test("+N more opens the complete attribute list in a dialog", async ({ page }) =
   }
   await page.goto(`/graph?focus=${encodeURIComponent(hub.id)}`);
 
-  const trigger = page.locator("[data-testid^='graph-more-']").first();
+  // The dialog wrapper and its children share the `graph-more-` testid prefix,
+  // so the trigger is selected by its button role — otherwise the locator can
+  // resolve to the always-present closed dialog and the click never completes.
+  const trigger = page.locator("[data-testid^='graph-more-'][role='button']").first();
   if ((await trigger.count()) === 0) {
     test.skip(true, "this cohort has no attribute group above the drawing cap");
     return;
@@ -152,4 +190,47 @@ test("an unknown focus is refused with a message, not a broken graph", async ({ 
   await expect(page.getByTestId("graph-invalid")).toContainText(
     "not a KEV-listed PUBLISHED record",
   );
+});
+
+// Escape-after-filtering is the regression this file exists to catch: a
+// `type="search"` input swallows the first Escape to clear its own text, so the
+// dialog never receives `cancel` and stays open. The cohort below is deployed
+// here rather than borrowed, so the trigger always exists once the fixture is
+// seeded: with `DENSE_COHORT_SIZE` records sharing one vendor and one CWE, every
+// attribute group is above the five-per-attribute drawing cap.
+test.describe("graph attribute dialog", () => {
+  test.beforeAll(() => {
+    deployE2eCorpus(buildBaselineDbFile(DENSE_COHORT_SIZE));
+  });
+
+  test.afterAll(() => {
+    resetToBaseline();
+  });
+
+  test("Escape closes the attribute dialog after the filter has been used", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/graph?focus=CVE-2099-0001");
+    await expect(page.getByTestId("graph-centered")).toBeVisible();
+
+    const trigger = page.locator("[data-testid^='graph-more-'][role='button']").first();
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const dialog = page.getByTestId("graph-more-dialog");
+    await expect(dialog).toBeVisible();
+
+    // Typing into the filter is what arms the swallowed-Escape path.
+    const filter = dialog.getByTestId("graph-more-filter");
+    await filter.fill("CVE-2099");
+    await expect(filter).toHaveValue("CVE-2099");
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    // Closing on Escape must also drop the filter, so the next open is clean.
+    await trigger.click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("graph-more-filter")).toHaveValue("");
+    await expect(dialog.getByTestId("graph-more-list").locator("li").first()).toBeVisible();
+  });
 });

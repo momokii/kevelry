@@ -1,13 +1,14 @@
 // Methodology and data-status journey (plan todo 23). Deploys a deterministic
 // invented corpus (CVE-2099 IDs, relative dates so the suite stays green) to
-// the dev server DATA_DIR, with a failed KEV feed on top of an older success:
-// the documented stale warning must render with last-known-good data, not a
-// frozen page. Every required reuse notice from docs/research/SOURCES.md is
-// asserted by testid and key phrase, so deleting any notice fails this spec.
-// Serial: every test shares the one server DATA_DIR.
+// the suite's own corpus under .e2e/, with a failed KEV feed on top of an older
+// success: the documented stale warning must render with last-known-good data,
+// not a frozen page. Every required reuse notice from docs/research/SOURCES.md
+// is asserted by testid and key phrase, so deleting any notice fails this spec.
+// Serial: every test shares the one server corpus, which no other checkout
+// file backs.
 
 import { expect, test } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -19,19 +20,16 @@ import {
   auditZoomReflow,
   ensureA11yEvidenceDir,
 } from "./a11y-audit";
+import { deployE2eCorpus, resetToBaseline } from "./corpus";
 
 test.describe.configure({ mode: "serial" });
 
-const PROJECT_ROOT = process.cwd();
-const SERVER_DATA_DIR = path.resolve(PROJECT_ROOT, process.env.DATA_DIR ?? "./data");
 const EVIDENCE_DIR =
   "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-23-cve-change-radar";
 
 const STAMP = "2026-10-24T00:00:00.000Z";
 
 const tempDirs: string[] = [];
-let hadServerDb = false;
-let serverDbBackup = "";
 
 function dayAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -113,36 +111,13 @@ function buildSeededDbFile(): string {
   return path.join(dir, "cve.db");
 }
 
-function clearServerDb(): void {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
-  }
-}
-
-function deployDbFile(sourceFile: string): void {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  clearServerDb();
-  copyFileSync(sourceFile, path.join(SERVER_DATA_DIR, "cve.db"));
-}
-
 test.beforeAll(() => {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
-  const current = path.join(SERVER_DATA_DIR, "cve.db");
-  hadServerDb = existsSync(current);
-  if (hadServerDb) {
-    const backupDir = mkdtempSync(path.join(tmpdir(), "cve-methodology-backup-"));
-    tempDirs.push(backupDir);
-    serverDbBackup = path.join(backupDir, "cve.db");
-    copyFileSync(current, serverDbBackup);
-  }
-  deployDbFile(buildSeededDbFile());
+  deployE2eCorpus(buildSeededDbFile());
 });
 
 test.afterAll(() => {
-  clearServerDb();
-  if (hadServerDb && serverDbBackup !== "") {
-    copyFileSync(serverDbBackup, path.join(SERVER_DATA_DIR, "cve.db"));
-  }
+  resetToBaseline();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop() as string;
     rmSync(dir, { recursive: true, force: true });

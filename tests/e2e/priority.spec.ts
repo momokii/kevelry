@@ -1,12 +1,12 @@
-// Priority views journey (plan todo 20). Seeds the dev server's DATA_DIR with
-// a deterministic invented corpus (CVE-2099 IDs, relative dates so the suite
-// stays green over time), then asserts each of the four named modes renders
-// the exact service order with ordering inputs, score dates/models, coverage
-// denominators, and a methodology link beside the list. Expected orders are
-// computed with the real priority services against a temp-DATA_DIR mirror of
-// the same fixtures — rendered order must match service fixtures 1:1.
+// Priority views journey (plan todo 20). Seeds the dev server's corpus under
+// .e2e/ with a deterministic invented corpus (CVE-2099 IDs, relative dates so
+// the suite stays green over time), then asserts each of the four named modes
+// renders the exact service order with ordering inputs, score dates/models,
+// coverage denominators, and a methodology link beside the list. Expected
+// orders are computed with the real priority services against a temp-DATA_DIR
+// mirror of the same fixtures — rendered order must match service fixtures 1:1.
 // Unknown and stale values stay labeled in place, never zeroed or hidden.
-// Serial: every test shares the one server DATA_DIR.
+// Serial: every test shares the one server corpus.
 
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +14,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
+import { E2E_DATA_DIR, clearE2eCorpus, resetToBaseline } from "./corpus";
 import {
   A11Y_EVIDENCE_DIR,
   auditReducedMotion,
@@ -48,12 +49,13 @@ function day(offsetDays: number): string {
   return new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
 }
 
+/**
+ * The suite's own corpus, never the checkout's data/cve.db. These fixtures are
+ * written in place (not swapped), so they must land in the copy the dev server
+ * under test reads and nowhere else.
+ */
 function serverDataDir(): string {
-  const raw = process.env.DATA_DIR;
-  if (raw !== undefined && raw.trim() !== "") {
-    return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-  }
-  return path.join(process.cwd(), "data");
+  return E2E_DATA_DIR;
 }
 
 function wipeFixtures(db: CveDatabase): void {
@@ -279,6 +281,10 @@ test.describe.serial("priority list views", () => {
   test.beforeAll(() => {
     mkdirSync(EVIDENCE_DIR, { recursive: true });
     expected = expectedFromServices(freshDate, freshPrev);
+    // Start from an empty corpus. These fixtures are written in place, so
+    // whatever corpus the previous spec left behind would join every list and
+    // break the exact service order asserted below.
+    clearE2eCorpus();
     const db = openDatabase({ dataDir: serverDataDir() });
     try {
       seedPriorityFixtures(db, freshDate, freshPrev);
@@ -288,12 +294,16 @@ test.describe.serial("priority list views", () => {
   });
 
   test.afterAll(() => {
+    // wipeFixtures is the narrow cleanup; the baseline reset also covers any
+    // row a failed assertion left behind, so the next spec starts from the
+    // same corpus on every run.
     const db = openDatabase({ dataDir: serverDataDir() });
     try {
       wipeFixtures(db);
     } finally {
       db.close();
     }
+    resetToBaseline();
   });
 
   test("service fixtures order the four views as the contract requires", () => {

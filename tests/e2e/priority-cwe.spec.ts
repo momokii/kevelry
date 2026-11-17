@@ -1,24 +1,24 @@
 // CWE taxonomy chips and the mitigation disclosure in the Priority KEV block
-// (v3 E3 step 3b). Seeds the dev server's DATA_DIR with a deterministic
-// invented corpus plus a fixture MITRE catalog: a `known` entry with published
-// mitigation text (carrying MITRE's `::…::` markers in storage, stripped on the
-// read path), a `known` entry without mitigation, and an id absent from the
-// catalog. Each test deploys the catalog state it asserts, and the server's own
-// database is backed up and restored so the suite leaves the checkout intact.
-// Serial: every test shares the one server DATA_DIR and swaps its catalog state.
+// (v3 E3 step 3b). Seeds the dev server's corpus under .e2e/ with a
+// deterministic invented corpus plus a fixture MITRE catalog: a `known` entry
+// with published mitigation text (carrying MITRE's `::…::` markers in storage,
+// stripped on the read path), a `known` entry without mitigation, and an id
+// absent from the catalog. Each test deploys the catalog state it asserts, and
+// the baseline is restored afterwards so the next spec starts from the same
+// rows. Serial: every test shares the one server corpus and swaps its catalog
+// state.
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
+import { deployE2eCorpus, resetToBaseline } from "./corpus";
 
 test.describe.configure({ mode: "serial" });
 
-const SERVER_DATA_DIR = path.resolve(process.cwd(), process.env.DATA_DIR ?? "./data");
-const SERVER_SUFFIXES = ["", "-wal", "-shm"] as const;
 const STAMP = "2026-10-24T00:00:00.000Z";
 const MODEL = "v2026.06.15";
 const CWE_VERSION = "1000-2";
@@ -35,8 +35,6 @@ const MITIGATION_WITH_MARKERS =
   "::PHASE:Architecture and Design::Use a vetted library. ::PHASE:Implementation::Escape arguments before invoking the shell.";
 
 const tempDirs: string[] = [];
-let hadServerDb = false;
-let serverBackupDir = "";
 let readyCatalogDb = "";
 let emptyCatalogDb = "";
 
@@ -172,18 +170,6 @@ function buildDbFile(withCatalog: boolean): string {
   return path.join(dir, "cve.db");
 }
 
-function clearServerDb(): void {
-  for (const suffix of SERVER_SUFFIXES) {
-    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
-  }
-}
-
-function deployDbFile(sourceFile: string): void {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  clearServerDb();
-  copyFileSync(sourceFile, path.join(SERVER_DATA_DIR, "cve.db"));
-}
-
 /** Tab until the target is focused: proves real keyboard reachability and puts
  * the browser in keyboard modality so `:focus-visible` matches. */
 async function tabTo(page: Page, target: Locator, maxPresses = 160): Promise<void> {
@@ -253,29 +239,12 @@ async function chipColours(chip: Locator): Promise<{ color: string; background: 
 }
 
 test.beforeAll(() => {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  const current = path.join(SERVER_DATA_DIR, "cve.db");
-  hadServerDb = existsSync(current);
-  if (hadServerDb) {
-    serverBackupDir = mkdtempSync(path.join(tmpdir(), "cve-priority-cwe-backup-"));
-    tempDirs.push(serverBackupDir);
-    for (const suffix of SERVER_SUFFIXES) {
-      const source = path.join(SERVER_DATA_DIR, `cve.db${suffix}`);
-      if (existsSync(source)) copyFileSync(source, path.join(serverBackupDir, `cve.db${suffix}`));
-    }
-  }
   readyCatalogDb = buildDbFile(true);
   emptyCatalogDb = buildDbFile(false);
 });
 
 test.afterAll(() => {
-  clearServerDb();
-  if (hadServerDb && serverBackupDir !== "") {
-    for (const suffix of SERVER_SUFFIXES) {
-      const source = path.join(serverBackupDir, `cve.db${suffix}`);
-      if (existsSync(source)) copyFileSync(source, path.join(SERVER_DATA_DIR, `cve.db${suffix}`));
-    }
-  }
+  resetToBaseline();
   while (tempDirs.length > 0) {
     rmSync(tempDirs.pop() as string, { recursive: true, force: true });
   }
@@ -284,7 +253,7 @@ test.afterAll(() => {
 test("known chip shows the id and the published name, linked to the MITRE page", async ({
   page,
 }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/priority?view=known-exploited");
   await expect(page.getByTestId("priority-root")).toBeVisible();
@@ -327,7 +296,7 @@ test("known chip shows the id and the published name, linked to the MITRE page",
 test("an id absent from the loaded catalog still renders with its state words", async ({
   page,
 }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/priority?view=known-exploited");
   await expect(page.getByTestId("priority-root")).toBeVisible();
@@ -350,7 +319,7 @@ test("an id absent from the loaded catalog still renders with its state words", 
 });
 
 test("an empty catalog says taxonomy unavailable once and keeps every id", async ({ page }) => {
-  deployDbFile(emptyCatalogDb);
+  deployE2eCorpus(emptyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/priority?view=known-exploited");
   await expect(page.getByTestId("priority-root")).toBeVisible();
@@ -375,7 +344,7 @@ test("an empty catalog says taxonomy unavailable once and keeps every id", async
 test("mitigation disclosure opens by keyboard, names the catalog version, and has no markers", async ({
   page,
 }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/priority?view=known-exploited");
   await expect(page.getByTestId("priority-root")).toBeVisible();
@@ -418,7 +387,7 @@ test("mitigation disclosure opens by keyboard, names the catalog version, and ha
 });
 
 test("chips hold at 360px in dark theme with token-driven, readable colour", async ({ page }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page
     .context()
     .addCookies([{ name: "ui-theme", value: "dark", url: "http://localhost:3210" }]);

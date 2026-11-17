@@ -168,6 +168,17 @@ function DialogBody({
           placeholder="Filter by CVE ID, title, or description"
           aria-label="Filter these records"
           data-testid="graph-more-filter"
+          onKeyDown={(event) => {
+            // A `type="search"` input consumes the first Escape to clear its own
+            // text, so the dialog never receives `cancel` and stays open. Close
+            // it explicitly — same handler as the flow-details dialog in
+            // TimeToKevSankey — and drop the filter. Never preventDefault: the
+            // native close path must still run.
+            if (event.key !== "Escape") return;
+            setQuery("");
+            setPage(0);
+            onClose();
+          }}
         />
         <label className="graph-dialog-tool">
           <span>Sort</span>

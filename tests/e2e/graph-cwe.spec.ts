@@ -1,22 +1,21 @@
-// CWE names in the relation graph (v3 E3). Seeds the dev server's DATA_DIR
-// with a deterministic invented corpus plus a fixture MITRE catalog: one
+// CWE names in the relation graph (v3 E3). Seeds the dev server's corpus under
+// .e2e/ with a deterministic invented corpus plus a fixture MITRE catalog: one
 // `known` id the graph's shared-CWE groups render, and one id absent from the
-// catalog. Each test deploys the catalog state it asserts, and the server's own
-// database is backed up and restored so the suite leaves the checkout intact.
-// Serial: every test shares the one server DATA_DIR and swaps its catalog state.
+// catalog. Each test deploys the catalog state it asserts, and the baseline is
+// restored afterwards so the next spec starts from the same rows.
+// Serial: every test shares the one server corpus and swaps its catalog state.
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
+import { deployE2eCorpus, resetToBaseline } from "./corpus";
 
 test.describe.configure({ mode: "serial" });
 
-const SERVER_DATA_DIR = path.resolve(process.cwd(), process.env.DATA_DIR ?? "./data");
-const SERVER_SUFFIXES = ["", "-wal", "-shm"] as const;
 const STAMP = "2026-10-24T00:00:00.000Z";
 const CWE_VERSION = "1000-2";
 
@@ -56,10 +55,12 @@ const FIXTURES: RecordFixture[] = [
 ];
 
 const tempDirs: string[] = [];
-let hadServerDb = false;
-let serverBackupDir = "";
 let readyCatalogDb = "";
 let emptyCatalogDb = "";
+
+async function horizontalOverflow(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+}
 
 function dayAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -136,53 +137,20 @@ function buildDbFile(withCatalog: boolean): string {
   return path.join(dir, "cve.db");
 }
 
-function clearServerDb(): void {
-  for (const suffix of SERVER_SUFFIXES) {
-    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
-  }
-}
-
-function deployDbFile(sourceFile: string): void {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  clearServerDb();
-  copyFileSync(sourceFile, path.join(SERVER_DATA_DIR, "cve.db"));
-}
-
-async function horizontalOverflow(page: Page): Promise<number> {
-  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-}
-
 test.beforeAll(() => {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  const current = path.join(SERVER_DATA_DIR, "cve.db");
-  hadServerDb = existsSync(current);
-  if (hadServerDb) {
-    serverBackupDir = mkdtempSync(path.join(tmpdir(), "cve-graph-cwe-backup-"));
-    tempDirs.push(serverBackupDir);
-    for (const suffix of SERVER_SUFFIXES) {
-      const source = path.join(SERVER_DATA_DIR, `cve.db${suffix}`);
-      if (existsSync(source)) copyFileSync(source, path.join(serverBackupDir, `cve.db${suffix}`));
-    }
-  }
   readyCatalogDb = buildDbFile(true);
   emptyCatalogDb = buildDbFile(false);
 });
 
 test.afterAll(() => {
-  clearServerDb();
-  if (hadServerDb && serverBackupDir !== "") {
-    for (const suffix of SERVER_SUFFIXES) {
-      const source = path.join(serverBackupDir, `cve.db${suffix}`);
-      if (existsSync(source)) copyFileSync(source, path.join(SERVER_DATA_DIR, `cve.db${suffix}`));
-    }
-  }
+  resetToBaseline();
   while (tempDirs.length > 0) {
     rmSync(tempDirs.pop() as string, { recursive: true, force: true });
   }
 });
 
 test("a known shared CWE shows its id and published name, linked to MITRE", async ({ page }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/graph?focus=${CENTER}`);
   await expect(page.getByTestId("graph-centered")).toBeVisible();
@@ -216,7 +184,7 @@ test("a known shared CWE shows its id and published name, linked to MITRE", asyn
 });
 
 test("an id absent from the catalog keeps its id and says so", async ({ page }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/graph?focus=${CENTER}`);
   await expect(page.getByTestId("graph-centered")).toBeVisible();
@@ -233,7 +201,7 @@ test("an id absent from the catalog keeps its id and says so", async ({ page }) 
 });
 
 test("an empty catalog says taxonomy unavailable once and keeps every id", async ({ page }) => {
-  deployDbFile(emptyCatalogDb);
+  deployE2eCorpus(emptyCatalogDb);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/graph?focus=${CENTER}`);
   await expect(page.getByTestId("graph-centered")).toBeVisible();
@@ -255,7 +223,7 @@ test("an empty catalog says taxonomy unavailable once and keeps every id", async
 });
 
 test("the labeled graph fits 360px without horizontal overflow", async ({ page }) => {
-  deployDbFile(readyCatalogDb);
+  deployE2eCorpus(readyCatalogDb);
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto(`/graph?focus=${CENTER}`);
   await expect(page.getByTestId("graph-centered")).toBeVisible();

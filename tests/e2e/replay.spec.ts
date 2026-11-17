@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -18,11 +18,10 @@ import {
   auditZoomReflow,
   ensureA11yEvidenceDir,
 } from "./a11y-audit";
+import { deployE2eCorpus, resetToBaseline } from "./corpus";
 
 test.describe.configure({ mode: "serial" });
 
-const PROJECT_ROOT = process.cwd();
-const SERVER_DATA_DIR = path.resolve(PROJECT_ROOT, process.env.DATA_DIR ?? "./data");
 const EVIDENCE_DIR =
   "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-22-cve-change-radar";
 
@@ -56,8 +55,6 @@ const VIEW_SLUGS = [
 ] as const;
 
 const tempDirs: string[] = [];
-let hadServerDb = false;
-let serverDbBackup = "";
 let expectedA: RadarViews | null = null;
 let expectedB: RadarViews | null = null;
 let retainedFrom = "";
@@ -184,36 +181,13 @@ function buildSeededDbFile(): string {
   return path.join(dir, "cve.db");
 }
 
-function clearServerDb(): void {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
-  }
-}
-
-function deployDbFile(sourceFile: string): void {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  clearServerDb();
-  copyFileSync(sourceFile, path.join(SERVER_DATA_DIR, "cve.db"));
-}
-
 test.beforeAll(() => {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
-  const current = path.join(SERVER_DATA_DIR, "cve.db");
-  hadServerDb = existsSync(current);
-  if (hadServerDb) {
-    const backupDir = mkdtempSync(path.join(tmpdir(), "cve-replay-backup-"));
-    tempDirs.push(backupDir);
-    serverDbBackup = path.join(backupDir, "cve.db");
-    copyFileSync(current, serverDbBackup);
-  }
-  deployDbFile(buildSeededDbFile());
+  deployE2eCorpus(buildSeededDbFile());
 });
 
 test.afterAll(() => {
-  clearServerDb();
-  if (hadServerDb && serverDbBackup !== "") {
-    copyFileSync(serverDbBackup, path.join(SERVER_DATA_DIR, "cve.db"));
-  }
+  resetToBaseline();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop() as string;
     rmSync(dir, { recursive: true, force: true });

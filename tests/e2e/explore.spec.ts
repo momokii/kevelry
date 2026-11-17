@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
+import { deployE2eCorpus, resetToBaseline } from "./corpus";
 
 import {
   A11Y_EVIDENCE_DIR,
@@ -250,11 +251,8 @@ test("explore passes the task-24 accessibility audit", async ({ page }) => {
   await auditReducedMotion(page, "explore", `${A11Y_EVIDENCE_DIR}/explore-reduced-motion.png`);
 });
 
-const SERVER_DATA_DIR = path.resolve(process.cwd(), process.env.DATA_DIR ?? "./data");
 const FIXTURE_STAMP = "2026-10-24T00:00:00.000Z";
 const fixtureDirs: string[] = [];
-let hadServerDb = false;
-let serverDbBackup = "";
 
 function fixtureDay(daysAgo: number): string {
   return new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
@@ -392,31 +390,12 @@ function buildExploreSeedDbFile(): string {
   return file;
 }
 
-function clearServerDb(): void {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
-  }
-}
-
 function deploySeed(): void {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  const current = path.join(SERVER_DATA_DIR, "cve.db");
-  hadServerDb = existsSync(current);
-  if (hadServerDb) {
-    const backupDir = mkdtempSync(path.join(tmpdir(), "cve-explore-backup-"));
-    fixtureDirs.push(backupDir);
-    serverDbBackup = path.join(backupDir, "cve.db");
-    copyFileSync(current, serverDbBackup);
-  }
-  clearServerDb();
-  copyFileSync(buildExploreSeedDbFile(), path.join(SERVER_DATA_DIR, "cve.db"));
+  deployE2eCorpus(buildExploreSeedDbFile());
 }
 
 function restoreSeed(): void {
-  clearServerDb();
-  if (hadServerDb && serverDbBackup !== "") {
-    copyFileSync(serverDbBackup, path.join(SERVER_DATA_DIR, "cve.db"));
-  }
+  resetToBaseline();
   while (fixtureDirs.length > 0) {
     const dir = fixtureDirs.pop() as string;
     rmSync(dir, { recursive: true, force: true });

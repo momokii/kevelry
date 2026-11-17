@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { openDatabase, type CveDatabase } from "../../src/lib/db";
+import { clearE2eCorpus, deployE2eCorpus, resetToBaseline } from "./corpus";
 import {
   A11Y_EVIDENCE_DIR,
   auditReducedMotion,
@@ -14,8 +15,6 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
-const PROJECT_ROOT = process.cwd();
-const SERVER_DATA_DIR = path.resolve(PROJECT_ROOT, process.env.DATA_DIR ?? "./data");
 const EVIDENCE_DIR =
   "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-18-cve-change-radar";
 
@@ -23,8 +22,6 @@ const STAMP = "2026-10-24T00:00:00.000Z";
 const LONG_TITLE = "Overflow in the demonstration parser ".repeat(6).slice(0, 200);
 
 const tempDirs: string[] = [];
-let hadServerDb = false;
-let serverDbBackup = "";
 
 function dayAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -205,37 +202,16 @@ function buildSeededDbFile(): string {
   return path.join(dir, "cve.db");
 }
 
-function clearServerDb(): void {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    rmSync(path.join(SERVER_DATA_DIR, `cve.db${suffix}`), { force: true });
-  }
-}
-
-function deployDbFile(sourceFile: string): void {
-  mkdirSync(SERVER_DATA_DIR, { recursive: true });
-  clearServerDb();
-  copyFileSync(sourceFile, path.join(SERVER_DATA_DIR, "cve.db"));
-}
-
 test.beforeAll(() => {
   expect(LONG_TITLE.length).toBe(200);
   mkdirSync(EVIDENCE_DIR, { recursive: true });
-  const current = path.join(SERVER_DATA_DIR, "cve.db");
-  hadServerDb = existsSync(current);
-  if (hadServerDb) {
-    const backupDir = mkdtempSync(path.join(tmpdir(), "cve-overview-backup-"));
-    tempDirs.push(backupDir);
-    serverDbBackup = path.join(backupDir, "cve.db");
-    copyFileSync(current, serverDbBackup);
-  }
-  deployDbFile(buildSeededDbFile());
+  deployE2eCorpus(buildSeededDbFile());
 });
 
 test.afterAll(() => {
-  clearServerDb();
-  if (hadServerDb && serverDbBackup !== "") {
-    copyFileSync(serverDbBackup, path.join(SERVER_DATA_DIR, "cve.db"));
-  }
+  // Leave the deterministic baseline behind: the next spec must not inherit
+  // this fixture (that inheritance is what made the counts order-dependent).
+  resetToBaseline();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop() as string;
     rmSync(dir, { recursive: true, force: true });
@@ -352,7 +328,7 @@ test("overview unscored split keeps its numbers in dark theme at 360px", async (
 
 test("overview empty corpus shows honest empty states", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  clearServerDb();
+  clearE2eCorpus();
   await page.goto("/");
 
   await expect(page.getByTestId("overview-root")).toBeVisible();
@@ -371,7 +347,7 @@ test("overview empty corpus shows honest empty states", async ({ page }) => {
 
 test("overview passes the task-24 accessibility audit", async ({ page }) => {
   ensureA11yEvidenceDir();
-  deployDbFile(buildSeededDbFile());
+  deployE2eCorpus(buildSeededDbFile());
   await auditRoute(page, { route: "/", name: "overview", maxLiveRegions: 1 });
 
   await page.getByTestId("global-search").focus();
