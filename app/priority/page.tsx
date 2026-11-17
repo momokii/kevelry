@@ -35,7 +35,7 @@ import {
   type PriorityItem,
 } from "@/lib/priority";
 import { displayProbabilityPercent } from "@/lib/ranking";
-import { excerptDescription, officialCveLink } from "@/lib/search";
+import { excerptDescription, officialCveLink, recordTitle } from "@/lib/search";
 import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/provenance";
 import { loadFullRecords, type FullRecord } from "@/app/api/v1/_lib/records";
 import { loadEpssHistory, type EpssHistoryPoint } from "@/app/api/v1/_lib/epss-history";
@@ -104,8 +104,7 @@ function toRow(
 ): PriorityRowBase | null {
   const record = records.get(item.id);
   if (record === undefined) return null;
-  const title =
-    typeof record.title === "string" && record.title.trim() !== "" ? record.title : record.cveId;
+  const title = recordTitle(record.title, record.cveId);
   const shaped = excerptDescription(record.description, record.descriptionLang);
   const excerpt =
     shaped.excerpt === "Description not supplied" && shaped.langLabel === "unknown"

@@ -1,13 +1,6 @@
 import { getAcceptedEpssDate } from "../../../../../src/lib/priority";
-import { getDb } from "../../_lib/db-handle";
-import {
-  acquireConcurrencySlot,
-  assertRequestBounds,
-  preflightResponse,
-  releaseConcurrencySlot,
-} from "../../_lib/guardrails";
+import { apiPreflight, withApiRoute } from "../../_lib/api-route";
 import { ApiError } from "../../_lib/errors";
-import { errorResponse, reserveRateLimit } from "../../_lib/responses";
 import { cachedOkResponse } from "../../_lib/http-cache";
 import { CVE_ID_RE } from "../../_lib/params";
 import { buildProvenance } from "../../_lib/provenance";
@@ -94,78 +87,43 @@ function parseBulkIds(params: URLSearchParams): string[] {
 }
 
 export async function OPTIONS(request: Request): Promise<Response> {
-  return preflightResponse(request);
+  return apiPreflight(request);
 }
 
-export async function GET(request: Request): Promise<Response> {
-  let db = null;
-  try {
-    db = getDb();
-  } catch {
-    return errorResponse(request, "INTERNAL", "Unexpected failure handling the request.", null);
-  }
-  const rate = reserveRateLimit(request, db);
-  if (rate instanceof Response) return rate;
-  if (!acquireConcurrencySlot()) {
-    return errorResponse(
-      request,
-      "RATE_LIMITED",
-      "Server is busy. Retry after 60 seconds.",
-      db,
-      undefined,
-      rate,
-    );
-  }
-  try {
-    assertRequestBounds(request);
-    const params = new URL(request.url).searchParams;
-    rejectConflictingParams(params);
-    const requested = parseBulkIds(params);
-    const records = loadFullRecords(db, requested);
-    const byId = new Map(records.map((record) => [record.cveId, record]));
-    const scoreDate = getAcceptedEpssDate(db);
-    const data: Array<Record<string, unknown>> = [];
-    const missingIds: string[] = [];
-    for (const cveId of requested) {
-      const record = byId.get(cveId);
-      // Absent and not-publicly-visible ids are reported, never fabricated and
-      // never a 404 for the whole request: one stale id must not sink 49 good ones.
-      if (record === undefined || record.state !== "PUBLISHED") {
-        missingIds.push(cveId);
-        continue;
-      }
-      data.push(toCveItem(record, scoreDate, null));
+export const GET = withApiRoute(async ({ request, db, rate }) => {
+  const params = new URL(request.url).searchParams;
+  rejectConflictingParams(params);
+  const requested = parseBulkIds(params);
+  const records = loadFullRecords(db, requested);
+  const byId = new Map(records.map((record) => [record.cveId, record]));
+  const scoreDate = getAcceptedEpssDate(db);
+  const data: Array<Record<string, unknown>> = [];
+  const missingIds: string[] = [];
+  for (const cveId of requested) {
+    const record = byId.get(cveId);
+    // Absent and not-publicly-visible ids are reported, never fabricated and
+    // never a 404 for the whole request: one stale id must not sink 49 good ones.
+    if (record === undefined || record.state !== "PUBLISHED") {
+      missingIds.push(cveId);
+      continue;
     }
-    const nowIso = new Date().toISOString();
-    // The seed carries the aggregate revision (added by getCacheSeed) plus the
-    // canonical sorted id set, so the same set in any order/deduping revalidates.
-    const canonicalIds = [...requested].sort().join(",");
-    return cachedOkResponse(
-      request,
-      db,
-      {
-        data,
-        // Requested/returned/missing only. The list route's `coverage` key keeps
-        // its single meaning (eligible cohort) and is deliberately not reused here.
-        resolution: { requested: requested.length, returned: data.length, missingIds },
-        provenance: buildProvenance(db, nowIso),
-      },
-      rate,
-      { seedParts: [canonicalIds] },
-    );
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return errorResponse(request, error.code, error.message, db, error.details, rate);
-    }
-    return errorResponse(
-      request,
-      "INTERNAL",
-      "Unexpected failure handling the request.",
-      db,
-      undefined,
-      rate,
-    );
-  } finally {
-    releaseConcurrencySlot();
+    data.push(toCveItem(record, scoreDate, null));
   }
-}
+  const nowIso = new Date().toISOString();
+  // The seed carries the aggregate revision (added by getCacheSeed) plus the
+  // canonical sorted id set, so the same set in any order/deduping revalidates.
+  const canonicalIds = [...requested].sort().join(",");
+  return cachedOkResponse(
+    request,
+    db,
+    {
+      data,
+      // Requested/returned/missing only. The list route's `coverage` key keeps
+      // its single meaning (eligible cohort) and is deliberately not reused here.
+      resolution: { requested: requested.length, returned: data.length, missingIds },
+      provenance: buildProvenance(db, nowIso),
+    },
+    rate,
+    { seedParts: [canonicalIds] },
+  );
+});

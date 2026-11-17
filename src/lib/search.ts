@@ -551,7 +551,7 @@ export function searchCves(db: CveDatabase, filters: SearchFilters): SearchRespo
     const excerpt = excerptDescription(row.description, row.description_lang);
     items.push({
       cveId: row.cve_id,
-      title: typeof row.title === "string" && row.title.trim() !== "" ? row.title : row.cve_id,
+      title: recordTitle(row.title, row.cve_id),
       excerpt: excerpt.excerpt,
       excerptTruncated: excerpt.truncated,
       langLabel: excerpt.langLabel,
