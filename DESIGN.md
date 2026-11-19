@@ -238,6 +238,51 @@ values. Every chart must provide:
 - a date basis in the tooltip or caption (UTC day/month);
 - 44px interactive targets where the element is a control.
 
+### 7.0 Inspectable data contract
+
+The six requirements above say which obligations a chart has; this subsection says
+what "inspectable" means, so a reviewer can check it without reading source. It is
+normative. The rationale, the per-chart audit and the migration phases live in
+`docs/plans/data-visibility-standard.md` and are not repeated here.
+
+- **Every mark is a stop.** Each data-bearing mark (point, bar, segment, cell,
+  band, node) answers to pointer hover and to keyboard focus, and carries a text
+  alternative. A dense read-only plot is one Tab stop; Arrow, Home and End step
+  between its marks.
+- **The tooltip has a fixed shape.** One label line (the mark's period or identity
+  in the caption's format, plus its date basis: `September 2026 · UTC`), one value
+  line (the exact number and its unit: `43 KEV additions`, `2.15%`), then at most
+  two context facts, each naming its denominator (`43 of 322 additions, 13.4%`).
+  Nothing longer fits.
+- **Value never depends on hover.** The exact value exists without pointing: at the
+  mark, in the caption, or in the `<details>` table built from the same series. A
+  tooltip is never the only copy, and a native `title` is no longer an affordance.
+- **Placement is deterministic.** The tooltip renders inside the chart's own
+  positioned host (`chart-frame` or the mark's wrapper), clamps to that host's
+  edges, flips in the last 30% of its width, never covers the mark it describes,
+  is `pointer-events: none`, and sits above neighbouring content.
+- **A sparkline gets a strip, not forty tooltips.** One hit band per x-interval
+  maps the pointer to the nearest index; the same stepping and a polite live
+  announcement cover keyboard, and the default state still marks the latest point.
+- **Zero is a value, missing is not zero.** A genuine zero is focusable, says `0`,
+  and keeps a 1px mark inside a full-height hit target. A missing observation is
+  never plotted at zero: the line breaks and the caption states how many are
+  absent. Absence is stated, never inferred.
+- **Role follows behaviour.** Inspect-only marks are `role="img"`; marks that
+  select, pin or navigate are `role="button"` or a real `<a>` and say so in their
+  label. Interactive marks never sit inside a `role="img"` node, which flattens
+  them out of the tree; such a group is a named `role="group"`.
+- **The root label describes, it does not conclude.** Series, unit, number of marks
+  and range belong in `aria-label`; sentences about the data belong in the note.
+- **Touch is first class.** A tap opens the same tooltip and keeps it until the
+  next tap or a second tap on the same mark. No value is hover-only, and every
+  interactive dimension is at least 44px.
+- **One implementation.** `ChartTooltip`, `ChartTable` and `useRovingMarkFocus`
+  (`src/components/charts/`) are the only renderers of the tooltip, the data table
+  and the roving keyboard contract. They reuse the existing `.chart-tooltip` and
+  `.chart-table` styles, so a migrated chart looks identical to one that was not
+  yet migrated; changing the tooltip means changing that one component.
+
 ### Volume
 
 UTC buckets at three granularities, each with its own honest window: month
