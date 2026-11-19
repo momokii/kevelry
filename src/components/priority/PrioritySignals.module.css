@@ -228,11 +228,31 @@
   background: var(--ledger-ink);
 }
 
+/* The sparkline's own host: the tooltip clamps to this box, so it can never
+   escape the row panel. Same 8px gap above the plot as before. */
+.trendFigure {
+  margin: 0;
+}
+
+.trendPlot {
+  position: relative;
+  margin-top: var(--ledger-space-2);
+}
+
 .trend {
   display: block;
   width: 100%;
   height: 44px;
-  margin-top: var(--ledger-space-2);
+}
+
+/* One full-plot hit band over a dense series: pointer x maps to the nearest
+   observation, so no per-point target has to be 7px wide. */
+.trendStrip {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: pan-y;
+  border-radius: 2px;
 }
 
 .trendCaption {

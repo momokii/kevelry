@@ -8,7 +8,7 @@
 // definitions and TimeText dates; styling reuses the ledger classes from
 // `app/globals.css` plus the local `PrioritySignals.module.css` grid.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
 import type { CweRef } from "@/lib/cwe-catalog";
@@ -25,9 +25,12 @@ import {
 // The state words live in `cwe-display.ts` so every renderer states them once;
 // re-exported here to keep this module's existing import surface intact.
 export { CWE_TAXONOMY_UNAVAILABLE, CWE_UNMAPPED_STATE };
+import { ChartTable } from "../charts/ChartTable";
+import { ChartTooltip, type ChartTooltipAnchor } from "../charts/ChartTooltip";
+import { useRovingMarkFocus } from "../charts/useRovingMarkFocus";
 import { ExploitSignal } from "../ledger/ExploitSignal";
 import { HelpTip } from "../ledger/HelpTip";
-import { TimeText } from "../ledger/TimeText";
+import { TimeText, formatLedgerTime } from "../ledger/TimeText";
 import { WatchStar } from "../ledger/WatchStar";
 
 import styles from "./PrioritySignals.module.css";
@@ -619,6 +622,41 @@ function KevSignal({ row }: { row: PriorityRowData }) {
   );
 }
 
+/** Score dates are UTC days, printed the way the rest of the block dates
+ * things (`19 Nov 2026`), never as a raw ISO string. */
+function epssDay(scoreDate: string): string {
+  return formatLedgerTime(scoreDate, "UTC") ?? scoreDate;
+}
+
+/** A 0..1 probability as a percent with trailing zeros trimmed: 0.61911 →
+ * `61.911%`, 0.0215 → `2.15%`. Exact value, never a rounded ranking score. */
+function formatEpssPercent(value: number): string {
+  return `${(value * 100).toFixed(3).replace(/\.?0+$/, "")}%`;
+}
+
+/** The point's own reading, used by the tooltip and the live announcement. */
+function epssObservationText(point: EpssTrendPoint, value: number): string {
+  return `${epssDay(point.scoreDate)}: ${formatEpssPercent(value)} EPSS probability`;
+}
+
+/** At most two context facts: the model that produced this observation, and
+ * whether it is the window high or low. */
+function epssObservationFacts(
+  point: EpssTrendPoint,
+  value: number,
+  min: number,
+  max: number,
+): string[] {
+  const facts: string[] = [];
+  if (point.modelVersion !== "") facts.push(`model ${point.modelVersion}`);
+  const high = value === max;
+  const low = value === min;
+  if (high && low) facts.push("series high and low");
+  else if (high) facts.push("series high");
+  else if (low) facts.push("series low");
+  return facts.slice(0, 2);
+}
+
 /** Dated EPSS trend sparkline: linear 0..1 probability plot, oldest left.
  * Display geometry only (pixel positions); never a comparison or a score. */
 function EpssTrend({ points }: { points: EpssTrendPoint[] }) {
@@ -627,39 +665,169 @@ function EpssTrend({ points }: { points: EpssTrendPoint[] }) {
     return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : null;
   });
   if (values.length < 2 || values.some((value) => value === null)) return null;
-  const nums = values as number[];
-  const coords = nums.map((value, index) => {
-    const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+  return <EpssTrendPlot points={points} values={values as number[]} />;
+}
+
+/** The plot itself. 25–45 observations across a ~300px strip are 7–20px wide,
+ * so this is one Tab stop rather than one per point: a transparent strip over
+ * the plot maps pointer x to the nearest observation, Arrow/Home/End step the
+ * same index from the keyboard, and the active point is marked. No value is
+ * hover-only — the caption prints the window range and the disclosure lists
+ * every observation. */
+function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: number[] }) {
+  const count = points.length;
+  const latest = count - 1;
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [anchor, setAnchor] = useState<ChartTooltipAnchor>({ x: 0, y: 0 });
+  const stripRef = useRef<HTMLDivElement | null>(null);
+
+  const roving = useRovingMarkFocus({
+    count,
+    initialIndex: latest,
+    describe: (index) =>
+      epssObservationText(points[index] as EpssTrendPoint, values[index] as number),
+    onDismiss: () => {
+      setHoverIndex(null);
+      setFocused(false);
+      stripRef.current?.blur();
+    },
+  });
+  const active = roving.activeIndex;
+  const tipIndex = hoverIndex ?? (focused ? active : null);
+  const tipValue = tipIndex === null ? 0 : (values[tipIndex] ?? 0);
+  // The marker follows the pointer while it is over the plot, otherwise the
+  // keyboard position; the latest observation keeps its own marker either way.
+  const marked = tipIndex ?? active;
+
+  const coords = values.map((value, index) => {
+    const x = (index / (count - 1)) * 100;
     return `${x.toFixed(1)},${(34 - value * 32).toFixed(1)}`;
   });
-  const first = points[0];
-  const last = points[points.length - 1];
-  if (first === undefined || last === undefined) return null;
-  const lastX = points.length === 1 ? 50 : 100;
-  const lastY = 34 - (nums[nums.length - 1] ?? 0) * 32;
+  const first = points[0] as EpssTrendPoint;
+  const last = points[latest] as EpssTrendPoint;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  useLayoutEffect(() => {
+    if (tipIndex === null) return;
+    const strip = stripRef.current;
+    if (strip === null) return;
+    const rect = strip.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    setAnchor({
+      x: (tipIndex / (count - 1)) * rect.width,
+      y: ((34 - tipValue * 32) / 36) * rect.height,
+    });
+  }, [tipIndex, tipValue, count]);
+
+  /** Nearest observation to a pointer x — the whole plot is one hit band. */
+  const inspect = (clientX: number) => {
+    const strip = stripRef.current;
+    if (strip === null) return;
+    const rect = strip.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    setHoverIndex(Math.round(fraction * (count - 1)));
+  };
+
+  const stripProps = roving.markProps(active);
+  const tipPoint = tipIndex === null ? null : (points[tipIndex] as EpssTrendPoint);
+
   return (
-    <figure style={{ margin: 0 }}>
-      <svg
-        className={styles.trend}
-        viewBox="0 0 100 36"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`EPSS trend over ${points.length} dated observations, ${first.scoreDate} to ${last.scoreDate}.`}
-        data-testid="priority-row-epss-trend"
-      >
-        <polyline
-          points={coords.join(" ")}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.5}
-          vectorEffect="non-scaling-stroke"
+    <figure
+      className={styles.trendFigure}
+      role="group"
+      aria-label={`EPSS trend, percent probability. ${count} dated observations, ${first.scoreDate} to ${last.scoreDate}.`}
+      data-testid="priority-row-epss-trend"
+    >
+      <div className={styles.trendPlot}>
+        <svg
+          className={styles.trend}
+          viewBox="0 0 100 36"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline
+            points={coords.join(" ")}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle cx={100} cy={34 - (values[latest] ?? 0) * 32} r={2.5} fill="currentColor" />
+          {marked === latest ? null : (
+            <circle
+              cx={(marked / (count - 1)) * 100}
+              cy={34 - (values[marked] ?? 0) * 32}
+              r={2.5}
+              fill="var(--ui-accent)"
+            />
+          )}
+        </svg>
+        <div
+          ref={stripRef}
+          className={styles.trendStrip}
+          role="img"
+          data-testid="priority-row-epss-strip"
+          aria-label={`${count} dated EPSS observations. Use the arrow keys to step between them, Home and End to jump to the first and latest.`}
+          tabIndex={stripProps.tabIndex}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            setHoverIndex(null);
+          }}
+          onKeyDown={stripProps.onKeyDown}
+          onPointerMove={(event) => inspect(event.clientX)}
+          onPointerDown={(event) => inspect(event.clientX)}
+          onPointerLeave={(event) => {
+            if (event.pointerType !== "touch") setHoverIndex(null);
+          }}
         />
-        <circle cx={lastX} cy={lastY} r={2.5} fill="currentColor" />
-      </svg>
+        {tipPoint === null ? null : (
+          <ChartTooltip
+            label={`${epssDay(tipPoint.scoreDate)} · UTC`}
+            value={formatEpssPercent(tipValue)}
+            unit="EPSS probability"
+            context={epssObservationFacts(tipPoint, tipValue, min, max)}
+            anchor={anchor}
+            testId="priority-row-epss-tooltip"
+          />
+        )}
+      </div>
       <figcaption className={styles.trendCaption}>
-        {points.length} dated observations, {first.scoreDate} to {last.scoreDate}
-        {last.modelVersion !== "" ? ` · model ${last.modelVersion}` : ""}; latest point marked.
+        {count} dated observations, {first.scoreDate} to {last.scoreDate}
+        {last.modelVersion !== "" ? ` · model ${last.modelVersion}` : ""}; range{" "}
+        {formatEpssPercent(min)} to {formatEpssPercent(max)} across the window; latest point marked.
       </figcaption>
+      <ChartTable
+        caption="EPSS observations for this record, UTC score dates"
+        summary="All observations"
+        testId="priority-row-epss-table"
+        rows={points}
+        rowKey={(point) => point.scoreDate}
+        columns={[
+          {
+            key: "date",
+            header: "Observation date",
+            value: (point) => epssDay(point.scoreDate),
+          },
+          {
+            key: "score",
+            header: "EPSS probability",
+            value: (_point, index) => formatEpssPercent(values[index] ?? 0),
+          },
+          {
+            key: "model",
+            header: "Model version",
+            value: (point) => (point.modelVersion === "" ? "Not stated" : point.modelVersion),
+          },
+        ]}
+      />
+      <span className={styles.srOnly} role="status">
+        {focused ? roving.announcement : ""}
+      </span>
     </figure>
   );
 }
