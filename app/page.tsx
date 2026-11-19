@@ -306,6 +306,15 @@ export default function OverviewPage() {
           sub="Catalog additions by month. This is listing activity, not exploitation volume."
           className="span-4"
           testId="overview-kev"
+          actions={
+            <ChartInfo>
+              Each bar is one UTC calendar month, oldest left. Hover or focus a bar for its exact
+              count and its share of the twelve-month total; every bar is reachable with the arrow
+              keys, Home and End. A month with no new listings draws a 1px bar and reports 0, never
+              nothing. The tallest bar is the window maximum, drawn at full strength and labelled in
+              its tooltip.
+            </ChartInfo>
+          }
         >
           <KevRhythm
             months={data.kevByMonth}

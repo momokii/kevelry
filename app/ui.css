@@ -1692,7 +1692,9 @@ a {
 
 .kev-bars {
   display: flex;
-  align-items: flex-end;
+  /* Stretch, not flex-end: every column is a full-height hit target, so the
+     dead space above a short (or zero) bar still answers the pointer. */
+  align-items: stretch;
   gap: 5px;
   min-height: 132px;
   padding-top: 8px;
@@ -1710,6 +1712,7 @@ a {
   font-family: var(--ui-font-mono);
   font-size: 9px;
   text-decoration: none;
+  cursor: crosshair;
 }
 
 .kev-bar-fill {
@@ -1720,7 +1723,19 @@ a {
   opacity: 0.82;
 }
 
-.kev-bar:hover .kev-bar-fill {
+/* A month with no additions is a real value: a 1px mark, not a 4px stub. */
+.kev-bar[data-zero="true"] .kev-bar-fill {
+  min-height: 1px;
+}
+
+/* The one permanent emphasis in this chart, named in the panel's How to read:
+   the tallest bar is the window maximum, and its tooltip says so. */
+.kev-bar[data-window-high="true"] .kev-bar-fill {
+  opacity: 1;
+}
+
+.kev-bar:hover .kev-bar-fill,
+.kev-bar:focus-visible .kev-bar-fill {
   background: var(--ui-accent);
   opacity: 1;
 }

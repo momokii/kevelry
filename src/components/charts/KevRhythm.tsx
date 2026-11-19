@@ -1,5 +1,49 @@
-import { formatInt, monthShort } from "./chartTokens";
+"use client";
 
+import { useRef, useState } from "react";
+
+import { ChartTable } from "./ChartTable";
+import { ChartTooltip, type ChartTooltipAnchor } from "./ChartTooltip";
+import { formatInt, monthLong, monthShort } from "./chartTokens";
+import { useRovingMarkFocus } from "./useRovingMarkFocus";
+
+/** One decimal place (`13.4%`). The window total is the denominator: the same
+ * number the caption prints and the data table sums to. */
+function shareOneDecimal(count: number, total: number): string {
+  if (total <= 0) return "0.0%";
+  return `${((count / total) * 100).toFixed(1)}%`;
+}
+
+/** The reading for one month, identical for pointer and keyboard. */
+function monthFacts(entry: { count: number }, total: number, isHigh: boolean): string[] {
+  const facts = [
+    `${formatInt(entry.count)} of ${formatInt(total)} additions, ${shareOneDecimal(entry.count, total)}`,
+  ];
+  if (isHigh) facts.push("window maximum");
+  return facts.slice(0, 2);
+}
+
+function monthLabel(
+  entry: { month: string; count: number },
+  total: number,
+  isHigh: boolean,
+): string {
+  const share = shareOneDecimal(entry.count, total);
+  return `${monthLong(entry.month)} · UTC: ${formatInt(entry.count)} KEV additions, ${share} of the ${formatInt(total)} in this window${isHigh ? ", window maximum" : ""}.`;
+}
+
+/**
+ * KEV additions per UTC month, as twelve mini bars.
+ *
+ * Every bar — including a month with no additions — is a mark: hover and focus
+ * produce the same tooltip, the keyboard is one Tab stop with Arrow/Home/End
+ * roving between all twelve, and a zero month keeps a 1px bar inside a
+ * full-height hit target instead of disappearing. Nothing here is decorative:
+ * the only emphasis is the mark under the pointer or the keyboard, plus the
+ * window maximum, which the panel's "How to read" line names. Every value also
+ * exists without hover: the caption prints the window total and the disclosure
+ * lists all twelve months.
+ */
 export function KevRhythm({
   months,
   total,
@@ -7,31 +51,133 @@ export function KevRhythm({
   months: Array<{ month: string; count: number }>;
   total: number;
 }) {
-  const max = Math.max(1, ...months.map((entry) => entry.count));
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  const [anchor, setAnchor] = useState<ChartTooltipAnchor>({ x: 0, y: 0 });
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  const scaleMax = Math.max(1, ...months.map((entry) => entry.count));
+  const peak = months.reduce<{ month: string; count: number } | null>(
+    (best, entry) => (best === null || entry.count > best.count ? entry : best),
+    null,
+  );
+  const roving = useRovingMarkFocus({
+    count: months.length,
+    initialIndex: Math.max(0, months.length - 1),
+    // Escape clears the readout but keeps focus on the bar, so the next arrow
+    // picks up where the reader was instead of dropping out of the chart.
+    onDismiss: () => {
+      setHoverIndex(null);
+      setFocusIndex(null);
+    },
+  });
+  const tipIndex = hoverIndex ?? focusIndex;
+  const tipEntry = tipIndex === null ? undefined : months[tipIndex];
+
+  const anchorFor = (node: HTMLElement): ChartTooltipAnchor => {
+    const host = hostRef.current;
+    if (host === null) return { x: 0, y: 0 };
+    const bar = node.getBoundingClientRect();
+    const box = host.getBoundingClientRect();
+    return {
+      x: bar.left - box.left,
+      y: bar.top - box.top,
+      width: bar.width,
+      height: bar.height,
+    };
+  };
+
   return (
-    <div data-testid="overview-kev-chart">
-      <div className="kev-bars" role="img" aria-label="KEV catalog additions by UTC month">
-        {months.map((entry) => (
-          <div
-            key={entry.month}
-            className="kev-bar"
-            title={`${monthShort(entry.month)}: ${formatInt(entry.count)} KEV additions`}
-          >
-            <span
-              className="kev-bar-fill"
-              style={{ height: `${6 + (entry.count / max) * 78}px` }}
-              aria-hidden="true"
-            />
-            <span className="kev-bar-label" aria-hidden="true">
-              {monthShort(entry.month)}
-            </span>
-          </div>
-        ))}
+    <div className="chart-frame" ref={hostRef} data-testid="overview-kev-chart">
+      {tipEntry === undefined ? null : (
+        <ChartTooltip
+          label={`${monthLong(tipEntry.month)} · UTC`}
+          value={formatInt(tipEntry.count)}
+          unit="additions"
+          context={monthFacts(tipEntry, total, tipEntry.count === peak?.count)}
+          anchor={anchor}
+          testId="overview-kev-tooltip"
+        />
+      )}
+      <div
+        className="kev-bars"
+        role="group"
+        aria-label={`KEV catalog additions by UTC month: ${months.length} months, ${formatInt(total)} additions${peak === null ? "" : `, window maximum ${formatInt(peak.count)} in ${monthLong(peak.month)}`}.`}
+        onPointerLeave={() => setHoverIndex(null)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setFocusIndex(null);
+          }
+        }}
+      >
+        {months.map((entry, index) => {
+          const isHigh = entry.count === peak?.count;
+          return (
+            <div
+              key={entry.month}
+              className="kev-bar"
+              role="img"
+              data-index={index}
+              data-testid={`overview-kev-bar-${entry.month}`}
+              data-zero={entry.count === 0 ? "true" : undefined}
+              data-window-high={isHigh ? "true" : undefined}
+              aria-label={monthLabel(entry, total, isHigh)}
+              tabIndex={index === roving.activeIndex ? 0 : -1}
+              ref={roving.registerMark(index)}
+              onFocus={(event) => {
+                roving.setActiveIndex(index);
+                setFocusIndex(index);
+                setAnchor(anchorFor(event.currentTarget));
+              }}
+              onPointerEnter={(event) => {
+                setHoverIndex(index);
+                setAnchor(anchorFor(event.currentTarget));
+              }}
+              onKeyDown={roving.markProps(index).onKeyDown}
+            >
+              <span
+                className="kev-bar-fill"
+                style={{
+                  // A zero month is a real value: 1px mark, full-height target.
+                  height: entry.count === 0 ? "1px" : `${6 + (entry.count / scaleMax) * 78}px`,
+                }}
+                aria-hidden="true"
+              />
+              <span className="kev-bar-label" aria-hidden="true">
+                {monthShort(entry.month)}
+              </span>
+            </div>
+          );
+        })}
       </div>
       <p className="chart-note">
-        <strong>{formatInt(total)}</strong> catalog additions in twelve months. This is
-        catalog activity, not exploitation volume: a quiet month means no new listings.
+        <strong>{formatInt(total)}</strong> catalog additions in twelve months. This is catalog
+        activity, not exploitation volume: a quiet month means no new listings.
       </p>
+      <ChartTable
+        caption="KEV catalog additions by UTC month"
+        summary="All months"
+        testId="overview-kev-table"
+        rows={months}
+        rowKey={(entry) => entry.month}
+        columns={[
+          {
+            key: "month",
+            header: "Month (UTC)",
+            value: (entry) => monthLong(entry.month),
+          },
+          {
+            key: "additions",
+            header: "Additions",
+            value: (entry) => formatInt(entry.count),
+          },
+          {
+            key: "share",
+            header: "Share of window",
+            value: (entry) => shareOneDecimal(entry.count, total),
+          },
+        ]}
+      />
     </div>
   );
 }
