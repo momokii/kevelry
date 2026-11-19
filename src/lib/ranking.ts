@@ -116,6 +116,40 @@ export function displayProbabilityPercent(epss: unknown): string | null {
   return formatScaled(parts.digits * 100n, parts.scale);
 }
 
+/** How many decimals an EPSS percent is printed with, everywhere it is printed.
+ * Three decimals is the stored precision: five decimal places of probability are
+ * exactly three decimal places of percent, so no digit is ever invented or lost. */
+export const EPSS_PERCENT_DECIMALS = 3;
+
+/**
+ * `display_probability_percent` at a fixed number of decimals, from the stored
+ * decimal string and scaled integers only (never a parsed float, never
+ * `toFixed`): `0.54` → `54.000`, `0.61911` → `61.911`. The last place rounds
+ * half-up, which only matters for input finer than the stored precision.
+ *
+ * The trimmed form (`54`) is not wrong arithmetic, but it is wrong display: a
+ * series whose neighbour reads `61.911` looks rounded by comparison. One fixed
+ * precision per metric is what makes a tooltip match its readout.
+ */
+export function displayProbabilityPercentFixed(
+  epss: unknown,
+  decimals: number = EPSS_PERCENT_DECIMALS,
+): string | null {
+  if (!isValidEpss(epss)) return null;
+  const parts = parseDecimalParts(epss);
+  if (parts === null) return null;
+  const places = Math.min(6, Math.max(0, Math.trunc(decimals)));
+  const factor = 10n ** BigInt(places);
+  const divisor = 10n ** BigInt(parts.scale);
+  const scaled = parts.digits * 100n * factor;
+  const quotient = scaled / divisor;
+  const remainder = scaled % divisor;
+  const rounded = remainder * 2n >= divisor ? quotient + 1n : quotient;
+  const text = rounded.toString().padStart(places + 1, "0");
+  if (places === 0) return text;
+  return `${text.slice(0, text.length - places)}.${text.slice(text.length - places)}`;
+}
+
 /** Exact delta in percentage points: `100 * (current - previous)`. Null when invalid. */
 export function risingDeltaPp(current: unknown, previous: unknown): string | null {
   const pc = parseDecimalParts(current);

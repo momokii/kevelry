@@ -30,6 +30,14 @@ export const E2E_DB_PATH = path.join(E2E_DATA_DIR, "cve.db");
 const STAMP = "2026-10-24T00:00:00.000Z";
 
 /**
+ * The EPSS model version the fixture labels its observations with. Real EPSS
+ * releases are dated strings (`v2026.06.15`); an abbreviated `v4` in a fixture
+ * makes every surface that prints the stored version look truncated, so the
+ * fixture carries the same full form the live corpus does.
+ */
+const EPSS_MODEL = "v2026.06.15";
+
+/**
  * Cohort size. Four linked KEV records give the graph a hub leaderboard, a
  * real ego drawing and two shared-attribute groups while staying under the
  * drawing cap (beyond it the view collapses a group behind "+N more", which
@@ -155,15 +163,15 @@ export function buildBaselineDbFile(cohortSize: number = BASELINE_COHORT_SIZE): 
         db.handle
           .prepare(
             "INSERT INTO epss_daily (cve_id, score_date, model_version, epss, percentile) " +
-              "VALUES (?, ?, 'v4', ?, '0.9000')",
+              "VALUES (?, ?, ?, ?, '0.9000')",
           )
-          .run(id, date, value);
+          .run(id, date, EPSS_MODEL, value);
       }
     }
     const accepted = new Date(Date.now() - 2 * 3_600_000).toISOString();
     seedSyncRun(db, "cve", accepted, "rev-e2e-baseline");
     seedSyncRun(db, "kev", accepted, dayAgo(2));
-    seedSyncRun(db, "epss", accepted, `${epssCurrent}@v4`);
+    seedSyncRun(db, "epss", accepted, `${epssCurrent}@${EPSS_MODEL}`);
   });
   db.checkpointStatus();
   db.close();

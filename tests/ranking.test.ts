@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compareDecimalStrings,
   displayProbabilityPercent,
+  displayProbabilityPercentFixed,
   orderDefaultPriority,
   orderHighestForecast,
   orderKevDueSoon,
@@ -35,7 +36,11 @@ function kev(id: string, dateAdded: string | null, kevMember = true) {
   return { id, kevMember, dateAdded };
 }
 
-function fc(id: string, epss: string | null, publishedAt: string | null = "2026-10-20T12:00:00.000Z") {
+function fc(
+  id: string,
+  epss: string | null,
+  publishedAt: string | null = "2026-10-20T12:00:00.000Z",
+) {
   return { id, epss, publishedAt };
 }
 
@@ -94,7 +99,10 @@ describe("worked examples (DATA_WORKFLOW.md 164-189)", () => {
   });
 
   it("display rounding: 0.12344 beats 0.12341 although both display 12.34%", () => {
-    const rows = [def("CVE-2099-0006", { epss: "0.12341" }), def("CVE-2099-0005", { epss: "0.12344" })];
+    const rows = [
+      def("CVE-2099-0006", { epss: "0.12341" }),
+      def("CVE-2099-0005", { epss: "0.12344" }),
+    ];
     expect(ids(orderDefaultPriority(rows))).toEqual(["CVE-2099-0005", "CVE-2099-0006"]);
     expect(displayProbabilityPercent("0.12344")).toBe("12.344");
     expect(displayProbabilityPercent("0.12341")).toBe("12.341");
@@ -139,7 +147,10 @@ describe("worked examples (DATA_WORKFLOW.md 164-189)", () => {
   });
 
   it("version preference: CNA v4 8.5 beats CNA v3.1 9.8; new-critical ineligible", () => {
-    const primary = selectPrimaryCvss([cna("3.1", "9.8", "CVSS:3.1/AV:N", 1), cna("4.0", "8.5", "CVSS:4.0/AV:N", 0)]);
+    const primary = selectPrimaryCvss([
+      cna("3.1", "9.8", "CVSS:3.1/AV:N", 1),
+      cna("4.0", "8.5", "CVSS:4.0/AV:N", 0),
+    ]);
     expect(primary?.version).toBe("4.0");
     expect(primary?.baseScore).toBe("8.5");
     const rows = [nc("CVE-2099-0001", "2026-10-20T00:00:00.000Z", primary)];
@@ -154,14 +165,23 @@ describe("worked examples (DATA_WORKFLOW.md 164-189)", () => {
     expect(byScore?.baseScore).toBe("9.2");
     expect(byScore?.label).toBe("worst CNA-provided scenario");
 
-    const byVector = selectPrimaryCvss([
-      cna("3.1", "9.2", "B", 0),
-      cna("3.1", "9.2", "A", 1),
-    ]);
+    const byVector = selectPrimaryCvss([cna("3.1", "9.2", "B", 0), cna("3.1", "9.2", "A", 1)]);
     expect(byVector?.vector).toBe("A");
 
-    const first = { origin: "CNA" as const, version: "3.1", baseScore: "9.2", vector: "A", sourceOrder: 0 };
-    const second = { origin: "CNA" as const, version: "3.1", baseScore: "9.2", vector: "A", sourceOrder: 1 };
+    const first = {
+      origin: "CNA" as const,
+      version: "3.1",
+      baseScore: "9.2",
+      vector: "A",
+      sourceOrder: 0,
+    };
+    const second = {
+      origin: "CNA" as const,
+      version: "3.1",
+      baseScore: "9.2",
+      vector: "A",
+      sourceOrder: 1,
+    };
     const byOrder = selectPrimaryCvss([second, first]);
     expect(byOrder).toMatchObject({ vector: "A", baseScore: "9.2" });
     // source-order final tie: the metric listed first in source order wins
@@ -226,10 +246,7 @@ describe("worked examples (DATA_WORKFLOW.md 164-189)", () => {
     const cutoff = "2026-10-24T00:00:00.000Z";
     const atLower = "2026-09-24T00:00:00.000Z"; // exactly T - 30d
     const primary = selectPrimaryCvss([cna("3.1", "9.8", "CVSS:3.1/AV:N", 0)]);
-    const rows = [
-      nc("CVE-2099-0001", atLower, primary),
-      nc("CVE-2099-0002", cutoff, primary),
-    ];
+    const rows = [nc("CVE-2099-0001", atLower, primary), nc("CVE-2099-0002", cutoff, primary)];
     expect(ids(selectNewCritical(rows, cutoff))).toEqual(["CVE-2099-0001"]);
   });
 
@@ -291,7 +308,10 @@ describe("boundary cases: default priority", () => {
   });
 
   it("B04 display-rounding tie at three decimals uses raw value (0.12449 vs 0.12441)", () => {
-    const rows = [def("CVE-2099-0002", { epss: "0.12441" }), def("CVE-2099-0001", { epss: "0.12449" })];
+    const rows = [
+      def("CVE-2099-0002", { epss: "0.12441" }),
+      def("CVE-2099-0001", { epss: "0.12449" }),
+    ];
     expect(ids(orderDefaultPriority(rows))).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
   });
 
@@ -325,10 +345,7 @@ describe("boundary cases: default priority", () => {
   });
 
   it("B08 malformed EPSS counts as unknown (never throws, sorts after real zero)", () => {
-    const rows = [
-      def("CVE-2099-0002", { epss: "NaN" }),
-      def("CVE-2099-0001", { epss: "0" }),
-    ];
+    const rows = [def("CVE-2099-0002", { epss: "NaN" }), def("CVE-2099-0001", { epss: "0" })];
     expect(ids(orderDefaultPriority(rows))).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
   });
 
@@ -359,11 +376,7 @@ describe("boundary cases: kev-due-soon", () => {
       due("CVE-2099-0001", "2026-10-20"),
       due("CVE-2099-0002", "2026-11-15"),
     ];
-    expect(ids(orderKevDueSoon(rows))).toEqual([
-      "CVE-2099-0001",
-      "CVE-2099-0002",
-      "CVE-2099-0003",
-    ]);
+    expect(ids(orderKevDueSoon(rows))).toEqual(["CVE-2099-0001", "CVE-2099-0002", "CVE-2099-0003"]);
   });
 
   it("due-date ties fall back to ASCII ID", () => {
@@ -415,7 +428,10 @@ describe("boundary cases: known-exploited and highest-forecast", () => {
   });
 
   it("B15 highest-forecast probability tie prefers known publication date", () => {
-    const rows = [fc("CVE-2099-0002", "0.7", null), fc("CVE-2099-0001", "0.7", "2026-10-20T00:00:00.000Z")];
+    const rows = [
+      fc("CVE-2099-0002", "0.7", null),
+      fc("CVE-2099-0001", "0.7", "2026-10-20T00:00:00.000Z"),
+    ];
     expect(ids(orderHighestForecast(rows))).toEqual(["CVE-2099-0001", "CVE-2099-0002"]);
   });
 
@@ -441,7 +457,13 @@ describe("boundary cases: CVSS selection", () => {
     const primary = selectPrimaryCvss([
       adp("4.0", "10.0", "x", 0),
       cna("9.9", "10.0", "x", 1),
-      { origin: "CNA" as const, version: "3.1", baseScore: "not-a-score", vector: "x", sourceOrder: 2 },
+      {
+        origin: "CNA" as const,
+        version: "3.1",
+        baseScore: "not-a-score",
+        vector: "x",
+        sourceOrder: 2,
+      },
       cna("3.1", "7.5", "CVSS:3.1/AV:N", 3),
     ]);
     expect(primary?.baseScore).toBe("7.5");
@@ -550,9 +572,9 @@ describe("boundary cases: new-critical", () => {
 
   it("B30 v3.0 9.8 is modern-eligible; unknown/undated/malformed dates are ineligible", () => {
     const v30 = selectPrimaryCvss([cna("3.0", "9.8", "x", 0)]);
-    expect(ids(selectNewCritical([nc("CVE-2099-0001", "2026-10-20T00:00:00.000Z", v30)], T))).toEqual([
-      "CVE-2099-0001",
-    ]);
+    expect(
+      ids(selectNewCritical([nc("CVE-2099-0001", "2026-10-20T00:00:00.000Z", v30)], T)),
+    ).toEqual(["CVE-2099-0001"]);
     const at = "2026-10-20T00:00:00.000Z";
     expect(selectNewCritical([nc("CVE-2099-0001", null, v30)], T)).toEqual([]);
     expect(selectNewCritical([nc("CVE-2099-0001", "yesterday-ish", v30)], T)).toEqual([]);
@@ -561,9 +583,9 @@ describe("boundary cases: new-critical", () => {
 
   it("B31 invalid cutoff T yields no rows instead of throwing", () => {
     const primary = selectPrimaryCvss([cna("3.1", "9.8", "x", 0)]);
-    expect(selectNewCritical([nc("CVE-2099-0001", "2026-10-20T00:00:00.000Z", primary)], "whenever")).toEqual(
-      [],
-    );
+    expect(
+      selectNewCritical([nc("CVE-2099-0001", "2026-10-20T00:00:00.000Z", primary)], "whenever"),
+    ).toEqual([]);
   });
 });
 
@@ -583,9 +605,7 @@ describe("adversarial: never throws uncaught on malformed input", () => {
     expect(() => orderDefaultPriority(garbage)).not.toThrow();
     expect(() => orderKnownExploited(garbage)).not.toThrow();
     expect(() => orderHighestForecast(garbage)).not.toThrow();
-    expect(() =>
-      selectNewCritical(garbage, "2026-10-24T00:00:00.000Z"),
-    ).not.toThrow();
+    expect(() => selectNewCritical(garbage, "2026-10-24T00:00:00.000Z")).not.toThrow();
     expect(() => selectRisingForecast(garbage, "2026-10-24")).not.toThrow();
   });
 
@@ -625,5 +645,47 @@ describe("adversarial: never throws uncaught on malformed input", () => {
     ] as unknown as Parameters<typeof orderDefaultPriority>[0];
     expect(() => orderDefaultPriority(rows)).not.toThrow();
     expect(orderDefaultPriority(rows)).toHaveLength(2);
+  });
+});
+
+describe("EPSS percent precision (one fixed precision per metric)", () => {
+  it("prints three decimals so a value with trailing zeros never looks rounded", () => {
+    // Regression justification: the chart tooltip used to trim trailing zeros,
+    // so 0.54 printed "54%" beside a neighbour printing "61.911%". Rounding was
+    // not the bug — the varying precision was. These assertions fail on "54".
+    expect(displayProbabilityPercentFixed("0.54")).toBe("54.000");
+    expect(displayProbabilityPercentFixed("0.5")).toBe("50.000");
+    expect(displayProbabilityPercentFixed("1")).toBe("100.000");
+    expect(displayProbabilityPercentFixed("0")).toBe("0.000");
+    expect(displayProbabilityPercentFixed("0.0215")).toBe("2.150");
+    expect(displayProbabilityPercentFixed("0.61911")).toBe("61.911");
+    expect(displayProbabilityPercentFixed("0.00001")).toBe("0.001");
+  });
+
+  it("is exact decimal arithmetic, not a parsed float", () => {
+    // 0.29 * 100 is 28.999999999999996 in binary floating point, so a
+    // `toFixed`-based implementation drifts here while the stored string cannot.
+    expect(displayProbabilityPercentFixed("0.29")).toBe("29.000");
+    expect(displayProbabilityPercentFixed("0.07")).toBe("7.000");
+    expect(displayProbabilityPercentFixed("0.99999")).toBe("99.999");
+  });
+
+  it("rounds half-up only past the stored precision, never below it", () => {
+    expect(displayProbabilityPercentFixed("0.0000049")).toBe("0.000");
+    expect(displayProbabilityPercentFixed("0.000005")).toBe("0.001");
+    expect(displayProbabilityPercentFixed("0.1234567890")).toBe("12.346");
+  });
+
+  it("honours an explicit decimal count", () => {
+    expect(displayProbabilityPercentFixed("0.61911", 1)).toBe("61.9");
+    expect(displayProbabilityPercentFixed("0.61911", 0)).toBe("62");
+    expect(displayProbabilityPercentFixed("0.0215", 5)).toBe("2.15000");
+  });
+
+  it("returns null for invalid input instead of NaN text", () => {
+    expect(displayProbabilityPercentFixed("bogus")).toBeNull();
+    expect(displayProbabilityPercentFixed("2")).toBeNull();
+    expect(displayProbabilityPercentFixed("-0.1")).toBeNull();
+    expect(displayProbabilityPercentFixed(null)).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GraphCohort, GraphEdgeKind, GraphGroup, GraphSummary } from "@/lib/graph";
 import type { CweRef } from "@/lib/cwe-catalog";
 import { CWE_TAXONOMY_UNAVAILABLE, CWE_UNMAPPED_STATE, cweChipName } from "@/lib/cwe-display";
+import { displayProbabilityPercentFixed } from "../../lib/ranking";
 
 const GROUP_META: Record<GraphEdgeKind, { label: string; hint: string }> = {
   cwe: { label: "Shared CWE", hint: "Same catalog weakness class" },
@@ -14,6 +15,17 @@ const GROUP_META: Record<GraphEdgeKind, { label: string; hint: string }> = {
 };
 
 const GROUP_ORDER: readonly GraphEdgeKind[] = ["cwe", "vendor", "domain"];
+
+/** EPSS as the three-decimal percent every other surface prints, from the stored
+ * decimal string. `0.61911` is `61.911%` here and nowhere `61.91%`: a chart must
+ * not round a metric finer than the readout beside it. */
+function epssPercentLabel(epss: unknown): string | null {
+  if (typeof epss !== "string" || epss === "") return null;
+  // Like the priority row: an unparseable stored value is shown as stored, never
+  // replaced by a zero or a guess.
+  const percent = displayProbabilityPercentFixed(epss) ?? epss;
+  return `${percent}%`;
+}
 
 const KIND_COLOR: Record<GraphEdgeKind, string> = {
   cwe: "var(--ui-critical)",
@@ -229,7 +241,7 @@ function DialogBody({
       <ul className="graph-dialog-list" data-testid="graph-more-list">
         {visible.map((summary) => {
           const id = summary.id;
-          const epss = summary.epss == null ? null : (Number(summary.epss) * 100).toFixed(2);
+          const epss = epssPercentLabel(summary.epss);
           return (
             <li key={id} className="graph-dialog-row">
               <div className="graph-dialog-row-head">
@@ -247,7 +259,7 @@ function DialogBody({
                     <span className="badge badge-unknown">unscored</span>
                   )}
                   {epss !== null ? (
-                    <span className="badge badge-accent">EPSS {epss}%</span>
+                    <span className="badge badge-accent">EPSS {epss}</span>
                   ) : (
                     <span className="badge badge-unknown">EPSS ?</span>
                   )}
@@ -806,9 +818,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
                 <div className="graph-hub-signals">
                   <span className="badge badge-unknown">{hub.degree} links</span>
                   {hub.epss !== null ? (
-                    <span className="badge badge-accent">
-                      EPSS {(Number(hub.epss) * 100).toFixed(2)}%
-                    </span>
+                    <span className="badge badge-accent">EPSS {epssPercentLabel(hub.epss)}</span>
                   ) : null}
                   {hub.kevDueDate !== null ? (
                     <span className="badge badge-high">due {hub.kevDueDate}</span>
@@ -907,7 +917,7 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
           </div>
           <div>
             <dt>EPSS</dt>
-            <dd>{centerNode?.epss ?? "unknown"}</dd>
+            <dd>{epssPercentLabel(centerNode?.epss) ?? "unknown"}</dd>
           </div>
           <div>
             <dt>Remediation due</dt>

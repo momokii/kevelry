@@ -13,6 +13,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
 import type { CweRef } from "@/lib/cwe-catalog";
 import type { CvssSecondary } from "@/lib/cvss-projection";
+import { displayProbabilityPercentFixed } from "../../lib/ranking";
 
 import {
   CWE_TAXONOMY_UNAVAILABLE,
@@ -628,15 +629,19 @@ function epssDay(scoreDate: string): string {
   return formatLedgerTime(scoreDate, "UTC") ?? scoreDate;
 }
 
-/** A 0..1 probability as a percent with trailing zeros trimmed: 0.61911 →
- * `61.911%`, 0.0215 → `2.15%`. Exact value, never a rounded ranking score. */
-function formatEpssPercent(value: number): string {
-  return `${(value * 100).toFixed(3).replace(/\.?0+$/, "")}%`;
+/** A stored 0..1 probability as a percent with three decimals: `0.61911` →
+ * `61.911%`, `0.54` → `54.000%`. One precision for the whole series — the
+ * tooltip, the caption range, the data table and the live announcement all call
+ * this — so no observation looks rounded next to its neighbour. The number comes
+ * from the stored decimal string, so it is the exact value, never a float. */
+export function formatEpssPercent(epss: string): string {
+  const percent = displayProbabilityPercentFixed(epss);
+  return percent === null ? epss : `${percent}%`;
 }
 
 /** The point's own reading, used by the tooltip and the live announcement. */
-function epssObservationText(point: EpssTrendPoint, value: number): string {
-  return `${epssDay(point.scoreDate)}: ${formatEpssPercent(value)} EPSS probability`;
+function epssObservationText(point: EpssTrendPoint): string {
+  return `${epssDay(point.scoreDate)}: ${formatEpssPercent(point.epss)} EPSS probability`;
 }
 
 /** At most two context facts: the model that produced this observation, and
@@ -685,8 +690,7 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
   const roving = useRovingMarkFocus({
     count,
     initialIndex: latest,
-    describe: (index) =>
-      epssObservationText(points[index] as EpssTrendPoint, values[index] as number),
+    describe: (index) => epssObservationText(points[index] as EpssTrendPoint),
     onDismiss: () => {
       setHoverIndex(null);
       setFocused(false);
@@ -706,6 +710,10 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
   });
   const first = points[0] as EpssTrendPoint;
   const last = points[latest] as EpssTrendPoint;
+  // The caption range is printed from the two stored strings that bound it, at
+  // the same precision as every other EPSS readout in the block.
+  const minPoint = points[values.indexOf(Math.min(...values))] as EpssTrendPoint;
+  const maxPoint = points[values.indexOf(Math.max(...values))] as EpssTrendPoint;
   const min = Math.min(...values);
   const max = Math.max(...values);
 
@@ -788,7 +796,7 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
         {tipPoint === null ? null : (
           <ChartTooltip
             label={`${epssDay(tipPoint.scoreDate)} · UTC`}
-            value={formatEpssPercent(tipValue)}
+            value={formatEpssPercent(tipPoint.epss)}
             unit="EPSS probability"
             context={epssObservationFacts(tipPoint, tipValue, min, max)}
             anchor={anchor}
@@ -799,7 +807,8 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
       <figcaption className={styles.trendCaption}>
         {count} dated observations, {first.scoreDate} to {last.scoreDate}
         {last.modelVersion !== "" ? ` · model ${last.modelVersion}` : ""}; range{" "}
-        {formatEpssPercent(min)} to {formatEpssPercent(max)} across the window; latest point marked.
+        {formatEpssPercent(minPoint.epss)} to {formatEpssPercent(maxPoint.epss)} across the window;
+        latest point marked.
       </figcaption>
       <ChartTable
         caption="EPSS observations for this record, UTC score dates"
@@ -816,7 +825,7 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
           {
             key: "score",
             header: "EPSS probability",
-            value: (_point, index) => formatEpssPercent(values[index] ?? 0),
+            value: (point) => formatEpssPercent(point.epss),
           },
           {
             key: "model",

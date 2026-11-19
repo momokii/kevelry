@@ -10,6 +10,7 @@ import {
   cvssBandForScore,
   cvssStateForRow,
   epssBarWidthPercent,
+  formatEpssPercent,
   formatSignedDeltaPp,
   kevStateText,
 } from "../src/components/priority/PriorityView";
@@ -176,5 +177,23 @@ describe("cvssStateForRow", () => {
     expect(
       cvssStateForRow({ primaryKnown: false, primaryLegacy: false, primaryAdpOnly: false }),
     ).toBe("unscored");
+  });
+});
+
+describe("formatEpssPercent", () => {
+  it("prints the stored probability at the metric's fixed three decimals", () => {
+    // The sparkline tooltip, caption range, data table and live announcement all
+    // call this one formatter, so an observation can never print at a different
+    // precision than its neighbour. These fail on the old trimmed output
+    // ("54%" / "2.15%").
+    expect(formatEpssPercent("0.54")).toBe("54.000%");
+    expect(formatEpssPercent("0.0215")).toBe("2.150%");
+    expect(formatEpssPercent("0.61911")).toBe("61.911%");
+    expect(formatEpssPercent("1")).toBe("100.000%");
+  });
+
+  it("shows an unparseable stored value as stored instead of inventing a number", () => {
+    expect(formatEpssPercent("unavailable")).toBe("unavailable");
+    expect(formatEpssPercent("")).toBe("");
   });
 });
