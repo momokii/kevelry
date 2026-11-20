@@ -148,9 +148,7 @@ describe("unscored cohort split", () => {
     seedFixture(db);
     const snapshot = refreshAggregates(db);
 
-    expect(snapshot.totals.secondaryOnly + snapshot.totals.noMetric).toBe(
-      snapshot.totals.unscored,
-    );
+    expect(snapshot.totals.secondaryOnly + snapshot.totals.noMetric).toBe(snapshot.totals.unscored);
     // `unscored` is the `unknown` band by definition; both readings must hold
     // or the UI subnote would not add up to the number above it.
     expect(snapshot.severityBands.unknown).toBe(snapshot.totals.unscored);
@@ -161,7 +159,7 @@ describe("unscored cohort split", () => {
     seedFixture(db);
     refreshAggregates(db);
     expect(getAggregates(db)?.version).toBe(AGGREGATE_VERSION);
-    expect(AGGREGATE_VERSION).toBe(6);
+    expect(AGGREGATE_VERSION).toBe(7);
 
     // Simulate the pre-step-2 snapshot: same key, version 5, no split counters.
     const stale = { ...(getAggregates(db) ?? {}), version: 5 };

@@ -336,19 +336,29 @@ describe("task 43 aggregate cache (50k fixture)", () => {
     ).n;
     expect(matrixKev).toBe(directKev);
 
-    const kevMonths = (
-      db.handle
-        .prepare("SELECT COUNT(DISTINCT substr(date_added, 1, 7)) AS n FROM kev_entries")
-        .get() as { n: number }
-    ).n;
-    expect(snapshot.kevByMonth.length).toBeLessThanOrEqual(12);
-    expect(snapshot.kevByMonth.length).toBe(Math.min(12, kevMonths));
+    // Twelve dense UTC buckets ending at the snapshot month: months with no
+    // additions are zero rows in the series, not omitted months. The sum is the
+    // real count inside that calendar window (the dirty `not-a-date` KEV row is
+    // outside it, like the panel it feeds).
+    expect(snapshot.kevByMonth).toHaveLength(12);
+    const anchorMonth = snapshot.computedAt.slice(0, 7);
+    expect(snapshot.kevByMonth[11]?.month).toBe(anchorMonth);
+    const windowMonths = snapshot.kevByMonth.map((entry) => entry.month);
+    expect(windowMonths).toEqual([...windowMonths].sort());
     const kevSum = snapshot.kevByMonth.reduce((a, row) => a + row.count, 0);
     const kevTotal = (
       db.handle.prepare("SELECT COUNT(*) AS n FROM kev_entries").get() as { n: number }
     ).n;
     expect(snapshot.totals.kev).toBe(kevTotal);
-    if (snapshot.kevByMonth.length === kevMonths) expect(kevSum).toBe(kevTotal);
+    const windowTotal = (
+      db.handle
+        .prepare(
+          "SELECT COUNT(*) AS n FROM kev_entries WHERE date_added GLOB " +
+            "'[0-9][0-9][0-9][0-9]-[0-9][0-9]*' AND substr(date_added, 1, 7) BETWEEN ? AND ?",
+        )
+        .get(snapshot.kevByMonth[0]!.month, anchorMonth) as { n: number }
+    ).n;
+    expect(kevSum).toBe(windowTotal);
 
     expect(snapshot.severityBands).toEqual(expectedBandsJs(db));
     expect(severityBandsSql(db)).toEqual(expectedBandsJs(db));

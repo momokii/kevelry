@@ -9,6 +9,7 @@ import {
   type ExploitRefCoverage,
   type SeverityEpssCell,
 } from "../../lib/aggregates";
+import { densifyKevMonths, readKevByMonth, type KevMonthBucket } from "../../lib/kev-months";
 import { dailyWindow, monthlyVolume, type DayBucket } from "./chartData";
 
 export type { DayBucket } from "./chartData";
@@ -47,10 +48,7 @@ export interface PrioritySummary {
   emptyNote: string;
 }
 
-export interface KevMonthBucket {
-  month: string;
-  count: number;
-}
+export type { KevMonthBucket } from "../../lib/kev-months";
 
 export interface CorpusStats {
   published: number;
@@ -188,20 +186,6 @@ function liveEpssHistogram(db: CveDatabase, scoreDate: string | null): number[] 
     if (Number.isInteger(row.b) && row.b >= 0 && row.b < 10) buckets[row.b] = row.n;
   }
   return buckets;
-}
-
-function liveKevByMonth(db: CveDatabase, months: number): KevMonthBucket[] {
-  const rows = db.handle
-    .prepare(
-      "SELECT substr(date_added, 1, 7) AS month, COUNT(*) AS n FROM kev_entries " +
-        "WHERE date_added GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*' " +
-        "GROUP BY month ORDER BY month DESC LIMIT ?",
-    )
-    .all(months) as Array<{ month: string; n: number }>;
-  return rows
-    .slice()
-    .reverse()
-    .map((row) => ({ month: row.month, count: row.n }));
 }
 
 function liveScalar(db: CveDatabase, sql: string, params: unknown[] = []): number {
@@ -508,10 +492,14 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
         ? (joint?.cells ?? [])
         : cached.severityEpssMatrix.map((cell) => ({ ...cell }));
     const epssScoreDate = cached === null ? epssDate : cached.epssScoreDate;
+    // Dense in both paths: a month with no additions is a zero bucket, never an
+    // absent one. The cached counts are re-spined against this request's month,
+    // so a snapshot computed just before a month rollover cannot end the chart
+    // at the previous month.
     const kevByMonth =
       cached === null
-        ? liveKevByMonth(db, OVERVIEW_KEV_MONTHS)
-        : cached.kevByMonth.map((entry) => ({ month: entry.month, count: entry.count }));
+        ? readKevByMonth(db, nowIso, OVERVIEW_KEV_MONTHS)
+        : densifyKevMonths(cached.kevByMonth, nowIso, OVERVIEW_KEV_MONTHS);
     const exploitRef = cached === null ? exploitRefCoverageSql(db) : { ...cached.exploitRef };
     const liveTotals = cached === null ? liveCorpusTotals(db, epssDate, severityBands) : null;
     const corpus: CorpusStats =

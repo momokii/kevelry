@@ -55,7 +55,10 @@ export default function OverviewPage() {
       ? (lastMonth.count / firstMonth.count).toFixed(1)
       : null;
   const lastMonthCount = lastMonth?.count ?? 0;
-  const kevLastMonth = data.kevByMonth[data.kevByMonth.length - 1]?.count ?? 0;
+  // Newest month *with additions*: the series is dense, so the calendar's last
+  // bucket can legitimately be `0` and this stat is about the latest active
+  // month, as it was before the spine existed.
+  const kevLastMonth = [...data.kevByMonth].reverse().find((entry) => entry.count > 0)?.count ?? 0;
   const latestLabel = lastMonth !== undefined ? monthLong(lastMonth.month) : null;
   const epssTotal = data.corpus.epssScored;
   const sources = data.provenance.sources;

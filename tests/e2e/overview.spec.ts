@@ -31,6 +31,14 @@ function isoDayAgo(days: number, time = "12:00:00.000Z"): string {
   return `${dayAgo(days)}T${time}`;
 }
 
+/** `YYYY-MM` for a UTC month offset from the current one (0 = this month). */
+function monthAgo(months: number): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1))
+    .toISOString()
+    .slice(0, 7);
+}
+
 interface MetricFixture {
   origin: string;
   version: string;
@@ -295,10 +303,45 @@ for (const width of [360, 768, 1280]) {
   });
 }
 
+test("KEV rhythm draws twelve bars, including a gap month as a real zero", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+
+  const chart = page.getByTestId("overview-kev-chart");
+  await expect(chart).toBeVisible();
+
+  // The seeded corpus has one KEV addition, six days old: one active month and
+  // eleven calendar months with no additions. The sparse query returned one bar.
+  const bars = chart.locator('[data-testid^="overview-kev-bar-"]');
+  await expect(bars).toHaveCount(12);
+  await expect(chart.locator('[data-zero="true"]')).toHaveCount(11);
+
+  // A month two back cannot contain the six-day-old addition, so it is a gap
+  // month — and it is still a real mark: focusable, labelled 0, drawn as a 1px
+  // fill inside a full-height hit target.
+  const gap = page.getByTestId(`overview-kev-bar-${monthAgo(2)}`);
+  await expect(gap).toBeVisible();
+  await expect(gap).toHaveAttribute("data-zero", "true");
+  await expect(gap).toHaveAttribute("aria-label", /0 KEV additions/);
+  await expect(gap.locator(".kev-bar-fill")).toHaveCSS("height", "1px");
+
+  // Hovering above the 1px mark still opens the tooltip: the whole bar height
+  // is the hit target, so a zero month is inspectable like any other.
+  await gap.hover({ position: { x: 5, y: 4 } });
+  const tooltip = page.getByTestId("overview-kev-tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator(".tt-value")).toContainText("additions");
+  await expect(tooltip).toContainText("0 of 1 additions, 0.0%");
+
+  // The caption total is the sum of the twelve bars (one addition here), never
+  // the sparse subset that used to be summed.
+  await expect(chart.locator(".chart-note")).toContainText("1 catalog additions in twelve months.");
+});
+
 test("overview unscored split keeps its numbers in dark theme at 360px", async ({ page }) => {
-  await page.context().addCookies([
-    { name: "ui-theme", value: "dark", url: "http://localhost:3210" },
-  ]);
+  await page
+    .context()
+    .addCookies([{ name: "ui-theme", value: "dark", url: "http://localhost:3210" }]);
   await page.setViewportSize({ width: 360, height: 900 });
   await page.goto("/");
 

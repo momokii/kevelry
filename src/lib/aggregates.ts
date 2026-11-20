@@ -12,10 +12,12 @@
 // refreshAggregates() is idempotent: recompute + INSERT OR REPLACE.
 
 import type { CveDatabase } from "./db";
+import { readKevByMonth } from "./kev-months";
 import { getHighestForecast, getRisingForecast } from "./priority";
 
 export const AGGREGATE_KEY = "aggregates:v1";
-export const AGGREGATE_VERSION = 6;
+/** Bumped to 7 when `kevByMonth` became a dense twelve-month spine. */
+export const AGGREGATE_VERSION = 7;
 
 /** Bounded prefix stored per ranked list: exact full-order-then-slice head. */
 export const TOP_LIST_LIMIT = 100;
@@ -354,20 +356,6 @@ export function severityEpssMatrixSql(
   return { cells, histogram };
 }
 
-function kevByMonthSql(db: CveDatabase, months = 12): Array<{ month: string; count: number }> {
-  const rows = db.handle
-    .prepare(
-      "SELECT substr(date_added, 1, 7) AS month, COUNT(*) AS n FROM kev_entries " +
-        "WHERE date_added GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*' " +
-        "GROUP BY month ORDER BY month DESC LIMIT ?",
-    )
-    .all(months) as Array<{ month: string; n: number }>;
-  return rows
-    .slice()
-    .reverse()
-    .map((row) => ({ month: row.month, count: row.n }));
-}
-
 function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
   const scoreDate = acceptedEpssDate(db);
   const dayRows = db.handle
@@ -448,7 +436,7 @@ function computeSnapshot(db: CveDatabase, nowIso: string): AggregateSnapshot {
     epssHistogram: epssHistogramSql(db, scoreDate),
     epssLogHistogram: joint.histogram,
     severityEpssMatrix: joint.cells,
-    kevByMonth: kevByMonthSql(db, 12),
+    kevByMonth: readKevByMonth(db, nowIso, 12),
     exploitRef: exploitRefCoverageSql(db),
     totals: {
       published: publishedTotal,

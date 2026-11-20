@@ -20,23 +20,23 @@ The "Hover today" column is the audit snapshot that motivated the work, not the
 current state; §7.0 of `DESIGN.md` says what each row is held to now, and row 8
 no longer exists (see [Deferred](#7-deferred)).
 
-| # | File : lines | Component | Type | Hover today | Exact value without hover | Keyboard | aria / screen-reader story |
-|---|---|---|---|---|---|---|---|
-| 1 | `charts/VolumeChart.tsx:122-230` | `VolumeChart` | bar (SVG) | custom `.chart-tooltip`, positioned over the bucket | yes: peak label, axis, `<details>` table | 44px hit rects, Tab, Enter/Space select, Esc | root `role="img"`; per-hit `role="button"` + `aria-label` with count, share, "Select to inspect" |
-| 2 | `charts/CumulativeChart.tsx:52-110` | `CumulativeChart` | area + line | custom `.chart-tooltip`, pinned top-left of the frame | yes: axis, data table | every point `tabIndex=0`, Enter/Esc | root `role="img"`; point `role="button"` + label "month: cumulative, that month" |
-| 3 | `charts/EpssDistribution.tsx:51-100` | `EpssDistribution` | histogram | custom `.chart-tooltip`, pinned top-left | yes: binned axis, data table | every bar `tabIndex=0` | root `role="img"`; bar `role="img"` + label "EPSS bin: n records, share" |
-| 4 | `charts/SeverityDonut.tsx:31-120` | `SeverityDonut` | donut | hover/focus updates centre number | yes: legend prints count + share; data table | segments and legend links focusable | root `role="img"`; segments `role="button"` although none act (defect); legend links labelled |
-| 5 | `charts/DensityMatrix.tsx:95-175` | `DensityMatrix` | heatmap | hover updates an inspector aside | yes: every cell prints its count | roving `tabIndex`, arrows, Home/End | `role="group"`; `<button>` per cell + full label "band, EPSS bin: n CVEs, m KEV" |
-| 6 | `charts/TimeToKevSankey.tsx:420-500` | `TimeToKevSankey` | sankey | node hover isolates bands; bands carry native `<title>` | yes: node labels print totals; flow readout; dialog | nodes/bands focusable, Enter pins, Esc clears | root `role="img"` (flattens children); node `role="button"` + label with count and share |
-| 7 | `charts/KevRhythm.tsx:13-21` | `KevRhythm` | mini bar (HTML divs) | **native `title` only** — OS tooltip after ~1s, on the bar body only | **no** — only the 12-month total in the caption | **none**, not focusable | `role="img"` on the container makes the 12 `title`s presentational: SR gets one string, no values |
-| 8 | `charts/SeverityMix.tsx:18-24` | `SeverityMix` | proportional track rows | native `title` + `aria-label` | yes: count + share printed in the row | rows are links | rail `aria-hidden`; link carries the full value in its name |
-| 9 | `priority/PriorityView.tsx:622-666` | `EpssTrend` | **sparkline** | **none** — no pointer handler, no element per point | **no** — only "25 observations, first..last" | **none** | root `role="img"`; label gives the span and count, not one value |
-| 10 | `priority/PriorityView.tsx:685-695` | `EpssSignal` bar | single bar | n/a | yes: `2.15%` in text + `.srOnly` | n/a | track `aria-hidden`, value repeated in `.srOnly` |
-| 11 | `explore/CohortVisualization.tsx:108-160` | `CohortVisualization` | severity rows, month bars | native `title` + `aria-label` | yes: count and share printed | rows are links | track `aria-hidden`; link name carries value + action |
-| 12 | `graph/GraphView.tsx:409-520` | `EgoGraph` | fixed-column graph | none | yes: attribute count printed, leaf ids printed | leaves are links; `+N more` button | root `role="img"` flattens the link tree (defect); `+N more` labelled |
-| 13 | `methodology/CoverageDiagram.tsx:1-60` | `CoverageDiagram` | proportional rows | none | yes: count + share + note per row | n/a (static) | track `aria-hidden`, values as text |
-| 14 | `overview/ExploitCoverage.tsx:29` | `ExploitCoverage` | single bar | none | yes: counts printed beside it | n/a (static) | bar `aria-hidden`, values as text |
-| 15 | `ledger/ChartView.tsx:44-46` | `ChartView` | demo bars | none | n/a | n/a | bars `aria-hidden`; the table *is* the content — the model to copy |
+| #   | File : lines                              | Component             | Type                      | Hover today                                                          | Exact value without hover                           | Keyboard                                      | aria / screen-reader story                                                                        |
+| --- | ----------------------------------------- | --------------------- | ------------------------- | -------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1   | `charts/VolumeChart.tsx:122-230`          | `VolumeChart`         | bar (SVG)                 | custom `.chart-tooltip`, positioned over the bucket                  | yes: peak label, axis, `<details>` table            | 44px hit rects, Tab, Enter/Space select, Esc  | root `role="img"`; per-hit `role="button"` + `aria-label` with count, share, "Select to inspect"  |
+| 2   | `charts/CumulativeChart.tsx:52-110`       | `CumulativeChart`     | area + line               | custom `.chart-tooltip`, pinned top-left of the frame                | yes: axis, data table                               | every point `tabIndex=0`, Enter/Esc           | root `role="img"`; point `role="button"` + label "month: cumulative, that month"                  |
+| 3   | `charts/EpssDistribution.tsx:51-100`      | `EpssDistribution`    | histogram                 | custom `.chart-tooltip`, pinned top-left                             | yes: binned axis, data table                        | every bar `tabIndex=0`                        | root `role="img"`; bar `role="img"` + label "EPSS bin: n records, share"                          |
+| 4   | `charts/SeverityDonut.tsx:31-120`         | `SeverityDonut`       | donut                     | hover/focus updates centre number                                    | yes: legend prints count + share; data table        | segments and legend links focusable           | root `role="img"`; segments `role="button"` although none act (defect); legend links labelled     |
+| 5   | `charts/DensityMatrix.tsx:95-175`         | `DensityMatrix`       | heatmap                   | hover updates an inspector aside                                     | yes: every cell prints its count                    | roving `tabIndex`, arrows, Home/End           | `role="group"`; `<button>` per cell + full label "band, EPSS bin: n CVEs, m KEV"                  |
+| 6   | `charts/TimeToKevSankey.tsx:420-500`      | `TimeToKevSankey`     | sankey                    | node hover isolates bands; bands carry native `<title>`              | yes: node labels print totals; flow readout; dialog | nodes/bands focusable, Enter pins, Esc clears | root `role="img"` (flattens children); node `role="button"` + label with count and share          |
+| 7   | `charts/KevRhythm.tsx:13-21`              | `KevRhythm`           | mini bar (HTML divs)      | **native `title` only** — OS tooltip after ~1s, on the bar body only | **no** — only the 12-month total in the caption     | **none**, not focusable                       | `role="img"` on the container makes the 12 `title`s presentational: SR gets one string, no values |
+| 8   | `charts/SeverityMix.tsx:18-24`            | `SeverityMix`         | proportional track rows   | native `title` + `aria-label`                                        | yes: count + share printed in the row               | rows are links                                | rail `aria-hidden`; link carries the full value in its name                                       |
+| 9   | `priority/PriorityView.tsx:622-666`       | `EpssTrend`           | **sparkline**             | **none** — no pointer handler, no element per point                  | **no** — only "25 observations, first..last"        | **none**                                      | root `role="img"`; label gives the span and count, not one value                                  |
+| 10  | `priority/PriorityView.tsx:685-695`       | `EpssSignal` bar      | single bar                | n/a                                                                  | yes: `2.15%` in text + `.srOnly`                    | n/a                                           | track `aria-hidden`, value repeated in `.srOnly`                                                  |
+| 11  | `explore/CohortVisualization.tsx:108-160` | `CohortVisualization` | severity rows, month bars | native `title` + `aria-label`                                        | yes: count and share printed                        | rows are links                                | track `aria-hidden`; link name carries value + action                                             |
+| 12  | `graph/GraphView.tsx:409-520`             | `EgoGraph`            | fixed-column graph        | none                                                                 | yes: attribute count printed, leaf ids printed      | leaves are links; `+N more` button            | root `role="img"` flattens the link tree (defect); `+N more` labelled                             |
+| 13  | `methodology/CoverageDiagram.tsx:1-60`    | `CoverageDiagram`     | proportional rows         | none                                                                 | yes: count + share + note per row                   | n/a (static)                                  | track `aria-hidden`, values as text                                                               |
+| 14  | `overview/ExploitCoverage.tsx:29`         | `ExploitCoverage`     | single bar                | none                                                                 | yes: counts printed beside it                       | n/a (static)                                  | bar `aria-hidden`, values as text                                                                 |
+| 15  | `ledger/ChartView.tsx:44-46`              | `ChartView`           | demo bars                 | none                                                                 | n/a                                                 | n/a                                           | bars `aria-hidden`; the table _is_ the content — the model to copy                                |
 
 Notes: `.chart-tooltip` / `.chart-table` / `.data-table` / `.chart-note` exist in
 `app/ui.css`; `ChartInfo` ("How to read") is used on 5 overview panels but **not**
@@ -50,10 +50,19 @@ role) — ignored by AT, same class of defect.
 ```tsx
 <div className="kev-bars" role="img" aria-label="KEV catalog additions by UTC month">
   {months.map((entry) => (
-    <div key={entry.month} className="kev-bar"
-      title={`${monthShort(entry.month)}: ${formatInt(entry.count)} KEV additions`}>
-      <span className="kev-bar-fill" style={{ height: `${6 + (entry.count / max) * 78}px` }} aria-hidden="true" />
-      <span className="kev-bar-label" aria-hidden="true">{monthShort(entry.month)}</span>
+    <div
+      key={entry.month}
+      className="kev-bar"
+      title={`${monthShort(entry.month)}: ${formatInt(entry.count)} KEV additions`}
+    >
+      <span
+        className="kev-bar-fill"
+        style={{ height: `${6 + (entry.count / max) * 78}px` }}
+        aria-hidden="true"
+      />
+      <span className="kev-bar-label" aria-hidden="true">
+        {monthShort(entry.month)}
+      </span>
     </div>
   ))}
 </div>
@@ -96,14 +105,14 @@ survive. These ten clauses are what a reviewer checks.
 2. **The tooltip has a fixed three-part shape.** `label` = the mark's period or
    identity in the caption's format plus the date basis (`Sep 2026 · UTC`).
    `value` = the exact number with its unit (`20 KEV additions`, `2.15% EPSS
-   probability`). `share` = at most two supporting facts, each naming its
+probability`). `share` = at most two supporting facts, each naming its
    denominator (`43 of 412 additions, 10.4%`) plus the caption's caveat (model
    version). Nothing longer than this fits.
 3. **Value never depends on hover.** An exact value must exist without pointing:
    printed at the mark, in the caption, or in the `<details>` table built from the
    same series. The tooltip is never the only copy; this retires `title`-only marks.
 4. **Placement is deterministic.** The tooltip renders inside a `position:
-   relative` chart host (`chart-frame` or the mark's wrapper), is clamped to the
+relative` chart host (`chart-frame` or the mark's wrapper), is clamped to the
    host width, flips to the other side in the last 30% of the plot, never covers
    the mark it describes, and is `pointer-events: none`.
 5. **Dense series get a strip, not 45 tooltips.** A sparkline's overlay is one
@@ -131,15 +140,15 @@ survive. These ten clauses are what a reviewer checks.
 
 ### Which primitive survives, which retires
 
-| Primitive | Verdict |
-|---|---|
-| `.chart-tooltip` + `.tt-label` / `.tt-value` / `.tt-share` (`ui.css:1224`) | **survives**, wrapped as `<ChartTooltip>` so the three call sites cannot drift |
-| `<details class="chart-table">` + `table.data-table` (5 hand-rolled copies) | **survives**, extracted as `<ChartTable>` |
-| focal hit-target + `aria-label` + Esc (`VolumeChart:186-228`) | **survives** as the reference interaction; lifted into a hook |
-| `ChartInfo` and the `.chart-note` caption | **survive**, unchanged |
-| native `title=` as the only affordance (`KevRhythm:18`, `SeverityMix:22`, `CohortVisualization:114,157`) | **retired** (redundant where values are printed, replaced where they are not) |
-| `role="button"` on non-acting marks (`SeverityDonut:61`) | **retired** |
-| `role="img"` wrapping focusable content (`KevRhythm:13`, `GraphView:414`, Sankey root) | **replaced** by `role="group"` |
+| Primitive                                                                                                | Verdict                                                                        |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `.chart-tooltip` + `.tt-label` / `.tt-value` / `.tt-share` (`ui.css:1224`)                               | **survives**, wrapped as `<ChartTooltip>` so the three call sites cannot drift |
+| `<details class="chart-table">` + `table.data-table` (5 hand-rolled copies)                              | **survives**, extracted as `<ChartTable>`                                      |
+| focal hit-target + `aria-label` + Esc (`VolumeChart:186-228`)                                            | **survives** as the reference interaction; lifted into a hook                  |
+| `ChartInfo` and the `.chart-note` caption                                                                | **survive**, unchanged                                                         |
+| native `title=` as the only affordance (`KevRhythm:18`, `SeverityMix:22`, `CohortVisualization:114,157`) | **retired** (redundant where values are printed, replaced where they are not)  |
+| `role="button"` on non-acting marks (`SeverityDonut:61`)                                                 | **retired**                                                                    |
+| `role="img"` wrapping focusable content (`KevRhythm:13`, `GraphView:414`, Sankey root)                   | **replaced** by `role="group"`                                                 |
 
 ## 3. Phases
 
@@ -151,11 +160,12 @@ IDC verbatim. Migrate the three `.chart-tooltip` and five `chart-table` call sit
 onto the components with **no text or geometry change**.
 
 Acceptance — checkable without reading code:
+
 - `/`, `/explore`, `/graph` render identical visible text to `main` (diff the
   `data-testid` subtrees); hover/focus/Enter/Esc on Volume, Cumulative and EPSS
   distribution behave exactly as before; existing e2e assertions pass unmodified.
 - `grep -rn 'className="chart-tooltip"' src` and `grep -rn '<details\
-  className="chart-table"' src` match only the two new components.
+className="chart-table"' src` match only the two new components.
 - `npm run lint`, `tsc --noEmit`, unit suite and the 6 route e2e specs green.
 
 ### P2 — EPSS sparkline (`/priority`, `PriorityView.tsx:622`) — done (`27f644f`, precision fixed in `98611ba`)
@@ -166,6 +176,7 @@ keeping the `priority-row-epss-trend` testid and a label containing "dated
 observations" (an existing e2e asserts that string).
 
 Acceptance:
+
 - Tab reaches the sparkline once; ArrowRight from there announces the first
   observation's date and percent; End lands on the latest point.
 - Hovering anywhere in the plot shows the nearest point — including between
@@ -184,12 +195,19 @@ sentence ("catalog activity, not exploitation volume") and the total — both ar
 load-bearing.
 
 Acceptance:
+
 - 12 bars, 12 tab stops' worth of Arrow stepping, one Tab stop into the panel.
 - Focused-tooltip and hovered-tooltip text are identical for the same month.
 - Every month reads `September 2026 · UTC` / `43` / `43 of 322 additions, 13.4%` —
   the denominator is the caption total, which the data table also sums to.
 - A month with zero additions draws a 1px bar, is focusable, and says `0`.
 - The panel has "How to read" and a data table; neither existed before.
+
+The zero-month line is only reachable if the loader returns twelve calendar
+buckets, so both loaders now build a twelve-month UTC spine
+(`src/lib/kev-months.ts`) and left-join the sparse `kev_entries` counts onto it;
+a gap month is a `0` bucket, never an absent row. Pinned by
+`tests/kev-rhythm-months.test.ts` and the overview e2e gap-month assertion.
 
 ### P4 — sweep — done (`3e890cf`, reachability fixed in `7c3c27c`)
 
@@ -200,6 +218,7 @@ add the data table (cells already print counts). Update the §1 state column so
 every row reads "compliant" or names an exemption and why.
 
 Acceptance:
+
 - The §1 table, updated in place, has no row whose hover, keyboard or aria cell
   says `none`, except the listed exemptions (13–15: values are printable text or
   the table is the content).
@@ -236,7 +255,7 @@ Acceptance:
 ## 6. Evidence (live instance `http://100.124.184.116:3100`)
 
 - `/overview` returns **404**; the overview is `/` (nav label "Overview", `href:
-  "/"`, `Shell.tsx:30`). "Overview" below means `/`.
+"/"`, `Shell.tsx:30`). "Overview" below means `/`.
 - `GET /priority` → 200, 562,693 bytes SSR, 25 rows, **one** rendered sparkline:
   row 1 `CVE-2024-10441`, 2.15%, dated 2026-11-19, model v2026.06.15, 25 dated
   observations 2026-10-24 → 2026-11-19. `CVE-2020-46217` from the brief is not on
@@ -281,12 +300,3 @@ line in §3 was executed".
   there is no reproduction to work from. Treat these as the suite's known
   flake — re-run before believing a failure, and do not "fix" them by widening a
   timeout.
-- **A month with zero KEV additions never reaches the chart.** `KevRhythm` draws
-  a genuine zero as a focusable 1px mark (`data-zero`), but `kevByMonthSql`
-  (`src/lib/aggregates.ts:357`) groups only months that have rows and takes the
-  twelve most recent of those. A calendar month with no additions is therefore
-  absent, not drawn as `0`, and the panel's "twelve months" window can span more
-  than twelve calendar months. Found while recapturing the docs screenshots: the
-  seeded corpus had a gap month and the panel rendered 11 bars. Not fixed here —
-  it changes an aggregate, needs a test, and was outside the docs/screenshot
-  scope of this change.

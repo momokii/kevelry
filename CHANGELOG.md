@@ -34,10 +34,22 @@ newest published image remains `3.0.2`.
   full-height hit target; hover and keyboard focus produce identical text (full
   month name, `· UTC`, count, and share of the window total); and the window
   maximum is labelled. A month with no additions is drawn as a focusable 1px mark
-  reading `0` rather than vanishing — although the overview loader still omits a
-  calendar month with no rows entirely, which is recorded as deferred in
-  `docs/plans/data-visibility-standard.md`. The panel gains a "How to read" line
-  and a data table, neither of which existed before.
+  reading `0` rather than vanishing — the loaders emit a dense twelve-month UTC
+  spine, so a calendar month with no rows is a real zero bucket (see Fixed). The
+  panel gains a "How to read" line and a data table, neither of which existed
+  before.
+
+### Fixed
+
+- **The KEV rhythm's "twelve months" is twelve calendar months.** `kevByMonth`
+  grouped only months that had rows and took the twelve most recent of those, so a
+  month with no additions was absent rather than `0`, the window could span more
+  than twelve calendar months, and the chart's zero-bar rendering was
+  unreachable. Both loaders now build the trailing twelve-month UTC spine
+  (`src/lib/kev-months.ts`) and left-join the sparse counts onto it. The caption
+  total is the sum of the twelve bars: the real count inside the window. The
+  aggregate version goes 6 → 7 so a cached sparse snapshot is recomputed rather
+  than served.
 
 ### Changed
 
@@ -66,10 +78,12 @@ newest published image remains `3.0.2`.
 
 ### Tests
 
-- **622 → 629 unit tests.** The seven new cases pin the EPSS precision contract
-  (`displayProbabilityPercentFixed`, `formatEpssPercent`) so a formatter change
-  cannot silently re-round a published probability. The Playwright suite is
-  unchanged at 129 passed / 0 skipped.
+- **622 → 632 unit tests (3 skipped).** The seven EPSS-precision cases pin
+  `displayProbabilityPercentFixed` and `formatEpssPercent` so a formatter change
+  cannot silently re-round a published probability; three more pin the dense KEV
+  month spine (twelve buckets, zeros in the gaps, window-bounded sum) in both the
+  cached and live loaders. The Playwright suite gains one gap-month KEV rhythm
+  assertion (129 → 130 passed / 0 skipped).
 
 ## 3.0.2 — 2026-11-17
 
