@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GraphCohort, GraphEdgeKind, GraphGroup, GraphSummary } from "@/lib/graph";
 import type { CweRef } from "@/lib/cwe-catalog";
 import { CWE_TAXONOMY_UNAVAILABLE, CWE_UNMAPPED_STATE, cweChipName } from "@/lib/cwe-display";
+import { ChartTable } from "../charts/ChartTable";
 import { displayProbabilityPercentFixed } from "../../lib/ranking";
 
 const GROUP_META: Record<GraphEdgeKind, { label: string; hint: string }> = {
@@ -993,36 +994,37 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
         </>
       )}
 
-      <details className="chart-table">
-        <summary>Data table</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <caption className="sr-only">Shared attributes and the records carrying them</caption>
-            <thead>
-              <tr>
-                <th scope="col">Kind</th>
-                <th scope="col">Value</th>
-                <th scope="col">Records</th>
-                <th scope="col">CVE IDs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cohort.groups.map((group) => (
-                <tr key={`${group.kind}:${group.value}`}>
-                  <th scope="row">{GROUP_META[group.kind].label}</th>
-                  <td>
-                    {group.kind === "cwe"
-                      ? cweText(cweRefFor(cohort.cweDetails, group.value))
-                      : group.value}
-                  </td>
-                  <td>{group.cves.length}</td>
-                  <td className="mono">{group.cves.join(", ")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <ChartTable
+        caption="Shared attributes and the records carrying them"
+        rows={cohort.groups}
+        rowKey={(group) => `${group.kind}:${group.value}`}
+        emptyMessage="No shared attribute in this cohort."
+        columns={[
+          {
+            key: "kind",
+            header: "Kind",
+            value: (group) => GROUP_META[group.kind].label,
+          },
+          {
+            key: "value",
+            header: "Value",
+            value: (group) =>
+              group.kind === "cwe"
+                ? cweText(cweRefFor(cohort.cweDetails, group.value))
+                : group.value,
+          },
+          {
+            key: "records",
+            header: "Records",
+            value: (group) => group.cves.length,
+          },
+          {
+            key: "cves",
+            header: "CVE IDs",
+            value: (group) => <span className="mono">{group.cves.join(", ")}</span>,
+          },
+        ]}
+      />
       <MoreDialog
         group={more}
         centerId={cohort.focus ?? ""}

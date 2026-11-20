@@ -8,6 +8,7 @@ import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleBand, scaleLog } from "@visx/scale";
 
+import { ChartTable } from "./ChartTable";
 import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { EPSS_LOG_BINS, formatCompact, formatInt, sharePercent } from "./chartTokens";
 import { useHoverFocusMarks } from "./useHoverFocusMarks";
@@ -187,30 +188,28 @@ export function EpssDistribution({
         probability. Log height keeps the tail visible.{" "}
         {scoreDate !== null ? `Score date ${scoreDate}.` : "No accepted score date."}
       </p>
-      <details className="chart-table">
-        <summary>Data table</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <caption className="sr-only">EPSS log-bucket distribution</caption>
-            <thead>
-              <tr>
-                <th scope="col">EPSS bucket</th>
-                <th scope="col">Records</th>
-                <th scope="col">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {EPSS_LOG_BINS.map((bin, index) => (
-                <tr key={bin.label}>
-                  <th scope="row">{bin.label}</th>
-                  <td>{formatInt(histogram[index] ?? 0)}</td>
-                  <td>{sharePercent(histogram[index] ?? 0, total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <ChartTable
+        caption="EPSS log-bucket distribution"
+        rows={EPSS_LOG_BINS}
+        rowKey={(bin) => bin.label}
+        columns={[
+          {
+            key: "bucket",
+            header: "EPSS bucket",
+            value: (bin) => bin.label,
+          },
+          {
+            key: "records",
+            header: "Records",
+            value: (bin, index) => formatInt(histogram[index] ?? 0),
+          },
+          {
+            key: "share",
+            header: "Share",
+            value: (bin, index) => sharePercent(histogram[index] ?? 0, total),
+          },
+        ]}
+      />
     </div>
   );
 }

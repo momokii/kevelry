@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { isSeverityBand } from "../explore/filter-meta";
+import { ChartTable } from "./ChartTable";
 import { SEVERITY_META, SEVERITY_ORDER, formatInt, sharePercent } from "./chartTokens";
 
 const SIZE = 220;
@@ -140,30 +141,29 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
           })}
         </ul>
       </div>
-      <details className="chart-table">
-        <summary>Data table</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <caption className="sr-only">Severity composition</caption>
-            <thead>
-              <tr>
-                <th scope="col">Band</th>
-                <th scope="col">Published</th>
-                <th scope="col">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SEVERITY_ORDER.map((band) => (
-                <tr key={band}>
-                  <th scope="row">{SEVERITY_META[band].label}</th>
-                  <td>{formatInt(bands[band] ?? 0)}</td>
-                  <td>{sharePercent(bands[band] ?? 0, total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <ChartTable
+        caption="Severity composition"
+        rows={SEVERITY_ORDER}
+        rowKey={(band) => band}
+        emptyMessage="No severity band in this cohort."
+        columns={[
+          {
+            key: "band",
+            header: "Band",
+            value: (band) => SEVERITY_META[band].label,
+          },
+          {
+            key: "published",
+            header: "Published",
+            value: (band) => formatInt(bands[band] ?? 0),
+          },
+          {
+            key: "share",
+            header: "Share",
+            value: (band) => sharePercent(bands[band] ?? 0, total),
+          },
+        ]}
+      />
     </div>
   );
 }

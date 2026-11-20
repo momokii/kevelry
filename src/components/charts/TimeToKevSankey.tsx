@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ChartTable } from "./ChartTable";
 import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatInt, sharePercent } from "./chartTokens";
 import { useHoverFocusMarks } from "./useHoverFocusMarks";
@@ -612,36 +613,34 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
         width is the record count; {formatInt(flow.excluded)} KEV records are excluded for a missing
         publication date. Hover or focus a node to isolate its flows.
       </p>
-      <details className="chart-table">
-        <summary>Data table</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <caption className="sr-only">Publication cohort by days until KEV confirmation</caption>
-            <thead>
-              <tr>
-                <th scope="col">Publication cohort</th>
-                <th scope="col">Days until confirmed</th>
-                <th scope="col">Records</th>
-                <th scope="col">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {links.map((link) => {
-                const from = flow.nodes.find((node) => node.id === link.from);
-                const to = flow.nodes.find((node) => node.id === link.to);
-                return (
-                  <tr key={`${link.from}->${link.to}`}>
-                    <th scope="row">{from?.label ?? link.from}</th>
-                    <td>{to?.label ?? link.to}</td>
-                    <td>{formatInt(link.count)}</td>
-                    <td>{sharePercent(link.count, total)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <ChartTable
+        caption="Publication cohort by days until KEV confirmation"
+        rows={links}
+        rowKey={(link) => `${link.from}->${link.to}`}
+        emptyMessage="No link carries both a publication and a KEV date."
+        columns={[
+          {
+            key: "cohort",
+            header: "Publication cohort",
+            value: (link) => flow.nodes.find((node) => node.id === link.from)?.label ?? link.from,
+          },
+          {
+            key: "days",
+            header: "Days until confirmed",
+            value: (link) => flow.nodes.find((node) => node.id === link.to)?.label ?? link.to,
+          },
+          {
+            key: "records",
+            header: "Records",
+            value: (link) => formatInt(link.count),
+          },
+          {
+            key: "share",
+            header: "Share",
+            value: (link) => sharePercent(link.count, total),
+          },
+        ]}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleLinear } from "@visx/scale";
 
+import { ChartTable } from "./ChartTable";
 import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatCompact, formatInt, monthLong, monthShort, sharePercent } from "./chartTokens";
 import { useHoverFocusMarks } from "./useHoverFocusMarks";
@@ -183,29 +184,28 @@ export function CumulativeChart({
         {sharePercent(last.cumulative, publishedTotal)} of the current corpus). The line is
         cumulative, not a forecast; older records outside the window are not shown.
       </p>
-      <details className="chart-table">
-        <summary>Data table</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col">Published</th>
-                <th scope="col">Cumulative</th>
-              </tr>
-            </thead>
-            <tbody>
-              {points.map((point) => (
-                <tr key={point.month}>
-                  <th scope="row">{monthLong(point.month)}</th>
-                  <td>{formatInt(point.count)}</td>
-                  <td>{formatInt(point.cumulative)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <ChartTable
+        caption="Cumulative published CVE counts by UTC month"
+        rows={points}
+        rowKey={(point) => point.month}
+        columns={[
+          {
+            key: "month",
+            header: "Month",
+            value: (point) => monthLong(point.month),
+          },
+          {
+            key: "published",
+            header: "Published",
+            value: (point) => formatInt(point.count),
+          },
+          {
+            key: "cumulative",
+            header: "Cumulative",
+            value: (point) => formatInt(point.cumulative),
+          },
+        ]}
+      />
     </div>
   );
 }

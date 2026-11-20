@@ -11,6 +11,7 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 
 import { dailyWindow, monthExploreHref, weeklyVolume } from "@/components/overview/chartData";
 
+import { ChartTable } from "./ChartTable";
 import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatCompact, formatInt, monthLong, monthShort, sharePercent } from "./chartTokens";
 import { useHoverFocusMarks } from "./useHoverFocusMarks";
@@ -431,30 +432,28 @@ export function VolumeChart({
           ) : null
         }
       </ParentSize>
-      <details className="chart-table">
-        <summary>Data table</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <caption className="sr-only">Published CVE counts by UTC month</caption>
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col">Published</th>
-                <th scope="col">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((entry) => (
-                <tr key={entry.month}>
-                  <th scope="row">{monthLong(entry.month)}</th>
-                  <td>{formatInt(entry.count)}</td>
-                  <td>{sharePercent(entry.count, publishedTotal)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <ChartTable
+        caption="Published CVE counts by UTC month"
+        rows={visible}
+        rowKey={(entry) => entry.month}
+        columns={[
+          {
+            key: "month",
+            header: "Month",
+            value: (entry) => monthLong(entry.month),
+          },
+          {
+            key: "published",
+            header: "Published",
+            value: (entry) => formatInt(entry.count),
+          },
+          {
+            key: "share",
+            header: "Share",
+            value: (entry) => sharePercent(entry.count, publishedTotal),
+          },
+        ]}
+      />
     </div>
   );
 }
