@@ -1,7 +1,12 @@
+"use client";
+
+import { useRef, useState } from "react";
+
 import type { CohortFacets, EpssFilter, KevFilter, SeverityBand } from "@/lib/search";
 
+import { ChartTooltip, type ChartTooltipAnchor } from "../charts/ChartTooltip";
 import { SEVERITY_META, SEVERITY_ORDER, formatInt, sharePercent } from "../charts/chartTokens";
-import { monthShort } from "../charts/chartTokens";
+import { monthLong, monthShort } from "../charts/chartTokens";
 import { SEVERITY_LABELS } from "./filter-meta";
 
 export interface CohortLinkParams {
@@ -68,6 +73,36 @@ function monthHref(params: CohortLinkParams, defaultLimit: number, month: string
 export function CohortVisualization({ facets, params, defaultLimit }: CohortVisualizationProps) {
   const total = facets.total;
   const peakMonth = facets.byMonth.reduce((max, entry) => Math.max(max, entry.count), 0);
+  // Hover and focus write separate slots and render the same strings, so the
+  // keyboard reading survives the pointer leaving the row.
+  const [hoverMonth, setHoverMonth] = useState<{
+    month: string;
+    anchor: ChartTooltipAnchor;
+  } | null>(null);
+  const [focusMonth, setFocusMonth] = useState<{
+    month: string;
+    anchor: ChartTooltipAnchor;
+  } | null>(null);
+  const monthTip = hoverMonth ?? focusMonth;
+  const monthHostRef = useRef<HTMLDivElement | null>(null);
+
+  /** The month row's rect inside the chart host, so the tooltip clamps to it. */
+  const anchorFor = (node: Element): ChartTooltipAnchor => {
+    const host = monthHostRef.current;
+    if (host === null) return { x: 0, y: 0 };
+    const rect = node.getBoundingClientRect();
+    const box = host.getBoundingClientRect();
+    return {
+      x: rect.left - box.left,
+      y: rect.top - box.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
+  const tipMonth =
+    monthTip === null
+      ? null
+      : (facets.byMonth.find((entry) => entry.month === monthTip.month) ?? null);
 
   return (
     <section
@@ -111,7 +146,8 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
                       className="severity-row"
                       href={severityHref(params, defaultLimit, band)}
                       data-testid={`explore-cohort-severity-${band}`}
-                      title={`${SEVERITY_LABELS[band]}: ${formatInt(count)} (${sharePercent(count, total)} of the cohort). Show only this band.`}
+                      // The row prints the count and the share; the accessible
+                      // name adds the action. A native `title` duplicated both.
                       aria-label={`${SEVERITY_LABELS[band]}: ${formatInt(count)}, ${sharePercent(count, total)} of the cohort. Show only this band.`}
                     >
                       <span className="severity-label">
@@ -144,34 +180,65 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
 
           <div className="cohort-block">
             <h3>Matching records by UTC month</h3>
-            <ul className="cohort-months" data-testid="explore-cohort-months">
-              {facets.byMonth.map((entry) => {
-                const href = monthHref(params, defaultLimit, entry.month);
-                if (href === null) return null;
-                return (
-                  <li key={entry.month}>
-                    <a
-                      className="cohort-month"
-                      href={href}
-                      data-testid={`explore-cohort-month-${entry.month}`}
-                      title={`${monthShort(entry.month)}: ${formatInt(entry.count)} matching records (${sharePercent(entry.count, total)}). Show only this month.`}
-                      aria-label={`${monthShort(entry.month)}: ${formatInt(entry.count)} records, ${sharePercent(entry.count, total)} of the cohort. Show only this month.`}
-                    >
-                      <span className="cohort-month-label">{monthShort(entry.month)}</span>
-                      <span className="cohort-month-track" aria-hidden="true">
-                        <span
-                          className="cohort-month-fill"
-                          style={{
-                            width: `${peakMonth > 0 ? (entry.count / peakMonth) * 100 : 0}%`,
-                          }}
-                        />
-                      </span>
-                      <span className="cohort-month-count">{formatInt(entry.count)}</span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
+            {/* `chart-frame` is the positioned host the tooltip clamps to. */}
+            <div className="chart-frame" ref={monthHostRef}>
+              {monthTip === null || tipMonth === null ? null : (
+                <ChartTooltip
+                  label={`${monthLong(tipMonth.month)} · UTC`}
+                  value={formatInt(tipMonth.count)}
+                  unit="matching records"
+                  context={[
+                    `${sharePercent(tipMonth.count, total)} of the ${formatInt(total)} matching records`,
+                  ]}
+                  anchor={monthTip.anchor}
+                  testId="explore-cohort-tooltip"
+                />
+              )}
+              <ul className="cohort-months" data-testid="explore-cohort-months">
+                {facets.byMonth.map((entry) => {
+                  const href = monthHref(params, defaultLimit, entry.month);
+                  if (href === null) return null;
+                  return (
+                    <li key={entry.month}>
+                      <a
+                        className="cohort-month"
+                        href={href}
+                        data-testid={`explore-cohort-month-${entry.month}`}
+                        // The count is printed at the mark; hover and focus both
+                        // open the tooltip with the exact share of the cohort, so
+                        // the row no longer leans on a native `title`.
+                        aria-label={`${monthShort(entry.month)}: ${formatInt(entry.count)} records, ${sharePercent(entry.count, total)} of the cohort. Show only this month.`}
+                        onPointerEnter={(event) =>
+                          setHoverMonth({
+                            month: entry.month,
+                            anchor: anchorFor(event.currentTarget),
+                          })
+                        }
+                        onPointerLeave={() => setHoverMonth(null)}
+                        onFocus={(event) =>
+                          setFocusMonth({
+                            month: entry.month,
+                            anchor: anchorFor(event.currentTarget),
+                          })
+                        }
+                        onBlur={() => setFocusMonth(null)}
+                      >
+                        <span className="cohort-month-label">{monthShort(entry.month)}</span>
+                        <span className="cohort-month-track" aria-hidden="true">
+                          <span
+                            className="cohort-month-fill"
+                            style={{
+                              width: `${peakMonth > 0 ? (entry.count / peakMonth) * 100 : 0}%`,
+                            }}
+                          />
+                        </span>
+                        <span className="cohort-month-count">{formatInt(entry.count)}</span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           </div>
 
           <div className="cohort-block">

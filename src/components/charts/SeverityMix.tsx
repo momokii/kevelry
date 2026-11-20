@@ -19,8 +19,11 @@ export function SeverityMix({
               className="severity-row"
               href={`/explore?severity=${band}`}
               data-testid={`overview-severity-${band}`}
-              title={`${meta.label}: ${formatInt(count)} published (${share} of the corpus). ${meta.note}.`}
-              aria-label={`${meta.label}: ${formatInt(count)} published, ${share} of the corpus. Open in Explore.`}
+              // No `title`: the row prints the count and the share, and the
+              // accessible name carries both plus the action, so the native
+              // tooltip was a second, slower copy of visible text. The one fact
+              // it alone held (what the band is scored from) moved into the name.
+              aria-label={`${meta.label}: ${formatInt(count)} published, ${share} of the corpus. ${meta.note}. Open in Explore.`}
             >
               <span className="severity-label">
                 <span

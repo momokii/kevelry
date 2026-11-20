@@ -515,10 +515,22 @@ test.describe("cohort visualization", () => {
       expect(firstHref ?? "", "month link sets a month range").toMatch(/dateStart=\d{4}-\d{2}-01/);
       expect(firstHref ?? "", "month link sets a month range").toMatch(/dateEnd=\d{4}-\d{2}-01/);
 
-      const title = await monthLinks.first().getAttribute("title");
-      expect(title ?? "", "month tooltip names the denominator").toMatch(/matching records/);
+      // The retired native `title` is a real tooltip now: hovering and focusing
+      // the same month must produce the same reading, and it names its denominator.
+      await monthLinks.first().hover();
+      const monthTip = page.getByTestId("explore-cohort-tooltip");
+      await expect(monthTip, "month tooltip opens on hover").toBeVisible();
+      const hoveredTip = (await monthTip.textContent()) ?? "";
+      expect(hoveredTip, "month tooltip prints the exact count").toMatch(/\d/);
+      expect(hoveredTip, "month tooltip names the denominator").toMatch(/matching records/);
+      await monthLinks.first().focus();
+      await expect(monthTip, "month tooltip is identical on focus").toHaveText(hoveredTip);
       const label = await monthLinks.first().getAttribute("aria-label");
       expect(label ?? "", "month link has an accessible name").toContain("Show only");
+      await expect(monthLinks.first(), "month bar carries no native title").not.toHaveAttribute(
+        "title",
+        /matching records/,
+      );
 
       await monthLinks.first().focus();
       await expect(monthLinks.first(), "month bar keyboard-focusable").toBeFocused();

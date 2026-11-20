@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ChartTooltip, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatInt, sharePercent } from "./chartTokens";
 import { FLOW_SAMPLE_CAP, type SankeyLink, type TimeToKev } from "@/lib/time-to-kev";
 
@@ -28,13 +29,26 @@ interface PlacedNode {
   height: number;
 }
 
+/** One drawn flow. `d` is geometry; the counts and shares are the values. */
+interface SankeyBand {
+  key: string;
+  count: number;
+  fromLabel: string;
+  toLabel: string;
+  thicknessOut: number;
+  thicknessIn: number;
+  d: string;
+}
+
 /**
  * Two-column Sankey: publication cohort → days until KEV confirmation.
  *
  * Deterministic layout (no simulation): each column stacks its nodes in the
  * order the caller supplies and distributes height by count, so the same data
- * always draws the same picture. Every band carries a `<title>` with the exact
- * count and share, and the same series is available as a data table.
+ * always draws the same picture. Every band is a mark: hover and keyboard focus
+ * produce the same `ChartTooltip` (flow, exact count, share of the eligible
+ * total), Enter/Space pins the flow and opens its records, Escape clears. The
+ * same series is available as a data table.
  */
 
 const PAGE_SIZE = 10;
@@ -249,6 +263,16 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
     { kind: "band"; key: string } | { kind: "node"; id: string } | null
   >(null);
   const [detail, setDetail] = useState<FlowSelection | null>(null);
+  // Which band the tooltip describes. Hover and focus write separate slots and
+  // render the same component with the same strings, so the pointer leaving the
+  // chart cannot blank a reading the keyboard still has focus on.
+  const [hoverBand, setHoverBand] = useState<{ key: string; anchor: ChartTooltipAnchor } | null>(
+    null,
+  );
+  const [focusBand, setFocusBand] = useState<{ key: string; anchor: ChartTooltipAnchor } | null>(
+    null,
+  );
+  const hostRef = useRef<HTMLDivElement | null>(null);
 
   const { nodes, links } = useMemo(() => {
     const left = flow.nodes.filter((node) => node.column === "cohort");
@@ -282,7 +306,7 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
   const outgoingCursor = new Map<string, number>();
   const incomingCursor = new Map<string, number>();
   const bands = links
-    .map((link: SankeyLink) => {
+    .map((link: SankeyLink): SankeyBand | null => {
       const from = byId.get(link.from);
       const to = byId.get(link.to);
       if (from === undefined || to === undefined) return null;
@@ -315,7 +339,7 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
           `C ${mid} ${y1 + thicknessIn}, ${mid} ${y0 + thicknessOut}, ${x0} ${y0 + thicknessOut} Z`,
       };
     })
-    .filter((band): band is NonNullable<typeof band> => band !== null);
+    .filter((band): band is SankeyBand => band !== null);
 
   const total = flow.eligible;
   const labelOf = (id: string): string => flow.nodes.find((node) => node.id === id)?.label ?? id;
@@ -385,6 +409,8 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
   const clearSelection = (): void => {
     setPinned(null);
     setDetail(null);
+    setHoverBand(null);
+    setFocusBand(null);
   };
 
   const toggleBand = (bandKey: string): void => {
@@ -415,12 +441,42 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
             .sort((a, b) => b.count - a.count),
         };
 
+  const bandTip = hoverBand ?? focusBand;
+  const tipBand =
+    bandTip === null ? null : (bands.find((band) => band.key === bandTip.key) ?? null);
+
+  /** The band's rect inside the chart host, so the tooltip clamps to the frame. */
+  const anchorFor = (node: Element): ChartTooltipAnchor => {
+    const host = hostRef.current;
+    if (host === null) return { x: 0, y: 0 };
+    const rect = node.getBoundingClientRect();
+    const box = host.getBoundingClientRect();
+    return {
+      x: rect.left - box.left,
+      y: rect.top - box.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
+
   return (
-    <div className="chart-frame">
+    <div className="chart-frame" ref={hostRef}>
+      {bandTip === null || tipBand === null ? null : (
+        <ChartTooltip
+          label={`${tipBand.fromLabel} → ${tipBand.toLabel}`}
+          value={formatInt(tipBand.count)}
+          unit="records"
+          context={[`${sharePercent(tipBand.count, total)} of ${formatInt(total)} with both dates`]}
+          anchor={bandTip.anchor}
+          testId="overview-time-to-kev-tooltip"
+        />
+      )}
       <svg
         className="chart-svg"
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        role="img"
+        // A group, not an image: the bands and nodes below are pinned by click
+        // and by Enter, so an `img` role here would flatten them out of the tree.
+        role="group"
         aria-label={`Time from publication to KEV confirmation: ${formatInt(total)} records across ${nodes.filter((node) => node.column === "cohort").length} publication cohorts and ${nodes.filter((node) => node.column === "lag").length} delay buckets.`}
         data-testid="overview-time-to-kev-svg"
       >
@@ -438,7 +494,7 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
             role="button"
             tabIndex={0}
             aria-pressed={band.key === pinnedBandKey}
-            aria-label={`${band.fromLabel} to ${band.toLabel}: ${formatInt(band.count)} records. Open details.`}
+            aria-label={`${band.fromLabel} to ${band.toLabel}: ${formatInt(band.count)} records, ${sharePercent(band.count, total)} of ${formatInt(total)} with both dates. Open details.`}
             onClick={() => toggleBand(band.key)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -447,10 +503,16 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
               }
               if (event.key === "Escape") clearSelection();
             }}
+            onPointerEnter={(event) =>
+              setHoverBand({ key: band.key, anchor: anchorFor(event.currentTarget) })
+            }
+            onPointerLeave={() => setHoverBand(null)}
+            onFocus={(event) =>
+              setFocusBand({ key: band.key, anchor: anchorFor(event.currentTarget) })
+            }
+            onBlur={() => setFocusBand(null)}
             style={{ cursor: "pointer", outline: "none" }}
-          >
-            <title>{`${band.fromLabel} → ${band.toLabel}: ${formatInt(band.count)} records (${sharePercent(band.count, total)} of ${formatInt(total)} with both dates)`}</title>
-          </path>
+          />
         ))}
         {nodes.map((node) => {
           const active = hover === node.id || pinnedNodeId === node.id;
