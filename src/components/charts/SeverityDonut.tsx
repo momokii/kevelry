@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { isSeverityBand } from "../explore/filter-meta";
 import { SEVERITY_META, SEVERITY_ORDER, formatInt, sharePercent } from "./chartTokens";
 
 const SIZE = 220;
@@ -28,11 +29,16 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
     <div data-testid="overview-severity-donut">
       <div className="donut-layout">
         <div className="donut-wrap">
+          {/*
+            A group, not an image: each segment is a link to the same
+            severity-filtered Explore view the legend uses, and `role="img"`
+            would flatten those links out of the tree.
+          */}
           <svg
             viewBox={`0 0 ${SIZE} ${SIZE}`}
             className="donut"
-            role="img"
-            aria-label={`Severity composition of ${formatInt(total)} published CVEs. Hover or focus a segment for details.`}
+            role="group"
+            aria-label={`Severity composition of ${formatInt(total)} published CVEs. Each segment opens that band in Explore.`}
           >
             <circle
               cx={CENTER}
@@ -45,9 +51,12 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
             {segments.map((segment) => {
               const meta = SEVERITY_META[segment.band as keyof typeof SEVERITY_META];
               const isActive = active === segment.band;
-              return (
+              // A segment acts only when Explore accepts its band as a filter
+              // value. Anything else stays a labelled, non-interactive mark:
+              // never a button that does nothing.
+              const filterable = isSeverityBand(segment.band);
+              const ring = (
                 <circle
-                  key={segment.band}
                   cx={CENTER}
                   cy={CENTER}
                   r={RADIUS}
@@ -57,18 +66,35 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
                   strokeDasharray={`${Math.max(0.5, segment.length - 2)} ${CIRCUMFERENCE}`}
                   strokeDashoffset={-segment.offset}
                   transform={`rotate(-90 ${CENTER} ${CENTER})`}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${meta.label}: ${formatInt(segment.count)} published, ${sharePercent(segment.count, total)} of the corpus.`}
-                  onMouseEnter={() => setActive(segment.band)}
-                  onMouseLeave={() => setActive(null)}
-                  onFocus={() => setActive(segment.band)}
-                  onBlur={() => setActive(null)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setActive(null);
-                  }}
-                  style={{ cursor: "pointer" }}
                 />
+              );
+              const name = `${meta.label}: ${formatInt(segment.count)} published, ${sharePercent(segment.count, total)} of the corpus.`;
+              const highlight = {
+                onMouseEnter: () => setActive(segment.band),
+                onMouseLeave: () => setActive(null),
+                onFocus: () => setActive(segment.band),
+                onBlur: () => setActive(null),
+              };
+              return filterable ? (
+                <a
+                  key={segment.band}
+                  href={`/explore?severity=${segment.band}`}
+                  aria-label={`${name} Open in Explore.`}
+                  data-testid={`overview-donut-segment-${segment.band}`}
+                  style={{ cursor: "pointer" }}
+                  {...highlight}
+                >
+                  {ring}
+                </a>
+              ) : (
+                <g
+                  key={segment.band}
+                  role="img"
+                  aria-label={name}
+                  data-testid={`overview-donut-segment-${segment.band}`}
+                >
+                  {ring}
+                </g>
               );
             })}
             <text x={CENTER} y={CENTER - 6} textAnchor="middle" className="donut-center-label">

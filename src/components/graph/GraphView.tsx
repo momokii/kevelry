@@ -418,13 +418,24 @@ function EgoGraph({
 
   return (
     <div className="graph-svg-wrap">
+      {/*
+        The drawing's own heading, for the `aria-labelledby` below. The SVG is
+        a group rather than an image because the leaves inside it are links and
+        the `+N more` pills are buttons: an `img` role flattens both away.
+      */}
+      <h3 id="ego-graph-heading" className="sr-only">
+        {`Relationship graph for ${center}: ${laid.length} shared attributes and ${laid.reduce(
+          (n, row) => n + row.children.length,
+          0,
+        )} linked records. Each record name is a link that re-centers on it.`}
+      </h3>
       <svg
         className="graph-svg"
         viewBox={`0 0 ${SVG_W} ${totalHeight}`}
         width="100%"
         height={totalHeight}
-        role="img"
-        aria-label={`Relationship graph for ${center}: ${laid.length} shared attributes and ${laid.reduce((n, row) => n + row.children.length, 0)} linked records.`}
+        role="group"
+        aria-labelledby="ego-graph-heading"
         data-testid="graph-svg"
       >
         {laid.map((row) => {
