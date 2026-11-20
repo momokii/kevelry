@@ -48,7 +48,9 @@ function clampIndex(index: number, count: number): number {
   return Math.min(Math.max(index, 0), count - 1);
 }
 
-function steppedIndex(
+/** The index an arrow/Home/End keypress moves to, or null when the key is not a
+ * step. Exported so the wrap at both ends is pinned without a DOM. */
+export function steppedIndex(
   key: string,
   index: number,
   count: number,
@@ -56,10 +58,13 @@ function steppedIndex(
 ): number | null {
   const last = Math.max(0, count - 1);
   if (key === (orientation === "vertical" ? "ArrowDown" : "ArrowRight")) {
-    return Math.min(last, index + 1);
+    // Wrap: every chart here enters on its latest mark, so a clamped step would
+    // make the first Right press a no-op. Wrapping also keeps the direction the
+    // reader came from (Left walks back, Right walks forward and returns).
+    return index >= last ? 0 : index + 1;
   }
   if (key === (orientation === "vertical" ? "ArrowUp" : "ArrowLeft")) {
-    return Math.max(0, index - 1);
+    return index <= 0 ? last : index - 1;
   }
   if (key === "Home") return 0;
   if (key === "End") return last;
@@ -68,8 +73,11 @@ function steppedIndex(
 
 /**
  * The keyboard contract for a dense chart: the group of marks is one Tab stop,
- * Arrow/Home/End move between marks, and the active mark is clamped (never
- * wrapping, so End on the last mark stays put instead of jumping home).
+ * Arrow/Home/End move between marks, and the arrows wrap at both ends: Right on
+ * the last mark goes to the first, Left on the first goes to the last. Wrapping
+ * is what makes the first keypress after entering meaningful, because these
+ * charts enter on their latest mark (the default state the data-visibility
+ * standard requires) instead of on the left edge. Home and End stay absolute.
  *
  * Focus moves to the real mark node rather than staying on a container, which is
  * what `DensityMatrix` already does: the focused element's own `aria-label` is the

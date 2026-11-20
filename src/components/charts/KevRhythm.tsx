@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ChartTable } from "./ChartTable";
 import { ChartTooltip, type ChartTooltipAnchor } from "./ChartTooltip";
@@ -43,6 +43,12 @@ function monthLabel(
  * window maximum, which the panel's "How to read" line names. Every value also
  * exists without hover: the caption prints the window total and the disclosure
  * lists all twelve months.
+ *
+ * Touch is first class: a tap pins the tooltip and it stays after the finger
+ * lifts, because a touch pointer leaves the bar on lift and clearing there is
+ * exactly what erased the readout. The pin survives until another tap (which
+ * moves it, or closes it when it lands on the same bar) or a tap outside the
+ * chart. Mouse hover still clears on leave.
  */
 export function KevRhythm({
   months,
@@ -53,8 +59,24 @@ export function KevRhythm({
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  const [touchPinned, setTouchPinned] = useState(false);
   const [anchor, setAnchor] = useState<ChartTooltipAnchor>({ x: 0, y: 0 });
   const hostRef = useRef<HTMLDivElement | null>(null);
+
+  // A pinned touch readout is dismissed by the next tap outside the chart, which
+  // is the only way touch can express "look away". Inert while nothing is pinned.
+  useEffect(() => {
+    if (!touchPinned) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      const host = hostRef.current;
+      if (host !== null && event.target instanceof Node && host.contains(event.target)) return;
+      setHoverIndex(null);
+      setTouchPinned(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    return () => document.removeEventListener("pointerdown", dismissOutside, true);
+  }, [touchPinned]);
 
   const scaleMax = Math.max(1, ...months.map((entry) => entry.count));
   const peak = months.reduce<{ month: string; count: number } | null>(
@@ -103,7 +125,11 @@ export function KevRhythm({
         className="kev-bars"
         role="group"
         aria-label={`KEV catalog additions by UTC month: ${months.length} months, ${formatInt(total)} additions${peak === null ? "" : `, window maximum ${formatInt(peak.count)} in ${monthLong(peak.month)}`}.`}
-        onPointerLeave={() => setHoverIndex(null)}
+        onPointerLeave={(event) => {
+          // A touch pointer leaves the bar when the finger lifts; clearing there
+          // is what made a tap flash the tooltip and lose it. Mouse still clears.
+          if (event.pointerType !== "touch") setHoverIndex(null);
+        }}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
             setFocusIndex(null);
@@ -126,12 +152,39 @@ export function KevRhythm({
               ref={roving.registerMark(index)}
               onFocus={(event) => {
                 roving.setActiveIndex(index);
+                // A touch tap focuses the bar too (it is a tab stop), but it is
+                // not a request to read the bar with the keyboard: the pin owns
+                // the readout, and a focus index alive in parallel would keep the
+                // tooltip open after the second tap that should close it.
+                if (!event.currentTarget.matches(":focus-visible")) {
+                  setFocusIndex(null);
+                  return;
+                }
                 setFocusIndex(index);
                 setAnchor(anchorFor(event.currentTarget));
               }}
               onPointerEnter={(event) => {
+                // Touch is handled by pointerdown (tap = pin); pointerenter also
+                // fires on the way down and would fight the pin toggle.
+                if (event.pointerType === "touch") return;
                 setHoverIndex(index);
                 setAnchor(anchorFor(event.currentTarget));
+              }}
+              onPointerDown={(event) => {
+                if (event.pointerType !== "touch") return;
+                // The tap's own focus event follows this handler; keep the
+                // keyboard readout out of it.
+                setFocusIndex(null);
+                // Tap = pin. A second tap on the pinned bar closes it; a tap on
+                // another bar moves the pin there.
+                if (touchPinned && hoverIndex === index) {
+                  setHoverIndex(null);
+                  setTouchPinned(false);
+                  return;
+                }
+                setAnchor(anchorFor(event.currentTarget));
+                setHoverIndex(index);
+                setTouchPinned(true);
               }}
               onKeyDown={roving.markProps(index).onKeyDown}
             >

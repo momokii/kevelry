@@ -662,15 +662,128 @@ function epssObservationFacts(
   return facts.slice(0, 2);
 }
 
-/** Dated EPSS trend sparkline: linear 0..1 probability plot, oldest left.
- * Display geometry only (pixel positions); never a comparison or a score. */
-function EpssTrend({ points }: { points: EpssTrendPoint[] }) {
-  const values = points.map((point) => {
-    const parsed = Number(point.epss);
+/** One stored EPSS probability as a number in [0, 1], or null when the stored
+ * value is not a number. A missing observation is null, never 0. */
+export function epssTrendValues(points: ReadonlyArray<{ epss: string }>): Array<number | null> {
+  return points.map((point) => {
+    const text = point.epss.trim();
+    if (text === "") return null;
+    const parsed = Number(text);
     return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : null;
   });
-  if (values.length < 2 || values.some((value) => value === null)) return null;
-  return <EpssTrendPlot points={points} values={values as number[]} />;
+}
+
+/** Plot x for a point index, in the 0..100 viewBox. */
+function trendX(index: number, count: number): number {
+  return count <= 1 ? 0 : (index / (count - 1)) * 100;
+}
+
+/** Plot y for a probability, in the 0..36 viewBox (0 sits on the 34 baseline). */
+function trendY(value: number): number {
+  return 34 - value * 32;
+}
+
+/** A run of consecutive observations. */
+export interface EpssTrendRun {
+  /** Index of the run's first observation in the series. */
+  start: number;
+  /** Index of the run's last observation in the series. */
+  end: number;
+  coords: Array<{ x: number; y: number }>;
+}
+
+/**
+ * Consecutive observations, oldest first.
+ *
+ * One polyline is drawn per run, so a missing observation is a visible break:
+ * the line never interpolates across a gap and no point is plotted at zero for a
+ * date that has no value.
+ */
+export function epssTrendRuns(values: ReadonlyArray<number | null>): EpssTrendRun[] {
+  const count = values.length;
+  const runs: EpssTrendRun[] = [];
+  let current: EpssTrendRun | null = null;
+  values.forEach((value, index) => {
+    if (value === null) {
+      current = null;
+      return;
+    }
+    if (current === null) {
+      current = { start: index, end: index, coords: [] };
+      runs.push(current);
+    }
+    current.end = index;
+    current.coords.push({ x: trendX(index, count), y: trendY(value) });
+  });
+  return runs;
+}
+
+/** Indices that carry an observation, oldest first. */
+export function epssObservedIndices(values: ReadonlyArray<number | null>): number[] {
+  const indices: number[] = [];
+  values.forEach((value, index) => {
+    if (value !== null) indices.push(index);
+  });
+  return indices;
+}
+
+/** How many observations in the window are absent. */
+export function epssMissingCount(values: ReadonlyArray<number | null>): number {
+  return values.filter((value) => value === null).length;
+}
+
+/**
+ * The observation nearest a 0..1 pointer fraction, by its x position.
+ *
+ * A missing date is never the answer: the pointer and the keyboard skip it, so a
+ * date with no value can never be shown carrying a neighbouring date's number.
+ */
+export function epssNearestObservedIndex(
+  values: ReadonlyArray<number | null>,
+  fraction: number,
+): number | null {
+  const count = values.length;
+  const observed = epssObservedIndices(values);
+  const first = observed[0];
+  if (first === undefined) return null;
+  const clamped = Math.min(1, Math.max(0, fraction));
+  let best = first;
+  let bestDistance = Math.abs(trendX(best, count) / 100 - clamped);
+  for (const index of observed) {
+    const distance = Math.abs(trendX(index, count) / 100 - clamped);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** The window's lowest and highest observation, by index. A missing observation
+ * never wins the comparison. */
+export function epssTrendExtremes(values: ReadonlyArray<number | null>): {
+  min: { index: number; value: number } | null;
+  max: { index: number; value: number } | null;
+} {
+  let min: { index: number; value: number } | null = null;
+  let max: { index: number; value: number } | null = null;
+  values.forEach((value, index) => {
+    if (value === null) return;
+    if (min === null || value < min.value) min = { index, value };
+    if (max === null || value > max.value) max = { index, value };
+  });
+  return { min, max };
+}
+
+/** Dated EPSS trend sparkline: linear 0..1 probability plot, oldest left.
+ * Display geometry only (pixel positions); never a comparison or a score. */
+export function EpssTrend({ points }: { points: EpssTrendPoint[] }) {
+  const values = epssTrendValues(points);
+  // A gap is not a reason to hide the figure: two dated observations and at
+  // least one real value are what the plot needs, and the caption states the
+  // rest. Hiding the whole figure would erase the observations that do exist.
+  if (values.length < 2 || epssObservedIndices(values).length === 0) return null;
+  return <EpssTrendPlot points={points} values={values} />;
 }
 
 /** The plot itself. 25–45 observations across a ~300px strip are 7–20px wide,
@@ -678,44 +791,57 @@ function EpssTrend({ points }: { points: EpssTrendPoint[] }) {
  * the plot maps pointer x to the nearest observation, Arrow/Home/End step the
  * same index from the keyboard, and the active point is marked. No value is
  * hover-only — the caption prints the window range and the disclosure lists
- * every observation. */
-function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: number[] }) {
+ * every observation. A missing observation is not a mark: the line breaks at
+ * the gap and the pointer, the keyboard and the announcement skip that date.
+ * The strip stays over the whole plot width, so its hit band never shrinks. */
+function EpssTrendPlot({
+  points,
+  values,
+}: {
+  points: EpssTrendPoint[];
+  values: Array<number | null>;
+}) {
   const count = points.length;
-  const latest = count - 1;
+  const observed = epssObservedIndices(values);
+  const missing = epssMissingCount(values);
+  const latestObserved = observed[observed.length - 1] as number;
+  const runs = epssTrendRuns(values);
+  const extremes = epssTrendExtremes(values);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [focused, setFocused] = useState(false);
   const [anchor, setAnchor] = useState<ChartTooltipAnchor>({ x: 0, y: 0 });
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   const roving = useRovingMarkFocus({
-    count,
-    initialIndex: latest,
-    describe: (index) => epssObservationText(points[index] as EpssTrendPoint),
+    count: observed.length,
+    initialIndex: observed.length - 1,
+    describe: (position) => {
+      const point = points[observed[position] as number];
+      return point === undefined ? "" : epssObservationText(point);
+    },
     onDismiss: () => {
       setHoverIndex(null);
       setFocused(false);
       stripRef.current?.blur();
     },
   });
-  const active = roving.activeIndex;
+  // `roving` counts observations, not dates: translate back to the series index.
+  const active = observed[roving.activeIndex] ?? latestObserved;
   const tipIndex = hoverIndex ?? (focused ? active : null);
   const tipValue = tipIndex === null ? 0 : (values[tipIndex] ?? 0);
   // The marker follows the pointer while it is over the plot, otherwise the
   // keyboard position; the latest observation keeps its own marker either way.
   const marked = tipIndex ?? active;
 
-  const coords = values.map((value, index) => {
-    const x = (index / (count - 1)) * 100;
-    return `${x.toFixed(1)},${(34 - value * 32).toFixed(1)}`;
-  });
   const first = points[0] as EpssTrendPoint;
-  const last = points[latest] as EpssTrendPoint;
+  const last = points[count - 1] as EpssTrendPoint;
   // The caption range is printed from the two stored strings that bound it, at
   // the same precision as every other EPSS readout in the block.
-  const minPoint = points[values.indexOf(Math.min(...values))] as EpssTrendPoint;
-  const maxPoint = points[values.indexOf(Math.max(...values))] as EpssTrendPoint;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const minPoint = extremes.min === null ? undefined : points[extremes.min.index];
+  const maxPoint = extremes.max === null ? undefined : points[extremes.max.index];
+  const min = extremes.min?.value ?? 0;
+  const max = extremes.max?.value ?? 0;
+  const missingNote = `${missing} observation${missing === 1 ? "" : "s"} missing in the window`;
 
   useLayoutEffect(() => {
     if (tipIndex === null) return;
@@ -724,29 +850,30 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
     const rect = strip.getBoundingClientRect();
     if (rect.width <= 0) return;
     setAnchor({
-      x: (tipIndex / (count - 1)) * rect.width,
-      y: ((34 - tipValue * 32) / 36) * rect.height,
+      x: (trendX(tipIndex, count) / 100) * rect.width,
+      y: (trendY(tipValue) / 36) * rect.height,
     });
   }, [tipIndex, tipValue, count]);
 
-  /** Nearest observation to a pointer x — the whole plot is one hit band. */
+  /** Nearest observation to a pointer x — the whole plot is one hit band, and a
+   * missing date is skipped rather than labelled with a neighbour's value. */
   const inspect = (clientX: number) => {
     const strip = stripRef.current;
     if (strip === null) return;
     const rect = strip.getBoundingClientRect();
     if (rect.width <= 0) return;
-    const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    setHoverIndex(Math.round(fraction * (count - 1)));
+    const index = epssNearestObservedIndex(values, (clientX - rect.left) / rect.width);
+    if (index !== null) setHoverIndex(index);
   };
 
-  const stripProps = roving.markProps(active);
-  const tipPoint = tipIndex === null ? null : (points[tipIndex] as EpssTrendPoint);
+  const stripProps = roving.markProps(roving.activeIndex);
+  const tipPoint = tipIndex === null ? undefined : points[tipIndex];
 
   return (
     <figure
       className={styles.trendFigure}
       role="group"
-      aria-label={`EPSS trend, percent probability. ${count} dated observations, ${first.scoreDate} to ${last.scoreDate}.`}
+      aria-label={`EPSS trend, percent probability. ${count} dated observations, ${first.scoreDate} to ${last.scoreDate}${missing === 0 ? "" : `, ${missing} missing`}.`}
       data-testid="priority-row-epss-trend"
     >
       <div className={styles.trendPlot}>
@@ -757,18 +884,41 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
           aria-hidden="true"
           focusable="false"
         >
-          <polyline
-            points={coords.join(" ")}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
+          {runs.map((run) =>
+            run.coords.length > 1 ? (
+              <polyline
+                key={`run-${run.start}`}
+                data-testid={`priority-row-epss-segment-${run.start}`}
+                points={run.coords.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : run.start === latestObserved ? null : (
+              // One observation between two gaps has no line to belong to, but
+              // it is still data: a dot, never a line drawn across the gaps.
+              <circle
+                key={`run-${run.start}`}
+                data-testid={`priority-row-epss-point-${run.start}`}
+                cx={run.coords[0]?.x ?? 0}
+                cy={run.coords[0]?.y ?? 0}
+                r={1.5}
+                fill="currentColor"
+              />
+            ),
+          )}
+          <circle
+            data-testid="priority-row-epss-latest"
+            cx={trendX(latestObserved, count)}
+            cy={trendY(values[latestObserved] ?? 0)}
+            r={2.5}
+            fill="currentColor"
           />
-          <circle cx={100} cy={34 - (values[latest] ?? 0) * 32} r={2.5} fill="currentColor" />
-          {marked === latest ? null : (
+          {marked === latestObserved ? null : (
             <circle
-              cx={(marked / (count - 1)) * 100}
-              cy={34 - (values[marked] ?? 0) * 32}
+              cx={trendX(marked, count)}
+              cy={trendY(values[marked] ?? 0)}
               r={2.5}
               fill="var(--ui-accent)"
             />
@@ -779,7 +929,7 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
           className={styles.trendStrip}
           role="img"
           data-testid="priority-row-epss-strip"
-          aria-label={`${count} dated EPSS observations. Use the arrow keys to step between them, Home and End to jump to the first and latest.`}
+          aria-label={`${observed.length} dated EPSS observations${missing === 0 ? "" : `. ${missingNote}; those dates are skipped by the pointer and the arrow keys`}. Use the arrow keys to step between them, Home and End to jump to the first and latest.`}
           tabIndex={stripProps.tabIndex}
           onFocus={() => setFocused(true)}
           onBlur={() => {
@@ -793,7 +943,7 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
             if (event.pointerType !== "touch") setHoverIndex(null);
           }}
         />
-        {tipPoint === null ? null : (
+        {tipPoint === undefined ? null : (
           <ChartTooltip
             label={`${epssDay(tipPoint.scoreDate)} · UTC`}
             value={formatEpssPercent(tipPoint.epss)}
@@ -807,8 +957,10 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
       <figcaption className={styles.trendCaption}>
         {count} dated observations, {first.scoreDate} to {last.scoreDate}
         {last.modelVersion !== "" ? ` · model ${last.modelVersion}` : ""}; range{" "}
-        {formatEpssPercent(minPoint.epss)} to {formatEpssPercent(maxPoint.epss)} across the window;
-        latest point marked.
+        {minPoint === undefined ? "not available" : formatEpssPercent(minPoint.epss)} to{" "}
+        {maxPoint === undefined ? "not available" : formatEpssPercent(maxPoint.epss)} across the
+        window{missing === 0 ? "" : `; ${missingNote} (the line breaks at each gap)`}; latest
+        observation marked.
       </figcaption>
       <ChartTable
         caption="EPSS observations for this record, UTC score dates"
@@ -825,7 +977,10 @@ function EpssTrendPlot({ points, values }: { points: EpssTrendPoint[]; values: n
           {
             key: "score",
             header: "EPSS probability",
-            value: (point) => formatEpssPercent(point.epss),
+            value: (point, index) =>
+              values[index] === null || values[index] === undefined
+                ? "No observation"
+                : formatEpssPercent(point.epss),
           },
           {
             key: "model",

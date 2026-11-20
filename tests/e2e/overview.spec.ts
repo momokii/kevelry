@@ -338,6 +338,57 @@ test("KEV rhythm draws twelve bars, including a gap month as a real zero", async
   await expect(chart.locator(".chart-note")).toContainText("1 catalog additions in twelve months.");
 });
 
+test.describe("KEV rhythm touch input", () => {
+  test.use({ hasTouch: true });
+
+  test("a tap pins the readout and it survives the finger lifting", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await expect(page.getByTestId("overview-kev-chart")).toBeVisible();
+
+    // The seeded corpus has one addition six days old, so this bar has a value.
+    const addedMonth = dayAgo(6).slice(0, 7);
+    const bar = page.getByTestId(`overview-kev-bar-${addedMonth}`);
+    const tooltip = page.getByTestId("overview-kev-tooltip");
+    await bar.tap();
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText("additions");
+
+    // A touch pointer leaves the bar when the finger lifts. The readout has to
+    // survive that: wait past the frame where the old code cleared it.
+    await page.waitForTimeout(400);
+    await expect(tooltip).toBeVisible();
+    expect(
+      await page.evaluate(() => document.activeElement?.getAttribute("data-testid")),
+      "the tap left DOM focus on the bar",
+    ).toBe(`overview-kev-bar-${addedMonth}`);
+
+    // A second tap on the same bar closes it.
+    await bar.tap();
+    await expect(tooltip).toBeHidden();
+
+    // A tap on another bar pins there, and a tap outside the chart clears it.
+    await bar.tap();
+    await expect(tooltip).toBeVisible();
+    const other = page.getByTestId(`overview-kev-bar-${monthAgo(2)}`);
+    await other.tap();
+    await expect(tooltip).toContainText("0 of 1 additions, 0.0%");
+    await page.getByRole("heading", { level: 1 }).tap();
+    await expect(tooltip).toBeHidden();
+  });
+
+  test("mouse hover still clears on leave in a touch context", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    const gap = page.getByTestId(`overview-kev-bar-${monthAgo(2)}`);
+    const tooltip = page.getByTestId("overview-kev-tooltip");
+    await gap.hover({ position: { x: 5, y: 4 } });
+    await expect(tooltip).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(tooltip).toBeHidden();
+  });
+});
+
 test("overview unscored split keeps its numbers in dark theme at 360px", async ({ page }) => {
   await page
     .context()

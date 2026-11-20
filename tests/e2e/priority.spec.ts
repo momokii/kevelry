@@ -521,6 +521,57 @@ test.describe.serial("priority list views", () => {
     await expect(trend).toHaveAttribute("aria-label", /dated observations/);
   });
 
+  test("one ArrowRight after entering the sparkline leaves the latest point", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/priority?view=highest-forecast");
+    await expect(page.getByTestId("priority-root")).toBeVisible();
+
+    const trend = page.getByTestId("priority-row-epss-trend").first();
+    await expect(trend).toBeVisible();
+    const strip = trend.getByTestId("priority-row-epss-strip");
+    const status = trend.locator('[role="status"]');
+    const caption = (await trend.locator("figcaption").textContent()) ?? "";
+    // The live announcement prints a ledger day (`14 Nov 2026`), the caption an
+    // ISO day, so both ends are read from the caption and formatted here.
+    const window = /dated observations, (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})/.exec(caption);
+    expect(window, "caption names the window").not.toBeNull();
+    const ledgerDay = (iso: string) => {
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const [year, month, day] = iso.split("-").map(Number);
+      return `${day} ${months[(month as number) - 1]} ${year}`;
+    };
+    const firstDay = ledgerDay(window?.[1] as string);
+    const lastDay = ledgerDay(window?.[2] as string);
+
+    // Hydration can replace the node right after paint, so retry the focus.
+    await expect(async () => {
+      await strip.focus();
+      await expect(status).toContainText("EPSS probability", { timeout: 1_000 });
+    }).toPass({ timeout: 15000 });
+
+    // Entry marks the latest observation, so the announcement is the window end;
+    // one ArrowRight must wrap to the first observation instead of clamping on
+    // the point it already sits on (which was the no-op).
+    const onEntry = (await status.textContent()) ?? "";
+    expect(onEntry, "entry marks the latest observation").toContain(lastDay);
+    await page.keyboard.press("ArrowRight");
+    await expect(status).toContainText(firstDay);
+    await expect(status).not.toContainText(lastDay);
+  });
+
   test("detail severity block shows secondary CVSS as context only, never a band", async ({
     page,
   }) => {
