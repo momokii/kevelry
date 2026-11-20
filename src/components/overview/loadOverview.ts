@@ -1,7 +1,7 @@
 import { buildProvenance, type Provenance } from "../../../app/api/v1/_lib/provenance";
 import {
   exploitRefCoverageSql,
-  getAggregates,
+  readCurrentAggregates,
   secondaryCoverageSql,
   severityBandsSql,
   severityEpssMatrixSql,
@@ -450,7 +450,11 @@ export function loadOverviewData(dataDir: string, nowIso: string): OverviewData 
     return null;
   }
   try {
-    const cached = getAggregates(db);
+    // Only a snapshot that still describes the accepted inputs is served; a
+    // stale one falls through to the live reads below, so a failed aggregate
+    // refresh can never put the previous dataset's counts under this
+    // page's provenance.
+    const { cached } = readCurrentAggregates(db);
     const { counts, anchorDay, unknownDateCount, publishedTotal } =
       cached === null
         ? readDayCounts(db)

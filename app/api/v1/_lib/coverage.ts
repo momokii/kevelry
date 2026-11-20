@@ -1,4 +1,4 @@
-import { getAggregates } from "../../../../src/lib/aggregates";
+import { readCurrentAggregates } from "../../../../src/lib/aggregates";
 import type { CveDatabase } from "../../../../src/lib/db";
 import { getAcceptedEpssDate } from "../../../../src/lib/priority";
 
@@ -33,8 +33,12 @@ export function unfilteredCohortCoverage(
   // instead of ~1.9s warm on 395k rows). Values match the three-query form
   // exactly; the CVSS validity predicate mirrors selectPrimaryCvss.
   const epssDate = getAcceptedEpssDate(db);
-  const cached = epssDate === null ? null : getAggregates(db);
-  if (cached !== null && cached.epssScoreDate === epssDate) {
+  // Exact cohort counts only: a stale snapshot is no snapshot, so fall through
+  // to the live single-pass count below. Currency already covers the EPSS date;
+  // the remaining guard is "an accepted date exists to describe" (with no EPSS
+  // data there is no scored-vs-unknown split to reuse).
+  const { cached } = readCurrentAggregates(db);
+  if (cached !== null && epssDate !== null) {
     return {
       eligibleCohort: cached.publishedTotal,
       returned,

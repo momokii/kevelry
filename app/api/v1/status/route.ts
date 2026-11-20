@@ -1,5 +1,5 @@
 import { getAcceptedEpssDate } from "../../../../src/lib/priority";
-import { getAggregates } from "../../../../src/lib/aggregates";
+import { readCurrentAggregates } from "../../../../src/lib/aggregates";
 import { apiPreflight, withApiRoute } from "../_lib/api-route";
 import { cachedOkResponse } from "../_lib/http-cache";
 import { buildProvenance } from "../_lib/provenance";
@@ -14,9 +14,11 @@ export async function OPTIONS(request: Request): Promise<Response> {
 
 export const GET = withApiRoute(async ({ request, db, rate }) => {
   const nowIso = new Date().toISOString();
-  // Cohort counts come from the aggregate cache (one point lookup); source
-  // freshness still reads sync_runs live so stale states stay exact.
-  const cached = getAggregates(db);
+  // Cohort counts come from the aggregate cache (one point lookup) while it
+  // still describes the accepted inputs; source freshness and the live
+  // fallback both read the tables, so a stale snapshot is never paired with a
+  // fresh revision.
+  const { cached } = readCurrentAggregates(db);
   let published: number;
   let kevListed: number;
   let epssScored: number;

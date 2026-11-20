@@ -7,8 +7,10 @@
 // queries — result sets are per-day (~10k rows max), per-month, per-band, or
 // single scalars — never the full corpus in JS memory.
 //
-// Readers use getAggregates() (one point lookup) and fall back to live
-// queries when the cache is absent, so an empty cache is never an outage.
+// Readers use readCurrentAggregates() (one point lookup plus a currency check
+// against the acceptance ledger) and fall back to live queries when the cache
+// is absent OR stale, so an empty cache is never an outage and a failed refresh
+// never serves the previous dataset's counts under the new revision.
 // refreshAggregates() is idempotent: recompute + INSERT OR REPLACE.
 
 import type { CveDatabase } from "./db";
@@ -485,15 +487,6 @@ export function getAggregates(db: CveDatabase): AggregateSnapshot | null {
 }
 
 /**
- * True when the cached snapshot still describes the accepted data.
- *
- * Pages reject a snapshot whose `epssScoreDate` is not the accepted one and fall
- * back to live full-corpus queries (~4 s on the production volume). Refreshing
- * only an empty cache therefore turns every data change into a slow-read window
- * until someone forces a refresh, so the worker asks this instead of "is there a
- * row?".
- */
-/**
  * The accepted version of each source, read from the acceptance ledger
  * (`sync_runs`), which is what the API's provenance reports. Comparing these
  * four values is how the cache knows whether it still describes the data.
@@ -523,9 +516,8 @@ interface AcceptedVersions {
   epssRevision: string | null;
 }
 
-export function aggregatesAreCurrent(db: CveDatabase): boolean {
-  const cached = getAggregates(db);
-  if (cached === null) return false;
+/** True when the stored snapshot still describes the accepted data. */
+function snapshotIsCurrent(db: CveDatabase, cached: AggregateSnapshot): boolean {
   const accepted = acceptedVersions(db);
   // EPSS is compared on the data itself: the current score date is unambiguous
   // and survives databases that have no acceptance ledger.
@@ -542,26 +534,60 @@ export function aggregatesAreCurrent(db: CveDatabase): boolean {
   );
 }
 
-/** Revision seed for ETags; null when the cache is empty. */
-export function getAggregateMeta(db: CveDatabase): AggregateMeta | null {
+/**
+ * True when a stored snapshot exists and still describes the accepted data.
+ *
+ * Refreshing only an empty cache turns every data change into a slow-read
+ * window until someone forces a refresh, so the worker asks this instead of
+ * "is there a row?".
+ */
+export function aggregatesAreCurrent(db: CveDatabase): boolean {
+  const cached = getAggregates(db);
+  return cached !== null && snapshotIsCurrent(db, cached);
+}
+
+/**
+ * What a read path may serve: the cache, but only while it is current.
+ *
+ * "A row exists" is not the question. After an import is accepted and the
+ * aggregate refresh fails, the stored snapshot still holds the previous
+ * dataset's counts while provenance reports the new revision; serving it pairs
+ * fresh metadata with old numbers. `cached` is therefore null unless the
+ * snapshot matches the accepted inputs, and readers fall back to the live query
+ * they already had. Recomputing here is not an option: page reads open the
+ * database read-only, and the recompute belongs to the worker (`ensureAggregates`).
+ */
+export type CurrentAggregates =
+  { cached: AggregateSnapshot; current: true } | { cached: null; current: false };
+
+/** One cache read plus one currency check; see CurrentAggregates. */
+export function readCurrentAggregates(db: CveDatabase): CurrentAggregates {
+  const cached = getAggregates(db);
+  if (cached === null) return { cached: null, current: false };
   try {
-    ensureCacheTable(db);
-    const row = db.handle
-      .prepare(
-        "SELECT computed_at, source_revision, epss_score_date FROM aggregate_cache WHERE key = ?",
-      )
-      .get(AGGREGATE_KEY) as
-      | { computed_at: string; source_revision: string | null; epss_score_date: string | null }
-      | undefined;
-    if (row === undefined) return null;
-    return {
-      computedAt: row.computed_at,
-      sourceRevision: row.source_revision,
-      epssScoreDate: row.epss_score_date,
-    };
+    return snapshotIsCurrent(db, cached)
+      ? { cached, current: true }
+      : { cached: null, current: false };
   } catch {
-    return null;
+    // An unreadable ledger is not evidence of currency: serve live instead.
+    return { cached: null, current: false };
   }
+}
+
+/**
+ * Revision seed for ETags; null when no current generation exists.
+ *
+ * A stale snapshot must not seed an ETag either: a 304 would then pair a body
+ * computed from one dataset with a request that now reads another.
+ */
+export function getAggregateMeta(db: CveDatabase): AggregateMeta | null {
+  const { cached } = readCurrentAggregates(db);
+  if (cached === null) return null;
+  return {
+    computedAt: cached.computedAt,
+    sourceRevision: cached.sourceRevision,
+    epssScoreDate: cached.epssScoreDate,
+  };
 }
 
 /**

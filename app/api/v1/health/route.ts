@@ -1,4 +1,4 @@
-import { getAggregates } from "../../../../src/lib/aggregates";
+import { readCurrentAggregates } from "../../../../src/lib/aggregates";
 import { apiPreflight, withApiRoute } from "../_lib/api-route";
 import { cachedOkResponse } from "../_lib/http-cache";
 import { buildProvenance } from "../_lib/provenance";
@@ -11,8 +11,9 @@ export async function OPTIONS(request: Request): Promise<Response> {
 }
 
 export const GET = withApiRoute(async ({ request, db, rate }) => {
-  // Readiness counts come from the aggregate cache; freshness stays live.
-  const cached = getAggregates(db);
+  // Readiness counts come from the aggregate cache only while it is current;
+  // three cheap counts keep a stale snapshot from deciding the status.
+  const { cached } = readCurrentAggregates(db);
   const published =
     cached === null
       ? countRows(db, "SELECT COUNT(*) AS n FROM cve_records WHERE state = ?", ["PUBLISHED"])

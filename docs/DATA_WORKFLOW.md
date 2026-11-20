@@ -396,8 +396,10 @@ so readers rebuild instead of serving a payload with missing keys. Refresh rules
   bounded: every section is a GROUP BY over indexed columns (per-day,
   per-month, per-band, per-model) — the full corpus is never materialized in
   JS memory.
-- Readers fall back to live queries when the cache key is absent or its version is
-  stale, so an empty/old cache is never an outage; response shapes are identical either way.
+- Readers fall back to live queries when the cache key is absent, its version is
+  stale, or its inputs moved (`readCurrentAggregates`), so an empty or old cache is
+  never an outage — and a snapshot whose refresh failed is never served under a
+  newer revision. Response shapes are identical either way.
 - The severity-band section uses a SQL mirror of `selectPrimaryCvss`
   (preferred version, then max base within it); vector/sourceOrder tie-breaks
   cannot change a band and are therefore out of scope for the mirror.

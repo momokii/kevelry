@@ -1,6 +1,6 @@
 import {
-  getAggregates,
   monthCountsFromDays,
+  readCurrentAggregates,
   secondaryCoverageSql,
 } from "../../../../src/lib/aggregates";
 import { apiPreflight, withApiRoute } from "../_lib/api-route";
@@ -63,9 +63,11 @@ export const GET = withApiRoute(async ({ request, db, rate }) => {
     }
   }
   const nowIso = new Date().toISOString();
-  // Hot path reads the precomputed aggregate cache (one point lookup) instead
-  // of GROUP BY / COUNT scans; identical shapes, live fallback when empty.
-  const cached = getAggregates(db);
+  // Hot path reads the precomputed aggregate cache (one point lookup plus a
+  // currency check) instead of GROUP BY / COUNT scans; identical shapes, and
+  // the live fallback below serves a stale or empty cache so history and
+  // coverage always describe the accepted revision.
+  const { cached } = readCurrentAggregates(db);
   const prefixLen = bucket === "month" ? 7 : 10;
   let counts: Map<string, number>;
   let unknownDateCount: number;

@@ -17,7 +17,7 @@ import { CoverageDiagram } from "@/components/methodology/CoverageDiagram";
 import { ScoringExample } from "@/components/methodology/ScoringExample";
 import { SignalDiagram } from "@/components/methodology/SignalDiagram";
 import styles from "@/components/methodology/MethodologyDiagrams.module.css";
-import { getAggregates, severityBandsSql } from "@/lib/aggregates";
+import { readCurrentAggregates, severityBandsSql } from "@/lib/aggregates";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import { EPSS_RETENTION_DAYS_DEFAULT } from "@/lib/retention";
 import { EPSS_HISTORY_CAP } from "@/app/api/v1/_lib/epss-history";
@@ -81,7 +81,7 @@ export default function MethodologyPage() {
       day: string | null;
     };
     retention.oldestKeptDay = oldest.day;
-    const cached = getAggregates(db);
+    const { cached } = readCurrentAggregates(db);
     if (cached !== null) {
       publishedTotal = cached.totals.published;
       kevListed = cached.totals.kev;
