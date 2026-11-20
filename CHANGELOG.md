@@ -3,10 +3,9 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
-## Unreleased
+## 3.1.0 — 2026-11-20
 
-No version bump yet: the entries below are unreleased work on `main`, and the
-newest published image remains `3.0.2`.
+Making every chart value inspectable: a written contract, shared primitives, and the KEV rhythm's twelve months made real.
 
 ### Added
 
@@ -84,6 +83,16 @@ newest published image remains `3.0.2`.
   month spine (twelve buckets, zeros in the gaps, window-bounded sum) in both the
   cached and live loaders. The Playwright suite gains one gap-month KEV rhythm
   assertion (129 → 130 passed / 0 skipped).
+
+### Upgrade notes
+
+- No migration: the schema stays at 009 and existing volumes need no action.
+- `AGGREGATE_VERSION` moves 6 → 7, so the aggregate cache is rebuilt on the first
+  boot after the upgrade. That is expected and needs no action.
+- No API contract change: every 3.1.0 entry is presentation, documentation, or an
+  internal cache version.
+- The KEV rhythm now always shows twelve calendar months, including zero months,
+  so a month that previously vanished from the chart now appears as `0`.
 
 ## 3.0.2 — 2026-11-17
 

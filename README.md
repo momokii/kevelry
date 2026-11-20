@@ -15,9 +15,13 @@ Radar** and replayable history. One self-contained Docker image, one container,
 and a versioned read-only API so other platforms (or your own self-hosted copy)
 can consume the same data.
 
-> **Status: `3.0.2` (built 2026-11-17) is the newest image a reader can pull from
-> Docker Hub, and `latest` points at it. `3.0.1` and `3.0.0` (2026-11-15) remain
-> available as previous releases.** 3.0.2 fixes the `/graph` attribute dialog
+> **Status: `3.1.0` (built 2026-11-20) is the newest image a reader can pull from
+> Docker Hub, and `latest` points at it. `3.0.2`, `3.0.1` and `3.0.0` (2026-11-15)
+> remain available as previous releases.** 3.1.0 makes every chart value
+> inspectable: a written contract in `DESIGN.md` §7.0, the shared `ChartTooltip` /
+> `ChartTable` / `useRovingMarkFocus` primitives, a point-by-point EPSS sparkline,
+> twelve focusable KEV-rhythm bars, and reachable donut segments and graph links,
+> plus full-precision EPSS tooltips. 3.0.2 fixes the `/graph` attribute dialog
 > ignoring Escape once its filter had focus. 3.0.1 carries the Next.js 16.4.5
 > security bump (CVE-2026-119348), an Atom 1.0 change feed, CWE names in the
 > relation graph, and
@@ -219,13 +223,14 @@ Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md
 
 ## Release
 
-Current release: **3.0.2** (2026-11-17) — see [CHANGELOG.md](CHANGELOG.md) for the
+Current release: **3.1.0** (2026-11-20) — see [CHANGELOG.md](CHANGELOG.md) for the
 full list, upgrade notes, and what 2.0.0 deliberately does not claim.
 
-`3.0.2` is published as an image tag and `latest` resolves to it; `3.0.1` and
-`3.0.0` (2026-11-15) remain available as previous releases. The 3.0.2 upgrade
+`3.1.0` is published as an image tag and `latest` resolves to it; `3.0.2`, `3.0.1`
+and `3.0.0` (2026-11-15) remain available as previous releases. The 3.1.0 upgrade
 notes record that there is no migration, no API contract change, and no config
-change. The 3.0.0 upgrade
+change, and that `AGGREGATE_VERSION` moves 6 → 7 so the aggregate cache rebuilds on
+the first boot (expected, no action needed). The 3.0.0 upgrade
 notes cover migration 009 applying on the next write open, the one-time aggregate
 cache v6 refresh, the first CWE catalog fetch (pinned MITRE `1000.csv.zip`, ~644
 KB, cached locally and hash-conditional after that), and checkpoint history that
@@ -330,12 +335,12 @@ Open `http://100.124.184.116:3100` in the browser.
 ### Public deployment
 
 The release artifact is **one self-contained image** — published as
-[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`3.0.2`, and
-`latest` now resolves to it; prefer the versioned tag — `3.0.1` and `3.0.0` stay
-available as previous releases). Pull and
+[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`3.1.0`, and
+`latest` now resolves to it; prefer the versioned tag — `3.0.2`, `3.0.1` and
+`3.0.0` stay available as previous releases). Pull and
 `docker run` it anywhere with the env vars below. To publish your own build:
-`docker tag cve-change-radar:local USER/kevelry:3.0.2 && docker push
-USER/kevelry:3.0.2`. It runs
+`docker tag cve-change-radar:local USER/kevelry:3.1.0 && docker push
+USER/kevelry:3.1.0`. It runs
 the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
 container as non-root, listening on `$PORT` (default 3000) with data in
 `/data`. Two supported shapes:
@@ -344,7 +349,7 @@ container as non-root, listening on `$PORT` (default 3000) with data in
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:3.0.2 \
+  --image docker.io/kelanach/kevelry:3.1.0 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
