@@ -279,9 +279,11 @@ normative. The rationale, the per-chart audit and the migration phases live in
   interactive dimension is at least 44px.
 - **One implementation.** `ChartTooltip`, `ChartTable` and `useRovingMarkFocus`
   (`src/components/charts/`) are the only renderers of the tooltip, the data table
-  and the roving keyboard contract. They reuse the existing `.chart-tooltip` and
-  `.chart-table` styles, so a migrated chart looks identical to one that was not
-  yet migrated; changing the tooltip means changing that one component.
+  and the roving keyboard contract, and `anchorFromElement` plus `useHoverFocusMarks`
+  in the same directory are the only places a mark's anchor and its hover/focus slot
+  pair are computed. They reuse the existing `.chart-tooltip` and `.chart-table`
+  styles, so a migrated chart looks identical to one that was not yet migrated;
+  changing the tooltip means changing that one component.
 
 ### Volume
 

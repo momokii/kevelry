@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ChartTooltip, type ChartTooltipAnchor } from "./ChartTooltip";
+import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatInt, sharePercent } from "./chartTokens";
+import { useHoverFocusMarks } from "./useHoverFocusMarks";
 import { FLOW_SAMPLE_CAP, type SankeyLink, type TimeToKev } from "@/lib/time-to-kev";
 
 // Symmetric gutters: left labels, flow, right labels. The chart is not
@@ -266,12 +267,7 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
   // Which band the tooltip describes. Hover and focus write separate slots and
   // render the same component with the same strings, so the pointer leaving the
   // chart cannot blank a reading the keyboard still has focus on.
-  const [hoverBand, setHoverBand] = useState<{ key: string; anchor: ChartTooltipAnchor } | null>(
-    null,
-  );
-  const [focusBand, setFocusBand] = useState<{ key: string; anchor: ChartTooltipAnchor } | null>(
-    null,
-  );
+  const bandTip = useHoverFocusMarks<{ key: string; anchor: ChartTooltipAnchor }>();
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   const { nodes, links } = useMemo(() => {
@@ -409,8 +405,8 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
   const clearSelection = (): void => {
     setPinned(null);
     setDetail(null);
-    setHoverBand(null);
-    setFocusBand(null);
+    bandTip.clearHover();
+    bandTip.clearFocus();
   };
 
   const toggleBand = (bandKey: string): void => {
@@ -441,33 +437,19 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
             .sort((a, b) => b.count - a.count),
         };
 
-  const bandTip = hoverBand ?? focusBand;
+  const bandTipKey = bandTip.active?.key ?? null;
   const tipBand =
-    bandTip === null ? null : (bands.find((band) => band.key === bandTip.key) ?? null);
-
-  /** The band's rect inside the chart host, so the tooltip clamps to the frame. */
-  const anchorFor = (node: Element): ChartTooltipAnchor => {
-    const host = hostRef.current;
-    if (host === null) return { x: 0, y: 0 };
-    const rect = node.getBoundingClientRect();
-    const box = host.getBoundingClientRect();
-    return {
-      x: rect.left - box.left,
-      y: rect.top - box.top,
-      width: rect.width,
-      height: rect.height,
-    };
-  };
+    bandTipKey === null ? null : (bands.find((band) => band.key === bandTipKey) ?? null);
 
   return (
     <div className="chart-frame" ref={hostRef}>
-      {bandTip === null || tipBand === null ? null : (
+      {bandTip.active === null || tipBand === null ? null : (
         <ChartTooltip
           label={`${tipBand.fromLabel} → ${tipBand.toLabel}`}
           value={formatInt(tipBand.count)}
           unit="records"
           context={[`${sharePercent(tipBand.count, total)} of ${formatInt(total)} with both dates`]}
-          anchor={bandTip.anchor}
+          anchor={bandTip.active.anchor}
           testId="overview-time-to-kev-tooltip"
         />
       )}
@@ -504,13 +486,19 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
               if (event.key === "Escape") clearSelection();
             }}
             onPointerEnter={(event) =>
-              setHoverBand({ key: band.key, anchor: anchorFor(event.currentTarget) })
+              bandTip.setHover({
+                key: band.key,
+                anchor: anchorFromElement(event.currentTarget, hostRef.current),
+              })
             }
-            onPointerLeave={() => setHoverBand(null)}
+            onPointerLeave={bandTip.clearHover}
             onFocus={(event) =>
-              setFocusBand({ key: band.key, anchor: anchorFor(event.currentTarget) })
+              bandTip.setFocus({
+                key: band.key,
+                anchor: anchorFromElement(event.currentTarget, hostRef.current),
+              })
             }
-            onBlur={() => setFocusBand(null)}
+            onBlur={bandTip.clearFocus}
             style={{ cursor: "pointer", outline: "none" }}
           />
         ))}

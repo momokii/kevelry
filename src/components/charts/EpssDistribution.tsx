@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef } from "react";
 
 import { AxisBottom, AxisLeft } from "@visx/axis";
 import { GridRows } from "@visx/grid";
@@ -8,7 +8,9 @@ import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleBand, scaleLog } from "@visx/scale";
 
+import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { EPSS_LOG_BINS, formatCompact, formatInt, sharePercent } from "./chartTokens";
+import { useHoverFocusMarks } from "./useHoverFocusMarks";
 
 const MARGIN = { top: 18, right: 8, bottom: 28, left: 38 };
 const HEIGHT = 196;
@@ -22,7 +24,10 @@ function EpssSvg({
   histogram: number[];
   total: number;
 }) {
-  const [hover, setHover] = useState<number | null>(null);
+  // Hover and focus write separate slots and render the same strings, so the
+  // pointer leaving the histogram cannot blank the bin the keyboard is on.
+  const marks = useHoverFocusMarks<{ index: number; anchor: ChartTooltipAnchor }>();
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
   const values = EPSS_LOG_BINS.map((_, index) => histogram[index] ?? 0);
@@ -45,17 +50,24 @@ function EpssSvg({
       }),
     [innerHeight, max],
   );
-  const active = hover === null ? null : { bin: EPSS_LOG_BINS[hover], count: values[hover] ?? 0 };
+  const activeIndex = marks.active?.index ?? null;
+  const active =
+    activeIndex === null
+      ? null
+      : { bin: EPSS_LOG_BINS[activeIndex], count: values[activeIndex] ?? 0 };
   const bandwidth = xScale.bandwidth();
   return (
-    <div className="chart-frame" onMouseLeave={() => setHover(null)}>
-      {active !== null ? (
-        <div className="chart-tooltip" style={{ left: 6, top: 4 }}>
-          <div className="tt-label">EPSS {active.bin?.label}</div>
-          <div className="tt-value">{formatInt(active.count)}</div>
-          <div className="tt-share">{sharePercent(active.count, total)} of EPSS-scored records</div>
-          <div className="tt-share">Log-spaced probability buckets</div>
-        </div>
+    <div className="chart-frame" ref={hostRef} onMouseLeave={marks.clearHover}>
+      {active !== null && activeIndex !== null && marks.active !== null ? (
+        <ChartTooltip
+          label={`EPSS ${active.bin?.label}`}
+          value={formatInt(active.count)}
+          context={[
+            `${sharePercent(active.count, total)} of EPSS-scored records`,
+            "Log-spaced probability buckets",
+          ]}
+          anchor={marks.active.anchor}
+        />
       ) : null}
       <svg
         className="chart-svg"
@@ -79,7 +91,7 @@ function EpssSvg({
             const count = values[index] ?? 0;
             const barX = xScale(bin.label) ?? 0;
             const barY = count > 0 ? yScale(count) : innerHeight;
-            const isActive = hover === index;
+            const isActive = activeIndex === index;
             return (
               <rect
                 key={bin.label}
@@ -93,9 +105,19 @@ function EpssSvg({
                 role="img"
                 tabIndex={0}
                 aria-label={`EPSS ${bin.label}: ${formatInt(count)} records, ${sharePercent(count, total)} of scored.`}
-                onMouseEnter={() => setHover(index)}
-                onFocus={() => setHover(index)}
-                onBlur={() => setHover(null)}
+                onMouseEnter={(event) =>
+                  marks.setHover({
+                    index,
+                    anchor: anchorFromElement(event.currentTarget, hostRef.current),
+                  })
+                }
+                onFocus={(event) =>
+                  marks.setFocus({
+                    index,
+                    anchor: anchorFromElement(event.currentTarget, hostRef.current),
+                  })
+                }
+                onBlur={marks.clearFocus}
               />
             );
           })}

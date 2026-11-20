@@ -659,7 +659,9 @@ function epssObservationFacts(
   if (high && low) facts.push("series high and low");
   else if (high) facts.push("series high");
   else if (low) facts.push("series low");
-  return facts.slice(0, 2);
+  // At most two, by construction: the model, then one of high/low. `ChartTooltip`
+  // truncates anything past the second fact, so nothing repeats that here.
+  return facts;
 }
 
 /** One stored EPSS probability as a number in [0, 1], or null when the stored

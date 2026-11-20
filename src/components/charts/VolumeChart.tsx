@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AxisBottom, AxisLeft } from "@visx/axis";
 import { GridRows } from "@visx/grid";
@@ -11,7 +11,9 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 
 import { dailyWindow, monthExploreHref, weeklyVolume } from "@/components/overview/chartData";
 
+import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatCompact, formatInt, monthLong, monthShort, sharePercent } from "./chartTokens";
+import { useHoverFocusMarks } from "./useHoverFocusMarks";
 
 export interface VolumeDatum {
   month: string;
@@ -84,7 +86,10 @@ function VolumeSvg({
   onSelect: (month: string | null) => void;
   granularity: Granularity;
 }) {
-  const [hover, setHover] = useState<{ month: string; x: number; y: number } | null>(null);
+  // Hover and focus write separate slots and render the same tooltip, so the
+  // pointer leaving the frame cannot blank the bucket the keyboard is on.
+  const marks = useHoverFocusMarks<{ month: string; anchor: ChartTooltipAnchor }>();
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = Math.max(120, height - MARGIN.top - MARGIN.bottom);
 
@@ -117,28 +122,24 @@ function VolumeSvg({
     return months.filter((_, index) => index % stride === 0).map((entry) => entry.month);
   }, [months]);
   const active =
-    hover === null ? null : (months.find((entry) => entry.month === hover.month) ?? null);
+    marks.active === null
+      ? null
+      : (months.find((entry) => entry.month === marks.active?.month) ?? null);
   const bandwidth = xScale.bandwidth();
-  const tooltipLeft =
-    hover === null
-      ? 0
-      : Math.min(Math.max(MARGIN.left + (xScale(hover.month) ?? 0) - 70, 8), width - 190);
 
   return (
-    <div className="chart-frame" onMouseLeave={() => setHover(null)}>
-      {active !== null && hover !== null ? (
-        <div
-          className="chart-tooltip"
-          style={{ left: tooltipLeft, top: 8 }}
-          data-testid="overview-volume-tooltip"
-        >
-          <div className="tt-label">{labelFor(granularity, active.month)}</div>
-          <div className="tt-value">{formatInt(active.count)}</div>
-          <div className="tt-share">
-            {sharePercent(active.count, publishedTotal)} of all published CVEs
-          </div>
-          <div className="tt-share">UTC calendar {granularity} · click to inspect</div>
-        </div>
+    <div className="chart-frame" ref={hostRef} onMouseLeave={marks.clearHover}>
+      {active !== null && marks.active !== null ? (
+        <ChartTooltip
+          label={labelFor(granularity, active.month)}
+          value={formatInt(active.count)}
+          context={[
+            `${sharePercent(active.count, publishedTotal)} of all published CVEs`,
+            `UTC calendar ${granularity} · click to inspect`,
+          ]}
+          anchor={marks.active.anchor}
+          testId="overview-volume-tooltip"
+        />
       ) : null}
       <svg
         className="chart-svg"
@@ -162,7 +163,7 @@ function VolumeSvg({
             const barX = xScale(entry.month) ?? 0;
             const barY = yScale(entry.count);
             const isSelected = entry.month === selected;
-            const isHover = entry.month === hover?.month;
+            const isHover = entry.month === marks.active?.month;
             return (
               <g key={entry.month}>
                 <rect
@@ -197,21 +198,19 @@ function VolumeSvg({
                   data-testid={`overview-volume-bar-${entry.month}`}
                   aria-pressed={isSelected}
                   aria-label={`${labelFor(granularity, entry.month)}: ${formatInt(entry.count)} published, ${sharePercent(entry.count, publishedTotal)} of all. Select to inspect.`}
-                  onMouseEnter={() =>
-                    setHover({
+                  onMouseEnter={(event) =>
+                    marks.setHover({
                       month: entry.month,
-                      x: MARGIN.left + barX,
-                      y: barY,
+                      anchor: anchorFromElement(event.currentTarget, hostRef.current),
                     })
                   }
-                  onFocus={() =>
-                    setHover({
+                  onFocus={(event) =>
+                    marks.setFocus({
                       month: entry.month,
-                      x: MARGIN.left + barX,
-                      y: barY,
+                      anchor: anchorFromElement(event.currentTarget, hostRef.current),
                     })
                   }
-                  onBlur={() => setHover(null)}
+                  onBlur={marks.clearFocus}
                   onClick={() => onSelect(isSelected ? null : entry.month)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {

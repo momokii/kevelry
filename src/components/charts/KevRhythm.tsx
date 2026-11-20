@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChartTable } from "./ChartTable";
-import { ChartTooltip, type ChartTooltipAnchor } from "./ChartTooltip";
+import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatInt, monthLong, monthShort } from "./chartTokens";
 import { useRovingMarkFocus } from "./useRovingMarkFocus";
 
@@ -19,8 +19,10 @@ function monthFacts(entry: { count: number }, total: number, isHigh: boolean): s
   const facts = [
     `${formatInt(entry.count)} of ${formatInt(total)} additions, ${shareOneDecimal(entry.count, total)}`,
   ];
+  // Two at most: the count against its denominator, then the window maximum.
+  // `ChartTooltip` truncates past the second fact, so nothing repeats it here.
   if (isHigh) facts.push("window maximum");
-  return facts.slice(0, 2);
+  return facts;
 }
 
 function monthLabel(
@@ -96,19 +98,6 @@ export function KevRhythm({
   const tipIndex = hoverIndex ?? focusIndex;
   const tipEntry = tipIndex === null ? undefined : months[tipIndex];
 
-  const anchorFor = (node: HTMLElement): ChartTooltipAnchor => {
-    const host = hostRef.current;
-    if (host === null) return { x: 0, y: 0 };
-    const bar = node.getBoundingClientRect();
-    const box = host.getBoundingClientRect();
-    return {
-      x: bar.left - box.left,
-      y: bar.top - box.top,
-      width: bar.width,
-      height: bar.height,
-    };
-  };
-
   return (
     <div className="chart-frame" ref={hostRef} data-testid="overview-kev-chart">
       {tipEntry === undefined ? null : (
@@ -161,14 +150,14 @@ export function KevRhythm({
                   return;
                 }
                 setFocusIndex(index);
-                setAnchor(anchorFor(event.currentTarget));
+                setAnchor(anchorFromElement(event.currentTarget, hostRef.current));
               }}
               onPointerEnter={(event) => {
                 // Touch is handled by pointerdown (tap = pin); pointerenter also
                 // fires on the way down and would fight the pin toggle.
                 if (event.pointerType === "touch") return;
                 setHoverIndex(index);
-                setAnchor(anchorFor(event.currentTarget));
+                setAnchor(anchorFromElement(event.currentTarget, hostRef.current));
               }}
               onPointerDown={(event) => {
                 if (event.pointerType !== "touch") return;
@@ -182,7 +171,7 @@ export function KevRhythm({
                   setTouchPinned(false);
                   return;
                 }
-                setAnchor(anchorFor(event.currentTarget));
+                setAnchor(anchorFromElement(event.currentTarget, hostRef.current));
                 setHoverIndex(index);
                 setTouchPinned(true);
               }}

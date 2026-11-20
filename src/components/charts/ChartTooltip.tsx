@@ -37,6 +37,26 @@ interface Placement {
   top: number;
 }
 
+/**
+ * The only way a chart converts a mark's on-screen rect into the anchor the
+ * tooltip places against: `markEl`'s box measured inside `hostEl`'s box, which is
+ * the `position: relative` host the tooltip is a child of. Every mark-anchored
+ * tooltip in the app calls this instead of repeating the two `getBoundingClientRect`
+ * calls, so a mark that moves (resize, scroll, a bucket switch) reads the same way
+ * everywhere.
+ */
+export function anchorFromElement(mark: Element, host: Element | null): ChartTooltipAnchor {
+  if (host === null) return { x: 0, y: 0 };
+  const rect = mark.getBoundingClientRect();
+  const box = host.getBoundingClientRect();
+  return {
+    x: rect.left - box.left,
+    y: rect.top - box.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }

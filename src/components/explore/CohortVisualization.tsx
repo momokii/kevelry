@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 
 import type { CohortFacets, EpssFilter, KevFilter, SeverityBand } from "@/lib/search";
 
-import { ChartTooltip, type ChartTooltipAnchor } from "../charts/ChartTooltip";
+import { useHoverFocusMarks } from "../charts/useHoverFocusMarks";
+import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "../charts/ChartTooltip";
 import { SEVERITY_META, SEVERITY_ORDER, formatInt, sharePercent } from "../charts/chartTokens";
 import { monthLong, monthShort } from "../charts/chartTokens";
 import { SEVERITY_LABELS } from "./filter-meta";
@@ -75,34 +76,13 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
   const peakMonth = facets.byMonth.reduce((max, entry) => Math.max(max, entry.count), 0);
   // Hover and focus write separate slots and render the same strings, so the
   // keyboard reading survives the pointer leaving the row.
-  const [hoverMonth, setHoverMonth] = useState<{
-    month: string;
-    anchor: ChartTooltipAnchor;
-  } | null>(null);
-  const [focusMonth, setFocusMonth] = useState<{
-    month: string;
-    anchor: ChartTooltipAnchor;
-  } | null>(null);
-  const monthTip = hoverMonth ?? focusMonth;
+  const monthTip = useHoverFocusMarks<{ month: string; anchor: ChartTooltipAnchor }>();
   const monthHostRef = useRef<HTMLDivElement | null>(null);
 
-  /** The month row's rect inside the chart host, so the tooltip clamps to it. */
-  const anchorFor = (node: Element): ChartTooltipAnchor => {
-    const host = monthHostRef.current;
-    if (host === null) return { x: 0, y: 0 };
-    const rect = node.getBoundingClientRect();
-    const box = host.getBoundingClientRect();
-    return {
-      x: rect.left - box.left,
-      y: rect.top - box.top,
-      width: rect.width,
-      height: rect.height,
-    };
-  };
   const tipMonth =
-    monthTip === null
+    monthTip.active === null
       ? null
-      : (facets.byMonth.find((entry) => entry.month === monthTip.month) ?? null);
+      : (facets.byMonth.find((entry) => entry.month === monthTip.active?.month) ?? null);
 
   return (
     <section
@@ -182,7 +162,7 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
             <h3>Matching records by UTC month</h3>
             {/* `chart-frame` is the positioned host the tooltip clamps to. */}
             <div className="chart-frame" ref={monthHostRef}>
-              {monthTip === null || tipMonth === null ? null : (
+              {monthTip.active === null || tipMonth === null ? null : (
                 <ChartTooltip
                   label={`${monthLong(tipMonth.month)} · UTC`}
                   value={formatInt(tipMonth.count)}
@@ -190,7 +170,7 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
                   context={[
                     `${sharePercent(tipMonth.count, total)} of the ${formatInt(total)} matching records`,
                   ]}
-                  anchor={monthTip.anchor}
+                  anchor={monthTip.active.anchor}
                   testId="explore-cohort-tooltip"
                 />
               )}
@@ -209,19 +189,19 @@ export function CohortVisualization({ facets, params, defaultLimit }: CohortVisu
                         // the row no longer leans on a native `title`.
                         aria-label={`${monthShort(entry.month)}: ${formatInt(entry.count)} records, ${sharePercent(entry.count, total)} of the cohort. Show only this month.`}
                         onPointerEnter={(event) =>
-                          setHoverMonth({
+                          monthTip.setHover({
                             month: entry.month,
-                            anchor: anchorFor(event.currentTarget),
+                            anchor: anchorFromElement(event.currentTarget, monthHostRef.current),
                           })
                         }
-                        onPointerLeave={() => setHoverMonth(null)}
+                        onPointerLeave={monthTip.clearHover}
                         onFocus={(event) =>
-                          setFocusMonth({
+                          monthTip.setFocus({
                             month: entry.month,
-                            anchor: anchorFor(event.currentTarget),
+                            anchor: anchorFromElement(event.currentTarget, monthHostRef.current),
                           })
                         }
-                        onBlur={() => setFocusMonth(null)}
+                        onBlur={monthTip.clearFocus}
                       >
                         <span className="cohort-month-label">{monthShort(entry.month)}</span>
                         <span className="cohort-month-track" aria-hidden="true">

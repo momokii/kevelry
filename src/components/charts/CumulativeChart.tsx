@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { AxisBottom, AxisLeft } from "@visx/axis";
 import { GridRows } from "@visx/grid";
@@ -8,7 +8,9 @@ import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleLinear } from "@visx/scale";
 
+import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
 import { formatCompact, formatInt, monthLong, monthShort, sharePercent } from "./chartTokens";
+import { useHoverFocusMarks } from "./useHoverFocusMarks";
 
 const MARGIN = { top: 16, right: 10, bottom: 26, left: 44 };
 const HEIGHT = 208;
@@ -20,7 +22,10 @@ interface Point {
 }
 
 function CumulativeSvg({ width, points }: { width: number; points: Point[] }) {
-  const [active, setActive] = useState<number | null>(null);
+  // Hover and focus write separate slots and render the same strings, so the
+  // pointer leaving the line cannot blank the point the keyboard is on.
+  const marks = useHoverFocusMarks<{ index: number; anchor: ChartTooltipAnchor }>();
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
   const max = points[points.length - 1]?.cumulative ?? 1;
@@ -45,19 +50,18 @@ function CumulativeSvg({ width, points }: { width: number; points: Point[] }) {
     .map((point, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(point.cumulative)}`)
     .join(" ");
   const area = `${line} L${x(points.length - 1)},${innerHeight} L${x(0)},${innerHeight} Z`;
-  const activePoint = active === null ? null : points[active];
+  const activePoint = marks.active === null ? null : points[marks.active.index];
   const tickValues = points.filter((_, index) => index % 4 === 0).map((point) => point.month);
 
   return (
-    <div className="chart-frame" onMouseLeave={() => setActive(null)}>
-      {activePoint !== undefined && activePoint !== null ? (
-        <div className="chart-tooltip" style={{ left: 6, top: 4 }}>
-          <div className="tt-label">{monthLong(activePoint.month)}</div>
-          <div className="tt-value">{formatInt(activePoint.cumulative)}</div>
-          <div className="tt-share">
-            cumulative in window · +{formatInt(activePoint.count)} that month
-          </div>
-        </div>
+    <div className="chart-frame" ref={hostRef} onMouseLeave={marks.clearHover}>
+      {activePoint !== undefined && activePoint !== null && marks.active !== null ? (
+        <ChartTooltip
+          label={monthLong(activePoint.month)}
+          value={formatInt(activePoint.cumulative)}
+          context={[`cumulative in window · +${formatInt(activePoint.count)} that month`]}
+          anchor={marks.active.anchor}
+        />
       ) : null}
       <svg
         className="chart-svg"
@@ -84,7 +88,7 @@ function CumulativeSvg({ width, points }: { width: number; points: Point[] }) {
               <circle
                 cx={x(index)}
                 cy={y(point.cumulative)}
-                r={active === index ? 4 : 2.5}
+                r={marks.active?.index === index ? 4 : 2.5}
                 fill="var(--ui-accent)"
               />
               <circle
@@ -95,11 +99,21 @@ function CumulativeSvg({ width, points }: { width: number; points: Point[] }) {
                 tabIndex={0}
                 role="button"
                 aria-label={`${monthLong(point.month)}: ${formatInt(point.cumulative)} cumulative, ${formatInt(point.count)} published that month.`}
-                onMouseEnter={() => setActive(index)}
-                onFocus={() => setActive(index)}
-                onBlur={() => setActive(null)}
+                onMouseEnter={(event) =>
+                  marks.setHover({
+                    index,
+                    anchor: anchorFromElement(event.currentTarget, hostRef.current),
+                  })
+                }
+                onFocus={(event) =>
+                  marks.setFocus({
+                    index,
+                    anchor: anchorFromElement(event.currentTarget, hostRef.current),
+                  })
+                }
+                onBlur={marks.clearFocus}
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") setActive(null);
+                  if (event.key === "Escape") marks.clearFocus();
                 }}
               />
             </g>

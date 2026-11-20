@@ -19,15 +19,12 @@ export interface RovingMarkOptions {
    * region on top would say everything twice.
    */
   describe?: (index: number) => string;
-  /** Fires whenever the active mark changes, by focus or by keyboard. */
-  onActiveChange?: (index: number) => void;
   /** Escape, so the surface can clear its own active or pinned state. */
   onDismiss?: () => void;
 }
 
 export interface RovingMarkHandlers {
   tabIndex: 0 | -1;
-  onFocus: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
 }
 
@@ -90,7 +87,6 @@ export function useRovingMarkFocus({
   initialIndex = 0,
   orientation = "horizontal",
   describe,
-  onActiveChange,
   onDismiss,
 }: RovingMarkOptions): RovingMarks {
   const [active, setActive] = useState(() => clampIndex(initialIndex, count));
@@ -99,11 +95,9 @@ export function useRovingMarkFocus({
 
   const setActiveIndex = useCallback(
     (index: number) => {
-      const next = clampIndex(index, count);
-      setActive(next);
-      onActiveChange?.(next);
+      setActive(clampIndex(index, count));
     },
-    [count, onActiveChange],
+    [count],
   );
 
   const focusMark = useCallback(
@@ -124,9 +118,6 @@ export function useRovingMarkFocus({
 
   const markProps = (index: number): RovingMarkHandlers => ({
     tabIndex: index === activeIndex ? 0 : -1,
-    onFocus: () => {
-      if (index !== activeIndex) setActiveIndex(index);
-    },
     onKeyDown: (event) => {
       if (event.key === "Escape") {
         onDismiss?.();

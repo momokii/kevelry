@@ -48,8 +48,6 @@ export interface PrioritySummary {
   emptyNote: string;
 }
 
-export type { KevMonthBucket } from "../../lib/kev-months";
-
 export interface CorpusStats {
   published: number;
   kev: number;
