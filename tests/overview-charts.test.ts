@@ -105,7 +105,7 @@ describe("shareText and percentOf", () => {
   it("names the population a share is computed against", () => {
     expect(publishedShare(0, 0, "scored forecasts")).toBe("0 of 0 scored forecasts");
     expect(publishedShare(45, 395286, "KEV additions")).toContain("45 of 395,286 KEV additions");
-    expect(publishedShare(4, 10, "KEV additions in this window")).toContain("(40.00%)");
+    expect(publishedShare(4, 10, "KEV additions in this window")).toContain("(40%)");
   });
 });
 

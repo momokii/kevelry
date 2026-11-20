@@ -4,20 +4,16 @@ import { useEffect, useRef, useState } from "react";
 
 import { ChartTable } from "./ChartTable";
 import { ChartTooltip, anchorFromElement, type ChartTooltipAnchor } from "./ChartTooltip";
-import { formatInt, monthLong, monthShort } from "./chartTokens";
+import { formatInt, monthLong, monthShort, sharePercent } from "./chartTokens";
 import { useRovingMarkFocus } from "./useRovingMarkFocus";
 
-/** One decimal place (`13.4%`). The window total is the denominator: the same
- * number the caption prints and the data table sums to. */
-function shareOneDecimal(count: number, total: number): string {
-  if (total <= 0) return "0.0%";
-  return `${((count / total) * 100).toFixed(1)}%`;
-}
-
-/** The reading for one month, identical for pointer and keyboard. */
+/** The reading for one month, identical for pointer and keyboard. The window
+ * total is the denominator: the same number the caption prints and the data
+ * table sums to, and the share is the product's one `sharePercent` — the donut
+ * prints `0.31%` for the same kind of count, so the rhythm must too. */
 function monthFacts(entry: { count: number }, total: number, isHigh: boolean): string[] {
   const facts = [
-    `${formatInt(entry.count)} of ${formatInt(total)} additions, ${shareOneDecimal(entry.count, total)}`,
+    `${formatInt(entry.count)} of ${formatInt(total)} additions, ${sharePercent(entry.count, total)}`,
   ];
   // Two at most: the count against its denominator, then the window maximum.
   // `ChartTooltip` truncates past the second fact, so nothing repeats it here.
@@ -30,7 +26,7 @@ function monthLabel(
   total: number,
   isHigh: boolean,
 ): string {
-  const share = shareOneDecimal(entry.count, total);
+  const share = sharePercent(entry.count, total);
   return `${monthLong(entry.month)} · UTC: ${formatInt(entry.count)} KEV additions, ${share} of the ${formatInt(total)} in this window${isHigh ? ", window maximum" : ""}.`;
 }
 
@@ -216,7 +212,7 @@ export function KevRhythm({
           {
             key: "share",
             header: "Share of window",
-            value: (entry) => shareOneDecimal(entry.count, total),
+            value: (entry) => sharePercent(entry.count, total),
           },
         ]}
       />

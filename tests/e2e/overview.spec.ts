@@ -331,7 +331,7 @@ test("KEV rhythm draws twelve bars, including a gap month as a real zero", async
   const tooltip = page.getByTestId("overview-kev-tooltip");
   await expect(tooltip).toBeVisible();
   await expect(tooltip.locator(".tt-value")).toContainText("additions");
-  await expect(tooltip).toContainText("0 of 1 additions, 0.0%");
+  await expect(tooltip).toContainText("0 of 1 additions, 0%");
 
   // The caption total is the sum of the twelve bars (one addition here), never
   // the sparse subset that used to be summed.
@@ -372,7 +372,7 @@ test.describe("KEV rhythm touch input", () => {
     await expect(tooltip).toBeVisible();
     const other = page.getByTestId(`overview-kev-bar-${monthAgo(2)}`);
     await other.tap();
-    await expect(tooltip).toContainText("0 of 1 additions, 0.0%");
+    await expect(tooltip).toContainText("0 of 1 additions, 0%");
     await page.getByRole("heading", { level: 1 }).tap();
     await expect(tooltip).toBeHidden();
   });

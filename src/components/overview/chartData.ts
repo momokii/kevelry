@@ -1,4 +1,5 @@
 import { monthLong } from "../charts/chartTokens";
+import { sharePercent } from "../../lib/share";
 
 export interface DayBucket {
   bucketStart: string;
@@ -61,7 +62,7 @@ export function formatCount(value: number): string {
 
 export function percentOf(count: number, total: number): string | null {
   if (!Number.isFinite(count) || !Number.isFinite(total) || total <= 0 || count < 0) return null;
-  return `${((count / total) * 100).toFixed(count === total ? 0 : 2)}%`;
+  return sharePercent(count, total);
 }
 
 /**

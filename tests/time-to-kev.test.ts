@@ -141,7 +141,7 @@ describe("time-to-KEV flow", () => {
     const flow = buildTimeToKev(db, 2021);
     expect(flow.eligible).toBe(4);
     expect(flow.within30).toBe(2);
-    expect(flow.within30Share).toBe("50.0%");
+    expect(flow.within30Share).toBe("50%");
     expect(flow.medianDays).toBe(20);
     expect(flow.fastest.map((entry) => entry.days)).toEqual([10, 20, 100]);
   });

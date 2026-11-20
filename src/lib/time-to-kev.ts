@@ -8,6 +8,7 @@
 // vulnerability before the CVE record is published).
 
 import type { CveDatabase } from "./db";
+import { sharePercent } from "./share";
 
 export type LagBucket = "pre-publication" | "0-30d" | "31-90d" | "91-365d" | "1-5y" | "gt-5y";
 
@@ -213,8 +214,9 @@ export function buildTimeToKev(db: CveDatabase, oldestYear = 2021): TimeToKev {
       : (positiveDays[Math.floor((positiveDays.length - 1) / 2)] ?? null);
   const within30 = parsed.filter((entry) => entry.days > 0 && entry.days <= 30).length;
   const eligible = parsed.length;
-  const within30Share =
-    eligible === 0 ? "0%" : `${((within30 / eligible) * 100).toFixed(within30 === 0 ? 0 : 1)}%`;
+  // The share of eligible records confirmed within 30 days, through the one
+  // share formatter the charts use, so `/` and the Sankey cannot disagree.
+  const within30Share = sharePercent(within30, eligible);
 
   const fastest = [...parsed]
     .filter((entry) => entry.days > 0)

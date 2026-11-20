@@ -1,3 +1,8 @@
+// A share of a denominator is printed one way everywhere, and the rule lives in
+// `src/lib/share.ts` so the chart layer and the stat copy below it cannot drift.
+// Re-exported here because every chart needs it beside the other formatters.
+export { sharePercent } from "../../lib/share";
+
 export const SEVERITY_ORDER = [
   "critical",
   "high",
@@ -88,19 +93,23 @@ export function formatCompact(value: number): string {
   return `${value}`;
 }
 
-export function sharePercent(count: number, total: number): string {
-  if (total <= 0) return "0%";
-  const value = (count / total) * 100;
-  if (value > 0 && value < 0.01) return "<0.01%";
-  if (value < 1) return `${value.toFixed(2)}%`;
-  if (value < 10) return `${value.toFixed(1)}%`;
-  return `${Math.round(value)}%`;
-}
-
 export function monthShort(month: string): string {
   const [year, value] = month.split("-");
   const index = Number(value) - 1;
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const names = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   if (year === undefined || names[index] === undefined) return month;
   return `${names[index]} ${year.slice(2)}`;
 }
