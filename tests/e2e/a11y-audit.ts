@@ -14,11 +14,234 @@ export interface AuditOptions {
   maxLiveRegions: number;
 }
 
-interface ControlFailure {
+/**
+ * Why a target is measured at all. `control` is ordinary page UI (a link, a
+ * button, an input), `mark` is a chart mark — a focusable, role-bearing shape
+ * inside a chart surface — and `grouped-*` is a checkbox or radio measured
+ * through its label, because the native box is 13px and the label is the target.
+ */
+export type TargetScope = "control" | "mark" | "grouped-checkbox" | "grouped-radio";
+
+export interface TargetFailure {
+  scope: TargetScope;
+  /** Tag name, lowercased, or `grouped-<type>` for a labelled control. */
   kind: string;
+  /** `data-testid` when the element has one, else an empty string. */
+  id: string;
+  /** Human-readable identity, for the failure message. */
   label: string;
   width: number;
   height: number;
+}
+
+/** WCAG 2.5.8 Target Size (Minimum), AA. */
+export const MIN_TARGET = 44;
+
+/** Ordinary controls: the page UI the audit has always measured. */
+const CONTROL_SELECTOR =
+  'button, a[href], select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])';
+
+/**
+ * The interactive marks a chart exposes to the pointer, on top of those controls.
+ * Three shapes, each narrow on purpose:
+ *
+ * - `[role="img"][tabindex]` — a mark that *is* a value: the sparkline's
+ *   full-plot hit band, one KEV bar column. The `tabindex` is part of the match
+ *   because a `role="img"` without one is a picture, not something to aim at;
+ *   a roving group moves the `0` between marks, so every mark in the group
+ *   keeps a `tabindex`, `-1` or not, and stays measurable.
+ * - `[role="button"]` — a mark that acts: a Sankey band, a Sankey node, a bar
+ *   that pins a selection. Role-bearing by definition, so no `tabindex` filter.
+ * - `[tabindex]:not([tabindex="-1"])` — a focusable box with no role at all,
+ *   which is still a target; a bare `-1` box is a programmatic focus root (a
+ *   dialog, a scroll container) that no pointer aims at.
+ *
+ * Every match is then scoped to a chart surface and to non-`aria-hidden`
+ * elements, so `MARK_TARGET_SELECTOR` alone never measures a decorative glyph:
+ * an axis label, a painted bar or an `aria-hidden` svg carries no role and no
+ * `tabindex`, and an `aria-hidden` element is skipped even if it carries both.
+ */
+export const MARK_TARGET_SELECTOR = [
+  '[role="img"][tabindex]',
+  '[role="button"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+/** A chart's surface: the tooltip host, a figure, or a whole svg. */
+export const CHART_SURFACE_SELECTOR = ".chart-frame, figure, svg";
+
+interface RawTargetFailure {
+  scope: "control" | "mark" | "grouped-checkbox" | "grouped-radio";
+  kind: string;
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * Measure every pointer target on the page and return the ones under 44px.
+ *
+ * A chart is measured by its **hit target**, never by its painted mark: the box
+ * of the focusable element that answers the pointer. A KEV bar's fill can be 1px
+ * tall (a zero month) inside a 124px-tall column, a sparkline's line is a 1.5px
+ * stroke inside a 44px-tall band, and a Sankey band tapers to a hairline while
+ * its path still answers the pointer along its whole extent. Measuring the
+ * painted shape would report those as failures and tell nobody anything; the box
+ * of the element that handles the pointer is the size a thumb actually has to
+ * hit. For SVG marks the two coincide — a `<path>` has no hit area larger than
+ * its own geometry — so a tapered band is measured as the path's bounding box.
+ *
+ * A mark whose hit target is smaller than the mark it stands for has no hidden
+ * enlargement in this audit: it fails here, and the fix is a real hit rect.
+ */
+export async function measureTargets(page: Page): Promise<TargetFailure[]> {
+  return page.evaluate(
+    (config) => {
+      const failures: RawTargetFailure[] = [];
+      const isVisible = (el: Element): boolean => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const isHidden = (el: Element): boolean => {
+        const style = getComputedStyle(el);
+        return style.visibility === "hidden" || style.display === "none";
+      };
+
+      const controls = Array.from(document.querySelectorAll(config.controlSelector));
+      const marks = Array.from(document.querySelectorAll(config.markSelector)).filter(
+        (el) =>
+          el.closest(config.surfaceSelector) !== null &&
+          el.getAttribute("aria-hidden") !== "true" &&
+          !el.matches(config.controlSelector) &&
+          // A bare tabindex="-1" box is a programmatic focus root, not a target;
+          // a role-bearing mark keeps its place in the roving group either way.
+          (el.getAttribute("tabindex") !== "-1" || el.hasAttribute("role")),
+      );
+
+      const measured = new Set<Element>();
+      const markSet = new Set(marks);
+      for (const el of [...controls, ...marks]) {
+        if (measured.has(el)) continue;
+        measured.add(el);
+        const scope = markSet.has(el) ? "mark" : "control";
+        if (!isVisible(el) || isHidden(el)) continue;
+        // WCAG 2.5.8 inline exception: a link inside a sentence keeps the
+        // surrounding text readable and is not a standalone touch target.
+        if (scope === "control") {
+          if (el.classList.contains("ledger-skip-link")) continue;
+          if (el.tagName === "A" && getComputedStyle(el).display === "inline") continue;
+        }
+        const rect = el.getBoundingClientRect();
+        if (rect.width < config.min || rect.height < config.min) {
+          const testId = el.getAttribute("data-testid") ?? "";
+          const text = (el.textContent ?? "").trim().slice(0, 48);
+          failures.push({
+            scope,
+            kind: el.tagName.toLowerCase(),
+            id: testId,
+            label: `${el.tagName.toLowerCase()}${testId === "" ? "" : `#${testId}`} "${text}"`,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          });
+        }
+      }
+
+      const grouped = Array.from(
+        document.querySelectorAll('input[type="checkbox"], input[type="radio"]'),
+      );
+      for (const el of grouped) {
+        if (!isVisible(el)) continue;
+        const label = el.closest("label");
+        const target = label ?? el;
+        const rect = target.getBoundingClientRect();
+        if (rect.width < config.min || rect.height < config.min) {
+          const testId = el.getAttribute("data-testid") ?? "";
+          const type = (el as HTMLInputElement).type === "radio" ? "radio" : "checkbox";
+          failures.push({
+            scope: `grouped-${type}`,
+            kind: `grouped-${type}`,
+            id: testId,
+            label: `grouped-${type}#${testId}`,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          });
+        }
+      }
+      return failures;
+    },
+    {
+      controlSelector: CONTROL_SELECTOR,
+      markSelector: MARK_TARGET_SELECTOR,
+      surfaceSelector: CHART_SURFACE_SELECTOR,
+      min: MIN_TARGET,
+    },
+  );
+}
+
+/** `mark div#overview-kev-bar-2026-11 "Nov" 19x124` — sizes included, so a
+ * failure says how far short the target is. */
+export function describeTarget(failure: TargetFailure): string {
+  return `${failure.scope} ${failure.label} ${failure.width}x${failure.height}`;
+}
+
+interface PinnedUndersized {
+  /** `scope:kind:id`, with a trailing date token normalised to `*`. */
+  signature: string;
+  /** The routes the audit already covers, where this mark appears. */
+  routes: readonly string[];
+  reason: string;
+}
+
+/**
+ * Known violations of the 44px rule, measured rather than waived: the audit still
+ * reports these as undersized, still prints them on every run, and asserts this
+ * list matches reality in both directions. An undersized mark that is *not* here
+ * fails the build, and fixing one of these fails the build too until its entry is
+ * deleted — so the list can only shrink, never silently grow.
+ *
+ * The threshold is not relaxed for them: WCAG 2.5.8 (AA) is the rule the contract
+ * states, and both entries below are genuine failures that need a layout or hit
+ * geometry change, which is a product decision, not a test one.
+ */
+const PINNED_UNDERSIZED: readonly PinnedUndersized[] = [
+  {
+    signature: "mark:div:overview-kev-bar-*",
+    routes: ["/"],
+    reason:
+      "Twelve monthly columns share a 278px plot, so each full-height hit column is " +
+      "19x124. 44px columns need a 583px plot: the twelve-month rhythm would become a " +
+      "horizontal scroller and the month-to-month comparison this chart exists for would " +
+      "be lost. Its shape is essential to the information (WCAG 2.5.8 Essential), and the " +
+      "'All months' table below the chart carries every value, so nothing is pointer-only. " +
+      "A real fix is a calendar-scale control or a full-plot hit band with nearest-month " +
+      "mapping, both of which change the interaction.",
+  },
+  {
+    signature: "mark:g:overview-time-to-kev-node-cohort-*",
+    routes: ["/"],
+    reason:
+      "A cohort node's group box is 36x236: a 14px bar plus the label printed beside it, " +
+      "at the left edge of a 323px diagram. Extending the box to 44px horizontally would " +
+      "cover the bands that start at that same edge, so the pointer would hit the node " +
+      "where the reader aimed at a flow. The fix is a dedicated hit rect (the pattern " +
+      "VolumeChart's `.volume-hit` already uses), not a bigger node.",
+  },
+];
+
+/** A run's months and cohorts collapse to one pin each: `overview-kev-bar-2026-11`
+ * and `overview-time-to-kev-node-cohort-2026` both end in a date token. */
+const DATE_TOKEN = /-(?:19|20)\d{2}(?:-\d{2})?(?:-\d{2})?$/;
+
+export function pinSignature(failure: TargetFailure): string {
+  const identity = failure.id === "" ? failure.label : failure.id.replace(DATE_TOKEN, "-*");
+  return `${failure.scope}:${failure.kind}:${identity}`;
+}
+
+/** Pins apply to the route they were measured on, query string ignored. */
+export function pinnedSignaturesFor(route: string): string[] {
+  const key = route.split("?")[0] ?? route;
+  return PINNED_UNDERSIZED.filter((pin) => pin.routes.includes(key)).map((pin) => pin.signature);
 }
 
 function controlLabel(el: Element): string {
@@ -145,58 +368,28 @@ export async function auditRoute(page: Page, options: AuditOptions): Promise<voi
     maxLiveRegions,
   );
 
-  const failures = await page.evaluate(() => {
-    const failures: ControlFailure[] = [];
-    const isVisible = (el: Element): boolean => {
-      const rect = el.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0;
-    };
-    const controls = Array.from(
-      document.querySelectorAll(
-        'button, a[href], select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])',
-      ),
+  const targets = await measureTargets(page);
+  const pinned = pinnedSignaturesFor(route);
+  const undersized = targets.filter((target) => !pinned.includes(pinSignature(target)));
+  if (pinned.length > 0) {
+    // Printed, not swallowed: the pinned set is a recorded violation of the AA
+    // rule, and a run that does not say so would read as a clean bill of health.
+    const measured = targets.filter((target) => pinned.includes(pinSignature(target)));
+    console.log(
+      `[a11y] ${name}: ${measured.length} undersized target(s) pinned by ` +
+        `${pinned.length} signature(s) — ${measured.map(describeTarget).join("; ")}`,
     );
-    for (const el of controls) {
-      if (!isVisible(el)) continue;
-      const style = getComputedStyle(el);
-      if (style.visibility === "hidden" || style.display === "none") continue;
-      if (el.classList.contains("ledger-skip-link")) continue;
-      // WCAG 2.5.8 inline exception: a link inside a sentence keeps the
-      // surrounding text readable and is not a standalone touch target.
-      if (el.tagName === "A" && style.display === "inline") continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 44 || rect.height < 44) {
-        const testId = el.getAttribute("data-testid") ?? "";
-        const text = (el.textContent ?? "").trim().slice(0, 48);
-        failures.push({
-          kind: el.tagName.toLowerCase(),
-          label: `${testId === "" ? "" : `#${testId} `}"${text}"`,
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        });
-      }
-    }
-    const grouped = Array.from(
-      document.querySelectorAll('input[type="checkbox"], input[type="radio"]'),
-    );
-    for (const el of grouped) {
-      if (!isVisible(el)) continue;
-      const label = el.closest("label");
-      const target = label ?? el;
-      const rect = target.getBoundingClientRect();
-      if (rect.width < 44 || rect.height < 44) {
-        const testId = el.getAttribute("data-testid") ?? "";
-        failures.push({
-          kind: `grouped-${(el as HTMLInputElement).type}`,
-          label: `#${testId}`,
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        });
-      }
-    }
-    return failures;
-  });
-  expect(failures, `${name}: touch targets measure at least 44x44`).toEqual([]);
+  }
+  expect(
+    undersized.map(describeTarget),
+    `${name}: touch targets measure at least ${MIN_TARGET}x${MIN_TARGET}`,
+  ).toEqual([]);
+  // The other direction of the pin: a mark that is no longer undersized must not
+  // stay listed, or the ledger would quietly keep a stale exemption.
+  expect(
+    pinned.filter((signature) => !targets.some((target) => pinSignature(target) === signature)),
+    `${name}: a pinned undersized target is gone — delete its pin`,
+  ).toEqual([]);
 
   const seen = new Set<string>();
   const focusFailures: string[] = [];
