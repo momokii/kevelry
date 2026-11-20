@@ -21,6 +21,58 @@ interface RateBucket {
 
 const rateBuckets = new Map<string, RateBucket>();
 
+/**
+ * Insertion-ordered expiry queue for the buckets above. Every window that
+ * starts pushes one marker; `evictExpiredBuckets` drains markers off the front
+ * once their window has fully elapsed, so each marker is pushed and popped at
+ * most once and a request pays O(1) amortised — never a full-map scan. Map
+ * insertion order is the FIFO, and the window length is constant, so markers
+ * are ordered by `resetAt` while the clock moves forward; a backwards clock
+ * jump can only delay a drain, never leak one permanently.
+ */
+const rateBucketExpiries = new Map<number, { key: string; resetAt: number }>();
+let expirySequence = 0;
+/** `resetAt` of the oldest pending marker; `Infinity` when the queue is empty. */
+let expiryFrontier = Number.POSITIVE_INFINITY;
+
+function recordBucketExpiry(key: string, resetAt: number): void {
+  expirySequence += 1;
+  rateBucketExpiries.set(expirySequence, { key, resetAt });
+  expiryFrontier = Math.min(expiryFrontier, resetAt);
+}
+
+function evictExpiredBuckets(nowMs: number): void {
+  if (nowMs < expiryFrontier) return;
+  for (const [sequence, marker] of rateBucketExpiries) {
+    if (marker.resetAt > nowMs) {
+      expiryFrontier = marker.resetAt;
+      return;
+    }
+    rateBucketExpiries.delete(sequence);
+    const bucket = rateBuckets.get(marker.key);
+    // The marker can be stale: the same key may have started a newer window.
+    // Delete only the bucket that is itself finished, never a live budget.
+    if (bucket !== undefined && bucket.resetAt <= nowMs) rateBuckets.delete(marker.key);
+  }
+  expiryFrontier = Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Test hook: live buckets, so eviction is observable without waiting on a
+ * timer. Reads the same map the limiter uses; writes nothing.
+ */
+export function rateBucketCount(): number {
+  return rateBuckets.size;
+}
+
+/**
+ * Test hook: pending expiry markers. Must stay proportional to active windows;
+ * a marker per request would mean the queue itself is the new leak.
+ */
+export function rateExpiryQueueDepth(): number {
+  return rateBucketExpiries.size;
+}
+
 export function clientKeyFor(request: Request): string {
   // Proxies append the observed peer address; the client-supplied leftmost
   // entries are spoofable, so the rate-limit identity is the LAST entry —
@@ -45,10 +97,18 @@ export function checkRateLimit(
   key: string,
   nowMs: number = Date.now(),
 ): { allowed: boolean; remaining: number; reset: number } {
+  // Amortised sweep: only expired markers past the frontier are touched, so a
+  // request never walks the whole map. The map is deliberately not capped by a
+  // ceiling that drops live buckets — an attacker who can churn client keys
+  // would then evict other clients' live budgets (a rate-limit bypass), and
+  // refusing to track new keys either grants unlimited requests or denies
+  // legitimate clients. Expiry is the only safe eviction.
+  evictExpiredBuckets(nowMs);
   const entry = rateBuckets.get(key);
   if (entry === undefined || nowMs >= entry.resetAt) {
     const resetAt = nowMs + RATE_LIMIT_WINDOW_SECONDS * 1000;
     rateBuckets.set(key, { count: 1, resetAt });
+    recordBucketExpiry(key, resetAt);
     return { allowed: true, remaining: RATE_LIMIT_MAX - 1, reset: RATE_LIMIT_WINDOW_SECONDS };
   }
   if (entry.count >= RATE_LIMIT_MAX) {
@@ -99,6 +159,9 @@ export function resetHardeningState(): void {
   searchBudgetMs = SEARCH_TIME_BUDGET_MS;
   allowedOrigins = [];
   rateBuckets.clear();
+  rateBucketExpiries.clear();
+  expirySequence = 0;
+  expiryFrontier = Number.POSITIVE_INFINITY;
 }
 
 export function acquireConcurrencySlot(): boolean {

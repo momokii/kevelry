@@ -127,7 +127,9 @@ stable; `message` is sanitized; no stack traces, paths, or secrets.
 
 Defaults, enforced per client IP and visible on every response:
 
-- 600 requests per minute per IP; bursts over the budget get `429 RATE_LIMITED`
+- 600 requests per minute per IP; bursts over the budget get `429 RATE_LIMITED`.
+  The budget is kept in process memory, so replicas do not share it: N app
+  processes behind one proxy admit up to N × 600 requests per minute per IP
 - The client IP is the address observed at the server socket (last `X-Forwarded-For`
   entry when proxied). Self-hosters must put a reverse proxy in front that
   overwrites forwarding headers and never expose the app port directly; see the
