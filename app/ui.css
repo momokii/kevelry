@@ -1695,7 +1695,9 @@ a {
   /* Stretch, not flex-end: every column is a full-height hit target, so the
      dead space above a short (or zero) bar still answers the pointer. */
   align-items: stretch;
-  gap: 5px;
+  /* No gap: a column owns its whole slot, so the 5px between two painted bars
+     belongs to one of them instead of being dead space a thumb can miss. */
+  gap: 0;
   min-height: 132px;
   padding-top: 8px;
 }
@@ -1716,7 +1718,11 @@ a {
 }
 
 .kev-bar-fill {
-  width: 100%;
+  /* The slot is the target, the glyph is the column minus the rhythm gap,
+     centred in it: the painted bar keeps its width and its 5px spacing while
+     the box the pointer answers spans edge to edge. */
+  width: calc(100% - 5px);
+  margin-inline: auto;
   min-height: 4px;
   border-radius: 2px 2px 0 0;
   background: var(--ui-ink);

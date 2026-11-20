@@ -17,6 +17,19 @@ const HEIGHT = 360;
 const COL_LEFT = 178;
 const COL_RIGHT = 642;
 const NODE_WIDTH = 14;
+/**
+ * The box a node answers to, in user units, against the 44px rule. The painted
+ * bar is 14 units and its label sits in the outward gutter (left of a cohort,
+ * right of a delay bucket), so the target spans bar + gutter and stops at the
+ * bar's inner edge, where the bands begin: no flow is ever covered, and the
+ * gutter it does cover holds nothing but the node's own label. The diagram is
+ * `width: 100%`, so it renders at ×0.72 of its viewBox in the overview grid
+ * (618px for 860 units) and 84 units is ≈60px — over the rule with margin, and
+ * growing with the panel. Width is the dimension that needed it; the height is
+ * the node's own, and a node too short to clear 44px stays a measured failure
+ * the audit prints rather than a box that overlaps its neighbour.
+ */
+const NODE_HIT_WIDTH = 84;
 const PAD = 10;
 const MARGIN_TOP = 16;
 const MARGIN_BOTTOM = 16;
@@ -557,6 +570,17 @@ export function TimeToKevSankey({ flow }: { flow: TimeToKev }) {
               >
                 {formatInt(node.total)}
               </text>
+              {/* The hit target, painted last so `rect` queries still find the
+                  bar: transparent, so the node looks unchanged, and it ends
+                  exactly where the bands start, so a flow keeps its own
+                  pointer. */}
+              <rect
+                x={node.column === "cohort" ? node.x + NODE_WIDTH - NODE_HIT_WIDTH : node.x}
+                y={node.y}
+                width={NODE_HIT_WIDTH}
+                height={node.height}
+                fill="transparent"
+              />
             </g>
           );
         })}

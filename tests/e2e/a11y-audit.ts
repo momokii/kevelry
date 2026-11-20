@@ -179,7 +179,7 @@ export async function measureTargets(page: Page): Promise<TargetFailure[]> {
   );
 }
 
-/** `mark div#overview-kev-bar-2026-11 "Nov" 19x124` — sizes included, so a
+/** `mark div#overview-kev-bar-2026-11 "Nov" 23x124` — sizes included, so a
  * failure says how far short the target is. */
 export function describeTarget(failure: TargetFailure): string {
   return `${failure.scope} ${failure.label} ${failure.width}x${failure.height}`;
@@ -201,31 +201,25 @@ interface PinnedUndersized {
  * deleted — so the list can only shrink, never silently grow.
  *
  * The threshold is not relaxed for them: WCAG 2.5.8 (AA) is the rule the contract
- * states, and both entries below are genuine failures that need a layout or hit
- * geometry change, which is a product decision, not a test one.
+ * states, and the entry below is a genuine failure that needs a layout change,
+ * which is a product decision, not a test one. Hit geometry has already been
+ * taken as far as it goes: a KEV column spans its whole slot, gap included.
  */
 const PINNED_UNDERSIZED: readonly PinnedUndersized[] = [
   {
     signature: "mark:div:overview-kev-bar-*",
     routes: ["/"],
     reason:
-      "Twelve monthly columns share a 278px plot, so each full-height hit column is " +
-      "19x124. 44px columns need a 583px plot: the twelve-month rhythm would become a " +
-      "horizontal scroller and the month-to-month comparison this chart exists for would " +
-      "be lost. Its shape is essential to the information (WCAG 2.5.8 Essential), and the " +
-      "'All months' table below the chart carries every value, so nothing is pointer-only. " +
-      "A real fix is a calendar-scale control or a full-plot hit band with nearest-month " +
-      "mapping, both of which change the interaction.",
-  },
-  {
-    signature: "mark:g:overview-time-to-kev-node-cohort-*",
-    routes: ["/"],
-    reason:
-      "A cohort node's group box is 36x236: a 14px bar plus the label printed beside it, " +
-      "at the left edge of a 323px diagram. Extending the box to 44px horizontally would " +
-      "cover the bands that start at that same edge, so the pointer would hit the node " +
-      "where the reader aimed at a flow. The fix is a dedicated hit rect (the pattern " +
-      "VolumeChart's `.volume-hit` already uses), not a bigger node.",
+      "Twelve monthly columns share a 278px plot, so each full-slot hit column is " +
+      "23x124 at the audited 1280x900 (measured, not painted: the glyph inside is " +
+      "18px). The slot is as wide as the layout allows — the 5px between two bars " +
+      "now belongs to a column instead of being dead space — and 44px slots need a " +
+      "528px plot. The panel is 320px (span-4 of a 12-column, ~1000px content " +
+      "grid), so 44px means moving this chart to span-8 or span-12, a page " +
+      "composition change, not a hit-geometry one. Nothing is pointer-only: the " +
+      "'All months' table below the chart carries every value. The column is still " +
+      "1px under WCAG 2.5.8's 24px floor at this width, which is part of the same " +
+      "layout arithmetic, not a separate defect.",
   },
 ];
 

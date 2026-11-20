@@ -236,7 +236,9 @@ values. Every chart must provide:
 - a `<details>` data table generated from the same series;
 - an explicit empty/unknown state, never a fabricated zero;
 - a date basis in the tooltip or caption (UTC day/month);
-- 44px interactive targets where the element is a control.
+- 44px interactive targets for every mark and control — a dense chart's recorded
+  exception carries its measured size in §7.0, never a silently relaxed
+  threshold.
 
 ### 7.0 Inspectable data contract
 
@@ -277,6 +279,21 @@ normative. The rationale, the per-chart audit and the migration phases live in
 - **Touch is first class.** A tap opens the same tooltip and keeps it until the
   next tap or a second tap on the same mark. No value is hover-only, and every
   interactive dimension is at least 44px.
+- **The hit target is the slot, not the glyph.** A mark's focusable box spans the
+  whole space the mark owns — the rhythm gap between two bars belongs to one of
+  them, a node's box spans its bar and its label gutter — so the pointer never
+  lands in dead space between two marks. Widening the paint instead would change
+  the encoded value. A dense series therefore uses contiguous slot-wide targets,
+  and where the slot itself measures narrower than 44px the measured width is
+  the floor: the audit (`tests/e2e/a11y-audit.ts`) prints the size and a pin
+  records it, rather than the number being made to pass. One such exception, as
+  of this revision: the KEV rhythm's twelve columns are **23×124** — a 278px
+  plot over twelve slots, because the panel is 320px (`span-4` of a 12-column
+  grid) and 44px slots need 528px. That is a page composition change (move the
+  chart to `span-8`), not a hit-geometry one, and the `All months` table carries
+  every value meanwhile. The cohort node that used to be pinned at 36×236 is
+  fixed: its target is now **60×236**, spanning the bar plus the label gutter and
+  stopping where the bands start, so no flow is covered.
 - **One implementation.** `ChartTooltip`, `ChartTable` and `useRovingMarkFocus`
   (`src/components/charts/`) are the only renderers of the tooltip, the data table
   and the roving keyboard contract, and `anchorFromElement` plus `useHoverFocusMarks`
@@ -663,7 +680,8 @@ Target WCAG 2.2 AA. Maintained gates:
 
 - one h1, no heading-level skips;
 - every control named, every table header scoped;
-- 44×44px targets for standalone controls;
+- 44×44px targets for every mark and standalone control, with the recorded
+  dense-chart exception and its measured size in §7.0;
 - visible focus ring on every keyboard stop;
 - no horizontal page overflow at 360px or 200% zoom;
 - reduced motion removes transitions/animations (`0s`);

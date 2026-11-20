@@ -325,6 +325,25 @@ test("KEV rhythm draws twelve bars, including a gap month as a real zero", async
   await expect(gap).toHaveAttribute("aria-label", /0 KEV additions/);
   await expect(gap.locator(".kev-bar-fill")).toHaveCSS("height", "1px");
 
+  // The column, not the bar, is the target: twelve columns tile the plot with no
+  // dead gap between them, and the painted bar stays narrower than the box that
+  // answers the pointer.
+  const slot = await chart.evaluate((el) => {
+    const host = el.querySelector(".kev-bars") as HTMLElement;
+    const columns = Array.from(el.querySelectorAll(".kev-bar")) as HTMLElement[];
+    const widthOf = (node: Element): number => node.getBoundingClientRect().width;
+    return {
+      host: widthOf(host),
+      sum: columns.reduce((total, column) => total + widthOf(column), 0),
+      column: widthOf(columns[0] as HTMLElement),
+      glyph: widthOf(el.querySelector(".kev-bar-fill") as Element),
+    };
+  });
+  expect(Math.round(slot.sum), "the twelve columns fill the plot, gap included").toBe(
+    Math.round(slot.host),
+  );
+  expect(slot.glyph, "the painted bar stays narrower than its slot").toBeLessThan(slot.column);
+
   // Hovering above the 1px mark still opens the tooltip: the whole bar height
   // is the hit target, so a zero month is inspectable like any other.
   await gap.hover({ position: { x: 5, y: 4 } });
