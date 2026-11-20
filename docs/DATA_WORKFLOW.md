@@ -425,8 +425,8 @@ worker.mjs`).
 
 Success GET responses carry `Cache-Control: public, max-age=30,
 s-maxage=60, stale-while-revalidate=300` plus a strong ETag derived from the
-aggregate revision and request shape (304 on `If-None-Match`); error
-responses are never cached.
+aggregate revision and request shape (304 on `If-None-Match`); every error
+response carries `Cache-Control: no-store` (never cached, never revalidated).
 
 ## Import Cost
 

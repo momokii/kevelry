@@ -10,6 +10,14 @@ import {
 } from "./guardrails";
 import { buildProvenance } from "./provenance";
 
+/**
+ * Cache policy for every error response. `docs/DATA_WORKFLOW.md` promises errors
+ * are never cached; the header is what makes that promise enforceable — a 404
+ * without it may be heuristically cached by a shared proxy and replayed for a
+ * request that would now succeed.
+ */
+export const ERROR_CACHE_CONTROL = "no-store";
+
 function requestId(): string {
   return `req-${Date.now().toString(36)}${Math.floor(Math.random() * 0xffffff)
     .toString(36)
@@ -29,6 +37,7 @@ export function errorResponse(
   const body: Record<string, unknown> = { code, message, requestId: requestId(), provenance };
   if (details !== undefined) body.details = details;
   const response = Response.json(body, { status });
+  response.headers.set("Cache-Control", ERROR_CACHE_CONTROL);
   const rate = reservation ?? checkRateLimit(clientKeyFor(request));
   applyRateHeaders(response, rate);
   applySecurityHeaders(response);

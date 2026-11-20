@@ -409,6 +409,6 @@ describe("bulk CVE lookup route", () => {
     const bad = await getBatch(new Request(`${BASE}?ids=not-a-cve`));
     expect(bad.status).toBe(400);
     expect(bad.headers.get("ETag")).toBeNull();
-    expect(bad.headers.get("Cache-Control")).toBeNull();
+    expect(bad.headers.get("Cache-Control")).toBe("no-store");
   });
 });

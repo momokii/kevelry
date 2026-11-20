@@ -57,7 +57,9 @@ function notModified(request: Request, etag: string, reservation?: RateReservati
 /**
  * Success response with Cache-Control and, when the aggregate cache has a
  * revision, a strong ETag + 304 on If-None-Match. Error paths must not use
- * this helper: error responses stay uncacheable. `opts.headers` carries
+ * this helper: they go through `errorResponse`, which sets
+ * `Cache-Control: no-store` so an intermediary cannot cache a transient
+ * failure. `opts.headers` carries
  * additive headers such as an export `Content-Disposition`.
  */
 export function cachedOkResponse(

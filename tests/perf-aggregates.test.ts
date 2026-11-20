@@ -473,7 +473,7 @@ describe("task 43 aggregate cache (50k fixture)", () => {
       const bad = await getOverview(new Request("http://x/api/v1/overview?bucket=fortnight"));
       expect(bad.status).toBe(400);
       expect(bad.headers.get("ETag")).toBeNull();
-      expect(bad.headers.get("Cache-Control")).toBeNull();
+      expect(bad.headers.get("Cache-Control")).toBe("no-store");
     },
   );
 

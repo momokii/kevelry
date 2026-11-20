@@ -176,6 +176,16 @@ function expectSecurityHeaders(response: Response): void {
   expect(response.headers.get("referrer-policy")).toBe("no-referrer");
 }
 
+// A shared proxy happily heuristic-caches a 404/410 that carries no cache
+// directive, so errors must say `no-store` and must never offer a validator
+// or a lifetime a revalidating cache could hold on to.
+function expectUncacheableError(response: Response, name: string): void {
+  expect(response.status, name).toBeGreaterThanOrEqual(400);
+  expect(response.headers.get("cache-control"), name).toBe("no-store");
+  expect(response.headers.get("etag"), name).toBeNull();
+  expect(response.headers.get("cache-control") ?? "", name).not.toMatch(/max-age|s-maxage/i);
+}
+
 function withIp(url: string, ip: string, init?: RequestInit): Request {
   return new Request(url, {
     ...init,
@@ -481,7 +491,29 @@ describe("sanitized errors", () => {
       } else {
         expect(body.details, `${entry.name} carries no details`).toBeUndefined();
       }
+      expectUncacheableError(entry.response, entry.name);
     }
+  });
+});
+
+describe("error caching", () => {
+  it("marks a 404 and a 400 no-store while keeping security headers", async () => {
+    makeDb();
+
+    const missing = await getCveById(new Request("https://radar.test/api/v1/cves/CVE-2099-9999"), {
+      params: Promise.resolve({ cveId: "CVE-2099-9999" }),
+    });
+    expect(missing.status).toBe(404);
+    expect((await bodyOf(missing)).code).toBe("CVE_NOT_FOUND");
+    expectUncacheableError(missing, "CVE_NOT_FOUND");
+    expectSecurityHeaders(missing);
+
+    const invalid = await getCves(new Request("https://radar.test/api/v1/cves?limit=999"));
+    expect(invalid.status).toBe(400);
+    expect((await bodyOf(invalid)).code).toBe("BAD_LIMIT");
+    expectUncacheableError(invalid, "BAD_LIMIT");
+    expectSecurityHeaders(invalid);
+    expectRateHeaders(invalid);
   });
 });
 
