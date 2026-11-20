@@ -3968,6 +3968,27 @@ a.graph-cwe-chip:hover {
   overflow: visible;
 }
 
+/*
+  A segment is a real link inside the SVG, so keyboard focus has to land on the
+  mark. The inherited `:focus-visible` outline is drawn around the anchor's
+  bounding box — for a segment that is the whole donut, the same rectangle for
+  every band — so the ring is drawn on the arc instead: the accent the graph's
+  focus ring uses (`.graph-svg a:focus-visible circle`), the same weight (3
+  units of the donut's 220-unit viewBox render at about 2.5px), set clear of the
+  band so the gap reads at the donut's 180px width. Only `stroke-width` changes
+  with focus, so the band's own hover/active width is never touched, and
+  `pointer-events: none` keeps the ring from extending the link's hit area.
+*/
+.donut-focus-ring {
+  stroke: var(--ui-accent);
+  stroke-width: 0;
+  pointer-events: none;
+}
+
+.donut a:focus-visible .donut-focus-ring {
+  stroke-width: 3px;
+}
+
 .donut-center-label {
   fill: var(--ui-ink-3);
   font-family: var(--ui-font-mono);

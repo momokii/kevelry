@@ -11,6 +11,20 @@ const CENTER = SIZE / 2;
 const RADIUS = 82;
 const STROKE = 26;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+// The focus ring, drawn on the arc rather than as an `outline`: an outline on
+// this circle is a rectangle around the whole donut — the same box for every
+// segment — so it would say "the chart has focus", never which segment does.
+// Accent stroke at the weight of the graph's 2px ring (3 units of this 220-unit
+// viewBox render at about 2.5px), set 3 units clear of the band so the gap shows
+// at the donut's 180px width.
+const FOCUS_WIDTH = 3;
+const FOCUS_GAP = 3;
+// A focused segment is always the active one, so its band is `STROKE + 4` wide
+// while the ring is on screen: the ring clears that width, not the resting one.
+const FOCUS_RADIUS = RADIUS + (STROKE + 4) / 2 + FOCUS_GAP + FOCUS_WIDTH / 2;
+const FOCUS_CIRCUMFERENCE = 2 * Math.PI * FOCUS_RADIUS;
+/** Shortest ring arc in user units, so a 0.3% segment still shows a mark. */
+const FOCUS_MIN = 8;
 
 export function SeverityDonut({ bands, total }: { bands: Record<string, number>; total: number }) {
   const [active, setActive] = useState<string | null>(null);
@@ -56,7 +70,7 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
               // value. Anything else stays a labelled, non-interactive mark:
               // never a button that does nothing.
               const filterable = isSeverityBand(segment.band);
-              const ring = (
+              const band = (
                 <circle
                   cx={CENTER}
                   cy={CENTER}
@@ -66,6 +80,21 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
                   strokeWidth={isActive ? STROKE + 4 : STROKE}
                   strokeDasharray={`${Math.max(0.5, segment.length - 2)} ${CIRCUMFERENCE}`}
                   strokeDashoffset={-segment.offset}
+                  transform={`rotate(-90 ${CENTER} ${CENTER})`}
+                />
+              );
+              // Same angular extent as the band, at the ring's radius. The
+              // colour and width are the stylesheet's, so both themes and the
+              // graph's rule stay in one place.
+              const focusRing = (
+                <circle
+                  className="donut-focus-ring"
+                  cx={CENTER}
+                  cy={CENTER}
+                  r={FOCUS_RADIUS}
+                  fill="none"
+                  strokeDasharray={`${Math.max(FOCUS_MIN, (segment.length / CIRCUMFERENCE) * FOCUS_CIRCUMFERENCE)} ${FOCUS_CIRCUMFERENCE}`}
+                  strokeDashoffset={-(segment.offset / CIRCUMFERENCE) * FOCUS_CIRCUMFERENCE}
                   transform={`rotate(-90 ${CENTER} ${CENTER})`}
                 />
               );
@@ -85,7 +114,8 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
                   style={{ cursor: "pointer" }}
                   {...highlight}
                 >
-                  {ring}
+                  {band}
+                  {focusRing}
                 </a>
               ) : (
                 <g
@@ -94,7 +124,7 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
                   aria-label={name}
                   data-testid={`overview-donut-segment-${segment.band}`}
                 >
-                  {ring}
+                  {band}
                 </g>
               );
             })}

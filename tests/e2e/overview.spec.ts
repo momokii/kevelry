@@ -448,8 +448,98 @@ test("overview passes the task-24 accessibility audit", async ({ page }) => {
   await expect(page.getByTestId("global-search")).toBeFocused();
   await page.screenshot({ path: `${A11Y_EVIDENCE_DIR}/overview-focus-1280.png`, fullPage: true });
 
+  // P1.3: a segment is a real link inside the SVG, and it needs a focus ring of
+  // its own. The outline the anchor inherits from `:focus-visible` is drawn
+  // round the anchor's bounding box — for a segment that is the whole donut, the
+  // same rectangle for every band — so the ring is the arc, and it has to show
+  // up on keyboard focus in both themes, not disturb the band's hover width, and
+  // stay off a segment that is only hovered.
+  const themeAccent = (): Promise<string> =>
+    page.evaluate(() => {
+      // The custom property holds whatever the stylesheet wrote (`#006a9f`), so
+      // resolve it through an element's computed colour to compare like with like.
+      const probe = document.createElement("span");
+      probe.style.color = "var(--ui-accent)";
+      document.body.append(probe);
+      const resolved = getComputedStyle(probe).color;
+      probe.remove();
+      return resolved;
+    });
+  const tabToSegment = async (): Promise<void> => {
+    for (let step = 0; step < 120; step += 1) {
+      await page.keyboard.press("Tab");
+      const onSegment = await page.evaluate(() =>
+        (document.activeElement?.getAttribute("data-testid") ?? "").startsWith(
+          "overview-donut-segment-",
+        ),
+      );
+      if (onSegment) return;
+    }
+    throw new Error("120 tabs never reached a donut segment");
+  };
+  const segment = page.getByTestId("overview-donut-segment-critical");
+  const ring = segment.locator(".donut-focus-ring");
+  const band = segment.locator("circle").first();
+  const lightAccent = await themeAccent();
+
+  await expect(segment).toBeVisible();
+  // Before focus nothing is painted: a zero-width stroke, and the band at rest.
+  await expect(ring).toHaveCSS("stroke-width", "0px");
+  await expect(band).toHaveAttribute("stroke-width", "26");
+
+  await tabToSegment();
+  await expect(segment).toBeFocused();
+  expect(
+    await page.evaluate(() => document.activeElement?.matches(":focus-visible")),
+    "keyboard focus is :focus-visible",
+  ).toBe(true);
+  await expect(ring).toHaveCSS("stroke-width", "3px");
+  expect(
+    await ring.evaluate((element) => getComputedStyle(element).stroke),
+    "the ring is the theme's accent, the colour the graph's ring uses",
+  ).toBe(lightAccent);
+  // The ring's weight and its clearance: the graph's offset language, measured
+  // from the band's painted edge rather than assumed.
+  const ringGap = await segment.evaluate((element) => {
+    const [bandElement, ringElement] = [...element.querySelectorAll("circle")];
+    if (bandElement === undefined || ringElement === undefined) return null;
+    const bandOuter =
+      Number(bandElement.getAttribute("r")) + Number(bandElement.getAttribute("stroke-width")) / 2;
+    const ringWidth = Number.parseFloat(getComputedStyle(ringElement).strokeWidth);
+    return Number(ringElement.getAttribute("r")) - ringWidth / 2 - bandOuter;
+  });
+  expect(ringGap, "the ring sits clear of the band").toBe(3);
+
+  // Hover is untouched: the legend row still widens that band, and a hovered
+  // segment shows no ring, because the ring is focus only. The fixture's bands
+  // are two critical records and one medium, so medium is the neighbour here.
+  await page.getByTestId("overview-severity-medium").hover();
+  const hovered = page.getByTestId("overview-donut-segment-medium");
+  await expect(hovered.locator("circle").first()).toHaveAttribute("stroke-width", "30");
+  await expect(hovered.locator(".donut-focus-ring")).toHaveCSS("stroke-width", "0px");
+  await expect(ring).toHaveCSS("stroke-width", "3px");
+  await page.mouse.move(0, 0);
+
+  // Leaving focus clears it again: the ring is the cursor, not a selection.
+  await page.getByTestId("global-search").focus();
+  await expect(ring).toHaveCSS("stroke-width", "0px");
+
   await auditZoomReflow(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-zoom-200.png`);
   await auditReducedMotion(page, "overview", `${A11Y_EVIDENCE_DIR}/overview-reduced-motion.png`);
+
+  // The dark theme paints the ring in its own accent, so it stays visible on
+  // the dark surface instead of keeping the light theme's darker blue.
+  await page
+    .context()
+    .addCookies([{ name: "ui-theme", value: "dark", url: "http://localhost:3210" }]);
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const darkAccent = await themeAccent();
+  expect(darkAccent, "the dark theme has its own accent").not.toBe(lightAccent);
+  await expect(segment).toBeVisible();
+  await tabToSegment();
+  await expect(ring).toHaveCSS("stroke-width", "3px");
+  expect(await ring.evaluate((element) => getComputedStyle(element).stroke)).toBe(darkAccent);
 });
 
 test("volume chart exposes tooltips, selection, and the window toggle", async ({ page }) => {
