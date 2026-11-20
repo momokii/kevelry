@@ -1,8 +1,17 @@
 import { formatInt, sharePercent } from "@/components/charts/chartTokens";
 import { HelpTip } from "@/components/ledger/HelpTip";
+import { additionsStatNote, type AdditionsMonth } from "./chartData";
 import type { CorpusStats } from "./loadOverview";
 
-export function StatStrip({ corpus, kevLastMonth }: { corpus: CorpusStats; kevLastMonth: number }) {
+export function StatStrip({
+  corpus,
+  kevAdditions,
+}: {
+  corpus: CorpusStats;
+  /** Newest month with additions, named by the caller: the note never calls an
+   * older month "the latest". */
+  kevAdditions: AdditionsMonth | null;
+}) {
   return (
     <div className="stat-grid" data-testid="overview-corpus">
       <div className="stat">
@@ -20,7 +29,9 @@ export function StatStrip({ corpus, kevLastMonth }: { corpus: CorpusStats; kevLa
         <div className="stat-value" data-testid="overview-corpus-kev">
           {formatInt(corpus.kev)}
         </div>
-        <div className="stat-note">+{formatInt(kevLastMonth)} additions in the latest month</div>
+        <div className="stat-note" data-testid="overview-corpus-kev-additions">
+          {additionsStatNote(kevAdditions)}
+        </div>
       </div>
       <div className="stat">
         <div className="stat-label">
@@ -64,10 +75,10 @@ export function StatStrip({ corpus, kevLastMonth }: { corpus: CorpusStats; kevLa
           <HelpTip term="the unscored severity split" testId="overview-corpus-unscored-split-help">
             An ADP metric is published by an Authorized Data Publisher, not by the CNA, so it is
             secondary: context only. It is never used for ranking, ordering, filtering, or
-            eligibility, and it never becomes this record&apos;s primary severity. Records counted as
-            having no published metric have neither a valid CNA metric nor a valid ADP metric; that
-            is a data gap, not low severity. The two counts always add up to the unscored total;
-            their denominator is the unscored cohort, not the whole corpus.
+            eligibility, and it never becomes this record&apos;s primary severity. Records counted
+            as having no published metric have neither a valid CNA metric nor a valid ADP metric;
+            that is a data gap, not low severity. The two counts always add up to the unscored
+            total; their denominator is the unscored cohort, not the whole corpus.
           </HelpTip>
         </div>
       </div>

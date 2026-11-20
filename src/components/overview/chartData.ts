@@ -1,3 +1,5 @@
+import { monthLong } from "../charts/chartTokens";
+
 export interface DayBucket {
   bucketStart: string;
   count: number;
@@ -184,6 +186,51 @@ export function monthLabel(month: string): string | null {
   const monthIndex = Number(match[2]);
   if (monthIndex < 1 || monthIndex > 12) return null;
   return `${MONTH_NAMES[monthIndex - 1]} ${match[1]}`;
+}
+
+/** The KEV stat's source: a month that actually gained additions, named. */
+export interface AdditionsMonth {
+  month: string;
+  count: number;
+  /** True when `month` is the newest bucket in the window. */
+  isLatestBucket: boolean;
+}
+
+/**
+ * The newest month *with at least one addition*, and whether it is the newest
+ * bucket at all.
+ *
+ * The month spine is dense, so a trailing zero bucket is normal: every month
+ * starts at zero additions. Reporting the last non-empty month's count under a
+ * "latest month" label silently describes a different month than the caption,
+ * so the month travels with the count and the caller names it. Returns null when
+ * the window holds no additions at all, which is a real answer, not a zero.
+ */
+export function latestMonthWithAdditions(
+  buckets: readonly { month: string; count: number }[],
+): AdditionsMonth | null {
+  for (let index = buckets.length - 1; index >= 0; index -= 1) {
+    const bucket = buckets[index];
+    if (bucket !== undefined && bucket.count > 0) {
+      return {
+        month: bucket.month,
+        count: bucket.count,
+        isLatestBucket: index === buckets.length - 1,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Caption for the additions stat: the count and the month it belongs to. The
+ * word "latest" only appears when the month is the newest bucket; otherwise the
+ * qualifier says which month the count is from.
+ */
+export function additionsStatNote(stat: AdditionsMonth | null): string {
+  if (stat === null) return "no additions in this window";
+  const qualifier = stat.isLatestBucket ? "" : " (last month with additions)";
+  return `+${formatCount(stat.count)} additions in ${monthLong(stat.month)}${qualifier}`;
 }
 
 export function monthlyVolume(

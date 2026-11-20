@@ -7,6 +7,7 @@ import { TimeToKevSankey } from "@/components/charts/TimeToKevSankey";
 import { VolumeChart } from "@/components/charts/VolumeChart";
 import { ChartInfo } from "@/components/charts/ChartInfo";
 import { formatInt, monthLong, sharePercent } from "@/components/charts/chartTokens";
+import { latestMonthWithAdditions } from "@/components/overview/chartData";
 import { TimeText } from "@/components/ledger/TimeText";
 import { loadOverviewData, resolveDataDir } from "@/components/overview/loadOverview";
 import { ExploitCoverage } from "@/components/overview/ExploitCoverage";
@@ -55,10 +56,10 @@ export default function OverviewPage() {
       ? (lastMonth.count / firstMonth.count).toFixed(1)
       : null;
   const lastMonthCount = lastMonth?.count ?? 0;
-  // Newest month *with additions*: the series is dense, so the calendar's last
-  // bucket can legitimately be `0` and this stat is about the latest active
-  // month, as it was before the spine existed.
-  const kevLastMonth = [...data.kevByMonth].reverse().find((entry) => entry.count > 0)?.count ?? 0;
+  // Newest month *with additions*, named: the spine is dense, so the calendar's
+  // last bucket can legitimately be `0` early in a month. The stat says which
+  // month it is about instead of calling an older month the latest.
+  const kevAdditions = latestMonthWithAdditions(data.kevByMonth);
   const latestLabel = lastMonth !== undefined ? monthLong(lastMonth.month) : null;
   const epssTotal = data.corpus.epssScored;
   const sources = data.provenance.sources;
@@ -142,7 +143,7 @@ export default function OverviewPage() {
         </div>
       </section>
 
-      <StatStrip corpus={data.corpus} kevLastMonth={kevLastMonth} />
+      <StatStrip corpus={data.corpus} kevAdditions={kevAdditions} />
 
       <div className="grid overview-grid" style={{ marginTop: "var(--ui-sp-6)" }}>
         <Panel
