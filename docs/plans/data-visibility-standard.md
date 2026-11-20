@@ -1,6 +1,8 @@
 # Inspectable Data Contract — audit and implementation plan
 
-**Status:** planning only. No `src/`, test, or image change is part of this document.
+**Status:** implemented. P1–P4 landed on `main`; §7.0 of `DESIGN.md` is the
+normative text and this document is the audit it came from. What did not land is
+listed under [Deferred](#7-deferred).
 **Problem:** two charts hide their values behind an affordance that does not work
 (EPSS sparkline on `/priority`, KEV rhythm on `/`), and no single rule says how a
 reader gets the exact number out of a mark.
@@ -13,7 +15,10 @@ the work is **one primitive + two migrations + a sweep**, not a new system.
 
 ## 1. Inventory
 
-Every data visualisation, with what a reader can get today.
+Every data visualisation, with what a reader could get **before** the migration.
+The "Hover today" column is the audit snapshot that motivated the work, not the
+current state; §7.0 of `DESIGN.md` says what each row is held to now, and row 8
+no longer exists (see [Deferred](#7-deferred)).
 
 | # | File : lines | Component | Type | Hover today | Exact value without hover | Keyboard | aria / screen-reader story |
 |---|---|---|---|---|---|---|---|
@@ -138,7 +143,7 @@ survive. These ten clauses are what a reviewer checks.
 
 ## 3. Phases
 
-### P1 — shared primitive and the normative home
+### P1 — shared primitive and the normative home — done (`fe076be`)
 
 `charts/ChartTooltip.tsx`, `charts/ChartTable.tsx`, `charts/useInspectableMarks.ts`
 (active index, roving tabIndex, Esc, live announcement); `DESIGN.md` §7.0 = the
@@ -153,7 +158,7 @@ Acceptance — checkable without reading code:
   className="chart-table"' src` match only the two new components.
 - `npm run lint`, `tsc --noEmit`, unit suite and the 6 route e2e specs green.
 
-### P2 — EPSS sparkline (`/priority`, `PriorityView.tsx:622`)
+### P2 — EPSS sparkline (`/priority`, `PriorityView.tsx:622`) — done (`27f644f`, precision fixed in `98611ba`)
 
 Bands per point, pointer + arrow stepping, `ChartTooltip`, a `<details>` table of
 every observation (date, percent, model), root becomes `role="group"` while
@@ -170,7 +175,7 @@ Acceptance:
 - The `<details>` table lists 25 rows for `CVE-2024-10441`, values only, and still
   renders with JS disabled.
 
-### P3 — KEV rhythm (`/`, `KevRhythm.tsx`)
+### P3 — KEV rhythm (`/`, `KevRhythm.tsx`) — done (`d1d9872`)
 
 Full-height hit target per month, roving keyboard, `ChartTooltip` with full month
 name + `UTC` + count + share of the 12-month total, `ChartTable`, `ChartInfo`, and
@@ -186,7 +191,7 @@ Acceptance:
 - A month with zero additions draws a 1px bar, is focusable, and says `0`.
 - The panel has "How to read" and a data table; neither existed before.
 
-### P4 — sweep
+### P4 — sweep — done (`3e890cf`, reachability fixed in `7c3c27c`)
 
 Cohort visualization and severity mix: drop the redundant `title`s, keep the
 printed values. Donut: `role="img"`, not `button`. Graph: root `role="group"` so
@@ -246,3 +251,42 @@ Acceptance:
   Focus: none of the 12 bars is focusable. Screen reader: `role="img"` makes the
   twelve `title`s presentational, so the only output is "KEV catalog additions by
   UTC month" — no month, no count. The panel has no "How to read" and no table.
+
+## 7. Deferred
+
+Recorded so the next reader does not mistake "P1–P4 done" for "every acceptance
+line in §3 was executed".
+
+- **axe is not available as a dependency.** `@axe-core/playwright` is not
+  installed, and `tests/e2e/a11y-audit.ts` is a hand-rolled audit (horizontal
+  overflow, 44px control size, live-region count, control labels) rather than an
+  axe wrapper. So the P4 acceptance line "axe-core reports no new violation on
+  all six routes" could not be run at all — the P1–P4 e2e suites exercise the
+  audit that does exist, and nothing here is evidence about axe. Adding the
+  dependency and running it on the six routes stays open. This also means the
+  `role="img"` → `role="group"` swaps were validated by the existing specs and a
+  manual pass, not by axe.
+- **`SeverityMix` outcome: deleted, not migrated.** `charts/SeverityMix.tsx` had
+  no importer — `grep -rn "SeverityMix" src/ app/ tests/` matched only its own
+  declaration — and the overview had already moved to the severity donut, so its
+  P4 migration (drop the redundant `title`, keep the printed count and share in
+  the link name) is superseded by removing the component (`8435791`). Row 8 of
+  §1 therefore has no current file; the pattern it demonstrated lives on in the
+  donut and in `CohortVisualization`.
+- **The Escape tests flake and were not fixed here.** The Escape paths that end a
+  tooltip, a pinned mark or a dialog (`tests/e2e/overview.spec.ts` around the
+  filter/dialog dismissals, `tests/e2e/graph.spec.ts` for the attribute dialog)
+  were reported intermittently failing while P1–P4 were being built. No cause was
+  found and no fix was applied: the final full run was 129 passed / 0 skipped, so
+  there is no reproduction to work from. Treat these as the suite's known
+  flake — re-run before believing a failure, and do not "fix" them by widening a
+  timeout.
+- **A month with zero KEV additions never reaches the chart.** `KevRhythm` draws
+  a genuine zero as a focusable 1px mark (`data-zero`), but `kevByMonthSql`
+  (`src/lib/aggregates.ts:357`) groups only months that have rows and takes the
+  twelve most recent of those. A calendar month with no additions is therefore
+  absent, not drawn as `0`, and the panel's "twelve months" window can span more
+  than twelve calendar months. Found while recapturing the docs screenshots: the
+  seeded corpus had a gap month and the panel rendered 11 bars. Not fixed here —
+  it changes an aggregate, needs a test, and was outside the docs/screenshot
+  scope of this change.

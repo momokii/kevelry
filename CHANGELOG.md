@@ -3,6 +3,74 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## Unreleased
+
+No version bump yet: the entries below are unreleased work on `main`, and the
+newest published image remains `3.0.2`.
+
+### Added
+
+- **Inspectable data is a written contract, not a per-chart habit.** `DESIGN.md`
+  §7.0 states what "inspectable" means in ten checkable clauses — every mark is a
+  hover and keyboard-focus stop, the tooltip has a fixed label / value / share
+  shape, a value never exists only on hover, a genuine zero stays a value while a
+  missing observation is never plotted as one, and a role follows behaviour. The
+  per-chart sections point at it instead of repeating it. The audit and the
+  migration phases stay in `docs/plans/data-visibility-standard.md`.
+- **`ChartTooltip`, `ChartTable` and `useRovingMarkFocus` replace five
+  hand-rolled copies.** `ChartTooltip` renders the fixed shape inside the chart's
+  own positioned host, clamps to its edges, flips in the last 30% of the width and
+  never covers the mark it describes. `ChartTable` is the `<details>` fallback
+  that survives with JavaScript off and states an empty series instead of drawing
+  zeros. `useRovingMarkFocus` is the keyboard contract: one Tab stop,
+  Arrow/Home/End between marks, real DOM focus so the focused mark's own label is
+  the announcement, and Escape for the surface's dismiss.
+- **The EPSS sparkline on `/priority` is readable point by point.** One hit band
+  per observation maps the pointer to the nearest index, Arrow/Home/End step the
+  same series from a single Tab stop, and both show that observation's UTC date,
+  probability and model version. The caption prints the observed range and a data
+  table lists every observation, so no value needs a pointer.
+- **The KEV rhythm on `/` is twelve focusable bars.** Each month gets a
+  full-height hit target; hover and keyboard focus produce identical text (full
+  month name, `· UTC`, count, and share of the window total); and the window
+  maximum is labelled. A month with no additions is drawn as a focusable 1px mark
+  reading `0` rather than vanishing — although the overview loader still omits a
+  calendar month with no rows entirely, which is recorded as deferred in
+  `docs/plans/data-visibility-standard.md`. The panel gains a "How to read" line
+  and a data table, neither of which existed before.
+
+### Changed
+
+- **`/graph` links and the severity donut segments are reachable.** Both chart
+  roots were `role="img"`, which flattens interactive children out of the
+  accessibility tree. The graph root is now a named `role="group"`, so its leaf
+  links are reachable again. Each donut segment is now the same real link to the
+  severity-filtered Explore view its legend row already was, rather than a
+  `role="button"` that did nothing; a band Explore does not accept stays a
+  labelled, non-interactive mark.
+- **Chart tooltips print full precision.** EPSS is printed from the stored decimal
+  string at one fixed three-decimal precision (`54.000%`, not `54%`) at every
+  print site — sparkline tooltip, caption range, data table, live announcement and
+  the graph badges — instead of passing through a float and trimming trailing
+  zeros. The number was never rounded upstream; the loss was in the formatter.
+- **The Sankey bands and the Explore cohort months no longer lean on a native
+  `title`.** Each is a real mark carrying the shared tooltip, or printed text
+  where the value was already on screen.
+
+### Removed
+
+- **`charts/SeverityMix`.** Nothing imported it: no route and no test, and the
+  overview had already moved to the severity donut. Its P4 migration is superseded
+  by removing the component rather than maintaining an unmounted copy of the
+  pattern.
+
+### Tests
+
+- **622 → 629 unit tests.** The seven new cases pin the EPSS precision contract
+  (`displayProbabilityPercentFixed`, `formatEpssPercent`) so a formatter change
+  cannot silently re-round a published probability. The Playwright suite is
+  unchanged at 129 passed / 0 skipped.
+
 ## 3.0.2 — 2026-11-17
 
 ### Fixed

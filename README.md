@@ -27,15 +27,15 @@ can consume the same data.
 > local CWE taxonomy (migration 009) so chips carry catalog names, states, and
 > published mitigation text. E4 adds bulk lookup at `GET /api/v1/cves/batch`. E5
 > adds RSS 2.0 and Atom 1.0 change feeds, a daily checkpoint writer, and page-bounded
-> CSV/JSON export. 622 unit tests pass (3 skipped) and 129 Playwright tests pass (0
-> skipped), measured 2026-11-17;
+> CSV/JSON export. 629 unit tests pass (3 skipped) and 129 Playwright tests pass (0
+> skipped), measured 2026-11-20;
 > lint, typecheck, build, and secret-scan run on every push via CI. See
 > [Build gates](#build-gates-all-done); the v3 scope is
 > specified in [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
 
 ![Overview: corpus total, freshness stats, and the publication-volume panel](docs/images/overview.png)
 ![Search: exploit-tagged rows with severity/KEV badges and exploit reference links](docs/images/explore.png)
-![Priority: one expanded known-exploited row with KEV catalog labels, CWE chips, and the secondary CVSS block](docs/images/priority.png)
+![Priority: one expanded known-exploited row with KEV catalog dates and required action, beside the EPSS block whose sparkline steps through every dated observation and prints the observed range](docs/images/priority.png)
 
 ## What it does
 
@@ -118,10 +118,16 @@ deliberate:
 - every chart has a takeaway, a "How to read" disclosure, and a data table;
 - help glyphs are a 17px inline circle inside a 44px invisible target, never a
   large bordered box;
-- hover and keyboard focus show the same exact tooltip with a named denominator;
+- hover and keyboard focus show the same exact tooltip with a named denominator,
+  and the tooltip is never the only copy of the value — the number is also
+  printed at the mark, in the caption, or in the chart's data table;
+- every chart mark is inspectable: a genuine zero stays a focusable `0` instead of
+  disappearing, and a missing observation is stated, never plotted as a zero;
 - selection is reversible (`Escape` or clear) and click-through preserves context;
 - severity is never color-only, and unscored is an explicit band, never zero;
 - no page overflows at 360px or 200% zoom; standalone targets are 44×44px.
+
+![Inspectable data: hovering a KEV rhythm bar on the overview opens the same three-part tooltip keyboard focus shows — the month with its UTC basis, the exact count, and its share of the window total](docs/images/inspectable-data.png)
 
 The visual system is documented in [`DESIGN.md`](DESIGN.md). The palette is the
 same warm neutral family as before: paper `rgb(247,246,243)`, ink
@@ -517,8 +523,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest (622 passing, 3 skipped on 2026-11-17)
-npx playwright test     # browser suite (129 passing, 0 skipped on 2026-11-17)
+npm test                # vitest (629 passing, 3 skipped on 2026-11-20)
+npx playwright test     # browser suite (129 passing, 0 skipped on 2026-11-20)
 npx prettier --write <paths>  # format touched files
 ```
 

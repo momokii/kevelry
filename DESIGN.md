@@ -285,6 +285,9 @@ normative. The rationale, the per-chart audit and the migration phases live in
 
 ### Volume
 
+Every chart below is held to §7.0; a subsection records only what is specific to
+that chart.
+
 UTC buckets at three granularities, each with its own honest window: month
 (12/24), week (26/52, Monday-anchored) and day (30/90). The loader ships a
 400-day daily series so the week view is never silently truncated to the 90 days
@@ -314,8 +317,12 @@ chart shows the base rate; it is not a risk score.
 ### Severity composition
 
 Seven bands from the primary CNA CVSS policy. A donut shows the true proportions
-(no same-length tracks); hovering a segment updates the centre, and the counted
-legend rows are the Explore links. A data table is provided.
+(no same-length tracks); hovering a segment updates the centre. Every segment is
+the same real link to the severity-filtered Explore view as its legend row — the
+root is a `role="group"`, not `role="img"`, so those links stay in the tree —
+and a band Explore does not accept as a filter value stays a labelled,
+non-interactive mark rather than a button that does nothing. A data table is
+provided.
 
 ### Cumulative growth
 
