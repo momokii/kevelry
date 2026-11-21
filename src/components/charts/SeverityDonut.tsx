@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { isSeverityBand } from "../explore/filter-meta";
 import { ChartTable } from "./ChartTable";
 import { SEVERITY_META, SEVERITY_ORDER, formatInt, sharePercent } from "./chartTokens";
 
@@ -66,10 +65,9 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
             {segments.map((segment) => {
               const meta = SEVERITY_META[segment.band as keyof typeof SEVERITY_META];
               const isActive = active === segment.band;
-              // A segment acts only when Explore accepts its band as a filter
-              // value. Anything else stays a labelled, non-interactive mark:
-              // never a button that does nothing.
-              const filterable = isSeverityBand(segment.band);
+              // Every band this chart can draw is a value Explore accepts as a
+              // severity filter, so every segment is the real link its legend
+              // row already is: never a button that does nothing.
               const band = (
                 <circle
                   cx={CENTER}
@@ -105,7 +103,7 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
                 onFocus: () => setActive(segment.band),
                 onBlur: () => setActive(null),
               };
-              return filterable ? (
+              return (
                 <a
                   key={segment.band}
                   href={`/explore?severity=${segment.band}`}
@@ -117,15 +115,6 @@ export function SeverityDonut({ bands, total }: { bands: Record<string, number>;
                   {band}
                   {focusRing}
                 </a>
-              ) : (
-                <g
-                  key={segment.band}
-                  role="img"
-                  aria-label={name}
-                  data-testid={`overview-donut-segment-${segment.band}`}
-                >
-                  {band}
-                </g>
               );
             })}
             <text x={CENTER} y={CENTER - 6} textAnchor="middle" className="donut-center-label">

@@ -3,6 +3,102 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## Unreleased
+
+The v3 wrap-up: correctness first, then structure and hardening. No new product
+surface, no schema migration, no API contract change. `package.json` stays at
+`3.1.0`; this section is unpublished until the release step (planned as 3.2.0)
+bumps, tags and pushes the image.
+
+### Fixed
+
+- **A stale aggregate count is never served under a fresh revision.** Every read
+  path (overview, status, health, coverage) now checks the aggregate cache against
+  the acceptance ledger before trusting it; when the cached snapshot predates the
+  accepted source revision, the request falls back to a live query instead of
+  pairing new provenance with previous-generation numbers. The cache also stops
+  seeding an ETag it cannot vouch for. Covered by a failed-refresh test that
+  asserts no response mixes a new revision with old counts.
+- **API error responses carry `Cache-Control: no-store`, and no ETag.** A 4xx/5xx
+  can now never be memoized by an intermediary for a request that would succeed;
+  the documented promise in `docs/DATA_WORKFLOW.md` and `docs/api/README.md` is the
+  reason for the header rather than a claim the code did not keep.
+- **Expired rate-limit buckets are evicted.** The per-IP map used to grow for the
+  life of the process, so a scraped port or an IPv6 /64 churned memory with no
+  sweep. Eviction rides an insertion-ordered expiry queue (O(1) amortised, no
+  timer), and `docs/api/README.md` now says the 600/minute budget is **per
+  process**.
+- **The "latest month" stat names the month it measures.** It was the newest month
+  _with additions_ labelled as the latest month, so an empty current month made a
+  stat and its caption describe different months. It is now "last month with
+  additions" with the month named.
+- **A missing EPSS observation no longer erases the whole sparkline.** One `null`
+  used to collapse the figure to nothing, contradicting `DESIGN.md` §7.0 clause 6.
+  The observed points still plot, the line breaks at each gap, and the caption
+  states how many observations are absent — a gap is never drawn at zero.
+- **Arrow keys wrap at both ends of a roving chart group.** Entering the sparkline
+  on the latest mark made the first ArrowRight a no-op; focus and step direction
+  now agree, and the wrap is pinned without a DOM.
+- **A touch tap pins the KEV rhythm readout.** `pointerup` used to clear the
+  tooltip, so the promised "kept until the next tap" did not exist on touch. The
+  same pointer-type guard the sparkline already had is applied, and a tap on
+  another bar moves the pin.
+
+### Changed
+
+- **One renderer for every chart tooltip and data table.** Seven tooltips
+  (`/`, `/explore`, `/priority`, `/graph` surfaces included) and eight data tables
+  now render through `ChartTooltip` and `ChartTable`, and the share formatter is
+  one helper instead of two precisions. Verified rather than asserted:
+  `grep -rn 'className="chart-tooltip\|className="chart-table' src app` matches only
+  the primitive files, and the 3.1.0 line claiming the primitives "replace five
+  hand-rolled copies" is now true.
+- **Donut segments show a visible keyboard focus ring**, matching the graph's rule,
+  so a focused segment is distinguishable from hover.
+- **Dense chart marks meet the 44px hit-target rule where the layout allows.** The
+  accessibility audit now measures focusable `role`-bearing marks, not just form
+  controls, and fails on a deliberately undersized one. One measured exception is
+  pinned and printed: the KEV rhythm's twelve columns are **23×124** in a 320px
+  panel, 1px under WCAG 2.5.8's 24px floor — moving the chart to `span-8` is a page
+  composition decision, not a hit-geometry one, and the "All months" table carries
+  every value meanwhile.
+- **`src/lib` no longer imports out of `app/`.** The CWE display read model moved
+  into `src/lib`, so the dependency arrow points the way it should.
+- **`OPTIONS` preflights are throttled.** Preflight spends one hit from the same
+  per-IP budget (a client can no longer loop them for free) but still takes no
+  concurrency slot, because it does no database work. Documented beside the limiter.
+- **`CWE_CSV_URL` must be an absolute `https:` URL.** `http:`, `file:`, `data:` and
+  relative overrides are refused before any fetch, with the reason logged and the
+  pinned MITRE default used instead of throwing.
+- **Optional HSTS.** `Strict-Transport-Security` is sent on every HTTPS request;
+  `HSTS_ENABLED=true` adds it on plain HTTP too, for deployments behind a TLS
+  terminator. Default off, so a direct-HTTP self-host is never bricked.
+
+### Added
+
+- **`CONTEXT.md`** — the domain language this code actually implements: band vs
+  cohort, checkpoint vs snapshot, acceptance ledger vs aggregate cache, and the
+  narrower-than-common uses of "exploit signal" and "inspectable data".
+- **`scripts/nightly-backup.sh --verify <dir>`** re-checks a stored generation with
+  the same `verifyBackup()` the nightly run uses (hash, schema, row counts),
+  decompressing the gzip into a `mktemp -d` directory that is removed on success
+  and on failure. The cron artifact is now verified after compression, so the
+  retained gzip passes with no manual `gunzip` step, and the prune refuses a
+  backup root that is empty, relative, `/`, or shallower than two path components
+  (`exit 2`, before anything is created or mounted).
+
+### Tests
+
+- **632 → 708 unit tests (3 skipped).** The additions cover the chart primitives
+  (tooltip shape, clamping and last-30% flip, table structure and empty-series
+  copy, roving Arrow/Home/End plus the wrap at both ends), the 44px audit selector
+  and its pinned exception, aggregate-currency fallbacks, `no-store` on every error
+  status, rate-bucket eviction, the sparkline gap rules, and the https-only CWE URL
+  guard.
+- **130 → 138 Playwright tests (0 skipped).** The keyboard matrix now covers both
+  ends of the roving groups, and the touch-pin journey asserts the KEV tooltip
+  survives `pointerup`.
+
 ## 3.1.0 — 2026-11-20
 
 Making every chart value inspectable: a written contract, shared primitives, and the KEV rhythm's twelve months made real.

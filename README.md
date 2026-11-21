@@ -4,42 +4,188 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 
-**Naming:** **Kevelry** is the public name (repository, wordmark). The
-package/image name stays `cve-change-radar` (local folder `cve-injector`);
-all three refer to this one app. Internal names were kept stable on purpose
-so the live volume and image references never break.
+**Naming:** **Kevelry** is the public name (repository, wordmark). The package and
+image name stays `cve-change-radar` (local folder `cve-injector`); all three refer
+to this one app. Internal names were kept stable so existing volume and image
+references never break.
 
-Self-hosted CVE intelligence console with an interactive overview, explainable
-prioritization, searchable descriptions, official-record links, plus **Change
-Radar** and replayable history. One self-contained Docker image, one container,
-and a versioned read-only API so other platforms (or your own self-hosted copy)
-can consume the same data.
+Kevelry is a **self-hosted CVE intelligence console**. An ingestion worker pulls
+four free upstream feeds — CVE List V5, the CISA KEV catalog, FIRST EPSS, and
+CISA Vulnrichment's SSVC decision points — into one local SQLite database, and
+the web app serves a chart-first console plus a versioned **read-only** API over
+that snapshot. It runs as **one Docker image, one container, one volume**, with
+no account system, no external service in the request path, and no composite
+risk score.
 
-> **Status: `3.1.0` (built 2026-11-20) is the newest image a reader can pull from
-> Docker Hub, and `latest` points at it. `3.0.2`, `3.0.1` and `3.0.0` (2026-11-15)
-> remain available as previous releases.** 3.1.0 makes every chart value
-> inspectable: a written contract in `DESIGN.md` §7.0, the shared `ChartTooltip` /
-> `ChartTable` / `useRovingMarkFocus` primitives, a point-by-point EPSS sparkline,
-> twelve focusable KEV-rhythm bars, and reachable donut segments and graph links,
-> plus full-precision EPSS tooltips. 3.0.2 fixes the `/graph` attribute dialog
-> ignoring Escape once its filter had focus. 3.0.1 carries the Next.js 16.4.5
-> security bump (CVE-2026-119348), an Atom 1.0 change feed, CWE names in the
-> relation graph, and
-> the CWE mitigation parser fix. E1 exposes the secondary/ADP CVSS metrics the primary
-> selector did not pick, labeled as context that never affects ranking. E2 turns
-> the KEV block into labeled catalog facts with a ransomware tri-state. E3 adds a
-> local CWE taxonomy (migration 009) so chips carry catalog names, states, and
-> published mitigation text. E4 adds bulk lookup at `GET /api/v1/cves/batch`. E5
-> adds RSS 2.0 and Atom 1.0 change feeds, a daily checkpoint writer, and page-bounded
-> CSV/JSON export. 632 unit tests pass (3 skipped) and 130 Playwright tests pass (0
-> skipped), measured 2026-11-20;
-> lint, typecheck, build, and secret-scan run on every push via CI. See
-> [Build gates](#build-gates-all-done); the v3 scope is
-> specified in [`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
+> **Status:** `3.1.0` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `3.0.2`, `3.0.1` and `3.0.0` (2026-11-15) remain
+> available as previous releases. Everything since is listed under `Unreleased`
+> in [CHANGELOG.md](CHANGELOG.md), which also keeps the release history and
+> upgrade notes.
 
-![Overview: corpus total, freshness stats, and the publication-volume panel](docs/images/overview.png)
-![Search: exploit-tagged rows with severity/KEV badges and exploit reference links](docs/images/explore.png)
-![Priority: one expanded known-exploited row with KEV catalog dates and required action, beside the EPSS block whose sparkline steps through every dated observation and prints the observed range](docs/images/priority.png)
+## What v3 added
+
+Every capability below is paired with the rule it enforces. The rule is the
+point: where the data cannot support a claim, the UI says so instead of filling
+the gap.
+
+| Capability                                              | The trust rule it enforces                                                                                                                                                                                      |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SSVC triage** (CISA Vulnrichment)                     | Exploitation / Automatable / Technical Impact are stored **verbatim** and shown beside the other signals. Never blended into a score; a record with no published block says so.                                 |
+| **Exploit signal** from publisher-classified references | The CNA/ADP `exploit` reference tag is surfaced as **tagged**. Never "verified PoC", never proof of a working exploit, never a ranking input.                                                                   |
+| **CWE catalog** from MITRE                              | View 1000 (956 entries) stored by migration 009 and versioned `1000-956`; chips carry the published name and let the mitigation text be read. Three states only: known, unmapped, taxonomy-unavailable.         |
+| **Change feeds, export, checkpoint writer**             | Atom 1.0 and RSS 2.0 serve the same retained changes; CSV/JSON export is **page-bounded** (exactly the rows on screen, never the whole cohort); the worker writes at most one checkpoint per UTC day.           |
+| **Batch lookup** — `GET /api/v1/cves/batch`             | Up to 50 records in one bounded read, with a `resolution` envelope that names every id it could not resolve, so a client cannot mistake an absent record for an empty one.                                      |
+| **Secondary / ADP CVSS**                                | Every metric the primary selector did not pick is served as `cvssSecondary` — **context only**: never banded, never filterable, never ranked. The unscored cohort splits into `secondaryOnly` and `noMetric`.   |
+| **Ransomware tri-state**                                | `Known (catalog)`, `Unknown (catalog)`, `Not stated`. A missing catalog field never renders as "no ransomware".                                                                                                 |
+| **KEV rhythm honesty**                                  | The chart is **always twelve UTC calendar months**, and a month with no additions is a focusable `0`, not a missing bar.                                                                                        |
+| **Inspectable data** (`DESIGN.md` §7.0)                 | Every chart mark is hover- and keyboard-reachable, the tooltip has one fixed label/value/context shape, and a value is never hover-only — it is also at the mark, in the caption, or in the chart's data table. |
+
+## Screenshots
+
+All four are 1440×900 captures of a production build against a **seeded demo
+corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations —
+not the live instance, so the numbers in the frames are reproducible rather than
+current. For the deployment's own figures, read `/methodology`, which counts the
+accepted snapshot.
+
+### Overview — the KEV rhythm, one month hovered
+
+![Overview scrolled to the KEV rhythm panel: a September 2026 bar is hovered and its tooltip reads "SEPTEMBER 2026 · UTC", "13 additions", "13 of 78 additions, 16.7%"](docs/images/overview.png)
+
+A September 2026 bar is hovered. The tooltip names the month with its UTC basis,
+prints the exact count (`13 additions`), and gives the share of the twelve-month
+window (`13 of 78 additions, 16.7%`). The Source freshness panel beside it names
+each source's accepted revision and says whether it is current.
+
+### Priority — one expanded known-exploited row and a point-by-point EPSS sparkline
+
+![Priority, known-exploited view, first row expanded with KEV catalog facts beside the EPSS block; the sparkline tooltip reads "06 NOV 2026 · UTC" and "54.554% EPSS probability" at model v2026.11.21](docs/images/priority.png)
+
+KEV catalog facts (listed date, due date, required action, ransomware state) sit
+beside the EPSS block, which prints `57.305%` for the accepted score date. The
+pointer is over the sparkline, and the tooltip prints one dated observation at
+full precision: `06 NOV 2026 · UTC`, `54.554% EPSS probability`, `model
+v2026.11.21` — never rounded to a whole percent.
+
+### Explore — filters and rows, with exploit-tagged references
+
+![Explore with the exploit-tagged filter active: the filter rail on the left and result rows showing severity, KEV state, EPSS and exploit reference links](docs/images/explore.png)
+
+The exploit-tagged filter is on: the filter rail shows one active filter and
+`SHOWING 1–20 OF 446`, and the rows underneath carry their severity band, KEV
+state, EPSS value and the tagged exploit reference links. Severity bands no
+record in the corpus carries are printed as `0` rather than dropped.
+
+### Graph — a bounded KEV cohort
+
+![Graph centred on one CVE: CWE-787 and CWE-119 attribute nodes, advisory-host nodes, and capped groups reading "+7 more · view all"](docs/images/graph.png)
+
+Centred on CVE-2026-12597: `22 links` on the record, `38 shared-attribute links
+across 5 attributes` below it — the CWE-787 and CWE-119 catalog weakness classes,
+the catalog vendor, and advisory hosts such as `vulncheck.com` and `gitlab.com` —
+with capped groups stating `+N more · view all` instead of drawing a silently
+truncated cohort.
+
+## Quickstart
+
+Prerequisites: Docker with Compose v2, and roughly **12 GB free disk at peak**
+(image ≈0.5 GB, the CVE List V5 checkout cache 5–6 GB, the SQLite database 5–6 GB
+plus WAL and growing with the EPSS retention window).
+
+```bash
+./setup.sh                    # check-only: Docker, daemon, compose, port, volume
+docker compose up -d --build  # build cve-change-radar:local and start the container
+docker compose logs -f app    # watch first-boot ingestion progress
+```
+
+Or run the published image directly:
+
+```bash
+docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
+  -v kevelry-data:/data \
+  -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
+  -e SITE_URL=https://cve.example.com \
+  docker.io/kelanach/kevelry:3.1.0
+```
+
+`SITE_URL` only matters once the instance is public: the sitemap, canonical/social
+cards and the change feeds use it for absolute links.
+
+**Ready means:** `GET /api/v1/health` returns 200 and `GET /api/v1/status` shows
+the first snapshots accepted. KEV and EPSS land in seconds-to-minutes; the
+gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
+initializing state until then. First boot is slow by design — judge freshness
+from `/api/v1/status`, not the first paint.
+
+At full scale this is a few hundred thousand published records, a few thousand
+KEV-listed, and an EPSS score for most of them. Those counts live in the database
+and are printed by `/methodology` and `/api/v1/overview`, not repeated here.
+
+## Configuration
+
+`.env` is gitignored; `.env.example` is the committed template. Every variable
+the app reads is listed there, including the three test/bench-only switches
+(`LIVE_CLONE`, `EPSS_LIVE_TEST`, `BENCH_WRITE_EVIDENCE`).
+
+| Variable                  | Required | Default                        | Meaning                                                                                                                                     |
+| ------------------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                 | yes      | `production`                   | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                                       |
+| `NODE_ENV`                | no       | `production`                   | Node profile, kept in step with `APP_ENV`                                                                                                   |
+| `DATA_DIR`                | yes      | `/data`                        | Database and snapshot directory inside the container                                                                                        |
+| `SCHEDULE_ENABLED`        | yes      | `true`                         | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                                         |
+| `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                                             |
+| `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                                           |
+| `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                                                |
+| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; feeds use it for absolute links, else proxy headers, and omit links when the host is unusable |
+| `HSTS_ENABLED`            | no       | `false`                        | Send `Strict-Transport-Security` on plain HTTP too; HTTPS requests always get it                                                            |
+| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                                    |
+| `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                                          |
+| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB)                   |
+| `CVE_REPO_CACHE_RESET`    | no       | `false`                        | `true` wipes the cache and re-clones clean on the next cycle                                                                                |
+| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`                     | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                                     |
+| `CHECKPOINT_TOP_N`        | no       | `500`                          | Entries kept per view in each daily Change Radar checkpoint                                                                                 |
+| `PRIORITY_PAGE_LIMIT`     | no       | `100`                          | QA-only display cap for priority views (1–1000)                                                                                             |
+| `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                                                 |
+| `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                                              |
+| `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                                                |
+| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                                  |
+| `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                                                |
+| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft                             |
+| `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                            |
+| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                     |
+| `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                                      |
+| `RUN_VERIFY_ONCE`         | no       | `false`                        | One-off `verifyBackup()` of `VERIFY_DIR` (hash + schema + row counts), then exit                                                            |
+| `VERIFY_DIR`              | no\*     | unset                          | Backup directory to verify (needs `cve-backup.db` + `manifest.json`); required when `RUN_VERIFY_ONCE=true`                                  |
+| `BACKUP_DIR`              | no\*     | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                                    |
+| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it                   |
+| `RESTORE_DIR`             | no\*     | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything                  |
+| `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                                     |
+| `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                                       |
+| `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                                                |
+
+`.env.example` is a local-development template (`APP_ENV=development`,
+`DATA_DIR=./data`); Compose and the image default to production
+(`APP_ENV=production`, `DATA_DIR=/data`).
+
+Compose notes: `compose.yaml` is the production-safe default (single `app`
+service, named volume `cve-change-radar-data` on `/data`, `init: true`,
+`restart: unless-stopped`, caps of 4 CPUs / 4 GB). `compose.dev.yaml` is an
+explicit opt-in and never auto-loads; no `compose.override.yaml` exists.
+
+## Docs map
+
+| Document                                           | Purpose                                                                                                               |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [`DESIGN.md`](DESIGN.md)                           | Visual system, chart contract (§7.0 inspectable data), interaction and a11y rules                                     |
+| [`CONTEXT.md`](CONTEXT.md)                         | The domain vocabulary this repo actually implements (band, cohort, checkpoint, acceptance ledger, aggregate cache, …) |
+| [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md)   | Ingestion, ranking, history, freshness, and cache contracts                                                           |
+| [`docs/api/`](docs/api/)                           | Prose guides for every endpoint group                                                                                 |
+| [`openapi/v1.yaml`](openapi/v1.yaml)               | Machine API contract; `/api-docs` renders it on every request                                                         |
+| [`docs/plans/`](docs/plans/)                       | Plans and audits: v3 scope, the data-visibility standard, the wrap-up                                                 |
+| [`docs/backup-runbook.md`](docs/backup-runbook.md) | Backup, verified restore drill, upgrade and rollback                                                                  |
+| [`FEASIBILITY.md`](FEASIBILITY.md)                 | Coverage verdict: what the sources support and what they do not                                                       |
+| [`docs/research/`](docs/research/)                 | Source terms, endpoints, live validations, verified competitor overlap                                                |
 
 ## What it does
 
@@ -51,95 +197,62 @@ can consume the same data.
 - **Search:** explained filters that auto-apply, quick UTC date presets, a cohort
   composition panel (severity, month, signal coverage), and compact result rows
   with severity, KEV, EPSS, and official-record links.
-- **Priority lists:** known-exploited, highest forecast, new critical, rising forecast,
-  KEV due soon, and **active exploitation (CISA SSVC)** as a compact expandable table. KEV,
-  EPSS, CVSS, and the published SSVC decision points remain separate signals with definitions,
-  real bars, EPSS sparklines, record timelines, and timezone-aware dates; no composite score.
-- **Time to exploitation:** a Sankey from publication cohort to days-until-KEV-confirmation,
-  with median delay, the within-30-days share, the excluded count, and the fastest confirmations.
-  Built only from dates we already retain — no new feed.
-- **SSVC triage:** CISA's Vulnrichment decision points (Exploitation / Automatable / Technical
-  Impact) stored verbatim and shown beside the other signals, with an in-page explainer, a
-  recency window (30/90/365 days over the KEV catalog date), and newest-confirmation-first
-  ordering. Never blended, never guessed: a record without a published block says so.
-- **Secondary CVSS:** every metric the primary selector did not pick is served as a
-  labeled `cvssSecondary` block — context only, never a band, a filter, or a ranking
-  input — and the overview splits the unscored cohort into `secondaryOnly` and
-  `noMetric` instead of one ambiguous number.
-- **KEV facts, not inferences:** the expanded Priority row labels each catalog fact it
-  has (listed, date added, due date, required action, catalog name, CWEs) and keeps
-  `kev.ransomwareUse` tri-state — `Known (catalog)`, `Unknown (catalog)`,
-  `Not stated` — so an absent field never renders as "no ransomware".
-- **CWE labels:** every CWE id a record carries resolves against a local MITRE catalog
-  (view 1000 `CSV.zip`, stored by migration 009, refreshed at most once per 24 h and
-  skipped when the bytes hash unchanged; the accepted catalog reports its version as
-  `<view id>-<entry count>`, e.g. `1000-956`). The detail route serves `cweDetails`;
-  Priority chips show the published name, link to the canonical definition, and open
-  the published mitigation text when there is one. Three states stay distinct —
-  `known`, `unmapped`, `taxonomy-unavailable` — and an id is never dropped, renamed,
-  or turned into a severity claim.
+- **Priority lists:** known-exploited, highest forecast, new critical, rising
+  forecast, KEV due soon, and active exploitation (CISA SSVC) as a compact
+  expandable table. KEV, EPSS, CVSS, and the published SSVC decision points stay
+  separate signals with definitions, real bars, EPSS sparklines, record
+  timelines, and timezone-aware dates; no composite score.
+- **Time to exploitation:** a Sankey from publication cohort to days-until-KEV
+  confirmation, with median delay, the within-30-days share, the excluded count,
+  and the fastest confirmations. Built only from dates we already retain.
 - **Bulk lookup:** `GET /api/v1/cves/batch?ids=…` returns up to 50 records in one
-  bounded read and names every id it could not resolve in `resolution.missingIds`, so
-  a client cannot mistake an absent record for an empty one.
-- **Change Radar:** before/after evidence when a record, KEV membership, forecast, or
-  list membership changes, with the reason shown.
+  bounded read and names every unresolvable id in `resolution.missingIds`.
+- **Change Radar:** before/after evidence when a record, KEV membership, forecast,
+  or list membership changes, with the reason shown.
 - **Subscriptions and exports:** `/api/v1/radar/feed.xml` and
-  `/api/v1/radar/feed.atom` serve those same retained changes as RSS 2.0 and
-  Atom 1.0 for pull subscribers, and Explore exports exactly the page on screen
-  as CSV or JSON (`format=csv|json`, RFC 4180 quoting) — page-bounded, never the
-  whole cohort.
+  `/api/v1/radar/feed.atom` serve those retained changes as RSS 2.0 and Atom 1.0
+  for pull subscribers; Explore exports exactly the page on screen as CSV or JSON
+  (`format=csv|json`, RFC 4180 quoting).
 - **Relation graph:** KEV-listed records linked by shared CWEs, vendor labels, and
   reference hosts — labeled edges, ego focus, bounded cohort, keyboard inspector.
-- **Watch:** browser-private starred records with a hydrating view. No account,
-  no server record.
-- **Dark console:** persisted light/dark theme across every surface.
-- **Snapshot replay:** the worker writes at most one checkpoint per UTC date, after a
-  cycle in which at least one source was accepted; a retained checkpoint plus policy
-  version then shows what the site displayed and why (bounded observed history, no
-  fabricated past).
-- **Public read-only API + docs:** the same local snapshots the website reads,
-  versioned routes, OpenAPI plus human docs. Public writes stay out of scope.
+- **Watch:** browser-private starred records with a hydrating view. No account, no
+  server record.
+- **Snapshot replay:** the worker writes at most one checkpoint per UTC date,
+  after a cycle in which at least one source was accepted; a retained checkpoint
+  plus policy version then shows what the site displayed and why (bounded observed
+  history, no fabricated past).
 - **Methodology and data status:** pipeline, signal-relationship, and ordering
   diagrams; sources, notices, ordering rules, coverage gaps, and per-source
   stale/warning states, always visible.
 - **Global display timezone:** a rail selector (default Asia/Jakarta) re-renders
   every instant; UTC day/month buckets stay explicitly labeled UTC.
-- **Methodology explainers:** an interactive ingestion pipeline, a live signal
-  coverage diagram, and a worked ordering example that highlights the first
-  deciding key for each view.
-- **API docs:** a jump index to every topic and endpoint, parameter names resolved
-  from shared refs, and an illustrative response body per endpoint.
+- **Public read-only API + docs:** the same local snapshots the website reads,
+  versioned routes, OpenAPI plus prose guides and a browsable reference.
+- **Dark console:** persisted light/dark theme across every surface.
 
 ## Interface
 
-The product is a **Research Console**: a persistent, collapsible 232px rail
-(72px collapsed, remembered locally), a sticky command bar (`⌘K` focuses search),
-warm paper surfaces, Instrument Sans + JetBrains Mono, and chart-first pages.
-The Explore filter rail scrolls independently on desktop; its date control uses
-explicit UTC fields plus 7d/30d/90d/1y/All presets. The interaction contract is
-deliberate:
+The product is a **Research Console**: a persistent, collapsible 232px rail (72px
+collapsed, remembered locally), a sticky command bar (`⌘K` focuses search), warm
+paper surfaces, Instrument Sans + JetBrains Mono, and chart-first pages. The
+interaction contract is deliberate:
 
 - every chart has a takeaway, a "How to read" disclosure, and a data table;
-- help glyphs are a 17px inline circle inside a 44px invisible target, never a
-  large bordered box;
+- every data-bearing mark is a pointer target and a keyboard stop, with a text
+  alternative; a dense plot is one Tab stop that Arrow, Home and End step through;
 - hover and keyboard focus show the same exact tooltip with a named denominator,
-  and the tooltip is never the only copy of the value — the number is also
-  printed at the mark, in the caption, or in the chart's data table;
-- every chart mark is inspectable: a genuine zero stays a focusable `0` instead of
-  disappearing, and a missing observation is stated, never plotted as a zero;
+  and the tooltip is never the only copy of the value;
+- a genuine zero stays a focusable `0`; a missing observation is stated, never
+  plotted as a zero;
 - selection is reversible (`Escape` or clear) and click-through preserves context;
 - severity is never color-only, and unscored is an explicit band, never zero;
-- no page overflows at 360px or 200% zoom; standalone targets are 44×44px.
+- no page overflows at 360px or 200% zoom; standalone targets are 44×44px, with
+  one measured, printed exception (the KEV rhythm's 23px slots — see below).
 
-![Inspectable data: hovering a KEV rhythm bar on the overview opens the same three-part tooltip keyboard focus shows — the month with its UTC basis, the exact count, and its share of the window total](docs/images/inspectable-data.png)
-
-The visual system is documented in [`DESIGN.md`](DESIGN.md). The palette is the
-same warm neutral family as before: paper `rgb(247,246,243)`, ink
-`rgb(26,26,26)`, rule `rgb(214,211,205)`, accent `rgb(0,106,159)`.
-
-Charts use visx SVG primitives rather than a canvas chart framework, so values
-remain in the DOM and CSS variables carry the theme. Fonts are self-hosted in
-`public/fonts/` (OFL) with no runtime CDN.
+The full contract, including the tooltip shape and the hit-target rule, is
+`DESIGN.md` §7.0. Chart values stay in the DOM because charts are visx SVG
+primitives, not a canvas framework; CSS variables carry the theme. Fonts are
+self-hosted in `public/fonts/` (OFL) with no runtime CDN.
 
 ## How it works
 
@@ -190,12 +303,17 @@ flowchart TB
   local snapshots, while only the ingestion worker fetches upstream.
 - Each publication pins source revisions/dates, observation times, ranking policy
   version, and eligible cohort; replay reuses those, never today's corrected records.
-- A missing feed keeps serving last-known-good data with a visible per-source warning;
-  one failed feed never freezes the others.
+- A missing feed keeps serving last-known-good data with a visible per-source
+  warning; one failed feed never freezes the others.
+- Read paths check the acceptance ledger before trusting an aggregate: a cached
+  count is served only under the revision it was computed from, otherwise the
+  request falls back to a live query. Stale counts are never presented under a
+  fresh revision.
 
 ## Data sources and why this is feasible
 
-The three core feeds are free to access today (checked 2026-10-24; recheck terms before launch or monetization):
+The three core feeds are free to access today (checked 2026-10-24; recheck terms
+before launch or monetization):
 
 | Source                                                                   | What we take                                                          | Reuse basis                                                                                                                   |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -203,111 +321,19 @@ The three core feeds are free to access today (checked 2026-10-24; recheck terms
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited membership, date added, catalog metadata              | CC0 1.0 for catalog data; third-party links and CISA/DHS marks not covered                                                    |
 | [FIRST EPSS](https://www.first.org/epss/data)                            | Daily exploitation probability, percentile, score date, model version | Free, no registration; FAQ asks attribution; services terms permit specified preventative-security uses with notices retained |
 
-Enrichment adds two more local sources: CISA Vulnrichment for SSVC decision points
-(KEV cohort only, daily) and the MITRE CWE catalog for weakness names and published
-mitigations (at most once per 24 h). Neither is fetched at request time; the CWE
-terms and limits are in `docs/research/SOURCES.md`.
+Enrichment adds two more local sources: CISA Vulnrichment for SSVC decision
+points (KEV cohort only, daily) and the MITRE CWE catalog for weakness names and
+published mitigations (at most once per 24 h). Neither is fetched at request time;
+the CWE terms and limits are in [`docs/research/SOURCES.md`](docs/research/SOURCES.md).
 
 Why no paid feed is needed: the site's value is **transparent ordering and
 evidence**, not proprietary telemetry. KEV is confirmed-exploitation evidence,
-EPSS is a dated forecast, CVSS is supplied severity. Full daily EPSS
-structurally validated here: 394,803 unique rows, zero invalid rows under the
-stated checks; KEV counts matched at 1,756. Structural checks only, not model
-validation or app benchmarks.
+EPSS is a dated forecast, CVSS is supplied severity.
 
 Explicitly **not** promised: social popularity, nickname search (e.g. "PHP2Shell"),
-severity for every CVE, unpublished-reservation counts, or parity with other trackers.
-
-Evidence: `FEASIBILITY.md`, `docs/research/SOURCES.md`, `docs/DATA_WORKFLOW.md`.
-Competitor overlap (closest verified: o2CVE) is in `docs/research/COMPETITORS.md`.
-
-## Release
-
-Current release: **3.1.0** (2026-11-20) — see [CHANGELOG.md](CHANGELOG.md) for the
-full list, upgrade notes, and what 2.0.0 deliberately does not claim.
-
-`3.1.0` is published as an image tag and `latest` resolves to it; `3.0.2`, `3.0.1`
-and `3.0.0` (2026-11-15) remain available as previous releases. The 3.1.0 upgrade
-notes record that there is no migration, no API contract change, and no config
-change, and that `AGGREGATE_VERSION` moves 6 → 7 so the aggregate cache rebuilds on
-the first boot (expected, no action needed). The 3.0.0 upgrade
-notes cover migration 009 applying on the next write open, the one-time aggregate
-cache v6 refresh, the first CWE catalog fetch (pinned MITRE `1000.csv.zip`, ~644
-KB, cached locally and hash-conditional after that), and checkpoint history that
-starts on the first UTC day of
-running 3.0.0 or later. The v3 scope is specified in
-[`docs/plans/v3-end-to-end-plan.md`](docs/plans/v3-end-to-end-plan.md).
-
-## Quick start
-
-Prerequisites: Docker with Compose v2, about 12 GB free disk at peak (image
-~0.4 GB, persistent CVE checkout cache ~5-6 GB at `<DATA_DIR>/cve-repo`,
-database ~4.3 GB plus WAL), and optionally Tailscale for remote access.
-
-```bash
-./setup.sh                    # check-only prerequisites (Docker, daemon, compose, port, volume)
-docker compose up -d --build  # build cve-change-radar:local and start the single container
-docker compose logs -f app    # watch first-boot ingestion progress
-```
-
-Ready means: `GET /api/v1/health` returns 200 and `GET /api/v1/status`
-shows the first snapshots accepted. KEV/EPSS land in seconds-to-minutes; the
-gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
-initializing state until then. Live scale here: roughly 400,000 published CVEs,
-about 1,800 KEV-listed, and roughly 400,000 carrying an EPSS score. `/methodology`
-reads those counts from the live database, so it is the place for the exact
-current figures and the snapshot date they came from.
-
-## Configuration
-
-`.env` is gitignored; `.env.example` is the committed template. Every variable
-the app reads is listed there.
-
-| Variable                  | Required | Default                        | Meaning                                                                                                                                     |
-| ------------------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                 | yes      | `production`                   | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                                       |
-| `NODE_ENV`                | no       | `production`                   | Node profile, kept in step with `APP_ENV`                                                                                                   |
-| `DATA_DIR`                | yes      | `/data`                        | Database and snapshot directory inside the container                                                                                        |
-| `SCHEDULE_ENABLED`        | yes      | `true`                         | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                                         |
-| `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                                             |
-| `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                                           |
-| `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                                                |
-| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; feeds use it for absolute links, else proxy headers, and omit links when the host is unusable |
-| `HSTS_ENABLED`            | no       | `false`                        | Send `Strict-Transport-Security` on plain HTTP too; HTTPS requests always get it                                                            |
-| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                                    |
-| `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                                          |
-| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB)                   |
-| `CVE_REPO_CACHE_RESET`    | no       | `false`                        | `true` wipes the cache and re-clones clean on the next cycle                                                                                |
-| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`                     | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                                     |
-| `CHECKPOINT_TOP_N`        | no       | `500`                          | Entries kept per view in each daily Change Radar checkpoint                                                                                 |
-| `PRIORITY_PAGE_LIMIT`     | no       | `100`                          | QA-only display cap for priority views (1–1000)                                                                                             |
-| `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                                                 |
-| `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                                              |
-| `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                                                |
-| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                                  |
-| `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                                                |
-| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft                             |
-| `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                            |
-| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                     |
-| `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                                      |
-| `RUN_VERIFY_ONCE`         | no       | `false`                        | One-off `verifyBackup()` of `VERIFY_DIR` (hash + schema + row counts), then exit                                                            |
-| `VERIFY_DIR`              | no*      | unset                          | Backup directory to verify (needs `cve-backup.db` + `manifest.json`); required when `RUN_VERIFY_ONCE=true`                                  |
-| `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                                    |
-| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it                   |
-| `RESTORE_DIR`             | no*      | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything                  |
-| `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                                     |
-| `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                                       |
-| `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                                                |
-
-`.env.example` is a local-development template (`APP_ENV=development`,
-`DATA_DIR=./data`); Compose and the image default to production (`APP_ENV=production`,
-`DATA_DIR=/data`).
-
-Compose notes: `compose.yaml` is the production-safe default (single `app`
-service, `APP_ENV`/`NODE_ENV=production`, named volume
-`cve-change-radar-data` on `/data`, `init: true`,
-`restart: unless-stopped`, caps of 4 CPUs / 4 GB). `compose.dev.yaml` is an
-explicit opt-in and never auto-loads; no `compose.override.yaml` exists.
+severity for every CVE, unpublished-reservation counts, or parity with other
+trackers. Competitor overlap (closest verified: o2CVE) is in
+[`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md).
 
 ## Access
 
@@ -337,16 +363,13 @@ Open `http://100.124.184.116:3100` in the browser.
 
 ### Public deployment
 
-The release artifact is **one self-contained image** — published as
-[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) (`3.1.0`, and
-`latest` now resolves to it; prefer the versioned tag — `3.0.2`, `3.0.1` and
-`3.0.0` stay available as previous releases). Pull and
-`docker run` it anywhere with the env vars below. To publish your own build:
-`docker tag cve-change-radar:local USER/kevelry:3.1.0 && docker push
-USER/kevelry:3.1.0`. It runs
-the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
-container as non-root, listening on `$PORT` (default 3000) with data in
-`/data`. Two supported shapes:
+The release artifact is **one self-contained image**, published as
+[`kelanach/kevelry`](https://hub.docker.com/r/kelanach/kevelry) — prefer the
+versioned tag over `latest`. To publish your own build:
+`docker tag cve-change-radar:local USER/kevelry:<version> && docker push USER/kevelry:<version>`.
+It runs the web UI, the API, ingestion/scheduling, and SQLite/FTS5 in a single
+container as non-root, listening on `$PORT` (default 3000) with data in `/data`.
+Two supported shapes:
 
 **A. Single image on a serverless platform (e.g. Google Cloud Run).**
 
@@ -360,41 +383,35 @@ gcloud run deploy kevelry \
 
 How the database works here, and the rules that follow from it:
 
-- The database is a **SQLite file on instance disk** (`/data`): ~4.6 GB for
-  records plus ~4 GB for the CVE checkout cache today. Instance disk is
-  **ephemeral and sized from memory**, so provision **8 GiB or more** — a 4 GiB
-  instance cannot hold the working set.
+- The database is a **SQLite file on instance disk** (`/data`); the CVE checkout
+  cache lives beside it. Instance disk is **ephemeral and sized from memory**, so
+  provision **8 GiB or more** — a 4 GiB instance cannot hold the working set.
 - **Exactly one instance (`--max-instances 1`).** Every instance keeps its own
-  database file and runs its own importer; two instances would serve
-  divergent snapshots and double the upstream load. One warm instance
-  (`--min-instances 1`) with **CPU always allocated** (`--no-cpu-throttling`)
-  keeps the hourly/daily refresh on schedule.
-- **First boot is slow by design:** the web side listens in seconds (serving
-  an honest initializing state), while the worker clones and imports for
-  tens of minutes in the background. Judge freshness via
-  `GET /api/v1/status`, not the first paint.
+  database file and runs its own importer; two instances would serve divergent
+  snapshots and double the upstream load. One warm instance (`--min-instances 1`)
+  with **CPU always allocated** (`--no-cpu-throttling`) keeps the hourly/daily
+  refresh on schedule.
+- **First boot is slow by design:** the web side listens in seconds (serving an
+  honest initializing state), while the worker clones and imports for tens of
+  minutes in the background. Judge freshness via `GET /api/v1/status`.
 - **Every new revision starts empty** unless `/data` is persistent: without a
   volume each deploy re-imports from scratch. For durable history (and sane
-  deploy times), mount a GCS FUSE volume on `/data`; ephemeral disk is fine
-  only if you accept a full re-import per revision.
+  deploy times), mount a GCS FUSE volume on `/data`.
 - The platform sets `$PORT`; the image honors it. Set `SITE_URL` to the real
-  public origin (a custom domain, or the automatic
-  `https://<service>-<hash>-<region>.a.run.app`) so sitemap, social cards, and
-  the change feeds' self/alternate links point at it. Leave it blank only for
-  private deployments; the feeds then use the proxy headers, and omit those
-  links when the host is unusable rather than advertising the bind address.
+  public origin so sitemap, social cards, and the change feeds' self/alternate
+  links point at it. Leave it blank only for private deployments; the feeds then
+  use the proxy headers, and omit those links when the host is unusable.
 - Cloud SQL / Postgres is **not** supported: the storage contract is a local
-  SQLite file (`better-sqlite3`), which is what keeps self-hosting to one
-  volume. The honest cost comparison is one always-on instance versus one
-  small VM — the VM is usually cheaper for this always-warm, stateful shape.
+  SQLite file (`better-sqlite3`), which is what keeps self-hosting to one volume.
+  The honest cost comparison is one always-on instance versus one small VM — the
+  VM is usually cheaper for this always-warm, stateful shape.
 
 **B. Recommended VM deployment (Compose + Caddy for TLS).**
 
-Keep the app on loopback and terminate TLS in Caddy (automatic certificates).
-An example proxy file ships as `docker/Caddyfile.example`:
+Keep the app on loopback and terminate TLS in Caddy (automatic certificates). An
+example proxy file ships as `docker/Caddyfile.example`:
 
 ```bash
-# .env for a public VM behind Caddy
 docker compose up -d --build
 sudo caddy run --config docker/Caddyfile.example --adapter caddyfile
 ```
@@ -402,12 +419,12 @@ sudo caddy run --config docker/Caddyfile.example --adapter caddyfile
 Proxy rules that matter (already in the example):
 
 - Caddy sets `X-Forwarded-For {http.request.remote.host}` (**overwrite**, never
-  append): the API rate limit keys on the last forwarded address, so a
-  spoofable leftmost value must never survive the edge.
-- Firewall the app port off the public internet; expose only 80/443. Never
-  bind `0.0.0.0` casually; `APP_ENV` stays `production`.
-- Point a cron or timer at the backup runbook (`docs/backup-runbook.md`) and
-  an external uptime check at `GET /api/v1/health` before announcing the URL.
+  append): the API rate limit keys on the last forwarded address, so a spoofable
+  leftmost value must never survive at the edge.
+- Firewall the app port off the public internet; expose only 80/443. Never bind
+  `0.0.0.0` casually; `APP_ENV` stays `production`.
+- Point a cron or timer at the backup runbook (`docs/backup-runbook.md`) and an
+  external uptime check at `GET /api/v1/health` before announcing the URL.
 
 ## Verify it works
 
@@ -424,11 +441,6 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 
 Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a
 date basis; known-exploited returns KEV entries; search returns matches with excerpts.
-Measured on the live 395k volume after the final UI quality pass
-(2026-10-26): `/` about 0.39 s, `/explore` about 2–4 s on the first uncached
-filter combination (up to ~4.5 s immediately after a restart) and about 0.03 s when repeated, `/priority` about 0.19 s,
-`/methodology` about 0.02 s, `/api-docs` about 0.05 s, `/radar` and `/replay`
-under 0.02 s, and `/api/v1/cves?limit=2` about 1.3 s.
 
 Read-path performance: overview/status/health serve the precomputed aggregate cache
 (migration 002), refreshed automatically after every successful import cycle and on
@@ -440,85 +452,117 @@ docker compose exec app env REFRESH_AGGREGATES_ONCE=true node worker.mjs
 ```
 
 Success GETs carry `Cache-Control: public, max-age=30, s-maxage=60,
-stale-while-revalidate=300` plus a strong ETag; repeats with `If-None-Match` return 304. Warm responses for `/`, `/explore`, `/priority`, `/methodology`,
-`/api/v1/overview`, `/api/v1/status`, and `/api/v1/cves?limit=2` complete under 1.5 s.
+stale-while-revalidate=300` plus a strong ETag; repeats with `If-None-Match` return 304. Error responses are `Cache-Control: no-store` with no ETag, so an intermediary
+cannot memoize a transient failure. Pages revalidate every 60 seconds, which is also
+what makes a repeated Explore filter combination cheap.
 
 ## Operations
 
 Logs: `docker compose logs -f app` shows web plus worker output
-(`worker-start` at boot, `source-start` per source per cycle, one
-`ingest-cycle` completion line per source, `worker-idle`/`worker-scheduled`
-when it parks).
+(`worker-start` at boot, `source-start` per source per cycle, one `ingest-cycle`
+completion line per source, `worker-idle`/`worker-scheduled` when it parks).
 
-Restart latency: the first request to a data-heavy page after a restart can
-take a few seconds while the initial import cycle runs and settles — `/explore`
-measured ≈2.5–3.0 s cold versus ≈0.03 s warm on this quiet 12-CPU/22 GB host,
-so a slow first page is not a fault.
+Restart latency: the first request to a data-heavy page after a restart can take a
+few seconds while the initial import cycle runs and settles, so a slow first page is
+not a fault.
 
-Update vs rebuild: plain `docker compose up -d` starts the existing image
-and **never rebuilds**. After source edits, run `docker compose build &&
-docker compose up -d`.
+Update vs rebuild: plain `docker compose up -d` starts the existing image and
+**never rebuilds**. After source edits, run `docker compose build && docker compose up -d`.
 
-Stop and down: `docker compose stop` halts the container; `docker compose down` removes it. Both keep the named volume, so data survives.
+Stop and down: `docker compose stop` halts the container; `docker compose down`
+removes it. Both keep the named volume, so data survives.
 
-Backup: follow `docs/backup-runbook.md` for backup, restore, and upgrade (round-trip verified; incompatible restores are refused with guidance).
+Backup: follow [`docs/backup-runbook.md`](docs/backup-runbook.md) for backup,
+restore, and upgrade. `scripts/nightly-backup.sh` verifies twice — the image before
+compression inside the container, then the stored gzip artifact — and refuses a
+backup root that is empty, relative, `/`, or shallower than two path components.
 
-Repairing severity data: volumes populated before the importer wrote CVSS
-metrics show empty severity filters and "new critical" lists. Repair in place
-with `npm run backfill:cvss` (replays metrics from stored record bytes, no
-re-clone, safe to re-run); see `docs/DATA_WORKFLOW.md`.
+Repairing severity data: volumes populated before the importer wrote CVSS metrics
+show empty severity filters and "new critical" lists. Repair in place with
+`npm run backfill:cvss` (replays metrics from stored record bytes, no re-clone,
+safe to re-run); see `docs/DATA_WORKFLOW.md`.
 
-Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` volume with all 4+ GB of snapshots. Destructive and irreversible; back up first if the data matters.
-
-## Troubleshooting
-
-- **Port already in use.** Set a free `PORT` in `.env` and rerun
-  `docker compose up -d`. `./setup.sh` flags the clash first.
-- **Empty site on first boot.** Normal while the CVE clone runs. Find
-  `{"event":"source-start","source":"cve"}` in the logs, then wait for its `ingest-cycle` line.
-- **Slow first import.** The clone is gigabytes; budget minutes to tens of minutes.
-  Raise `CVE_GIT_TIMEOUT_MS` on slow links; keep `CVE_CLONE_DEPTH=1` for fastest boot.
-- **Outbound fetches stall (IPv6).** The worker already prefers IPv4. If DNS still
-  hangs, set `NODE_OPTIONS=--dns-result-order=ipv4first` and restart.
-- **Disk pressure.** Keep ~12 GB free at peak: image ~0.4 GB, clone cache
-  ~5-6 GB, database ~4.3 GB plus WAL. A full disk fails imports first, so
-  check `df -h` early.
-- **Unhealthy container but `/api/v1/health` answers 200.** The web side is fine;
-  the worker is likely contending on import. Read its log lines before restarting.
+Resetting data: `docker compose down -v` deletes the `cve-change-radar-data` volume
+with all retained snapshots. Destructive and irreversible; back up first if the data
+matters.
 
 ## Known limitations
 
 - Change Radar and snapshot replay need accumulated daily checkpoints: a fresh
-  database shows "history begins" until the first scheduled cycles run. The
-  worker writes at most one checkpoint per UTC date (after a cycle in which at
-  least one source was accepted), so the first checkpoint appears on the first
-  cycle rather than after days; while none is retained the RSS `<description>`
-  and Atom `<subtitle>` say the feed is not populated yet instead of implying
-  "no changes". The
-  rising-forecast view additionally needs seven days of EPSS snapshots; with
+  database shows "history begins" until the first scheduled cycles run. The worker
+  writes at most one checkpoint per UTC date (after a cycle in which at least one
+  source was accepted), so the first checkpoint appears on the first cycle rather
+  than after days; while none is retained the RSS `<description>` and Atom
+  `<subtitle>` say the feed is not populated yet instead of implying "no changes".
+  The rising-forecast view additionally needs seven days of EPSS snapshots; with
   one snapshot it is explicitly empty rather than guessed.
 - Severity comes from CNA-provided CVSS only. Records with no CNA metric show
   "unscored" even when an ADP or NVD score exists; severity filters and the
   new-critical list exclude them by policy. The overview splits that cohort into
   `secondaryOnly` (an ADP metric exists and is shown as context) and `noMetric`
   (nothing published), so the two are never added into one ambiguous number.
-- Filtered result lists report coverage over the bounded fetch, while
-  unfiltered lists report exact cohort counts.
-- Snapshot checkpoints retain the top `CHECKPOINT_TOP_N` entries per view
-  (default 500) and label them as bounded; they are not a full enumeration.
-- The first unfiltered Explore query on a 395k-row volume performs the full cohort
-  scan (about 2–4 s, up to ~4.5 s after a restart); identical filter combinations are cached for 60 s.
-- The display timezone changes rendering only. Publication buckets stay UTC days or
-  months, and every chart says so; it is not a timezone conversion of the data.
+- Filtered result lists report coverage over the bounded fetch, while unfiltered
+  lists report exact cohort counts.
+- Snapshot checkpoints retain the top `CHECKPOINT_TOP_N` entries per view (default 500) and label them as bounded; they are not a full enumeration.
+- The first uncached Explore query on a full corpus performs the full cohort scan
+  (seconds, more right after a restart); identical filter combinations are cheap
+  while the 60-second page cache holds.
+- The display timezone changes rendering only. Publication buckets stay UTC days
+  or months, and every chart says so; it is not a timezone conversion of the data.
 - The severity×EPSS matrix scrolls horizontally below about 620px; a visible hint
-  states this. Its counts are exact but only available after aggregate cache v3 is
-  refreshed (automatic on the next import cycle, or the one-off command above).
+  states this.
+- The KEV rhythm's twelve columns share a 320px panel, so each full-slot hit
+  target measures **23×124** — printed by the accessibility audit and pinned in
+  `tests/e2e/a11y-audit.ts` rather than silently relaxed. It sits 1px under WCAG
+  2.5.8's 24px floor; 44px slots would need a 528px plot, which is a page
+  composition change. Every value is also in the "All months" table.
 - The Explore filter rail scrolls independently on desktop by design; collapsing
   the whole left navigation does not affect the filter form.
+- One process, one database file. Horizontal scaling would serve divergent
+  snapshots, and the 600-request/minute budget is **per process**, not per cluster.
+
+## What it deliberately does not do
+
+These are product decisions, not gaps:
+
+- **No composite risk score.** KEV, EPSS, CVSS and SSVC stay separate signals with
+  their own definitions and denominators; the site never blends them into one
+  number and never ranks by a model of its own.
+- **No 3D graph or uncentered hairball.** The relation graph is always ego-centred,
+  bounded, and labelled.
+- **No exploit code, no PoC execution, no scraped exploit feeds.** The exploit
+  signal is the publisher's own reference tag, quoted as "tagged".
+- **No LLM summaries.** Descriptions are the publisher's text, excerpts are cut,
+  never generated.
+- **No server-side accounts or saved lists.** Watch lives in one browser's local
+  storage.
+- **No writes through the public API.** Every route is a `GET`; imports,
+  migrations and maintenance stay private CLI/internal operations.
+
+## Troubleshooting
+
+- **Port already in use.** Set a free `PORT` in `.env` and rerun
+  `docker compose up -d`. `./setup.sh` flags the clash first.
+- **Empty site on first boot.** Normal while the CVE clone runs. Find
+  `{"event":"source-start","source":"cve"}` in the logs, then wait for its
+  `ingest-cycle` line.
+- **Slow first import.** The clone is gigabytes; budget minutes to tens of minutes.
+  Raise `CVE_GIT_TIMEOUT_MS` on slow links; keep `CVE_CLONE_DEPTH=1` for fastest boot.
+- **Outbound fetches stall (IPv6).** The worker already prefers IPv4. If DNS still
+  hangs, set `NODE_OPTIONS=--dns-result-order=ipv4first` and restart.
+- **Disk pressure.** Keep the ~12 GB peak budget in mind: image ≈0.5 GB, clone
+  cache 5–6 GB, database 5–6 GB plus WAL. A full disk fails imports first, so
+  check `df -h` early.
+- **Unhealthy container but `/api/v1/health` answers 200.** The web side is fine;
+  the worker is likely contending on import. Read its log lines before restarting.
+- **A backup run exits 2.** The backup root was refused before anything was
+  created or mounted: give it an absolute path with at least two components
+  (`~/cve-backups`, not `/tmp`).
 
 ## Development
 
-Dev mode is an explicit second Compose file (hot reload, source bind mounts, Node inspector on loopback):
+Dev mode is an explicit second Compose file (hot reload, source bind mounts, Node
+inspector on loopback):
 
 ```bash
 docker compose -f compose.yaml -f compose.dev.yaml up
@@ -531,10 +575,17 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest (632 passing, 3 skipped on 2026-11-20)
-npx playwright test     # browser suite (129 passing, 0 skipped on 2026-11-20)
+npm test                # vitest: 708 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 138 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
+
+The Playwright suite owns `.e2e/data` and starts its own server on port 3210; it
+never reads or writes the checkout's `data/cve.db`, so a run cannot disturb a
+deployed instance. The three skipped unit tests are the network-gated live
+smokes of the upstream feeds: CVE clone (`LIVE_CLONE=1`), EPSS
+(`EPSS_LIVE_TEST=1`), and the KEV catalog fetch, which stays skipped in the
+suite.
 
 The benchmark writes its evidence receipt to a temporary file by default. Set
 `BENCH_WRITE_EVIDENCE=1` to refresh the committed
@@ -544,14 +595,18 @@ The benchmark writes its evidence receipt to a temporary file by default. Set
 the instance is unreachable, reports a non-ok status, or has a stale/failed source —
 install it on a 15-minute cron and let cron mail the failure.
 
-`npm run format:check` currently reports pre-existing repository-wide Markdown/test
-formatting drift (66 files); use Prettier on touched files. `npm audit` reports three
-dev-only findings in the Vitest toolchain; the production image excludes dev
-dependencies. Both are tracked under TASK-002.
+`npm run format:check` reports pre-existing repository-wide formatting drift
+(42 files at this commit); use Prettier on touched files rather than reformatting
+the tree. `npm audit --omit=dev` reports 0 vulnerabilities; the full audit's three
+findings are dev-only, in the Vitest toolchain, and the production image excludes
+dev dependencies.
 
 ## API
 
-Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml`, with prose guides in `docs/api/` and a browsable reference at [`/api-docs`](/api-docs) (rendered from the spec on each request, so it cannot drift).
+Versioned read-only routes under `/api/v1`. Full shapes live in
+[`openapi/v1.yaml`](openapi/v1.yaml), with prose guides in [`docs/api/`](docs/api/)
+and a browsable reference at [`/api-docs`](/api-docs) (rendered from the spec on
+each request, so it cannot drift).
 
 | Method + path                     | Purpose                                                                                                 |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -570,18 +625,37 @@ Versioned read-only routes under `/api/v1`. Full shapes live in `openapi/v1.yaml
 | `GET /api/v1/replay`              | Replay a retained checkpoint plus policy version                                                        |
 | `GET /api/v1/replay/checkpoints`  | List available checkpoints                                                                              |
 
-GET only, no auth, rate limited. Unknown EPSS renders as explicit `null`, never zero. `GET /api/v1/status` reports per-source stale and warning states.
+`GET` only, no auth, rate limited to 600 requests/minute per client per process.
+`OPTIONS` preflights spend one hit from the same budget (so preflight loops are
+throttled too) but take no concurrency slot. Unknown EPSS renders as explicit
+`null`, never zero. `GET /api/v1/status` reports per-source stale and warning
+states.
 
 ## Security
 
-Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
+Implemented controls per `.claude/SECURITY_STANDARDS.md`; F2 code-quality review
+approved (no suppressions, parameterized SQL, pinned dependencies, no secrets):
 
-- Upstream descriptions, references, and archives are **untrusted**: React-escaped output, constrained links, no PoC execution, archive guards.
-- Page HTML carries a per-request **nonce-based CSP** (`default-src 'self'`, `script-src 'self' 'nonce-…' 'strict-dynamic'`, `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`); API responses carry a separate, stricter JSON policy (`default-src 'none'`). `style-src` keeps `'unsafe-inline'` because React writes inline style attributes for chart geometry.
-- Parameterized queries, validated filters, bounded pages/time/concurrency, rate-limited reads; SSRF allow-lists for the fixed upstream endpoints.
-- Public reads are anonymous by design; imports, migrations, and maintenance stay private CLI/internal operations.
-- No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release; pinned dependencies, minimal non-root image, no Docker socket.
-- Public serving needs explicit HTTPS/certificate/binding setup. Compose alone does not create trusted TLS.
+- Upstream descriptions, references, and archives are **untrusted**: React-escaped
+  output, constrained links, no PoC execution, archive guards. An operator-set
+  `CWE_CSV_URL` must be absolute `https:` or the refresh fails soft on the pinned
+  default.
+- Page HTML carries a per-request **nonce-based CSP** (`default-src 'self'`,
+  `script-src 'self' 'nonce-…' 'strict-dynamic'`, `object-src 'none'`,
+  `frame-ancestors 'none'`, `base-uri 'self'`); API responses carry a separate,
+  stricter JSON policy (`default-src 'none'`). `style-src` keeps `'unsafe-inline'`
+  because React writes inline style attributes for chart geometry.
+- `Strict-Transport-Security` is sent on every HTTPS request; `HSTS_ENABLED=true`
+  adds it on plain HTTP when a TLS terminator in front of the app guarantees
+  HTTPS. It stays off by default so a direct-HTTP self-host is never bricked.
+- Parameterized queries, validated filters, bounded pages/time/concurrency,
+  rate-limited reads; SSRF allow-lists for the fixed upstream endpoints.
+- Public reads are anonymous by design; imports, migrations, and maintenance stay
+  private CLI/internal operations.
+- No secrets in images, Git, logs, or URLs; sanitized errors; debug off in release;
+  pinned dependencies, minimal non-root image, no Docker socket.
+- Public serving needs explicit HTTPS/certificate/binding setup. Compose alone
+  does not create trusted TLS.
 
 ## Repository
 
@@ -601,32 +675,9 @@ scripts/                Backfill + nightly-backup host automation
 ```
 
 Stack: Next.js 16 App Router, React 19, strict TypeScript, SQLite + FTS5 via
-`better-sqlite3`, visx SVG charts, self-hosted Instrument Sans + JetBrains
-Mono (OFL). One Docker image, one container, one named volume. Why these
-choices: server-rendered pages with zero chart JS framework keep every value
-in the DOM (accessible, themeable); a single SQLite file keeps self-hosting
-to one volume with WAL-speed reads and `VACUUM INTO` backups; one image
-keeps Cloud Run and VM deployments identical.
-
-## Docs map
-
-| Document                                                                                   | Purpose                                                                    |
-| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| [`DESIGN.md`](DESIGN.md)                                                                   | Research Console tokens, shell, chart contract, interaction and a11y rules |
-| [`FEASIBILITY.md`](FEASIBILITY.md)                                                         | Coverage verdict: what sources support, explicit gaps, readiness gates     |
-| [`docs/DATA_WORKFLOW.md`](docs/DATA_WORKFLOW.md)                                           | Implemented ingestion, ranking, history, freshness, and cache contracts    |
-| [`docs/research/SOURCES.md`](docs/research/SOURCES.md)                                     | First-party terms, endpoints, fields, live validations, limits             |
-| [`docs/research/COMPETITORS.md`](docs/research/COMPETITORS.md)                             | Verified competitor overlap and check limits                               |
-| [`.omo/drafts/cve-approval-brief.md`](.omo/drafts/cve-approval-brief.md)                   | Approved bundle: design, stack, history, ranking, testing basis            |
-| [`.omo/drafts/cve-change-radar.md`](.omo/drafts/cve-change-radar.md)                       | Planning record: users, gaps, decisions, open questions                    |
-| [`.omo/drafts/cve-change-radar-design.md`](.omo/drafts/cve-change-radar-design.md)         | Historical pre-build visual direction; current system is `DESIGN.md`       |
-| [`.omo/drafts/cve-single-image-deployment.md`](.omo/drafts/cve-single-image-deployment.md) | Single-image runtime, persistence, lifecycle, parity tests                 |
-| [`.omo/drafts/cve-stack-contract-audit.md`](.omo/drafts/cve-stack-contract-audit.md)       | Historical stack audit; selected stack is Next.js/SQLite/visx              |
-| [`.claude/`](.claude/)                                                                     | Agent rules, security standards, environment guide, task queue, history    |
-
-## Build gates (all done)
-
-1. Bundled brief approval, done (design, stack shape, 30-day observed replay, ranking policy, tests).
-2. Single execution plan with gap analysis plus independent review, done (30 todos + F1-F4, 4 review rounds, zero open blockers).
-3. Implementation with TDD, component/browser QA, image/container verification, and import/search benchmarks, done (todos 1-30, evidence under `.omo/evidence/`).
-4. Final verification, all approved: F1 plan compliance, F2 code quality, F3 browser QA (green, with phone/desktop/keyboard/zoom/reduced-motion evidence), F4 ideal-state fidelity (10/11 outright; the shortfall became tracked todo 31, now complete).
+`better-sqlite3`, visx SVG charts, self-hosted Instrument Sans + JetBrains Mono
+(OFL). One Docker image, one container, one named volume. Why these choices:
+server-rendered pages with no chart JS framework keep every value in the DOM
+(accessible, themeable); a single SQLite file keeps self-hosting to one volume
+with WAL-speed reads and `VACUUM INTO` backups; one image keeps Cloud Run and VM
+deployments identical.

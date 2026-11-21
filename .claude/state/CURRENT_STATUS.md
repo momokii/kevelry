@@ -103,7 +103,7 @@ the same volume; all data survived (395,286 CVEs, 285,877 CVSS rows).
   targeted baseline scans are not a comprehensive secret-scan guarantee.
 - Owner authorizes focused local commits after verified milestones, not remote pushes.
 - `npm audit` currently reports three dev-only Vitest-toolchain advisories; the production image excludes dev dependencies. Automated scanning/CI remains TASK-002.
-- `npm run format:check` reports pre-existing repository-wide formatting drift (66 files); touched files are formatted individually. Do not present it as a green gate.
+- `npm run format:check` reports pre-existing repository-wide formatting drift (42 files); touched files are formatted individually. Do not present it as a green gate.
 
 ## Incident 2026-11-07 — homepage 25–31s stall
 

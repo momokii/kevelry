@@ -117,16 +117,22 @@ It exits `0` on a match and `1` with the failing artifact named otherwise (missi
 gzip or manifest, unreadable gzip, hash/schema/row-count mismatch, or an image
 without the verify branch), so it can be used from a cron check or a restore
 drill. `--verify` never mounts the backup root and never prunes; it does require
-Docker (one throwaway container) and the temp space described above.
+Docker (one throwaway container) and the temp space described above. The
+decompressed copy lives in a `mktemp -d` directory under `$TMPDIR`, and an `EXIT`
+trap removes it only when the path still matches that `mktemp` pattern — a future
+edit cannot turn the cleanup into a broad delete, and the directory is removed on
+the failure path too.
 
 **The backup root argument is guarded.** The script refuses (exit `2`, message on
 stderr, never a prompt — it runs unattended) a backup root that is empty, not
 absolute, `/`, or resolves to fewer than two path components (`/tmp` and
 `/backups` are refused; `~/cve-backups` and `/srv/cve-backups` are accepted),
-before creating anything or mounting the volume: the prune step runs
-`find "$BACKUP_ROOT" … -exec rm -rf`, so a shallow or empty value would be a broad
-system delete. It also re-checks that the root still exists and is a directory
-immediately before pruning.
+before creating anything, redirecting the log, or mounting the volume: the prune
+step runs `find "$BACKUP_ROOT" … -exec rm -rf`, so a shallow or empty value would
+be a broad system delete. It also re-checks that the root still exists and is a
+directory immediately before pruning, and skips pruning entirely when either
+verification failed. `--verify <dir>` is exempt from the root guard because it
+never prunes: it only reads one existing directory.
 
 ## Compatibility policy
 
