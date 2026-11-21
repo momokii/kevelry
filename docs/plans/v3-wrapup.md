@@ -6,8 +6,8 @@
 Four audits (correctness, data-visibility, architecture, docs accuracy) ran against
 3.1.0; this is their triage and the commit sequence that closes it. Each heading states
 the symptom, then evidence, fix, acceptance and the closing commit. Every item is
-closed by a commit on `main`; `DOCS_SHA` is this documentation pass, recorded in the
-commit that follows it (a commit cannot cite its own hash). Order is risk, not effort: P0 misreports facts, P1 is structure, P2 is hardening.
+closed by a commit on `main`; `11a5138` is `11a5138`, this documentation pass, recorded in the commit
+that follows it (a commit cannot cite its own hash). Order is risk, not effort: P0 misreports facts, P1 is structure, P2 is hardening.
 
 **Corrected while verifying:** the "latest month" stat is `app/page.tsx:61` via
 `StatStrip.tsx:23`, the KEV rhythm is `src/components/charts/KevRhythm.tsx`, the backwards
@@ -81,7 +81,7 @@ import is `src/lib/cwe-display.ts:14`, and the `format:check` drift was 44 files
     `LIVE_CLONE`, `EPSS_LIVE_TEST`, `BENCH_WRITE_EVIDENCE`.
   - **Fix.** Regenerate counts, describe the drift accurately, add the three variables.
     **Accept.** Counts match `playwright test --list` and the unit run; the `.env.example`
-    header rule holds under a grep for `process.env`. **Commit.** `DOCS_SHA`
+    header rule holds under a grep for `process.env`. **Commit.** `11a5138`
 - **P0.9 Two false claims in the 3.1.0 CHANGELOG.** The notes credit a consolidation that
   did not happen and describe a user-visible branch that cannot execute.
   - **Evidence.** `CHANGELOG.md:19` says the primitives "replace five hand-rolled copies";
@@ -91,7 +91,7 @@ import is `src/lib/cwe-display.ts:14`, and the `format:check` drift was 44 files
   - **Decision.** Claim 1 is **made true** by P1.1; claim 2 is **corrected in wording**,
     its dead branch deleted with P1.3 — no band is rejected, nothing needs a label.
     **Accept.** The CHANGELOG matches the code. **Commit.** `8c06da0` + `dd947d2` made
-    claim 1 true, and `DOCS_SHA` removed claim 2's dead branch (the 3.1.0 entry itself
+    claim 1 true, and `11a5138` removed claim 2's dead branch (the 3.1.0 entry itself
     stays as written; the correction is the `Unreleased` line).
 
 ## P1 — structure
@@ -121,7 +121,7 @@ import is `src/lib/cwe-display.ts:14`, and the `format:check` drift was 44 files
     `.donut a:focus-visible` in `app/ui.css`; the graph's rule is `app/ui.css:4635`.
   - **Fix.** Add the matching focus-visible rule; delete the unreachable rejected-band
     branch (P0.9). **Accept.** A focused segment renders an outline distinct from hover,
-    at the contrast the graph rule passes. **Commit.** `7f36685` + `DOCS_SHA` (dead branch)
+    at the contrast the graph rule passes. **Commit.** `7f36685` + `11a5138` (dead branch)
 - **P1.4 The primitives and the sparkline have no direct tests.** The shared contract has
   no assertions of its own; the sparkline is tested only through `formatEpssPercent`.
   - **Evidence.** Zero references in `tests/` for `ChartTooltip`, `ChartTable` or
