@@ -4,8 +4,10 @@
 // success: the documented stale warning must render with last-known-good data,
 // not a frozen page. Every required reuse notice from docs/research/SOURCES.md
 // is asserted by testid and key phrase, so deleting any notice fails this spec.
-// Serial: every test shares the one server corpus, which no other checkout
-// file backs.
+// The taxonomy block is asserted in both states: the seeded corpus has no
+// accepted CWE catalog, and one test deploys a variant that does, then restores
+// the seed so later tests still see the failed-feed corpus. Serial: every test
+// shares the one server corpus, which no other checkout file backs.
 
 import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -28,8 +30,11 @@ const EVIDENCE_DIR =
   "/home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/.omo/evidence/task-23-cve-change-radar";
 
 const STAMP = "2026-10-24T00:00:00.000Z";
+const CWE_VERSION = "1000-2";
 
 const tempDirs: string[] = [];
+let seededDbFile = "";
+let catalogDbFile = "";
 
 function dayAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -39,8 +44,10 @@ function isoDayAgo(days: number, time = "12:00:00.000Z"): string {
   return `${dayAgo(days)}T${time}`;
 }
 
-/** Seeded DB: one published record plus a failed KEV feed over an older success. */
-function buildSeededDbFile(): string {
+/** Seeded DB: one published record plus a failed KEV feed over an older success.
+ * `withCweCatalog` adds the accepted taxonomy pointer the readiness block
+ * states a version for; the default seed has none, which is the other state. */
+function buildSeededDbFile(options: { withCweCatalog?: boolean } = {}): string {
   const dir = mkdtempSync(path.join(tmpdir(), "cve-methodology-seed-"));
   tempDirs.push(dir);
   const db = openDatabase({ dataDir: dir });
@@ -105,6 +112,14 @@ function buildSeededDbFile(): string {
       null,
       null,
     );
+    if (options.withCweCatalog === true) {
+      db.handle
+        .prepare(
+          "INSERT OR REPLACE INTO cwe_catalog_meta (id, version, source, source_hash, retrieved_at, status, record_count, notes) " +
+            "VALUES (1, ?, 'MITRE CWE', ?, ?, 'ready', 2, NULL)",
+        )
+        .run(CWE_VERSION, "a".repeat(64), STAMP);
+    }
   });
   db.checkpointStatus();
   db.close();
@@ -113,7 +128,9 @@ function buildSeededDbFile(): string {
 
 test.beforeAll(() => {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
-  deployE2eCorpus(buildSeededDbFile());
+  seededDbFile = buildSeededDbFile();
+  catalogDbFile = buildSeededDbFile({ withCweCatalog: true });
+  deployE2eCorpus(seededDbFile);
 });
 
 test.afterAll(() => {
@@ -184,6 +201,37 @@ test("methodology states the retention window with live numbers", async ({ page 
   await expect(page.locator("main")).toContainText("oldest retained:");
   // The honest limits travel with it: no auto-shrink, VACUUM is deliberate.
   await expect(page.locator("main")).toContainText("high-water mark");
+});
+
+test("methodology states when no CWE catalog has been imported", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/methodology");
+  const catalog = page.getByTestId("methodology-cwe-catalog");
+  await expect(catalog).toBeVisible();
+  await expect(catalog).toContainText("MITRE CWE");
+  await expect(catalog).toContainText("Research Concepts view (1000)");
+  // The seeded corpus never imported a catalog: the page says so instead of
+  // printing a blank or an invented version.
+  await expect(catalog).toContainText("No accepted catalog has been imported on this instance yet");
+  await expect(catalog).toContainText("taxonomy unavailable");
+  await expect(catalog).not.toContainText("Accepted catalog version");
+  await expect(catalog).not.toContainText(CWE_VERSION);
+});
+
+test("methodology states the accepted CWE catalog version", async ({ page }) => {
+  try {
+    deployE2eCorpus(catalogDbFile);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/methodology");
+    const catalog = page.getByTestId("methodology-cwe-catalog");
+    // Wherever CWE names are labelled, the provenance states the version (E3).
+    await expect(catalog).toContainText(`Accepted catalog version ${CWE_VERSION}`);
+    await expect(catalog).toContainText(STAMP);
+    await expect(catalog).toContainText("never guessed");
+    await expect(catalog).not.toContainText("No accepted catalog has been imported");
+  } finally {
+    deployE2eCorpus(seededDbFile);
+  }
 });
 
 test("every required reuse notice appears verbatim", async ({ page }) => {

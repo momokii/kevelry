@@ -18,6 +18,7 @@ import { ScoringExample } from "@/components/methodology/ScoringExample";
 import { SignalDiagram } from "@/components/methodology/SignalDiagram";
 import styles from "@/components/methodology/MethodologyDiagrams.module.css";
 import { readCurrentAggregates, severityBandsSql } from "@/lib/aggregates";
+import { getCweCatalogMeta, type CweCatalogMeta } from "@/lib/cwe-catalog";
 import { openReadDatabase, type CveDatabase } from "@/lib/db";
 import { EPSS_RETENTION_DAYS_DEFAULT } from "@/lib/retention";
 import { EPSS_HISTORY_CAP } from "@/app/api/v1/_lib/epss-history";
@@ -66,6 +67,10 @@ export default function MethodologyPage() {
   let unknownDates: number | null = null;
   let cnaScored: number | null = null;
   let loadError: string | null = null;
+  // The taxonomy that labels every CWE chip is reference data with its own
+  // accepted version; `null` means the snapshot could not be read at all, which
+  // is stated as such rather than as "nothing imported".
+  let cweCatalog: CweCatalogMeta | null = null;
   // Retention is stated with the live numbers, not as a promise in prose.
   const retention = {
     keepDays: EPSS_RETENTION_DAYS_DEFAULT,
@@ -76,6 +81,7 @@ export default function MethodologyPage() {
   try {
     const db = openReadDatabase(resolveDataDir());
     provenance = buildProvenance(db, nowIso);
+    cweCatalog = getCweCatalogMeta(db);
     // One indexed read: the window is only honest if it names what is stored.
     const oldest = db.handle.prepare("SELECT MIN(score_date) AS day FROM epss_daily").get() as {
       day: string | null;
@@ -483,6 +489,32 @@ export default function MethodologyPage() {
             expected publication. Historical analysis uses dated historical files or retained daily
             observations, never the assumption that the moving current-file URL preserves past
             versions.
+          </p>
+          <p data-testid="methodology-cwe-catalog">
+            MITRE CWE: taxonomy names and published mitigation text come from MITRE&apos;s Research
+            Concepts view (1000), imported as a CSV pack.{" "}
+            {cweCatalog === null ? (
+              <>
+                The accepted catalog could not be read on this request, so no version is stated
+                here; nothing is guessed from a missing read.
+              </>
+            ) : cweCatalog.status === "empty" ? (
+              <>
+                No accepted catalog has been imported on this instance yet, so there is no version
+                to state. Every CWE id still renders as its id, labelled taxonomy unavailable, and
+                no name or mitigation text is guessed.
+              </>
+            ) : (
+              <>
+                Accepted catalog version{" "}
+                <span className="mono">{cweCatalog.version ?? "not recorded"}</span> — the view id
+                plus the entry count the pack published — last refreshed{" "}
+                <span className="mono">{cweCatalog.retrievedAt ?? "not recorded"}</span>.{" "}
+                {cweCatalog.status === "ready"
+                  ? "A CWE id the catalog does not cover is shown as unmapped with its MITRE link, never guessed; an input that is not a CWE number is shown exactly as typed."
+                  : `The catalog is currently ${cweCatalog.status}, so CWE ids render as taxonomy unavailable until a refresh succeeds, and no name or mitigation text is guessed.`}
+              </>
+            )}
           </p>
           <p className="ledger-meta">
             A locally computed hash identifies bytes; it is not a publisher authenticity signature.
