@@ -1,8 +1,8 @@
 // Display rules for the CWE taxonomy and the KEV ransomware-use signal.
 //
 // Pure formatting: no database, no React, no fetch. `cwe-catalog.ts` owns
-// resolution and `records.ts` owns the stored tri-state; this module owns the
-// wording, so a chip name, a disclosed mitigation and a ransomware label are
+// resolution and `record-display.ts` owns the stored tri-state; this module owns
+// the wording, so a chip name, a disclosed mitigation and a ransomware label are
 // each stated once and shared by every renderer and test.
 //
 // Contract:
@@ -11,7 +11,7 @@
 // - `unknown` (the catalog's own value) and `unstated` (nothing stored) are
 //   distinct labels, never collapsed and never negated into "no ransomware".
 
-import type { KevRansomwareUse } from "../../app/api/v1/_lib/records";
+import type { KevRansomwareUse } from "./record-display";
 
 import type { CweRef } from "./cwe-catalog";
 

@@ -790,6 +790,31 @@ export function resolveRunBackupOnce(
 }
 
 /**
+ * One-off verification of an already extracted backup, with no import cycle and
+ * no live data directory:
+ * `RUN_VERIFY_ONCE=true VERIFY_DIR=/verify node dist/worker.mjs`.
+ * Runs the same `verifyBackup()` the backup path runs — SHA-256 against the
+ * manifest, schema versions, row counts — against a directory that already holds
+ * `cve-backup.db` plus `manifest.json`, then exits 0 or non-zero. Used by
+ * `scripts/nightly-backup.sh`, which decompresses a stored gzip into a temp dir
+ * and mounts it here, so the artifact cron keeps is checked by the real verifier
+ * instead of a lookalike shell check. VERIFY_DIR is required.
+ */
+export function resolveRunVerifyOnce(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.RUN_VERIFY_ONCE === "true";
+}
+
+export function resolveVerifyDir(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const raw = env.VERIFY_DIR;
+  if (raw === undefined || raw.trim() === "") return null;
+  return raw;
+}
+
+/**
  * One-off restore drill: `RUN_RESTORE_ONCE=true RESTORE_DIR=/backups/<date>`
  * restores a verified backup image into DATA_DIR, then reports the row counts.
  * Exists so the runbook's "restore into a fresh volume" is a documented command
@@ -841,6 +866,32 @@ async function main(): Promise<void> {
       defaultLog({
         event: "worker-fatal",
         reason: "backup-failed",
+        error: errorDetail(error),
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (resolveRunVerifyOnce()) {
+    const verifyDir = resolveVerifyDir();
+    if (verifyDir === null) {
+      defaultLog({ event: "worker-fatal", reason: "verify-dir-missing" });
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const verification = verifyBackup(verifyDir);
+      defaultLog({
+        event: "verify-done",
+        verifyDir,
+        createdAt: verification.manifest.createdAt,
+        rowCounts: verification.rowCounts,
+      });
+      process.exitCode = 0;
+    } catch (error) {
+      defaultLog({
+        event: "worker-fatal",
+        reason: "verify-failed",
         error: errorDetail(error),
       });
       process.exitCode = 1;

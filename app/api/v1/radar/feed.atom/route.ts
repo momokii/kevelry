@@ -3,7 +3,7 @@
 // serialized to RFC 4287. The shared handler in `_lib/radar-feed-route.ts` owns
 // selection, so this file only names the format and its serializer.
 import { buildRadarAtomFeed } from "../../../../../src/lib/radar-feed";
-import { preflightResponse } from "../../_lib/guardrails";
+import { apiPreflight } from "../../_lib/api-route";
 import { handleRadarFeed, type RadarFeedFormat } from "../../_lib/radar-feed-route";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ const ATOM_FEED: RadarFeedFormat = {
 };
 
 export async function OPTIONS(request: Request): Promise<Response> {
-  return preflightResponse(request);
+  return apiPreflight(request);
 }
 
 export async function GET(request: Request): Promise<Response> {

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { buildContentSecurityPolicy, createCspNonce } from "./src/lib/csp";
+import { hstsHeaderValue } from "./src/lib/hsts";
 
 // Page-level Content-Security-Policy with a per-request nonce. The policy text and
 // the nonce live in `src/lib/csp.ts` so they can be unit-tested; this file only
@@ -24,6 +25,10 @@ export function middleware(request: NextRequest): NextResponse {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", policy);
+  // Opt-in: only an already-HTTPS request or `HSTS_ENABLED=true` pins the host.
+  // See `src/lib/hsts.ts` — a plain-HTTP self-hosted instance stays reachable.
+  const hsts = hstsHeaderValue(request);
+  if (hsts !== null) response.headers.set("Strict-Transport-Security", hsts);
   return response;
 }
 

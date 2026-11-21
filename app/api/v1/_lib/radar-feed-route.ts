@@ -76,7 +76,7 @@ function feedResponse(
   response.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
   if (lastModified !== null) response.headers.set("Last-Modified", lastModified);
   applyRateHeaders(response, reservation);
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
   applyCorsHeaders(request, response);
   return response;
 }

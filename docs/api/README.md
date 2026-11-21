@@ -130,6 +130,14 @@ Defaults, enforced per client IP and visible on every response:
 - 600 requests per minute per IP; bursts over the budget get `429 RATE_LIMITED`.
   The budget is kept in process memory, so replicas do not share it: N app
   processes behind one proxy admit up to N × 600 requests per minute per IP
+- `OPTIONS` preflights spend one hit from the same per-IP budget as `GET`, and
+  the `204` carries the same `X-RateLimit-*` headers; a spent budget answers
+  `429` instead of a free preflight. Without that, `OPTIONS` was an unthrottled
+  request loop for any client. A preflight takes no concurrency slot: that cap
+  bounds in-flight database work, and a preflight reads nothing
+- `Strict-Transport-Security` is sent only when the request arrived over HTTPS,
+  or when `HSTS_ENABLED=true` says a TLS terminator always fronts the app; a
+  plain-HTTP self-hosted instance is never pinned
 - The client IP is the address observed at the server socket (last `X-Forwarded-For`
   entry when proxied). Self-hosters must put a reverse proxy in front that
   overwrites forwarding headers and never expose the app port directly; see the

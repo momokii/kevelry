@@ -927,6 +927,21 @@ describe("resolveCweCsvUrl", () => {
       "https://example.test/1000.csv.zip",
     );
   });
+
+  // An override chooses which bytes the importer trusts. Anything but absolute
+  // https must be refused before a fetch: `file:` reads the volume, `data:` is
+  // fabricated input, `http:` is rewritable in transit, and a relative path has
+  // no origin at all.
+  it.each([
+    ["http://cwe.mitre.org/data/csv/1000.csv.zip", "got http:"],
+    ["file:///etc/passwd", "got file:"],
+    ["data:text/csv;base64,Q1dFLTEsQQ==", "got data:"],
+    ["ftp://cwe.mitre.org/data/csv/1000.csv.zip", "got ftp:"],
+    ["./1000.csv.zip", "not a valid URL"],
+    ["cwe-mirror/1000.csv.zip", "not a valid URL"],
+  ])("refuses a non-https override: %s", (value, message) => {
+    expect(() => resolveCweCsvUrl({ CWE_CSV_URL: value })).toThrow(message);
+  });
 });
 
 describe("sanitizeCweReason", () => {

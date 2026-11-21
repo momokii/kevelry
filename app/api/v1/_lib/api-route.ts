@@ -86,7 +86,16 @@ export function withApiRoute<RouteArgs extends unknown[] = []>(
   };
 }
 
-/** The 204 preflight every v1 route answers for `OPTIONS`. */
+/**
+ * The 204 preflight every v1 route answers for `OPTIONS`.
+ *
+ * It spends one hit from the same per-IP budget a GET spends, so an `OPTIONS`
+ * loop is throttled instead of being a free request amplifier. It takes no
+ * concurrency slot: that cap bounds in-flight database work and a preflight
+ * reads nothing.
+ */
 export function apiPreflight(request: Request): Response {
-  return preflightResponse(request);
+  const rate = reserveRateLimit(request, null);
+  if (rate instanceof Response) return rate;
+  return preflightResponse(request, rate);
 }

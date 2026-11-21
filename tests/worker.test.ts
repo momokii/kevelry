@@ -19,6 +19,8 @@ import {
   resolveCweRefreshEnabled,
   resolveIngestOnStart,
   resolveRunBackupOnce,
+  resolveRunVerifyOnce,
+  resolveVerifyDir,
   runWorker,
   type SourceJobDeps,
   type WorkerLog,
@@ -516,6 +518,17 @@ describe("RUN_BACKUP_ONCE one-shot gate", () => {
     expect(resolveBackupDir({})).toBe(null);
     expect(resolveBackupDir({ BACKUP_DIR: "" })).toBe(null);
     expect(resolveBackupDir({ BACKUP_DIR: "/backups/2026-10-29" })).toBe("/backups/2026-10-29");
+  });
+});
+
+describe("RUN_VERIFY_ONCE one-shot gate", () => {
+  it("resolves the gate and requires a verify directory", () => {
+    expect(resolveRunVerifyOnce({})).toBe(false);
+    expect(resolveRunVerifyOnce({ RUN_VERIFY_ONCE: "true" })).toBe(true);
+    expect(resolveRunVerifyOnce({ RUN_VERIFY_ONCE: "false" })).toBe(false);
+    expect(resolveVerifyDir({})).toBe(null);
+    expect(resolveVerifyDir({ VERIFY_DIR: "   " })).toBe(null);
+    expect(resolveVerifyDir({ VERIFY_DIR: "/verify" })).toBe("/verify");
   });
 });
 

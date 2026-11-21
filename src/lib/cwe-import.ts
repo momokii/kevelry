@@ -385,10 +385,28 @@ export type CweRefreshResult =
     }
   | { status: "failed"; reason: string };
 
-/** `CWE_CSV_URL` when set and non-blank, else the pinned default. */
+/**
+ * `CWE_CSV_URL` when set and non-blank, else the pinned default.
+ *
+ * An override must be an absolute `https:` URL. `http:`, `file:`, `data:` and a
+ * relative path are refused here, before any fetch: a misconfigured environment
+ * must not be able to point the importer at local files (path traversal into the
+ * volume) or at plaintext content an on-path attacker can rewrite. The error
+ * names the offending scheme and never echoes credentials.
+ */
 export function resolveCweCsvUrl(env: Record<string, string | undefined> = process.env): string {
   const raw = env.CWE_CSV_URL?.trim();
-  return raw === undefined || raw === "" ? CWE_CSV_URL_DEFAULT : raw;
+  if (raw === undefined || raw === "") return CWE_CSV_URL_DEFAULT;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    fail("invalid-url", "CWE_CSV_URL must be an absolute https URL (it is not a valid URL)");
+  }
+  if (parsed.protocol !== "https:") {
+    fail("invalid-url", `CWE_CSV_URL must be an https URL, got ${parsed.protocol}`);
+  }
+  return parsed.toString();
 }
 
 /**
@@ -608,9 +626,11 @@ export async function refreshCweCatalog(
   const clock = options.now ?? (() => new Date());
   const nowIso = clock().toISOString();
   const timeoutMs = options.timeoutMs ?? CWE_FETCH_TIMEOUT_MS;
-  const url = options.url ?? resolveCweCsvUrl();
 
   try {
+    // Resolved inside the try: an invalid `CWE_CSV_URL` is a failed refresh with
+    // a sanitised reason, not an exception the worker cycle has to handle.
+    const url = options.url ?? resolveCweCsvUrl();
     let parsed: URL;
     try {
       parsed = new URL(url);

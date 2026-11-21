@@ -40,7 +40,7 @@ export function errorResponse(
   response.headers.set("Cache-Control", ERROR_CACHE_CONTROL);
   const rate = reservation ?? checkRateLimit(clientKeyFor(request));
   applyRateHeaders(response, rate);
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
   applyCorsHeaders(request, response);
   if (status === 429) {
     response.headers.set("Retry-After", String(Math.max(rate.reset, 1)));
@@ -55,7 +55,7 @@ export function okResponse(
 ): Response {
   const response = Response.json(payload);
   applyRateHeaders(response, reservation ?? checkRateLimit(clientKeyFor(request)));
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
   applyCorsHeaders(request, response);
   return response;
 }

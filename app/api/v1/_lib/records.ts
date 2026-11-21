@@ -1,8 +1,14 @@
 import { chunk, type CveDatabase } from "../../../../src/lib/db";
-import { projectSecondaryCvss, type CvssSecondary } from "../../../../src/lib/cvss-projection";
-import { exploitReferenceUrls } from "../../../../src/lib/exploit-ref";
+import { projectSecondaryCvss } from "../../../../src/lib/cvss-projection";
 import { getAcceptedEpssDate, type PriorityItem } from "../../../../src/lib/priority";
-import { selectPrimaryCvss, type PrimaryCvss } from "../../../../src/lib/ranking";
+import {
+  exploitReferencesOf,
+  kevRansomwareUseOf,
+  legacyRansomwareKnown,
+  type FullRecord,
+  type KevRansomwareUse,
+} from "../../../../src/lib/record-display";
+import { selectPrimaryCvss } from "../../../../src/lib/ranking";
 import {
   DESCRIPTION_MISSING_LABEL,
   excerptDescription,
@@ -12,105 +18,16 @@ import {
 } from "../../../../src/lib/search";
 import type { EpssParam, KevParam, SeverityParam } from "./params";
 
-/**
- * References the record itself tags as exploit material.
- *
- * Source: the CVE record's own `references[].tags` (CNA or ADP). A tag is the
- * publisher's classification, not proof that a working exploit exists, so the
- * UI always says "tagged", never "verified". Only http(s) URLs are kept.
- */
-export function exploitReferencesOf(rawJson: string | null, cap = 5): Array<{ url: string }> {
-  if (rawJson === null || rawJson === "") return [];
-  try {
-    // Same walker as the stored flag: CNA object plus the ADP array, so a record
-    // that is tagged only in an ADP container still links to its references.
-    return exploitReferenceUrls(JSON.parse(rawJson) as unknown, cap).map((url) => ({ url }));
-  } catch {
-    // Unparseable payloads carry no tagged references, never a throw.
-    return [];
-  }
-}
-
-/**
- * Catalog-stated ransomware use, as the catalog itself words it.
- *
- * `known`   - the catalog says Known.
- * `unknown` - the catalog says Unknown (its own value, not our inference).
- * `unstated` - the catalog states nothing (stored NULL).
- *
- * `unknown` and `unstated` are distinct states and are never collapsed:
- * neither is ever negated into a claim that ransomware use is absent.
- */
-export type KevRansomwareUse = "known" | "unknown" | "unstated";
-
-/**
- * The one mapping from the stored `kev_entries.ransomware_known` integer:
- * `1` -> "known", `0` -> "unknown", `NULL` -> "unstated".
- *
- * Any other non-null integer keeps the legacy reading (non-zero is Known), so
- * the old boolean alias below cannot drift from this switch.
- */
-export function kevRansomwareUseOf(value: number | null | undefined): KevRansomwareUse {
-  if (value === null || value === undefined) return "unstated";
-  return value === 0 ? "unknown" : "known";
-}
-
-/**
- * Legacy `ransomwareKnown` boolean alias, derived from the tri-state above:
- * known -> true, unknown -> false, unstated -> null. Kept for back-compat with
- * consumers that predate `ransomwareUse`.
- */
-export function legacyRansomwareKnown(use: KevRansomwareUse): boolean | null {
-  if (use === "known") return true;
-  if (use === "unknown") return false;
-  return null;
-}
+// The record shape and its display derivations live in `src/lib/record-display.ts`
+// so no library module ever imports route code. Re-exported here because this
+// module is the record API every route already imports from.
+export { exploitReferencesOf, kevRansomwareUseOf, legacyRansomwareKnown };
+export type { FullRecord, KevRansomwareUse };
 
 /** Absent catalog text is null, never an empty string. */
 function catalogText(value: string | null): string | null {
   if (value === null || value.trim() === "") return null;
   return value;
-}
-
-export interface FullRecord {
-  cveId: string;
-  state: string;
-  publishedAt: string | null;
-  dateUpdated: string | null;
-  title: string | null;
-  description: string;
-  descriptionLang: string | null;
-  rawJson: string | null;
-  kevDateAdded: string | null;
-  kevDueDate: string | null;
-  kevRequiredAction: string | null;
-  kevVulnerabilityName: string | null;
-  /** Catalog-stated ransomware use; the single source for the KEV block. */
-  kevRansomwareUse: KevRansomwareUse;
-  /** Legacy alias derived from `kevRansomwareUse`, never a second mapping. */
-  kevRansomwareKnown: boolean | null;
-  kevCwes: string[];
-  /** References the record tags as exploit material (never "verified PoC"). */
-  exploitReferences: Array<{ url: string }>;
-  /** CISA SSVC decision points, or null when the source publishes none. */
-  ssvc: {
-    exploitation: string;
-    automatable: string;
-    technicalImpact: string;
-    version: string | null;
-    timestamp: string | null;
-  } | null;
-  epssText: string | null;
-  epssPercentile: string | null;
-  epssModel: string | null;
-  primary: PrimaryCvss | null;
-  /**
-   * Every other preserved metric, bounded and labeled "context only".
-   * Never a second primary: ranking/eligibility read `primary` alone.
-   */
-  cvssSecondary: CvssSecondary;
-  /** Legacy flag kept additive; `cvssSecondary.status` supersedes it. */
-  hasAdp: boolean;
 }
 
 interface RecordRow {

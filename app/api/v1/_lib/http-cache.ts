@@ -49,7 +49,7 @@ function notModified(request: Request, etag: string, reservation?: RateReservati
   response.headers.set("ETag", etag);
   response.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
   applyRateHeaders(response, reservation ?? checkRateLimit(clientKeyFor(request)));
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
   applyCorsHeaders(request, response);
   return response;
 }
@@ -107,7 +107,7 @@ export function cachedTextResponse(
     const fallback = new Response(body, { headers });
     fallback.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
     applyRateHeaders(fallback, reservation ?? checkRateLimit(clientKeyFor(request)));
-    applySecurityHeaders(fallback);
+    applySecurityHeaders(fallback, request);
     applyCorsHeaders(request, fallback);
     return fallback;
   }
@@ -117,7 +117,7 @@ export function cachedTextResponse(
   response.headers.set("ETag", etag);
   response.headers.set("Cache-Control", CACHE_CONTROL_HEADER);
   applyRateHeaders(response, reservation ?? checkRateLimit(clientKeyFor(request)));
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
   applyCorsHeaders(request, response);
   return response;
 }

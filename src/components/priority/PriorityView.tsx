@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-import type { KevRansomwareUse } from "@/app/api/v1/_lib/records";
+import type { KevRansomwareUse } from "@/lib/record-display";
 import type { CweRef } from "@/lib/cwe-catalog";
 import type { CvssSecondary } from "@/lib/cvss-projection";
 import { displayProbabilityPercentFixed } from "../../lib/ranking";

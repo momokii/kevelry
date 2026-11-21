@@ -273,6 +273,7 @@ the app reads is listed there.
 | `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                                           |
 | `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                                                |
 | `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; feeds use it for absolute links, else proxy headers, and omit links when the host is unusable |
+| `HSTS_ENABLED`            | no       | `false`                        | Send `Strict-Transport-Security` on plain HTTP too; HTTPS requests always get it                                                            |
 | `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                                    |
 | `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                                          |
 | `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB)                   |
@@ -289,6 +290,8 @@ the app reads is listed there.
 | `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                            |
 | `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                     |
 | `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                                      |
+| `RUN_VERIFY_ONCE`         | no       | `false`                        | One-off `verifyBackup()` of `VERIFY_DIR` (hash + schema + row counts), then exit                                                            |
+| `VERIFY_DIR`              | no*      | unset                          | Backup directory to verify (needs `cve-backup.db` + `manifest.json`); required when `RUN_VERIFY_ONCE=true`                                  |
 | `BACKUP_DIR`              | no*      | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                                    |
 | `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it                   |
 | `RESTORE_DIR`             | no*      | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything                  |

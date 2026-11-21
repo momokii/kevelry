@@ -1,4 +1,5 @@
 import { ApiError } from "./errors";
+import { hstsHeaderValue } from "../../../../src/lib/hsts";
 
 /** Public rate budget surfaced on every response. */
 export const RATE_LIMIT_MAX = 600;
@@ -178,7 +179,12 @@ export function searchBudgetExceeded(startedAtMs: number, nowMs: number = Date.n
   return nowMs - startedAtMs >= searchBudgetMs;
 }
 
-export function applySecurityHeaders(response: Response): Response {
+/**
+ * Security headers every API response carries. `request` decides whether
+ * Strict-Transport-Security may be added: see `src/lib/hsts.ts` for the rule
+ * (already-HTTPS request, or the explicit `HSTS_ENABLED` flag).
+ */
+export function applySecurityHeaders(response: Response, request: Request): Response {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set(
@@ -186,6 +192,8 @@ export function applySecurityHeaders(response: Response): Response {
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
   );
   response.headers.set("Referrer-Policy", "no-referrer");
+  const hsts = hstsHeaderValue(request);
+  if (hsts !== null) response.headers.set("Strict-Transport-Security", hsts);
   return response;
 }
 
@@ -201,10 +209,23 @@ export function applyCorsHeaders(request: Request, response: Response): Response
   return response;
 }
 
-export function preflightResponse(request: Request): Response {
+/**
+ * The 204 preflight every v1 route answers for `OPTIONS`.
+ *
+ * It spends one hit from the same per-IP budget a GET spends. Leaving it free
+ * made every `OPTIONS` an unthrottled request: a client could loop preflights
+ * at line rate while the GET budget stayed untouched. The caller reserves the
+ * hit, so the 204 carries the same `X-RateLimit-*` headers as any other
+ * response and a spent budget answers `429` instead of `204`.
+ *
+ * It deliberately takes no concurrency slot: that cap bounds in-flight
+ * database work, and a preflight reads nothing.
+ */
+export function preflightResponse(request: Request, rate: RateReservation): Response {
   const response = new Response(null, { status: 204 });
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
   applyCorsHeaders(request, response);
+  applyRateHeaders(response, rate);
   return response;
 }
 

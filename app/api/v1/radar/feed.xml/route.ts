@@ -5,7 +5,7 @@
 // validation, clamp, and ETag layer is shared with the Atom route in
 // `_lib/radar-feed-route.ts`, so both formats select the same event set.
 import { buildRadarFeed } from "../../../../../src/lib/radar-feed";
-import { preflightResponse } from "../../_lib/guardrails";
+import { apiPreflight } from "../../_lib/api-route";
 import { handleRadarFeed, type RadarFeedFormat } from "../../_lib/radar-feed-route";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ const RSS_FEED: RadarFeedFormat = {
 };
 
 export async function OPTIONS(request: Request): Promise<Response> {
-  return preflightResponse(request);
+  return apiPreflight(request);
 }
 
 export async function GET(request: Request): Promise<Response> {

@@ -291,7 +291,11 @@ normative. The rationale, the per-chart audit and the migration phases live in
   plot over twelve slots, because the panel is 320px (`span-4` of a 12-column
   grid) and 44px slots need 528px. That is a page composition change (move the
   chart to `span-8`), not a hit-geometry one, and the `All months` table carries
-  every value meanwhile. The cohort node that used to be pinned at 36×236 is
+  every value meanwhile. The dense-series exception is recorded with its measured
+  size rather than silently relaxed: a 23px-wide slot sits 1px under the 24×24
+  floor in WCAG 2.5.8 (Target Size Minimum), and the panel being 320px wide is why
+  the slot is that narrow — the pin carries the number, so this revision's audit
+  output and the documented exception agree. The cohort node that used to be pinned at 36×236 is
   fixed: its target is now **60×236**, spanning the bar plus the label gutter and
   stopping where the bands start, so no flow is covered.
 - **One implementation.** `ChartTooltip`, `ChartTable` and `useRovingMarkFocus`

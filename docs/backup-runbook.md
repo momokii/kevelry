@@ -69,8 +69,33 @@ expected page-cache effects, not a data problem.
 
 `scripts/nightly-backup.sh` runs the same verified path on a schedule:
 a one-off container on the compose volume executes the `RUN_BACKUP_ONCE`
-worker branch (create + verify, never an import cycle), then generations
-older than 7 days are pruned. Install from the repo root:
+worker branch (create + verify `cve-backup.db` against `manifest.json`, never an
+import cycle). Verification happens twice, deliberately:
+
+1. **Before compression, inside the container.** `verifyBackup()` checks the
+   database SHA-256 against the manifest, opens the schema read-only and compares
+   every row count. This is what proves the image is a usable backup.
+2. **After compression, on the stored artifact.** The script decompresses
+   `cve-backup.db.gz` into a `mktemp -d` directory beside a copy of
+   `manifest.json`, mounts that directory at `/verify` in a one-off container, and
+   runs the same `verifyBackup()` through the `RUN_VERIFY_ONCE` worker branch
+   (`RUN_VERIFY_ONCE=true VERIFY_DIR=/verify node worker.mjs`). The temp directory
+   is deleted afterwards, on success and on failure. Because it is the same
+   function the backup path runs, the two checks cannot drift apart, and a
+   truncated or corrupted gzip fails while decompressing. This step reads and
+   re-hashes the whole image, so it needs free temp space the size of the
+   decompressed database (several GB — point `TMPDIR` at a roomy volume when
+   `/tmp` is small) and takes minutes on a multi-GB backup. A failure exits
+   non-zero, cron mails it, and pruning is skipped.
+
+The verify branch must exist in the app image, which is the image that wrote the
+backup: after pulling this code, rebuild once (`docker compose build app`) as
+part of the normal upgrade. The script checks the image bundle for the branch and
+refuses with an explicit message instead of running an older worker that would
+start an import cycle.
+
+Generations older than 7 days are pruned only after both checks pass, and only
+through a path that still exists and is a directory. Install from the repo root:
 
 ```bash
 (crontab -l 2>/dev/null; echo "0 2 * * * <repo>/scripts/nightly-backup.sh") | crontab -
@@ -79,6 +104,29 @@ older than 7 days are pruned. Install from the repo root:
 Backups land in `~/cve-backups/<UTC date>/` with `backup-cron.log` beside
 them. A non-zero exit means cron mails the failure; the live container is
 never restarted by a backup run.
+
+**Verifying a stored backup.** Any generation can be re-checked without touching
+the backup volume, using the same check the nightly run applies:
+
+```bash
+./scripts/nightly-backup.sh --verify ~/cve-backups/<date>
+# {"event":"verify-done",...}  then  verified: .../cve-backup.db.gz passed verifyBackup()
+```
+
+It exits `0` on a match and `1` with the failing artifact named otherwise (missing
+gzip or manifest, unreadable gzip, hash/schema/row-count mismatch, or an image
+without the verify branch), so it can be used from a cron check or a restore
+drill. `--verify` never mounts the backup root and never prunes; it does require
+Docker (one throwaway container) and the temp space described above.
+
+**The backup root argument is guarded.** The script refuses (exit `2`, message on
+stderr, never a prompt — it runs unattended) a backup root that is empty, not
+absolute, `/`, or resolves to fewer than two path components (`/tmp` and
+`/backups` are refused; `~/cve-backups` and `/srv/cve-backups` are accepted),
+before creating anything or mounting the volume: the prune step runs
+`find "$BACKUP_ROOT" … -exec rm -rf`, so a shallow or empty value would be a broad
+system delete. It also re-checks that the root still exists and is a directory
+immediately before pruning.
 
 ## Compatibility policy
 

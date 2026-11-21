@@ -174,6 +174,9 @@ function expectSecurityHeaders(response: Response): void {
   expect(csp).toContain("frame-ancestors 'none'");
   expect(csp).toContain("default-src 'none'");
   expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  // Every route URL in this file is https, so HSTS is always allowed here; a
+  // plain-HTTP deployment gets no header unless HSTS_ENABLED=true (hsts.test.ts).
+  expect(response.headers.get("strict-transport-security")).toBe("max-age=31536000");
 }
 
 // A shared proxy happily heuristic-caches a 404/410 that carries no cache
@@ -237,6 +240,28 @@ describe("rate budget", () => {
 
     const other = await getHealth(withIp("https://radar.test/api/v1/health", "10.9.9.10"));
     expect(other.status).toBe(200);
+  });
+
+  it("spends the same per-IP budget on OPTIONS preflights", async () => {
+    makeDb();
+    const ip = "10.9.9.11";
+    const preflight = (): Promise<Response> =>
+      optionsHealth(withIp("https://radar.test/api/v1/health", ip, { method: "OPTIONS" }));
+
+    const first = await preflight();
+    expect(first.status).toBe(204);
+    expect(first.headers.get("x-ratelimit-remaining")).toBe(String(RATE_LIMIT_MAX - 1));
+    expectSecurityHeaders(first);
+
+    // Spend what is left of this key's window, then a preflight is refused like
+    // any other request instead of answering a free 204 forever.
+    for (let n = 1; n < RATE_LIMIT_MAX; n += 1) checkRateLimit(ip);
+    const limited = await preflight();
+    expect(limited.status).toBe(429);
+    expect((await bodyOf(limited)).code).toBe("RATE_LIMITED");
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+    expectRateHeaders(limited);
+    expectSecurityHeaders(limited);
   });
 });
 
