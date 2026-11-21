@@ -209,30 +209,34 @@ Recorded, not scheduled. Each is real; none belongs in a wrap-up release.
 
 ## Release
 
-**Status: pending.** The work is on `main`; the release has not been cut.
+**Status: done (2026-11-21).** Released as **3.2.0**, tagged `v3.2.0`, published as image
+digest `sha256:89cea355a3bc54b4d4a19b31da9a17744bb6f26435ec8853551fd2dfdce8a763` under both
+`kelanach/kevelry:3.2.0` and `kelanach/kevelry:latest`.
 
-`package.json` is still `3.1.0`, no tag exists for these changes, and no image has been
-pushed. `CHANGELOG.md` carries every entry under `## Unreleased`, deliberately not bumped
-in the docs commit that closed P0.8. The planned version is **3.2.0**, minor rather than
-patch: cache-freshness semantics change (a stale cache is now labelled or bypassed rather
-than silently reused), sparkline gaps render, KEV-rhythm touch changes, and the chart
+`package.json` and `package-lock.json` are 3.2.0 and `CHANGELOG.md` carries the dated
+`## 3.2.0` heading with its upgrade notes. 3.2.0 is minor rather than patch:
+cache-freshness semantics change (a stale cache is now labelled or bypassed rather than
+silently reused), sparkline gaps render, KEV-rhythm touch changes, and the chart
 primitives are consolidated behind one interface.
 
-**Still to do before tagging:**
+**Done for this release:**
 
-1. Bump `package.json` to 3.2.0 and move `## Unreleased` onto a dated `## 3.2.0` heading.
-2. Run the gates on the bumped tree: `npm run lint`, `npm run typecheck`, `npm run build`,
-   `npm test`, `npx playwright test`, `npm audit --omit=dev`, and
-   `npx prettier --check` on every file the release touches.
-3. Tag, build and push `kelanach/kevelry:3.2.0`, move `latest`, then deploy.
-4. Verify the changed behaviours against the deployed instance: provenance after a failed
-   refresh (P0.1), `no-store` on an error status (P0.2), a sparkline gap (P0.5), a touch
-   tap keeping the KEV tooltip (P0.7), and the `HSTS` header on the HTTPS origin (P2.5).
+1. `package.json` bumped to 3.2.0 and `## Unreleased` moved onto `## 3.2.0 — 2026-11-21`.
+2. Gates run on the bumped tree: `npm run lint`, `npm run typecheck`, `npm run build`,
+   `npm test` (708 passed / 3 skipped), `npx playwright test` (138 passed / 0 skipped),
+   `npm audit --omit=dev` (0 vulnerabilities), and `npx prettier --check` on every file the
+   release touched.
+3. Committed as `Release 3.2.0`, tagged `v3.2.0`, `main` and the tag pushed; image built,
+   tagged and pushed as 3.2.0 and `latest` (identical digest), then the container recreated.
+4. Live verification on the deployed instance: the `/priority` EPSS sparkline advances on
+   each ArrowRight instead of clamping on the latest point, and `/methodology` renders the
+   accepted CWE catalog version and its last-refreshed date.
 
 **Gates at the closing commit (2026-11-21):** `npm run lint` and `npm run typecheck`
 clean, `npm test` 708 passed / 3 skipped, `npx playwright test` 138 passed / 0 skipped,
 `npm audit --omit=dev` 0 vulnerabilities, Prettier clean on every changed file.
-`npm run build` was run for the screenshot capture against a seeded corpus.
+`npm run build` was run for the screenshot capture against a seeded corpus, and again for
+the release image.
 
 **Exit criteria:** every item carries a commit sha instead of `TBD`, or a recorded
 decision to defer it. No item is closed by editing this document alone.
@@ -241,8 +245,6 @@ decision to defer it. No item is closed by editing this document alone.
 
 Recorded so the next session starts from facts, not folklore:
 
-- **The 3.2.0 release itself** — version bump, tag, image push, deploy, live verification
-  (the checklist above).
 - **The 3.1.0 CHANGELOG entry for the donut** described a non-interactive fallback for a
   band Explore does not accept. That branch was unreachable and is now deleted; the
   3.1.0 history stays as written and the correction is recorded under `Unreleased`.

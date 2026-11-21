@@ -17,11 +17,10 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `3.1.0` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `3.0.2`, `3.0.1` and `3.0.0` (2026-11-15) remain
-> available as previous releases. Everything since is listed under `Unreleased`
-> in [CHANGELOG.md](CHANGELOG.md), which also keeps the release history and
-> upgrade notes.
+> **Status:** `3.2.0` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
+> available as previous releases. The `3.2.0` entry in
+> [CHANGELOG.md](CHANGELOG.md) lists what changed and the upgrade notes.
 
 ## What v3 added
 
@@ -106,7 +105,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:3.1.0
+  docker.io/kelanach/kevelry:3.2.0
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -375,7 +374,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:3.1.0 \
+  --image docker.io/kelanach/kevelry:3.2.0 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app

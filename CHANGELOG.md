@@ -3,12 +3,10 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
-## Unreleased
+## 3.2.0 — 2026-11-21
 
 The v3 wrap-up: correctness first, then structure and hardening. No new product
-surface, no schema migration, no API contract change. `package.json` stays at
-`3.1.0`; this section is unpublished until the release step (planned as 3.2.0)
-bumps, tags and pushes the image.
+surface, no schema migration, no API contract change.
 
 ### Fixed
 
@@ -98,6 +96,23 @@ bumps, tags and pushes the image.
 - **130 → 138 Playwright tests (0 skipped).** The keyboard matrix now covers both
   ends of the roving groups, and the touch-pin journey asserts the KEV tooltip
   survives `pointerup`.
+
+### Upgrade notes
+
+- **No database migration.** The schema stays at 009; an existing volume needs no
+  action and the upgrade is a container replacement.
+- **No API contract change.** Every route under `/api/v1` keeps the shape it had in
+  3.1.0; the 3.2.0 entries are presentation, cache freshness, documentation, and
+  hardening.
+- **`AGGREGATE_VERSION` is unchanged at 7**, so 3.2.0 does not invalidate the
+  aggregate cache on its own. What changes is trust: a cached snapshot whose
+  revision predates the acceptance ledger is treated as absent, so the first page
+  load after a refresh may compute live counts instead of reading the cache. That
+  is expected, not an outage — the cache is rewritten by the next ingest cycle and
+  the numbers are equal, only the source differs.
+- **`HSTS_ENABLED` defaults off**, so `Strict-Transport-Security` is sent on HTTPS
+  requests only. Set `HSTS_ENABLED=true` when the deployment sits behind a TLS
+  terminator and every plain-HTTP hop is already redirected.
 
 ## 3.1.0 — 2026-11-20
 
