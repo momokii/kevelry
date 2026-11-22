@@ -3,14 +3,68 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
-## Unreleased
+## 3.2.2 — 2026-11-22
 
-Operational hardening only. No product surface, no API contract change, no
-version bump; migration 010 widens one CHECK constraint so an abandoned import
+Scheduling and housekeeping hardening. No product surface, no API contract
+change; schema migration 010 widens one CHECK constraint so an abandoned import
 can be recorded honestly instead of sitting in `running` forever.
+
+### Changed
+
+- **Each source is polled on its own interval instead of the cycle tick.** CVE and
+  KEV run hourly; EPSS and CISA SSVC honour the 24 h interval they always
+  declared. `schedule.ts` declared 60 min for CVE/KEV and 24 h for EPSS/SSVC, but
+  the cycle ran `Math.min(...)` as its cadence and then attempted all four every
+  cycle, so the daily intervals were decorative: EPSS rows were accepted at
+  `05:56:57` and `06:57:01` on the same day, i.e. the same CSV re-fetched and
+  re-hashed hourly and the 380 MB SSVC checkout fetched hourly with it. Upstream
+  fetches fall from ≈96 to ≈50 per day (2 × 24 hourly sources + 2 daily sources).
+  A cycle now runs only the sources whose own interval has elapsed and logs one
+  `ingest-gate` line naming what ran and why each skipped source was skipped
+  (`interval` or `retry`). A skipped source is not a success either: the cycle
+  reports which sources it actually attempted, so a day is added to the checkpoint
+  history only when an attempted source was accepted.
+- **The retry rule keeps the gate from delaying a publication by a day.** An
+  attempt that accepted nothing new — today's concrete case is EPSS answering
+  403 (or serving yesterday's file) before that day's CSV is published — makes
+  the source due again after 60 min instead of after its full interval; only a
+  freshly accepted version spends the interval. Without it, a 403 at 05:56 would
+  have parked EPSS until the next day, and an unchanged feed would have hidden the
+  publication that followed it.
+- **The EPSS retention prune is recorded in `maintenance_runs`.** The prune ran
+  inside the import and was only logged, so the newest ledger row was
+  `exploit-ref-backfill:v2` from 2026-11-08 while rows were being deleted every
+  day: "did retention run?" could not be answered from the database. Every prune
+  now writes `epss-retention` with `keepDays`, `cutoffDate`, `rowsDeleted` and
+  `skipped`, including the run that deleted nothing, and the log line stays.
+- **The container log is capped at 10 MiB x 5 files.** `compose.yaml` now sets
+  `logging.driver: json-file` with `max-size: 10m` and `max-file: 5`; the default
+  `json-file` configuration had no limit, so the log could grow until the disk
+  filled. Applying it is a recreate (`docker compose up -d --force-recreate`),
+  not a rebuild, and `docker inspect` now reports the limits.
+- **Scratch space reclaimed.** A byte-identical DB copy under `/tmp/cvedb`
+  (5.6 GB), ~550 Playwright fixture directories under `/tmp/cve-e2e-baseline-*`
+  and `/tmp/cve-ssvc-*`, and the benchmark scratch `/data/tmp/bench.db` (156 MB)
+  plus a 0-byte `/data/cve-radar.sqlite` in the data volume were deleted after
+  checking that no code path references them. The `cve-repo` and
+  `vulnrichment-repo` git feeds in `/data` are untouched.
+- **The off-site gap is documented, not papered over.** Backups live on the same
+  NVMe as the database, so disk loss takes both. `docs/backup-runbook.md` now has
+  an "Off-site copy is not included" section with the `rsync -a --delete
+~/cve-backups/ user@host:/path/backups/` command an operator can run or cron,
+  the note that only the newest verified generation is strictly needed, and the
+  reason this repo does not ship replication (no credentials, no provider
+  assumptions, operator choice).
 
 ### Fixed
 
+- **Abandoned `running` imports are swept at boot.** A process killed mid-import
+  never closes its `sync_runs` row, so five rows sat `running` since 2026-11-08
+  and a hung import looked exactly like a ledger nobody swept. The worker now
+  marks `running` rows older than 2 h `interrupted` before its first cycle —
+  never deletes them, never rewrites their timestamps — and `interrupted` is its
+  own status so it cannot read as an import failure. Freshness is unaffected by
+  construction: the readers pin on `status = 'succeeded'` only.
 - **Nightly backups are idempotent and atomic, so a failed generation can be
   re-run.** The script compressed the dump in place with plain `gzip`, which
   refuses to overwrite: re-running a date whose `.gz` already existed died with
@@ -40,59 +94,20 @@ sha256sum` against it), no generation holds a raw uncompressed `cve-backup.db`,
   and the newest verified generation is still inside the retention window. One
   timestamped `PASS`/`FAIL` line per assertion plus a verdict, exit `0`/`1`/`2`
   on the same contract as `scripts/health-watch.sh`, no Docker and no network.
-- **Each source is polled on its own interval instead of the cycle tick.**
-  `schedule.ts` declared 60 min for CVE/KEV and 24 h for EPSS/SSVC, but the cycle
-  ran `Math.min(...)` as its cadence and then attempted all four every cycle, so
-  the daily intervals were decorative: EPSS rows were accepted at `05:56:57` and
-  `06:57:01` on the same day, i.e. the same CSV re-fetched and re-hashed hourly
-  and the 380 MB SSVC checkout fetched hourly with it. A cycle now runs only the
-  sources whose own interval has elapsed, and logs one `ingest-gate` line naming
-  what ran, what was skipped, and whether the skip was `interval` or `retry`. A
-  skipped source is not a success either: the cycle now reports which sources it
-  actually attempted, so a day is added to the checkpoint history only when an
-  attempted source was accepted.
-- **The retry rule keeps the gate from delaying a publication by a day.** An
-  attempt that accepted nothing new — today's concrete case is EPSS answering
-  403 (or serving yesterday's file) before that day's CSV is published — makes
-  the source due again after 60 min instead of after its full interval; only a
-  freshly accepted version spends the interval. Without it, a 403 at 05:56 would
-  have parked EPSS until the next day, and an unchanged feed would have hidden the
-  publication that followed it.
-- **The EPSS retention prune is recorded in `maintenance_runs`.** The prune ran
-  inside the import and was only logged, so the newest ledger row was
-  `exploit-ref-backfill:v2` from 2026-11-08 while rows were being deleted every
-  day: "did retention run?" could not be answered from the database. Every prune
-  now writes `epss-retention` with `keepDays`, `cutoffDate`, `rowsDeleted` and
-  `skipped`, including the run that deleted nothing, and the log line stays.
-- **Abandoned `running` imports are swept at boot (migration 010).** A process
-  killed mid-import never closes its `sync_runs` row, so five rows sat `running`
-  since 2026-11-08 and a hung import looked exactly like a ledger nobody swept.
-  The worker now marks `running` rows older than 2 h `interrupted` before its
-  first cycle — never deletes them, never rewrites their timestamps — and
-  `interrupted` is its own status so it cannot read as an import failure.
-  Freshness is unaffected by construction: the readers pin on
-  `status = 'succeeded'` only.
 
-### Changed
+### Upgrade notes
 
-- **The container log is capped at 10 MiB x 5 files.** `compose.yaml` now sets
-  `logging.driver: json-file` with `max-size: 10m` and `max-file: 5`; the default
-  `json-file` configuration had no limit, so the log could grow until the disk
-  filled. Applying it is a recreate (`docker compose up -d --force-recreate`),
-  not a rebuild, and `docker inspect` now reports the limits.
-- **Scratch space reclaimed.** A byte-identical DB copy under `/tmp/cvedb`
-  (5.6 GB), ~550 Playwright fixture directories under `/tmp/cve-e2e-baseline-*`
-  and `/tmp/cve-ssvc-*`, and the benchmark scratch `/data/tmp/bench.db` (156 MB)
-  plus a 0-byte `/data/cve-radar.sqlite` in the data volume were deleted after
-  checking that no code path references them. The `cve-repo` and
-  `vulnrichment-repo` git feeds in `/data` are untouched.
-- **The off-site gap is documented, not papered over.** Backups live on the same
-  NVMe as the database, so disk loss takes both. `docs/backup-runbook.md` now has
-  an "Off-site copy is not included" section with the `rsync -a --delete
-~/cve-backups/ user@host:/path/backups/` command an operator can run or cron,
-  the note that only the newest verified generation is strictly needed, and the
-  reason this repo does not ship replication (no credentials, no provider
-  assumptions, operator choice).
+- **Includes migration 010.** `010_sync_run_interrupted` widens the
+  `sync_runs.status` CHECK to allow `interrupted` (a reversal back to 009 is
+  shipped as `010_sync_run_interrupted.down.sql`). It runs automatically on boot
+  against the existing volume; there is no manual step and no data rewrite.
+- **No API contract change.** Every route under `/api/v1` keeps the shape it had
+  in 3.2.1; the 3.2.2 entries are scheduling, ledger, and boot behavior.
+- **Freshness semantics are unchanged.** A gated source is not counted as a
+  checkpoint success, and readers still pin on `status = 'succeeded'`; the
+  aggregate cache version is untouched.
+- **The log cap needs a recreate, not a rebuild.** Applying it is
+  `docker compose up -d --force-recreate`, which is how this release ships.
 
 ## 3.2.1 — 2026-11-22
 
