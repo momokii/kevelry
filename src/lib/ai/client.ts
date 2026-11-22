@@ -64,11 +64,18 @@ export interface AiTransportResponse {
 /** Minimal fetch seam: tests hand in a function, production wraps global fetch. */
 export type AiTransport = (request: AiTransportRequest) => Promise<AiTransportResponse>;
 
+/** One OpenAI content part. Only the two shapes this feature uses exist. */
+export type ChatContentPart =
+  { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  /** A string for text turns; parts only when a screenshot rides along. */
+  content: string | readonly ChatContentPart[];
   tool_call_id?: string;
   name?: string;
+  /** Present on an assistant message that requested tools. */
+  tool_calls?: readonly ChatToolCall[];
 }
 
 export interface ChatToolCall {
@@ -85,6 +92,14 @@ export interface ChatRequest {
   tools?: readonly unknown[];
   /** Streaming responses are returned raw; the SSE parser belongs to the turn loop. */
   stream?: boolean;
+  /**
+   * Per-call budget. The turn loop passes what is left of the whole turn's
+   * deadline, so four rounds cannot each spend the full request timeout.
+   * Defaults to `config.requestTimeoutMs`.
+   */
+  timeoutMs?: number;
+  /** Caller cancellation (client disconnect). Aborting reports `AI_TIMEOUT`. */
+  signal?: AbortSignal;
 }
 
 export interface ChatCompletion {
@@ -274,20 +289,34 @@ async function sendOnce(
   ctx: ClientContext,
   request: Omit<AiTransportRequest, "signal">,
   retryable: boolean,
+  timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<AiTransportResponse> {
   const controller = new AbortController();
   let timedOut = false;
+  let cancelled = false;
+  const abort = () => controller.abort();
+  if (signal !== undefined) {
+    if (signal.aborted) cancelled = true;
+    else signal.addEventListener("abort", abort, { once: true });
+  }
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, ctx.config.requestTimeoutMs);
+  }, timeoutMs);
   try {
     return await ctx.transport({ ...request, signal: controller.signal });
   } catch (error) {
+    if (cancelled) {
+      throw new AiClientError("AI_TIMEOUT", "The AI request was cancelled.", {
+        retryable: false,
+        upstreamMessage: null,
+      });
+    }
     if (timedOut) {
       throw new AiClientError(
         "AI_TIMEOUT",
-        `The AI provider did not respond within ${ctx.config.requestTimeoutMs} ms.`,
+        `The AI provider did not respond within ${String(timeoutMs)} ms.`,
         { retryable, upstreamMessage: null },
       );
     }
@@ -298,6 +327,7 @@ async function sendOnce(
     });
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 }
 
@@ -329,6 +359,7 @@ async function postChat(ctx: ClientContext, request: ChatRequest): Promise<ChatC
   }
 
   const streamed = request.stream === true;
+  const timeoutMs = Math.max(1, Math.trunc(request.timeoutMs ?? ctx.config.requestTimeoutMs));
   const payload = buildPayload(ctx.config, request, streamed);
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -348,7 +379,13 @@ async function postChat(ctx: ClientContext, request: ChatRequest): Promise<ChatC
       await ctx.sleep(AI_RETRY_BASE_MS + Math.floor(jitter * AI_RETRY_BASE_MS));
     }
     try {
-      const response = await sendOnce(ctx, { url, headers, body: payload }, attempt + 1 < attempts);
+      const response = await sendOnce(
+        ctx,
+        { url, headers, body: payload },
+        attempt + 1 < attempts,
+        timeoutMs,
+        request.signal,
+      );
       if (response.status >= 200 && response.status < 300) {
         return parseCompletion(response, ctx.config, streamed);
       }

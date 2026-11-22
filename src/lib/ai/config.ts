@@ -31,7 +31,7 @@ export const AI_MAX_TOKENS_FLOOR = 512;
 /** Budget for a turn that cites records, matching the plan's default. */
 export const AI_MAX_TOKENS_DEFAULT = 1024;
 
-export type AiDisabledReason = "off" | "no-key" | "over-budget";
+export type AiDisabledReason = "off" | "no-key" | "over-budget" | "invalid-config";
 
 export interface AiConfig {
   readonly enabled: boolean;

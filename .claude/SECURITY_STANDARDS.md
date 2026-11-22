@@ -8,7 +8,8 @@ without explicit user approval.
 ## 0. Project status (2026-10-26)
 
 - Public surface is a read-only website plus anonymous GET `/api/v1/*`; there is no
-  login, write endpoint, upload, or user data store.
+  login, upload, or user data store. There is no write endpoint **in v1**; one
+  internal POST exists for the assistant (§15).
 - API controls in `app/api/v1/_lib/**`: 600 requests/minute/IP, 32 concurrent
   requests, bounded URL length/parameter count, strict identifier validation,
   parameterized SQLite reads, ETag/304, `no-referrer`, `nosniff`, `DENY` framing,
@@ -129,8 +130,9 @@ report it instead of proceeding.
 
 ## 10. Web and API Hardening (implemented contract)
 
-- API is GET-only and anonymous; no cookies, sessions, or CSRF surface. CORS is not
-  opened with credentials; callers get explicit public cache headers.
+- API is GET-only in v1 and anonymous; no cookies, sessions, or CSRF surface. The one
+  exception outside the versioned namespace is `POST /api/assistant/chat` (§15). CORS is
+  not opened with credentials; callers get explicit public cache headers.
 - Per-IP rate limit 600/min, 32 concurrent requests, URL length and parameter-count
   bounds, identifier/date/enum allow-lists; oversized or malformed input fails closed.
 - API responses carry `Content-Security-Policy: default-src 'none'; frame-ancestors
@@ -174,6 +176,28 @@ without explicit confirmation.
 ## 14. Reference Standards
 
 OWASP Top 10, OWASP ASVS, CIS Docker Benchmark, and twelve-factor configuration.
+
+## 15. The assistant endpoint (v4)
+
+The app has exactly one non-GET endpoint: `POST /api/assistant/chat`, which is UI-only
+and **not** part of the v1 public contract (v1 stays GET-only and read-only).
+
+- **Own, tighter budget:** 10 requests/minute and 60/hour per IP in dedicated buckets,
+  plus the shared 32-request concurrency counter held until the SSE stream closes. A
+  chat loop cannot spend the read API's 600/min headroom.
+- **No prompt storage:** no message, answer, image, IP or session id is persisted or
+  logged; the only write is one aggregate `ai_usage` row per UTC day (tokens and
+  `list_cost`). Errors to the client are typed codes with sanitized messages.
+- **Fails closed:** disabled, keyless, misconfigured, over-budget or unsafe input is a
+  pre-stream typed error (`AI_DISABLED`, `AI_BUDGET_EXHAUSTED`, `AI_REFUSED`, …), and no
+  provider call happens. Once streaming starts there is no second HTTP status; failures
+  are redacted SSE `error` events.
+- **Bounded input:** 12 messages / 2 000 chars each / 12 000 total, one 1.5 MB image
+  (PNG, JPEG or WebP) whose declared type must match its magic bytes, `cveContext` and
+  every tool argument shape-validated, and at most four tool rounds per turn.
+- **Read-only capability:** tools read the dataset through `src/lib` loaders — no SQL,
+  filesystem, shell or arbitrary host exists in the tool surface, and the web fallback is
+  allow-listed and off by default.
 
 > **Self-update:** when the stack is confirmed, extend sections 5, 6, 8, and 10 with
 > framework-specific guidance. Never weaken existing rules.

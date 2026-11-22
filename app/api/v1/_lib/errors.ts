@@ -11,7 +11,17 @@ export type ErrorCode =
   | "CHECKPOINT_UNAVAILABLE"
   | "REPLAY_UNAVAILABLE"
   | "RATE_LIMITED"
-  | "INTERNAL";
+  | "INTERNAL"
+  // Assistant codes. They live in the same taxonomy so the one route outside
+  // `/api/v1` reuses `errorResponse` instead of hand-building a second error
+  // shape; no v1 route can emit them.
+  | "AI_DISABLED"
+  | "AI_BUDGET_EXHAUSTED"
+  | "AI_TIMEOUT"
+  | "AI_UPSTREAM_ERROR"
+  | "AI_TRUNCATED"
+  | "AI_REFUSED"
+  | "BAD_IMAGE";
 
 export class ApiError extends Error {
   readonly code: ErrorCode;
@@ -35,7 +45,17 @@ export function errorStatus(code: ErrorCode): number {
     case "REPLAY_UNAVAILABLE":
       return 404;
     case "RATE_LIMITED":
+    case "AI_BUDGET_EXHAUSTED":
       return 429;
+    case "AI_TIMEOUT":
+      return 504;
+    case "AI_DISABLED":
+      return 503;
+    case "AI_UPSTREAM_ERROR":
+    case "AI_TRUNCATED":
+      return 502;
+    case "AI_REFUSED":
+      return 422;
     case "INTERNAL":
       return 500;
     default:
