@@ -75,7 +75,8 @@ import cycle). Verification happens twice, deliberately:
 1. **Before compression, inside the container.** `verifyBackup()` checks the
    database SHA-256 against the manifest, opens the schema read-only and compares
    every row count. This is what proves the image is a usable backup.
-2. **After compression, on the stored artifact.** The script decompresses
+2. **After compression, on the archive that becomes the stored artifact.** The
+   script decompresses
    `cve-backup.db.gz` into a `mktemp -d` directory beside a copy of
    `manifest.json`, mounts that directory at `/verify` in a one-off container, and
    runs the same `verifyBackup()` through the `RUN_VERIFY_ONCE` worker branch
@@ -105,6 +106,64 @@ Backups land in `~/cve-backups/<UTC date>/` with `backup-cron.log` beside
 them. A non-zero exit means cron mails the failure; the live container is
 never restarted by a backup run.
 
+### Idempotent re-runs (`--date`, `--force`)
+
+A generation directory is one of two things: complete and verified, or
+rebuildable. Completeness is decided by the `backup-done` marker, never by the
+presence of a `.gz`:
+
+- `backup-done` records the generation, the archive's `gzip_sha256` and byte
+  count, the staging name it was verified in, and when it was verified. It is
+  written **after** `verifyBackup()` passed and the archive was published, and it
+  is the only completion marker.
+- Today's stamp (UTC) is always rebuilt, marker or not. A re-run after a failure
+  therefore succeeds, and the 02:00 scheduled run still takes a fresh dump even
+  if an operator already ran the script earlier that day.
+- A _past_ stamp that already verifies is refused with exit `2` and a log line
+  unless `--force` is passed, so a typo cannot overwrite a good historical
+  backup. A past stamp whose marker is missing or does not match its archive is
+  rebuilt without ceremony — that is exactly what a failed run leaves behind.
+- `--date YYYY-MM-DD` selects the stamp, which is how a failed night is rebuilt
+  after the date has rolled over (the usual case: cron runs at 02:00 local, the
+  failure is read the next morning):
+
+```bash
+./scripts/nightly-backup.sh --date 2026-11-21 --force
+./scripts/nightly-backup.sh ~/cve-backups 7 --date 2026-11-21
+```
+
+The manifest inside a rebuilt generation records when it was actually taken, so
+the directory name is the schedule slot, not a claim about the data vintage.
+
+The build never writes into the day directory before verification. It stages as
+`~/cve-backups/.staging-<date>-<pid>/` (same filesystem), so a failed run leaves
+the existing generation intact and the EXIT trap removes the multi-GB raw dump —
+re-running is always safe. Publishing is `mv` of `cve-backup.db.gz` and then
+`manifest.json` into the day directory, then the marker; a stray uncompressed
+`cve-backup.db` from an earlier failed run is reclaimed at that point. Staging
+directories left by a `kill -9` are cleared on the next run when older than a
+day.
+
+### What a failure looks like
+
+A failed run exits non-zero and writes to `backup-cron.log`:
+
+```
+=== backup start 2026-11-21T19:00:01Z stamp=2026-11-21 retain_days=7 force=0 ===
+backup failed: generation 2026-11-21 aborted at exit status 1; no backup-done marker written
+```
+
+or, from a check the script makes itself, `backup failed: generation <date>: <reason>`
+(no dump, no manifest, archive did not pass `verifyBackup()`, or the published
+archive does not match the verified one). Nothing is pruned, no marker is
+written, and the previous generations stay exactly as they were. The historical
+failure mode — `gzip: ... already exists; not overwritten`, a raw 5.4 GB dump
+left in the day directory, and every re-run failing the same way — cannot recur:
+compression runs with `gzip -f` inside a throwaway staging directory.
+
+A refusal (`refusing: generation <date> is already verified … pass --force`) also
+exits `2` and touches nothing; it is the guard, not a failure.
+
 **Verifying a stored backup.** Any generation can be re-checked without touching
 the backup volume, using the same check the nightly run applies:
 
@@ -116,7 +175,11 @@ the backup volume, using the same check the nightly run applies:
 It exits `0` on a match and `1` with the failing artifact named otherwise (missing
 gzip or manifest, unreadable gzip, hash/schema/row-count mismatch, or an image
 without the verify branch), so it can be used from a cron check or a restore
-drill. `--verify` never mounts the backup root and never prunes; it does require
+drill. It also checks the `backup-done` marker when present: a marker that names
+a different archive than the one on disk is a hard failure, because it means the
+generation was replaced without being verified (this is exactly the state the
+2026-11-21 failure left behind). `--verify` never mounts the backup root and
+never prunes; it does require
 Docker (one throwaway container) and the temp space described above. The
 decompressed copy lives in a `mktemp -d` directory under `$TMPDIR`, and an `EXIT`
 trap removes it only when the path still matches that `mktemp` pattern — a future

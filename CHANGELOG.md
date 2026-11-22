@@ -3,6 +3,45 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## Unreleased
+
+Operational hardening only. No product surface, no schema migration, no API
+contract change, no version bump.
+
+### Fixed
+
+- **Nightly backups are idempotent and atomic, so a failed generation can be
+  re-run.** The script compressed the dump in place with plain `gzip`, which
+  refuses to overwrite: re-running a date whose `.gz` already existed died with
+  `gzip: ... already exists; not overwritten` after the container had already
+  rewritten `cve-backup.db` and `manifest.json`, and because the run aborted
+  before its completion marker, every later attempt failed the same way. The
+  2026-11-21 generation was left with a 5.42 GiB raw dump and an archive whose
+  decompressed SHA-256 (`07e46197…`) did not match the manifest
+  (`1b4dd91e…`). The generation is now built in a `.staging-<stamp>-<pid>`
+  directory on the same filesystem, compressed with `gzip -f`, verified against
+  the manifest with `verifyBackup()`, and only then published with atomic
+  renames. A failed or interrupted run leaves the day directory untouched and
+  removes its staging tree (EXIT trap), and a non-zero exit is logged with the
+  generation name. Today's stamp is always rebuilt, so re-running after a
+  failure works and the scheduled run still takes a fresh dump; a past date that
+  already verifies is refused unless `--force`, and `--date YYYY-MM-DD` selects
+  the date to rebuild (the failure is normally found after the date rolled over).
+
+### Changed
+
+- **The container log is capped at 10 MiB x 5 files.** `compose.yaml` now sets
+  `logging.driver: json-file` with `max-size: 10m` and `max-file: 5`; the default
+  `json-file` configuration had no limit, so the log could grow until the disk
+  filled. Applying it is a recreate (`docker compose up -d --force-recreate`),
+  not a rebuild, and `docker inspect` now reports the limits.
+- **Scratch space reclaimed.** A byte-identical DB copy under `/tmp/cvedb`
+  (5.6 GB), ~550 Playwright fixture directories under `/tmp/cve-e2e-baseline-*`
+  and `/tmp/cve-ssvc-*`, and the benchmark scratch `/data/tmp/bench.db` (156 MB)
+  plus a 0-byte `/data/cve-radar.sqlite` in the data volume were deleted after
+  checking that no code path references them. The `cve-repo` and
+  `vulnrichment-repo` git feeds in `/data` are untouched.
+
 ## 3.2.1 — 2026-11-22
 
 Performance and cold start. No new product surface, no schema migration, no API

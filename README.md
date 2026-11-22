@@ -469,7 +469,9 @@ what makes a repeated Explore filter combination cheap.
 
 Logs: `docker compose logs -f app` shows web plus worker output
 (`worker-start` at boot, `source-start` per source per cycle, one `ingest-cycle`
-completion line per source, `worker-idle`/`worker-scheduled` when it parks).
+completion line per source, `worker-idle`/`worker-scheduled` when it parks). The
+container log is capped at 10 MiB x 5 files (`logging` in `compose.yaml`), and the
+nightly verified backups live in `~/cve-backups/<UTC date>/`.
 
 Restart latency: the first request to a data-heavy page after a restart can take a
 few seconds while the initial import cycle runs and settles, so a slow first page is

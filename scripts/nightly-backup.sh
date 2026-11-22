@@ -15,15 +15,39 @@
 #   (crontab -l 2>/dev/null; echo "0 2 * * * /home/kelanach/Public/main-linux-kelanach/code-berkah-titipan-tuhan/code/personal_prjct/cybersec/cve-injector/scripts/nightly-backup.sh") | crontab -
 #
 # Manual run:
-#   ./scripts/nightly-backup.sh [backup-root] [retain-days]
+#   ./scripts/nightly-backup.sh [backup-root] [retain-days] [--date YYYY-MM-DD] [--force]
 #   The backup root must be absolute, must resolve to at least two path
 #   components (so `/`, `/tmp` and `/backups` are refused), and is never a
 #   system-wide target for the prune below.
+#   The generation stamp defaults to today (UTC). `--date` targets another one,
+#   which is how a failed night is rebuilt the next morning — the failure is
+#   normally discovered after the date has rolled over.
 # Verify an already stored generation (one throwaway container, no pruning):
 #   ./scripts/nightly-backup.sh --verify ~/cve-backups/2026-11-08
 #   Needs free temp space the size of the decompressed image (several GB), in
 #   $TMPDIR or /tmp. Set TMPDIR to a roomier volume when /tmp is small.
+#
+# Idempotency and atomicity (why a re-run is always safe):
+#   The generation is built in a sibling staging directory on the same
+#   filesystem (`.staging-<stamp>-<pid>`), compressed with `gzip -f`, verified
+#   with the same `verifyBackup()` the app uses, and only then published into
+#   `<backup-root>/<stamp>/` with an atomic `mv`. A failed run never writes into
+#   the day directory, never leaves a raw dump behind (the EXIT trap removes the
+#   staging tree) and never writes the `backup-done` marker, which is the only
+#   thing that marks a generation complete. Today's stamp is always rebuilt, so
+#   a re-run after a failure succeeds and the scheduled run still takes a fresh
+#   dump. A *past* generation that already verifies is only overwritten with
+#   `--force`.
 set -euo pipefail
+
+fail() {
+  echo "backup failed: generation ${STAMP:-unknown}: $*" >&2
+  exit 1
+}
+
+sha256_of() {
+  sha256sum -- "$1" | cut -d' ' -f1
+}
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -34,12 +58,30 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERIFY_TMP_BASE="${TMPDIR:-/tmp}"
 VERIFY_TMP_BASE="${VERIFY_TMP_BASE%/}"
 VERIFY_WORK=""
-cleanup_verify_work() {
-  case "$VERIFY_WORK" in
+# The staging tree of the current attempt. Removed on success (emptied by the
+# publish step) and on every failure path, so an aborted run cannot leave a
+# multi-GB raw dump on the backup filesystem.
+STAGE_DIR=""
+cleanup_work() {
+  case "${VERIFY_WORK:-}" in
     "$VERIFY_TMP_BASE"/cve-verify.*) rm -rf -- "$VERIFY_WORK" ;;
   esac
+  # Guarded: only ever a `.staging-*` child of the backup root, so a future
+  # edit cannot turn this cleanup into a broad delete.
+  case "${STAGE_DIR:-}" in
+    */.staging-*) rm -rf -- "$STAGE_DIR" ;;
+  esac
 }
-trap cleanup_verify_work EXIT
+# Loud failure: `set -e` aborts on the first failed command, and this trap names
+# the generation in the log before exiting non-zero. No `backup-done` marker is
+# ever written on this path (it is written after verification, see below).
+on_err() {
+  local status="${1:-1}"
+  echo "backup failed: generation ${STAMP:-unknown} aborted at exit status $status; no backup-done marker written" >&2
+  exit "$status"
+}
+trap cleanup_work EXIT
+trap 'on_err "$?"' ERR
 
 # Re-verify one stored generation with the container's own `verifyBackup()`:
 # decompress the gzip into a temp directory next to its manifest, run the
@@ -104,9 +146,49 @@ verify_stored_backup() {
     printf '%s\n' "$out" >&2
     return 1
   fi
+  # The stored archive is what cron kept; if a marker exists it must name those
+  # exact bytes, otherwise the generation was replaced without a fresh marker.
+  local stored_sha
+  stored_sha="$(sha256_of "$gz")"
+  local marker="$day_dir/backup-done"
+  if [ -f "$marker" ]; then
+    local recorded
+    recorded="$(sed -n 's/^gzip_sha256=//p' "$marker" | head -n1)"
+    if [ -n "$recorded" ] && [ "$stored_sha" != "$recorded" ]; then
+      echo "verify failed: $marker records gzip sha256 $recorded but the stored archive is $stored_sha" >&2
+      return 1
+    fi
+    echo "marker: $marker matches the stored archive (gzip sha256 $stored_sha)"
+  else
+    echo "note: no backup-done marker in $day_dir (generation predates the marker); the archive itself verified"
+  fi
   printf '%s\n' "$out"
   echo "verified: $gz passed verifyBackup() against $manifest"
 }
+
+# Flags are stripped first so both `--force <root> <days>` and
+# `<root> <days> --force` work, and `--date` can appear anywhere. `--date`
+# takes the next argument or `--date=YYYY-MM-DD`.
+FORCE=0
+STAMP_ARG=""
+PARSED_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --force) FORCE=1 ;;
+    --date)
+      if [ "$#" -lt 2 ]; then
+        echo "refusing: --date needs a YYYY-MM-DD value" >&2
+        exit 2
+      fi
+      STAMP_ARG="$2"
+      shift
+      ;;
+    --date=*) STAMP_ARG="${1#--date=}" ;;
+    *) PARSED_ARGS+=("$1") ;;
+  esac
+  shift
+done
+set -- ${PARSED_ARGS[@]+"${PARSED_ARGS[@]}"}
 
 if [ "${1:-}" = "--verify" ]; then
   shift
@@ -152,7 +234,21 @@ case "$BACKUP_ROOT" in
     ;;
 esac
 
-STAMP="$(date -u +%Y-%m-%d)"
+STAMP="${STAMP_ARG:-$(date -u +%Y-%m-%d)}"
+TODAY_STAMP="$(date -u +%Y-%m-%d)"
+# The stamp names a directory that is later pruned, so validate it before it is
+# used as a path component: a date-shaped value only, never `../` or a glob.
+case "$STAMP" in
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+  *)
+    echo "refusing: --date must be YYYY-MM-DD, got '$STAMP'" >&2
+    exit 2
+    ;;
+esac
+if [ "$(date -u -d "$STAMP" +%Y-%m-%d 2>/dev/null)" != "$STAMP" ]; then
+  echo "refusing: --date '$STAMP' is not a calendar date" >&2
+  exit 2
+fi
 DAY_DIR="$BACKUP_ROOT/$STAMP"
 LOG="$BACKUP_ROOT/backup-cron.log"
 
@@ -167,27 +263,95 @@ if command -v setfacl >/dev/null 2>&1; then
 fi
 exec >>"$LOG" 2>&1
 
-echo "=== backup start $(date -u +%FT%TZ) stamp=$STAMP retain_days=$RETAIN_DAYS ==="
+echo "=== backup start $(date -u +%FT%TZ) stamp=$STAMP retain_days=$RETAIN_DAYS force=$FORCE ==="
 cd "$REPO_DIR"
+
+# Today's stamp is always rebuilt: re-running after a failure must succeed, and
+# the 02:00 scheduled run still has to take a fresh dump even when an operator
+# already ran the script earlier in the day. A *past* stamp that already holds a
+# verified generation is refused without --force, so a good historical backup is
+# never overwritten by a typo. A marker that does not match its archive is never
+# a verified generation: that is the state the old script left on failure, and it
+# is rebuilt without ceremony.
+if [ -f "$DAY_DIR/backup-done" ] && [ -f "$DAY_DIR/cve-backup.db.gz" ]; then
+  recorded_sha="$(sed -n 's/^gzip_sha256=//p' "$DAY_DIR/backup-done" | head -n1)"
+  if [ -n "$recorded_sha" ] && [ "$(sha256_of "$DAY_DIR/cve-backup.db.gz")" = "$recorded_sha" ]; then
+    if [ "$STAMP" != "$TODAY_STAMP" ] && [ "$FORCE" -eq 0 ]; then
+      echo "refusing: generation $STAMP is already verified (gzip sha256 $recorded_sha); pass --force to overwrite a verified generation" >&2
+      exit 2
+    fi
+    echo "replacing verified generation $STAMP (gzip sha256 $recorded_sha) with a fresh dump"
+  else
+    echo "rebuilding: $DAY_DIR has a backup-done marker that does not match its archive"
+  fi
+else
+  echo "building: no verified generation for $STAMP yet (no backup-done marker)"
+fi
+
+# Reclaim staging trees of interrupted runs (kill -9, power loss). Older than a
+# day only, so a concurrent attempt is never touched.
+echo "--- clearing staging directories from interrupted runs older than a day ---"
+find "$BACKUP_ROOT" -maxdepth 1 -mindepth 1 -type d -name '.staging-*' -mtime +1 -print -exec rm -rf {} +
+
+# Build the generation in a sibling staging directory on the same filesystem.
+# Nothing is written into $DAY_DIR until the archive has passed verifyBackup(),
+# so a failed run cannot damage an existing generation, and the name is unique
+# per attempt so two overlapping runs cannot collide. The EXIT trap removes it.
+STAGE_DIR="$BACKUP_ROOT/.staging-$STAMP-$$"
+STAGE_NAME="$(basename -- "$STAGE_DIR")"
+mkdir -p -- "$STAGE_DIR"
+chmod 775 -- "$STAGE_DIR"
+if command -v setfacl >/dev/null 2>&1; then
+  setfacl -m u:1001:rwx "$STAGE_DIR" 2>/dev/null || true
+  setfacl -d -m u:1001:rwx "$STAGE_DIR" 2>/dev/null || true
+  setfacl -d -m "u:$(id -un):rwx" "$STAGE_DIR" 2>/dev/null || true
+fi
 
 # One-off container on the compose volume; overrides the entrypoint command
 # so only the backup one-shot runs (no web server, no scheduler).
 docker compose run --rm \
   -v "$BACKUP_ROOT:/backups" \
   -e RUN_BACKUP_ONCE=true \
-  -e BACKUP_DIR="/backups/$STAMP" \
+  -e BACKUP_DIR="/backups/$STAGE_NAME" \
   app node worker.mjs
 
 echo "--- compressing dump (measured ~10% of original size) ---"
-if [ ! -f "$DAY_DIR/cve-backup.db" ]; then
-  echo "backup failed: the container wrote no $DAY_DIR/cve-backup.db" >&2
-  exit 1
+if [ ! -f "$STAGE_DIR/cve-backup.db" ]; then
+  fail "the container wrote no cve-backup.db in $STAGE_DIR"
 fi
-gzip -3 "$DAY_DIR/cve-backup.db"
-echo "compressed: $DAY_DIR/cve-backup.db.gz $(stat -c%s "$DAY_DIR/cve-backup.db.gz") bytes"
+if [ ! -f "$STAGE_DIR/manifest.json" ]; then
+  fail "the container wrote no manifest.json in $STAGE_DIR"
+fi
+# `-f`: replace a leftover archive instead of aborting with
+# "already exists; not overwritten", which is the failure that wedged
+# 2026-11-21 (the run stopped before its marker and re-running could never win).
+gzip -3f -- "$STAGE_DIR/cve-backup.db"
+gz_bytes="$(stat -c%s -- "$STAGE_DIR/cve-backup.db.gz")"
+echo "compressed: $STAGE_DIR/cve-backup.db.gz $gz_bytes bytes"
 
-echo "--- verifying the stored gzip with verifyBackup() ---"
-verify_stored_backup "$DAY_DIR"
+echo "--- verifying the compressed archive with verifyBackup() ---"
+verify_stored_backup "$STAGE_DIR"
+gz_sha="$(sha256_of "$STAGE_DIR/cve-backup.db.gz")"
+
+# Publish atomically: same filesystem, so each `mv` is a rename. The marker is
+# written last, after both artifacts are in place — its presence is the only
+# claim that this generation was verified.
+echo "--- publishing generation $STAMP into $DAY_DIR ---"
+mkdir -p -- "$DAY_DIR"
+mv -f -- "$STAGE_DIR/cve-backup.db.gz" "$DAY_DIR/cve-backup.db.gz"
+mv -f -- "$STAGE_DIR/manifest.json" "$DAY_DIR/manifest.json"
+if [ -f "$DAY_DIR/cve-backup.db" ]; then
+  echo "reclaiming stray uncompressed dump from an earlier failed run: $DAY_DIR/cve-backup.db ($(stat -c%s -- "$DAY_DIR/cve-backup.db") bytes)"
+  rm -f -- "$DAY_DIR/cve-backup.db"
+fi
+if [ "$(sha256_of "$DAY_DIR/cve-backup.db.gz")" != "$gz_sha" ]; then
+  fail "the published archive at $DAY_DIR/cve-backup.db.gz does not match the verified one ($gz_sha)"
+fi
+printf 'generation=%s\ngzip_sha256=%s\ngzip_bytes=%s\nstaging=%s\nverified_with=verifyBackup (RUN_VERIFY_ONCE)\nverified_at=%s\n' \
+  "$STAMP" "$gz_sha" "$gz_bytes" "$STAGE_NAME" "$(date -u +%FT%TZ)" \
+  >"$DAY_DIR/backup-done.tmp"
+mv -f -- "$DAY_DIR/backup-done.tmp" "$DAY_DIR/backup-done"
+echo "published: $DAY_DIR (gzip sha256 $gz_sha, $gz_bytes bytes)"
 
 echo "--- pruning generations older than $RETAIN_DAYS days ---"
 # Never prune through a path that is not a real directory: mkdir above should
@@ -198,4 +362,4 @@ if [ ! -d "$BACKUP_ROOT" ]; then
   exit 1
 fi
 find "$BACKUP_ROOT" -maxdepth 1 -mindepth 1 -type d -mtime +"$RETAIN_DAYS" -print -exec rm -rf {} +
-echo "=== backup done $(date -u +%FT%TZ) ==="
+echo "=== backup done $(date -u +%FT%TZ) stamp=$STAMP gzip_sha256=$gz_sha ==="
