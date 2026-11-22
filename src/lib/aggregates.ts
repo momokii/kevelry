@@ -575,6 +575,80 @@ export function readCurrentAggregates(db: CveDatabase): CurrentAggregates {
 }
 
 /**
+ * Coverage facts read live, with no snapshot involved.
+ *
+ * `readCurrentAggregates` is the first choice for a reader that quotes counts;
+ * this is the fallback for the case it returns `current: false` (no cache yet,
+ * a corrupt row, or a cache that no longer describes the accepted inputs). The
+ * AI tool layer must never quote a number from a snapshot that pairs fresh
+ * provenance with old counts, so it recomputes these few scalars instead.
+ *
+ * Every query here is a bounded, parameterized read over indexed columns; this
+ * is a read-only path, so it never refreshes the cache (that belongs to the
+ * worker).
+ */
+export interface LiveCoverageTotals {
+  published: number;
+  kev: number;
+  epssScored: number;
+  exploitTagged: number;
+  unknownDate: number;
+  tombstones: number;
+  sourceRevision: string | null;
+  kevVersion: string | null;
+  ssvcRevision: string | null;
+  epssScoreDate: string | null;
+  earliestEpssScoreDate: string | null;
+  latestEpssScoreDate: string | null;
+}
+
+/** Earliest and latest retained EPSS score date. One clustered-key seek each. */
+export function readEpssDayRange(db: CveDatabase): {
+  earliest: string | null;
+  latest: string | null;
+} {
+  const row = db.handle
+    .prepare("SELECT MIN(score_date) AS lo, MAX(score_date) AS hi FROM epss_daily")
+    .get() as { lo: string | null; hi: string | null } | undefined;
+  return { earliest: row?.lo ?? null, latest: row?.hi ?? null };
+}
+
+export function readCoverageTotals(db: CveDatabase): LiveCoverageTotals {
+  // `severityBandsSql` counts exactly the PUBLISHED cohort, so its sum is the
+  // corpus size the band table already agrees with — one query, one definition.
+  const bands = severityBandsSql(db);
+  const published = Object.values(bands).reduce((total, count) => total + count, 0);
+  const scoreDate = acceptedEpssDate(db);
+  const range = readEpssDayRange(db);
+  const accepted = acceptedVersions(db);
+  return {
+    published,
+    kev: singleScalar(db, "SELECT COUNT(*) AS n FROM kev_entries"),
+    epssScored:
+      scoreDate === null
+        ? 0
+        : singleScalar(
+            db,
+            "SELECT COUNT(DISTINCT cve_id) AS n FROM epss_daily WHERE score_date = ?",
+            [scoreDate],
+          ),
+    exploitTagged: exploitRefCoverageSql(db).tagged,
+    unknownDate: singleScalar(
+      db,
+      "SELECT COUNT(*) AS n FROM cve_records WHERE state = 'PUBLISHED' AND date_published IS NULL",
+    ),
+    tombstones: singleScalar(db, "SELECT COUNT(*) AS n FROM cve_tombstones"),
+    sourceRevision:
+      accepted.cveRevision ?? singleText(db, "SELECT MAX(source_revision) AS r FROM cve_records"),
+    kevVersion: accepted.kevVersion,
+    ssvcRevision: accepted.ssvcRevision,
+    epssScoreDate: scoreDate,
+    earliestEpssScoreDate: range.earliest,
+    latestEpssScoreDate: range.latest,
+  };
+}
+
+/**
  * Revision seed for ETags; null when no current generation exists.
  *
  * A stale snapshot must not seed an ETag either: a 304 would then pair a body
