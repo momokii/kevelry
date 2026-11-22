@@ -306,6 +306,28 @@ Assume publication timestamps equal/known except where stated.
 Refresh targets: CVE hourly; KEV hourly with conditional requests where supported;
 EPSS daily after expected publication; CISA Vulnrichment SSVC enrichment daily.
 These are our targets, not upstream SLAs.
+
+The worker wakes every 60 min (the shortest configured interval) and then runs only
+the sources whose **own** interval has elapsed: CVE and KEV hourly, EPSS and SSVC
+every 24 h. Gating on each source's last attempt is what makes those targets real;
+before the gate one cycle ran all four every hour, so EPSS was re-imported 24 times
+a day.
+
+**Retry rule.** An attempt that accepted nothing new — a failure such as EPSS
+answering 403 before today's file exists, or an unchanged feed returning the same
+accepted version — makes that source due again after 60 min, not after its full
+interval. Only a freshly accepted version spends the source's whole interval.
+Without this, an early 403 or an unchanged fetch would postpone the publication
+that follows by up to a day. Each cycle logs one `ingest-gate` line naming what ran
+and why each remaining source was skipped (`interval` = its own cadence is still
+open, `retry` = the 60 min retry window is still open).
+
+A `sync_runs` row left in `running` by a killed process is swept at worker boot
+(before the first cycle): older than **2 hours** is marked `interrupted` with a note,
+never deleted, and its timestamps are left as recorded. Freshness reads only
+accepted (`succeeded`) rows, so an abandoned attempt never moves an accepted pin or
+a checkpoint.
+
 Flag CVE/KEV when last successful check is **more than 3 hours** old, even if unchanged.
 Flag SSVC enrichment when the last successful cycle is **more than 2 days** old.
 Do not flag an old vulnerability merely because its record has not changed.

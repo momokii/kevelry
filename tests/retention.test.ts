@@ -69,7 +69,58 @@ describe("EPSS retention policy", () => {
   it("reports an empty table without failing", () => {
     const db = makeDb();
     const result = pruneEpssHistory(db, { anchorDay: "2026-11-07", keepDays: 30 });
-    expect(result).toEqual({ oldestKept: null, deleted: 0, skipped: true });
+    expect(result).toMatchObject({ oldestKept: null, deleted: 0, skipped: true });
+    expect(result.cutoff).toBe("2026-10-09");
+    db.close();
+  });
+
+  it("ledgers the prune, including the run that deleted nothing", () => {
+    // Before this the prune only spoke through a log line, so "did retention
+    // actually run?" was unanswerable from the database: the newest
+    // maintenance_runs row was the exploit-ref backfill.
+    const db = makeDb();
+    seedEpss(db, ["2026-09-01", "2026-10-08", "2026-10-09"]);
+
+    const first = pruneEpssHistory(db, {
+      anchorDay: "2026-11-07",
+      keepDays: 30,
+      now: new Date("2026-11-07T05:56:57.000Z"),
+    });
+    expect(first.deleted).toBe(2);
+
+    const row = db.handle
+      .prepare("SELECT name, completed_at, detail FROM maintenance_runs WHERE name = ?")
+      .get("epss-retention") as { name: string; completed_at: string; detail: string };
+    expect(row.name).toBe("epss-retention");
+    expect(row.completed_at).toBe("2026-11-07T05:56:57.000Z");
+    expect(JSON.parse(row.detail)).toEqual({
+      keepDays: 30,
+      cutoffDate: "2026-10-09",
+      rowsDeleted: 2,
+      skipped: false,
+    });
+
+    // Nothing left to delete, still one honest row for this run.
+    const second = pruneEpssHistory(db, {
+      anchorDay: "2026-11-07",
+      keepDays: 30,
+      now: new Date("2026-11-08T05:56:57.000Z"),
+    });
+    expect(second.skipped).toBe(true);
+    const after = db.handle
+      .prepare("SELECT completed_at, detail FROM maintenance_runs WHERE name = ?")
+      .get("epss-retention") as { completed_at: string; detail: string };
+    expect(after.completed_at).toBe("2026-11-08T05:56:57.000Z");
+    expect(JSON.parse(after.detail)).toEqual({
+      keepDays: 30,
+      cutoffDate: "2026-10-09",
+      rowsDeleted: 0,
+      skipped: true,
+    });
+    const count = db.handle
+      .prepare("SELECT COUNT(*) AS n FROM maintenance_runs WHERE name = ?")
+      .get("epss-retention") as { n: number };
+    expect(count.n).toBe(1);
     db.close();
   });
 });

@@ -5,8 +5,9 @@ is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
 ## Unreleased
 
-Operational hardening only. No product surface, no schema migration, no API
-contract change, no version bump.
+Operational hardening only. No product surface, no API contract change, no
+version bump; migration 010 widens one CHECK constraint so an abandoned import
+can be recorded honestly instead of sitting in `running` forever.
 
 ### Fixed
 
@@ -39,6 +40,38 @@ sha256sum` against it), no generation holds a raw uncompressed `cve-backup.db`,
   and the newest verified generation is still inside the retention window. One
   timestamped `PASS`/`FAIL` line per assertion plus a verdict, exit `0`/`1`/`2`
   on the same contract as `scripts/health-watch.sh`, no Docker and no network.
+- **Each source is polled on its own interval instead of the cycle tick.**
+  `schedule.ts` declared 60 min for CVE/KEV and 24 h for EPSS/SSVC, but the cycle
+  ran `Math.min(...)` as its cadence and then attempted all four every cycle, so
+  the daily intervals were decorative: EPSS rows were accepted at `05:56:57` and
+  `06:57:01` on the same day, i.e. the same CSV re-fetched and re-hashed hourly
+  and the 380 MB SSVC checkout fetched hourly with it. A cycle now runs only the
+  sources whose own interval has elapsed, and logs one `ingest-gate` line naming
+  what ran, what was skipped, and whether the skip was `interval` or `retry`. A
+  skipped source is not a success either: the cycle now reports which sources it
+  actually attempted, so a day is added to the checkpoint history only when an
+  attempted source was accepted.
+- **The retry rule keeps the gate from delaying a publication by a day.** An
+  attempt that accepted nothing new — today's concrete case is EPSS answering
+  403 (or serving yesterday's file) before that day's CSV is published — makes
+  the source due again after 60 min instead of after its full interval; only a
+  freshly accepted version spends the interval. Without it, a 403 at 05:56 would
+  have parked EPSS until the next day, and an unchanged feed would have hidden the
+  publication that followed it.
+- **The EPSS retention prune is recorded in `maintenance_runs`.** The prune ran
+  inside the import and was only logged, so the newest ledger row was
+  `exploit-ref-backfill:v2` from 2026-11-08 while rows were being deleted every
+  day: "did retention run?" could not be answered from the database. Every prune
+  now writes `epss-retention` with `keepDays`, `cutoffDate`, `rowsDeleted` and
+  `skipped`, including the run that deleted nothing, and the log line stays.
+- **Abandoned `running` imports are swept at boot (migration 010).** A process
+  killed mid-import never closes its `sync_runs` row, so five rows sat `running`
+  since 2026-11-08 and a hung import looked exactly like a ledger nobody swept.
+  The worker now marks `running` rows older than 2 h `interrupted` before its
+  first cycle — never deletes them, never rewrites their timestamps — and
+  `interrupted` is its own status so it cannot read as an import failure.
+  Freshness is unaffected by construction: the readers pin on
+  `status = 'succeeded'` only.
 
 ### Changed
 

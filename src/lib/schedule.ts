@@ -9,6 +9,18 @@
 // a failed source keeps serving its last-known-good snapshot with an
 // explicit stale/error flag while valid sources still advance.
 //
+// Each source is gated on its OWN interval, not on the cycle tick. The tick is
+// the wake-up cadence (the shortest configured interval, 60 min in production);
+// a cycle then runs only the sources whose own interval has elapsed. Without the
+// gate one cycle ran all four every 60 min, so the 24 h EPSS/SSVC intervals in
+// DEFAULT_INTERVALS_MS were decorative and EPSS was re-imported 24 times a day.
+//
+// The retry rule is what keeps the gate safe for "always latest": an attempt
+// that accepted NO new version (a failure such as today's EPSS 403 before the
+// file is published, or an unchanged feed) does not spend the source's whole
+// interval — it becomes due again after SOURCE_RETRY_MS. Waiting a full 24 h
+// after an early 403 would skip a publication by a day.
+//
 // Must NOT do: no importer logic lives here. Callers inject per-source
 // jobs (thin wrappers around src/lib/cve-import.ts, kev-import.ts,
 // epss-import.ts). This module only orders, guards, and reports them.
@@ -52,6 +64,30 @@ export interface SourceIntervalsMs {
   ssvc: number;
 }
 
+/**
+ * Retry delay after an attempt that accepted nothing new. It is one tick, not
+ * the source's interval: a no-op attempt says nothing about when the next
+ * publication lands, so it must never park the source for a whole day.
+ */
+export const SOURCE_RETRY_MS = 60 * 60 * 1000;
+
+/** Why a source is due this cycle. */
+export type GateDueReason = "first" | "interval-elapsed" | "retry-elapsed";
+/** Why a source was skipped: still inside its own interval, or inside the retry window. */
+export type GateSkipReason = "interval" | "retry";
+
+/**
+ * Per-cycle gate decision. Emitted once per cycle, before any job runs, so the
+ * log answers "which sources did this cycle consider, and why was each one
+ * skipped?" without inference from per-source start lines.
+ */
+export interface CycleGateReport {
+  at: string;
+  ran: SourceName[];
+  due: Partial<Record<SourceName, GateDueReason>>;
+  skipped: Partial<Record<SourceName, { reason: GateSkipReason; nextDueAt: string }>>;
+}
+
 export interface SchedulerOptions {
   db: CveDatabase;
   jobs: SourceJobs;
@@ -66,14 +102,19 @@ export interface SchedulerOptions {
   now?: () => Date;
   /** Skip real timers (tests drive runCycle manually). */
   manual?: boolean;
+  /** Called once per cycle with the per-source due/skip decision. */
+  onGate?: (report: CycleGateReport) => void;
   /**
    * Called after every cycle settles, with the per-source failures of that
-   * cycle. The worker uses it to refresh the derived aggregate cache: the boot
-   * cycle is not the only one that changes data, and a cache that only follows
-   * boots makes every page fall back to live full-corpus queries until the next
-   * restart.
+   * cycle and the sources it actually attempted. The worker uses it to refresh
+   * the derived aggregate cache: the boot cycle is not the only one that changes
+   * data, and a cache that only follows boots makes every page fall back to live
+   * full-corpus queries until the next restart.
    */
-  onCycleComplete?: (outcome: { failed: Record<SourceName, string | null> }) => void;
+  onCycleComplete?: (outcome: {
+    failed: Record<SourceName, string | null>;
+    attempted: SourceName[];
+  }) => void;
 }
 
 export interface SourceStatus {
@@ -108,6 +149,8 @@ export interface SchedulerHealth {
 const DEFAULT_INTERVALS_MS: SourceIntervalsMs = {
   cve: 60 * 60 * 1000,
   kev: 60 * 60 * 1000,
+  // EPSS publishes once a day; the 24 h gate is what stops the hourly tick from
+  // re-downloading and re-hashing the same CSV 24 times.
   epss: 24 * 60 * 60 * 1000,
   // Enrichment rides the KEV cohort and changes slowly; daily is honest and
   // keeps the 380 MB checkout fetch off the hourly path.
@@ -255,6 +298,24 @@ export class IngestionScheduler {
     ssvcRevision: null,
   };
 
+  /**
+   * When each source is next due, and what that pending gate is waiting for.
+   * In-memory on purpose: a restart re-reads the world from scratch, and the
+   * first cycle after boot must not inherit a gate it cannot verify.
+   */
+  private readonly nextDueAtMs: Record<SourceName, number> = {
+    cve: 0,
+    kev: 0,
+    epss: 0,
+    ssvc: 0,
+  };
+  private readonly pendingGate: Record<SourceName, "first" | "interval" | "retry"> = {
+    cve: "first",
+    kev: "first",
+    epss: "first",
+    ssvc: "first",
+  };
+
   private timer: ReturnType<typeof setInterval> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private started = false;
@@ -284,6 +345,7 @@ export class IngestionScheduler {
     this.clock = options.now ?? (() => new Date());
     this.manual = options.manual ?? false;
     this.onCycleComplete = options.onCycleComplete;
+    this.onGate = options.onGate;
     ensureLeaseTable(this.db);
   }
 
@@ -373,10 +435,17 @@ export class IngestionScheduler {
     }
     this.started = true;
     if (!this.manual) {
-      const cadence = Math.min(this.intervalsMs.cve, this.intervalsMs.kev, this.intervalsMs.epss);
+      // Wake-up cadence only: the shortest configured interval. What actually
+      // runs is decided per source by the gate in runCycle.
+      const tick = Math.min(
+        this.intervalsMs.cve,
+        this.intervalsMs.kev,
+        this.intervalsMs.epss,
+        this.intervalsMs.ssvc,
+      );
       this.timer = setInterval(() => {
         void this.runCycle();
-      }, cadence);
+      }, tick);
       this.timer.unref?.();
       this.heartbeat = setInterval(() => {
         this.renewLease();
@@ -388,7 +457,63 @@ export class IngestionScheduler {
 
   private readonly onCycleComplete?: (outcome: {
     failed: Record<SourceName, string | null>;
+    attempted: SourceName[];
   }) => void;
+  private readonly onGate?: (report: CycleGateReport) => void;
+
+  /**
+   * Delay before a source is due again. `acceptedFresh` means the attempt pinned
+   * a version that differs from the previous accepted one; only then does the
+   * source spend its own interval. Anything else (failure, unchanged feed, no
+   * version) retries on the next tick.
+   */
+  private nextDueDelayMs(source: SourceName, acceptedFresh: boolean): number {
+    const interval = this.intervalsMs[source];
+    if (acceptedFresh) return interval;
+    // `interval` can be shorter than one tick under test configuration; the
+    // retry must never be longer than the source's own cadence.
+    return Math.min(SOURCE_RETRY_MS, interval);
+  }
+
+  /** Records what the next gate waits for, after an attempt settled. */
+  private armGate(source: SourceName, acceptedFresh: boolean): void {
+    this.pendingGate[source] = acceptedFresh ? "interval" : "retry";
+    this.nextDueAtMs[source] = this.clock().getTime() + this.nextDueDelayMs(source, acceptedFresh);
+  }
+
+  /** Builds the cycle's per-source decision without touching any job. */
+  private planCycle(nowMs: number): {
+    report: CycleGateReport;
+    due: Record<SourceName, boolean>;
+  } {
+    const report: CycleGateReport = {
+      at: new Date(nowMs).toISOString(),
+      ran: [],
+      due: {},
+      skipped: {},
+    };
+    const due: Record<SourceName, boolean> = { cve: false, kev: false, epss: false, ssvc: false };
+    for (const source of CORE_SOURCES) {
+      const dueAtMs = this.nextDueAtMs[source];
+      const pending = this.pendingGate[source];
+      if (nowMs >= dueAtMs) {
+        due[source] = true;
+        report.ran.push(source);
+        report.due[source] =
+          pending === "first"
+            ? "first"
+            : pending === "interval"
+              ? "interval-elapsed"
+              : "retry-elapsed";
+        continue;
+      }
+      report.skipped[source] = {
+        reason: pending === "interval" ? "interval" : "retry",
+        nextDueAt: new Date(dueAtMs).toISOString(),
+      };
+    }
+    return { report, due };
+  }
 
   async runCycle(): Promise<void> {
     if (!this.leaseHeld || this.shuttingDown || this.fatalError !== null) {
@@ -408,12 +533,23 @@ export class IngestionScheduler {
         ssvc: null,
       };
       const updates: Partial<PublicationManifest> = {};
+      const plan = this.planCycle(this.clock().getTime());
+      this.onGate?.(plan.report);
+      const attempted: SourceName[] = [];
       for (const source of CORE_SOURCES) {
+        // Not due: the source keeps its accepted snapshot and is not attempted.
+        // It is deliberately not reported as a failure, so the publication
+        // manifest keeps its previous pin for it.
+        if (!plan.due[source]) {
+          continue;
+        }
         if (isShutdown()) {
           failed[source] = "cancelled during shutdown: last-known-good preserved";
           continue;
         }
+        attempted.push(source);
         const status = this.statuses[source];
+        const previousVersion = status.acceptedVersion;
         const attemptAt = isoNow(this.clock);
         status.lastAttemptAt = attemptAt;
         let outcome: SourceRefreshOutcome;
@@ -436,12 +572,18 @@ export class IngestionScheduler {
           status.lastError = this.fatalError;
           status.consecutiveFailures += 1;
           status.stale = isSourceStale(source, status, this.clock());
+          // Nothing was accepted, so the next cycle may retry rather than park
+          // the source for its full interval.
+          this.armGate(source, false);
           break;
         }
         if (isShutdown()) {
           failed[source] = "cancelled during shutdown: last-known-good preserved";
           continue;
         }
+        const acceptedFresh =
+          outcome.ok && outcome.version !== null && outcome.version !== previousVersion;
+        this.armGate(source, acceptedFresh);
         if (outcome.ok) {
           status.acceptedVersion = outcome.version ?? status.acceptedVersion;
           status.lastSuccessAt = attemptAt;
@@ -469,8 +611,9 @@ export class IngestionScheduler {
         this.manifest = built.manifest;
       }
       // Reported even when a source failed: the sources that did succeed moved
-      // the data, and the derived cache must follow them.
-      this.onCycleComplete?.({ failed: { ...failed } });
+      // the data, and the derived cache must follow them. `attempted` excludes
+      // gated sources so a skipped source is never mistaken for a success.
+      this.onCycleComplete?.({ failed: { ...failed }, attempted: [...attempted] });
     })();
     this.inFlight = run;
     try {
@@ -486,6 +629,7 @@ export class IngestionScheduler {
       return null;
     }
     const status = this.statuses[source];
+    const previousVersion = status.acceptedVersion;
     const attemptAt = isoNow(this.clock);
     status.lastAttemptAt = attemptAt;
     try {
@@ -493,6 +637,12 @@ export class IngestionScheduler {
         signal: this.aborter?.signal ?? new AbortController().signal,
         now: this.clock(),
       });
+      // A manual trigger is an operator override of the gate, but it still
+      // re-arms it: the interval only starts once something is accepted.
+      this.armGate(
+        source,
+        outcome.ok && outcome.version !== null && outcome.version !== previousVersion,
+      );
       if (outcome.ok) {
         status.acceptedVersion = outcome.version ?? status.acceptedVersion;
         status.lastSuccessAt = attemptAt;
@@ -530,6 +680,7 @@ export class IngestionScheduler {
       status.lastError = this.fatalError;
       status.consecutiveFailures += 1;
       status.stale = isSourceStale(source, status, this.clock());
+      this.armGate(source, false);
       return null;
     }
   }

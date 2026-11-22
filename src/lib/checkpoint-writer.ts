@@ -53,6 +53,12 @@ export interface WriteDailyCheckpointOptions {
    * Omit to attempt the write regardless (explicit maintenance call).
    */
   failed?: Record<SourceName, string | null>;
+  /**
+   * Sources the cycle actually attempted. A source the poll gate skipped
+   * accepted nothing, so it must not count as the success that justifies a new
+   * checkpoint day; omitting this keeps the pre-gate rule for explicit calls.
+   */
+  attempted?: readonly SourceName[];
   /** Explicit per-view cap; defaults to the CHECKPOINT_TOP_N resolver. */
   topN?: number;
   log?: CheckpointLogFn;
@@ -173,9 +179,11 @@ export function writeDailyCheckpoint(
   });
 
   // An all-failed cycle accepted nothing, so it must not add a day to the
-  // retained history.
+  // retained history. Only attempted sources count: a gated source was not
+  // checked this cycle, and "not attempted" is not "succeeded".
   if (options.failed !== undefined) {
-    const anySucceeded = SOURCES.some((source) => options.failed?.[source] === null);
+    const considered = options.attempted ?? SOURCES;
+    const anySucceeded = considered.some((source) => options.failed?.[source] === null);
     if (!anySucceeded) return skip("no-source-succeeded");
   }
 

@@ -63,13 +63,16 @@ import {
   type EpssImportResult,
 } from "./lib/epss-import";
 import { resolveEpssRetentionDays } from "./lib/retention";
+import { ABANDONED_SYNC_RUN_AGE_MS, sweepAbandonedSyncRuns } from "./lib/sync-run-sweep";
 import { EXPLOIT_REF_BACKFILL, backfillExploitRefsOnce } from "./lib/exploit-ref";
 import { importKevFromUrl, type KevImportResult } from "./lib/kev-import";
 import {
   IngestionScheduler,
   installShutdownHandlers,
+  type CycleGateReport,
   type SourceJob,
   type SourceJobs,
+  type SourceName,
   type SourceRefreshOutcome,
 } from "./lib/schedule";
 
@@ -474,7 +477,12 @@ export interface CreateSchedulerOptions {
   intervalsMs?: { cve: number; kev: number; epss: number };
   holderId?: string;
   /** Called after every settled cycle; the worker refreshes derived aggregates. */
-  onCycleComplete?: (outcome: { failed: Record<string, string | null> }) => void;
+  onCycleComplete?: (outcome: {
+    failed: Record<SourceName, string | null>;
+    attempted: SourceName[];
+  }) => void;
+  /** Called once per cycle with the per-source due/skip decision. */
+  onGate?: (report: CycleGateReport) => void;
 }
 
 /**
@@ -495,6 +503,7 @@ export function createWorkerScheduler(
     intervalsMs: options.intervalsMs,
     holderId: options.holderId,
     onCycleComplete: options.onCycleComplete,
+    onGate: options.onGate,
   });
 }
 
@@ -574,6 +583,24 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
     throw error;
   }
   log({ event: "worker-start", dataDir, scheduleEnabled });
+
+  // Before the first cycle: a `running` row left by a killed process is an
+  // abandoned attempt, not an import in flight. Marked, never deleted, so the
+  // ledger's "did it move?" stays honest; fail-soft because a sweep problem
+  // must not keep the worker from ingesting.
+  try {
+    const swept = sweepAbandonedSyncRuns(db);
+    if (swept.interrupted > 0) {
+      log({
+        event: "sync-runs-swept",
+        interrupted: swept.interrupted,
+        olderThanHours: ABANDONED_SYNC_RUN_AGE_MS / 3_600_000,
+        ids: swept.ids.slice(-20),
+      });
+    }
+  } catch (error) {
+    log({ event: "sync-runs-sweep-failed", error: errorDetail(error) });
+  }
 
   // One-off passes that must complete before the first cycle computes totals.
   try {
@@ -665,6 +692,10 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
   let schedulerRef: IngestionScheduler | null = null;
   const scheduler = createWorkerScheduler(db, wrappedJobs, scheduleEnabled, {
     ...options.schedulerOptions,
+    // One line per cycle: what ran and why each other source was skipped
+    // (`interval` = its own cadence is still open, `retry` = waiting the 60 min
+    // retry window after an attempt that accepted nothing new).
+    onGate: (report) => log({ event: "ingest-gate", ...report }),
     // Every cycle, not just the boot one, can change the accepted data.
     onCycleComplete: (outcome) => {
       ensureAggregates(db, log);
@@ -673,7 +704,11 @@ export async function runWorker(options: RunWorkerOptions = {}): Promise<{
       // `checkpoint-write-failed` and returns, so a checkpoint problem can
       // never fail the cycle or block the next import.
       if (schedulerRef?.getStatus().shuttingDown === true) return;
-      writeDailyCheckpoint(db, { failed: outcome.failed, log });
+      writeDailyCheckpoint(db, {
+        failed: outcome.failed,
+        attempted: outcome.attempted,
+        log,
+      });
       void kickCweRefresh();
     },
   });

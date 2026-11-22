@@ -192,6 +192,31 @@ describe("daily checkpoint writer", () => {
     expect(logs).toEqual([]);
   });
 
+  it("does not count a source the poll gate skipped as the success that adds a day", () => {
+    // The gate skips a source still inside its interval; its `failed` entry is
+    // null because nothing was attempted, and that null must never be read as
+    // "accepted this cycle". Otherwise a cycle where both attempted sources
+    // failed would freeze the day with yesterday's pins.
+    const db = makeDb();
+    seedAcceptedSources(db);
+
+    const result = writeDailyCheckpoint(db, {
+      now: NOW,
+      failed: {
+        cve: "cve refresh failed: HTTP 503",
+        kev: "kev refresh failed: HTTP 503",
+        epss: null,
+        ssvc: null,
+      },
+      attempted: ["cve", "kev"],
+      topN: 10,
+    });
+
+    expect(result.written).toBe(false);
+    expect(result.reason).toBe("no-source-succeeded");
+    expect(checkpointCount(db)).toBe(0);
+  });
+
   it("logs checkpoint-write-failed instead of throwing when the write is rejected", () => {
     const db = makeDb();
     seedAcceptedSources(db);

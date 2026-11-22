@@ -275,12 +275,12 @@ describe("task 43 aggregate cache (50k fixture)", () => {
       ].sort(),
     );
     const reverted = db.revertTo(1);
-    expect(reverted).toEqual([9, 8, 7, 6, 5, 4, 3, 2]);
+    expect(reverted).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2]);
     const after = db.handle
       .prepare("SELECT name FROM sqlite_master WHERE name = 'aggregate_cache'")
       .all();
     expect(after).toHaveLength(0);
-    expect(db.migrate()).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(db.migrate()).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it("refresh matches direct-SQL truth for every aggregate section", { timeout: 180_000 }, () => {
@@ -442,7 +442,10 @@ describe("task 43 aggregate cache (50k fixture)", () => {
       // and same provenance; the status is the signal, not a shape difference.
       expect(healthCache.status).toBe("ok");
       expect(healthLive.status).toBe("warming");
-      expect(normalize(healthCache)).toEqual({ ...(normalize(healthLive) as object), status: "ok" });
+      expect(normalize(healthCache)).toEqual({
+        ...(normalize(healthLive) as object),
+        status: "ok",
+      });
     },
   );
 

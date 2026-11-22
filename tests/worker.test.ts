@@ -347,6 +347,77 @@ describe("runWorker", () => {
     expect(logs.filter((entry) => entry.event === "checkpoint-written")).toHaveLength(1);
   });
 
+  it("sweeps abandoned running rows at boot, before the first cycle", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "worker-sweep-"));
+    tempDirs.push(dir);
+    // Seed the ledger the way a killed process leaves it: a run that never closed.
+    const startedAt = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const seed = openDatabase({ dataDir: dir });
+    seed.handle
+      .prepare(
+        "INSERT INTO sync_runs (source, started_at, finished_at, status, revision, content_hash, error) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("epss", startedAt, null, "running", null, null, null);
+    seed.close();
+
+    const logs: WorkerLog[] = [];
+    const { db, scheduler } = await runWorker({
+      dataDir: dir,
+      scheduleEnabled: false,
+      deps: okDeps(),
+      installHandlers: false,
+      log: (entry) => logs.push(entry),
+    });
+    openHandles.push(db);
+    track(scheduler);
+
+    const row = db.handle
+      .prepare("SELECT status, started_at, finished_at FROM sync_runs WHERE source = 'epss'")
+      .get() as { status: string; started_at: string; finished_at: string | null };
+    expect(row.status).toBe("interrupted");
+    expect(row.started_at).toBe(startedAt);
+    expect(row.finished_at).toBeNull();
+    expect(logs.find((entry) => entry.event === "sync-runs-swept")).toMatchObject({
+      interrupted: 1,
+      olderThanHours: 2,
+    });
+  });
+
+  it("logs one ingest-gate line per cycle with what ran and why the rest were skipped", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "worker-gate-"));
+    tempDirs.push(dir);
+    const logs: WorkerLog[] = [];
+    const { db, scheduler } = await runWorker({
+      dataDir: dir,
+      scheduleEnabled: false,
+      deps: okDeps(),
+      installHandlers: false,
+      log: (entry) => logs.push(entry),
+    });
+    openHandles.push(db);
+    track(scheduler);
+
+    const first = logs.filter((entry) => entry.event === "ingest-gate");
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ ran: ["cve", "kev", "epss", "ssvc"], due: { cve: "first" } });
+
+    // Same clock, one minute later: every source just accepted a version, so a
+    // second cycle runs nothing and says why.
+    await scheduler.runCycle();
+    const gates = logs.filter((entry) => entry.event === "ingest-gate");
+    expect(gates).toHaveLength(2);
+    expect(gates[1]).toMatchObject({
+      ran: [],
+      skipped: {
+        cve: { reason: "interval" },
+        kev: { reason: "interval" },
+        epss: { reason: "interval" },
+        ssvc: { reason: "interval" },
+      },
+    });
+  });
+
   it("emits source-start for each source before its job runs", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "worker-start-"));
     tempDirs.push(dir);

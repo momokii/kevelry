@@ -5,9 +5,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import {
+  CORE_SOURCES,
   IngestionScheduler,
+  type CycleGateReport,
+  type SourceIntervalsMs,
   type SourceJob,
   type SourceJobs,
+  type SourceName,
   type SourceRefreshOutcome,
 } from "../src/lib/schedule";
 
@@ -261,6 +265,9 @@ describe("scheduler cycles: overlap and independence", () => {
       manual: true,
       holderId: "independent",
       now: clock.now,
+      // Every source is due on every cycle here: this test is about failure
+      // independence, not cadence (the gate has its own tests below).
+      intervalsMs: { cve: 60_000, kev: 60_000, epss: 60_000, ssvc: 60_000 },
     });
     expect(scheduler.start()).toBe(true);
     await scheduler.runCycle();
@@ -478,5 +485,167 @@ describe("scheduler lifecycle: interruption, staleness, fatal failure", () => {
     expect(health.sources.cve.lastError).toMatch(/network down/);
     expect(health.sources.cve.consecutiveFailures).toBe(1);
     await scheduler.shutdown();
+  });
+});
+
+/**
+ * Per-source gate harness. `versions` fixes a version per source; a source with
+ * no fixed version returns a new one on every call, so it always looks like a
+ * fresh publication.
+ */
+function gateHarness(
+  versions: Partial<Record<SourceName, string>>,
+  intervalsMs?: Partial<SourceIntervalsMs>,
+): {
+  clock: ReturnType<typeof makeClock>;
+  calls: Record<SourceName, number>;
+  reports: CycleGateReport[];
+  cycle: () => Promise<void>;
+  lastReport: () => CycleGateReport;
+  shutdown: () => Promise<void>;
+} {
+  const clock = makeClock("2026-11-09T00:00:00.000Z");
+  const calls: Record<SourceName, number> = { cve: 0, kev: 0, epss: 0, ssvc: 0 };
+  const job = (source: SourceName): SourceJob => {
+    return async () => {
+      calls[source] += 1;
+      return okOutcome(versions[source] ?? `${source}-v${calls[source]}`);
+    };
+  };
+  const reports: CycleGateReport[] = [];
+  const scheduler = new IngestionScheduler({
+    db: makeDb(),
+    jobs: { cve: job("cve"), kev: job("kev"), epss: job("epss"), ssvc: job("ssvc") },
+    manual: true,
+    holderId: "gate",
+    now: clock.now,
+    intervalsMs,
+    onGate: (report) => reports.push(report),
+  });
+  expect(scheduler.start()).toBe(true);
+  return {
+    clock,
+    calls,
+    reports,
+    cycle: () => scheduler.runCycle(),
+    lastReport: () => reports[reports.length - 1] as CycleGateReport,
+    shutdown: () => scheduler.shutdown(),
+  };
+}
+
+describe("per-source poll gate", () => {
+  it("runs CVE and KEV every 60 minutes instead of pinning every source to the tick", async () => {
+    const gate = gateHarness({ kev: "2026.11.08" });
+    try {
+      await gate.cycle();
+      expect(gate.calls).toEqual({ cve: 1, kev: 1, epss: 1, ssvc: 1 });
+      expect(gate.lastReport().ran).toEqual([...CORE_SOURCES]);
+      expect(gate.lastReport().due.cve).toBe("first");
+
+      // One minute short of the interval: nothing is due.
+      gate.clock.advance(59 * 60_000);
+      await gate.cycle();
+      expect(gate.calls).toEqual({ cve: 1, kev: 1, epss: 1, ssvc: 1 });
+
+      gate.clock.advance(60_000);
+      await gate.cycle();
+      expect(gate.calls).toEqual({ cve: 2, kev: 2, epss: 1, ssvc: 1 });
+      expect(gate.lastReport().ran).toEqual(["cve", "kev"]);
+      expect(gate.lastReport().due.cve).toBe("interval-elapsed");
+      expect(gate.lastReport().skipped.epss?.reason).toBe("interval");
+    } finally {
+      await gate.shutdown();
+    }
+  });
+
+  it("holds EPSS for its 24 h interval after it accepted a score date", async () => {
+    const gate = gateHarness({ epss: "2026-11-09", kev: "2026.11.08", ssvc: "rev-ssvc" });
+    try {
+      await gate.cycle();
+      gate.clock.advance(2 * 60 * 60 * 1000);
+      await gate.cycle();
+      expect(gate.calls.epss).toBe(1);
+      expect(gate.lastReport().ran).toEqual(["cve", "kev"]);
+      expect(gate.lastReport().skipped.epss).toEqual({
+        reason: "interval",
+        nextDueAt: "2026-11-10T00:00:00.000Z",
+      });
+    } finally {
+      await gate.shutdown();
+    }
+  });
+
+  it("retries EPSS 60 minutes after an attempt that accepted no new date", async () => {
+    // The concrete case: EPSS answers 403 (or serves yesterday's file) until
+    // today's publication lands. Waiting the full 24 h from that attempt would
+    // skip the publication for a day.
+    const gate = gateHarness({ epss: "2026-11-09", kev: "2026.11.08" });
+    try {
+      await gate.cycle();
+      expect(gate.calls.epss).toBe(1);
+
+      gate.clock.advance(24 * 60 * 60 * 1000);
+      await gate.cycle();
+      expect(gate.calls.epss).toBe(2);
+      expect(gate.lastReport().due.epss).toBe("interval-elapsed");
+
+      // The same score date came back: no fresh accept, so the gate retries.
+      gate.clock.advance(60 * 60 * 1000 - 1);
+      await gate.cycle();
+      expect(gate.calls.epss).toBe(2);
+      expect(gate.lastReport().skipped.epss?.reason).toBe("retry");
+
+      gate.clock.advance(1);
+      await gate.cycle();
+      expect(gate.calls.epss).toBe(3);
+      expect(gate.lastReport().due.epss).toBe("retry-elapsed");
+    } finally {
+      await gate.shutdown();
+    }
+  });
+
+  it("retries SSVC 60 minutes after an unchanged revision instead of parking it for a day", async () => {
+    const gate = gateHarness({ ssvc: "rev-ssvc", kev: "2026.11.08" });
+    try {
+      await gate.cycle();
+      gate.clock.advance(24 * 60 * 60 * 1000);
+      await gate.cycle();
+      expect(gate.calls.ssvc).toBe(2);
+      expect(gate.lastReport().due.ssvc).toBe("interval-elapsed");
+
+      gate.clock.advance(60 * 60 * 1000 - 1);
+      await gate.cycle();
+      expect(gate.calls.ssvc).toBe(2);
+      expect(gate.lastReport().skipped.ssvc?.reason).toBe("retry");
+
+      gate.clock.advance(1);
+      await gate.cycle();
+      expect(gate.calls.ssvc).toBe(3);
+      expect(gate.lastReport().due.ssvc).toBe("retry-elapsed");
+    } finally {
+      await gate.shutdown();
+    }
+  });
+
+  it("runs only the due source in a mixed cycle and leaves the others untouched", async () => {
+    const gate = gateHarness(
+      { kev: "2026.11.08", epss: "2026-11-09", ssvc: "rev-ssvc" },
+      { cve: 60 * 60_000, kev: 2 * 60 * 60_000, epss: 24 * 60 * 60_000, ssvc: 24 * 60 * 60_000 },
+    );
+    try {
+      await gate.cycle();
+      const before = gate.calls;
+      gate.clock.advance(60 * 60 * 1000);
+      await gate.cycle();
+      expect(gate.calls).toEqual({ ...before, cve: 2 });
+      expect(gate.lastReport().ran).toEqual(["cve"]);
+      expect(gate.lastReport().skipped).toEqual({
+        kev: { reason: "interval", nextDueAt: "2026-11-09T02:00:00.000Z" },
+        epss: { reason: "interval", nextDueAt: "2026-11-10T00:00:00.000Z" },
+        ssvc: { reason: "interval", nextDueAt: "2026-11-10T00:00:00.000Z" },
+      });
+    } finally {
+      await gate.shutdown();
+    }
   });
 });

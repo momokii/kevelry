@@ -11,6 +11,8 @@
 // always keeps the same set of days. Nothing here deletes a record row, a KEV
 // entry, or a tombstone; those tables are bounded by the corpus, not by time.
 
+import { recordMaintenanceRun } from "./maintenance";
+
 import type { CveDatabase } from "./db";
 
 /**
@@ -89,26 +91,70 @@ export interface EpssPruneResult {
   deleted: number;
   /** Rows already at or above the cutoff; nothing to do. */
   skipped: boolean;
+  /** Oldest score date the window allows; rows below it were deleted. */
+  cutoff: string;
+  /** When this run was recorded in `maintenance_runs`. */
+  ranAt: string;
+}
+
+/** `maintenance_runs.name` for the prune. One row, newest run wins. */
+export const EPSS_RETENTION_RUN = "epss-retention";
+
+/**
+ * Records the prune in the maintenance ledger. Written for every run, including
+ * the no-op one, because "did retention run?" must be answerable from the
+ * database: before this, a prune that deleted nothing and a prune that never
+ * happened looked identical from the outside.
+ */
+function recordPrune(db: CveDatabase, keepDays: number, result: EpssPruneResult): void {
+  recordMaintenanceRun(db, {
+    name: EPSS_RETENTION_RUN,
+    ranAt: result.ranAt,
+    detail: JSON.stringify({
+      keepDays,
+      cutoffDate: result.cutoff,
+      rowsDeleted: result.deleted,
+      skipped: result.skipped,
+    }),
+  });
 }
 
 /**
  * Deletes EPSS rows older than the window. Idempotent: a second call on the same
- * accepted date deletes nothing, so a restart mid-import is harmless.
+ * accepted date deletes nothing, so a restart mid-import is harmless. Every call
+ * records its outcome in `maintenance_runs`.
  */
 export function pruneEpssHistory(
   db: CveDatabase,
-  options: { anchorDay: string; keepDays: number },
+  options: { anchorDay: string; keepDays: number; now?: Date },
 ): EpssPruneResult {
   const cutoff = epssCutoffDay(options.anchorDay, options.keepDays);
+  const ranAt = (options.now ?? new Date()).toISOString();
   const oldest = db.handle.prepare("SELECT MIN(score_date) AS day FROM epss_daily").get() as {
     day: string | null;
   };
   if (oldest.day === null || oldest.day >= cutoff) {
-    return { oldestKept: oldest.day, deleted: 0, skipped: true };
+    const result: EpssPruneResult = {
+      oldestKept: oldest.day,
+      deleted: 0,
+      skipped: true,
+      cutoff,
+      ranAt,
+    };
+    recordPrune(db, options.keepDays, result);
+    return result;
   }
   const info = db.handle.prepare("DELETE FROM epss_daily WHERE score_date < ?").run(cutoff);
   const after = db.handle.prepare("SELECT MIN(score_date) AS day FROM epss_daily").get() as {
     day: string | null;
   };
-  return { oldestKept: after.day, deleted: info.changes, skipped: false };
+  const result: EpssPruneResult = {
+    oldestKept: after.day,
+    deleted: info.changes,
+    skipped: false,
+    cutoff,
+    ranAt,
+  };
+  recordPrune(db, options.keepDays, result);
+  return result;
 }
