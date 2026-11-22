@@ -3,6 +3,34 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 3.2.3 — 2026-11-22
+
+Scheduler jitter fix. No migration, no API change, no product surface: the fix is
+in how the existing gate decides due-ness and how long it sleeps before the next
+look. Deployed and verified against the live `ingest-gate` log.
+
+### Fixed
+
+- **A skipped source is retried within seconds instead of a whole interval.** The
+  60 min tick is not exact: on 2026-11-22 the container accepted CVE at
+  `07:48:07` (due `08:48:07`) and the tick fired at `08:47:55` — 12 s early — so
+  the strict `now >= nextDueAt` comparison called CVE and KEV not due and they
+  waited for the next hourly tick. CVE/KEV were effectively polled every ≈2 h,
+  repeating every cycle. Two changes fix it:
+  - **Grace window.** A source is due when `now >= nextDueAt - 120 s`, capped at
+    ¼ of that source's own interval so a short interval keeps its cadence (a
+    60 s interval gets 15 s, not 120 s). A tick a few seconds early can no longer
+    cost an interval.
+  - **Adaptive wake.** The scheduler replaces `setInterval` with a self-rearming
+    `setTimeout` that wakes at `min(tick, earliest due)` with a 30 s floor, so a
+    source left due in 12 s is picked up in 12 s. Worst-case delay after a skip
+    is now ≤30 s. The 60 min tick stays the ceiling, so an idle cycle is still
+    cheap. The `ingest-gate` line now reports `nextWakeInMs` — the delay actually
+    armed — so this is auditable from logs rather than inferred.
+
+**Upgrade notes:** no migration, no API change. Recreate the container to pick up
+3.2.3 (`docker compose up -d --force-recreate`).
+
 ## 3.2.2 — 2026-11-22
 
 Scheduling and housekeeping hardening. No product surface, no API contract
