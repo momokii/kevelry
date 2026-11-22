@@ -35,6 +35,7 @@ import {
   type PriorityItem,
 } from "@/lib/priority";
 import { displayProbabilityPercent } from "@/lib/ranking";
+import { readHighestForecastHead, readRisingForecastHead } from "@/lib/ranked-heads";
 import { excerptDescription, officialCveLink, recordTitle } from "@/lib/search";
 import { buildProvenance, RANKING_POLICY_VERSION } from "@/app/api/v1/_lib/provenance";
 import { loadFullRecords, type FullRecord } from "@/app/api/v1/_lib/records";
@@ -195,12 +196,22 @@ export function loadSnapshot(
   // Bounded calls return the full-order-then-slice prefix, so ranking is
   // untouched. The default-priority corpus is not materialized at all: its
   // only page use was gap counts, which come from indexed COUNT queries.
-  const rising = mode === "rising-forecast" ? getRisingForecast(db, undefined, limit) : [];
+  //
+  // The two forecast views read the head the aggregate refresh already
+  // computed (`topHighest`, `topRising`) when that snapshot is current, and
+  // fall back to the live getter otherwise — same ids, same order, same
+  // freshness rule as every other cached read, but without re-sorting ~410k
+  // rows per request. A display cap wider than the stored head (env override)
+  // returns null from the head reader and takes the live path.
+  const rising =
+    mode === "rising-forecast"
+      ? (readRisingForecastHead(db, limit) ?? getRisingForecast(db, undefined, limit))
+      : [];
   const items: PriorityItem[] =
     mode === "known-exploited"
       ? getKnownExploited(db, limit)
       : mode === "highest-forecast"
-        ? getHighestForecast(db, limit)
+        ? (readHighestForecastHead(db, limit) ?? getHighestForecast(db, limit))
         : mode === "new-critical"
           ? getNewCritical(db, nowIso, limit)
           : mode === "kev-due-soon"

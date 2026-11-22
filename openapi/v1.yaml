@@ -767,7 +767,9 @@ paths:
       description: |
         Minimal liveness probe for load balancers and container healthchecks.
         Reports initializing until the first accepted snapshot of every core
-        source is published. Never exposes record data.
+        source is published, and warming while the precomputed read model is
+        rebuilt for a just-accepted snapshot (reads then answer correctly from
+        the live path, only slower). Never exposes record data.
       tags:
         - Health
       responses:
@@ -2558,8 +2560,9 @@ components:
           type: string
           enum:
             - ok
+            - warming
             - initializing
-          description: initializing until the first accepted snapshot of every core source is published.
+          description: initializing until the first accepted snapshot of every core source is published; warming while that corpus exists but the precomputed read model is being rebuilt (reads answer correctly from the live path, only slower); ok once the read model matches the accepted data.
           example: ok
         version:
           type: string

@@ -46,6 +46,7 @@ import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
 import { buildProvenance, RANKING_POLICY_VERSION } from "../app/api/v1/_lib/provenance";
 import { detailExtras, loadFullRecords, toCveItem, todayUtcDay } from "../app/api/v1/_lib/records";
 import { buildRadarEvents, coverageForSnapshots, mapReplayReason, toReplayItem } from "../app/api/v1/_lib/radar-api";
+import { refreshAggregates } from "../src/lib/aggregates";
 import { GET as getCves } from "../app/api/v1/cves/route";
 import { GET as getCveById } from "../app/api/v1/cves/[cveId]/route";
 import { GET as getSearch } from "../app/api/v1/search/route";
@@ -793,6 +794,8 @@ describe("health/status parity (same snapshots, same freshness labels)", () => {
   it("reports identical cohorts, notices, and provenance on every surface", async () => {
     const db = makeDb();
     seedCorpus(db);
+    // `ok` means the read model is current; without it health reports `warming`.
+    refreshAggregates(db, "2026-10-24T00:00:00.000Z");
 
     const status = await getStatus(new Request("https://radar.test/api/v1/status"));
     expect(status.status).toBe(200);

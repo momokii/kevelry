@@ -12,7 +12,10 @@ Status is the full freshness report: per-source revisions, dates, retrieval
 times, stale flags, eligible cohorts, join coverage, the ranking policy
 version, and the required reuse notices. Health is a minimal liveness probe
 for load balancers and container healthchecks; it reports `initializing`
-until the first accepted snapshot of every core source is published.
+until the first accepted snapshot of every core source is published, and
+`warming` while the precomputed read model is rebuilt for a just-accepted
+snapshot — reads answer correctly from the live path during that window, only
+slower, because a stale cached number is never served under a fresh revision.
 
 ## Example
 

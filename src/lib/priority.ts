@@ -80,6 +80,36 @@ function epssValidSql(column: string): string {
   );
 }
 
+/**
+ * The single EPSS model version stored for one score date, or null when the
+ * date carries more than one.
+ *
+ * `epss_daily` is clustered on (score_date, cve_id, model_version), so this is
+ * one covering range scan of the date's key entries (measured at ~53 ms for a
+ * 410k-row day) and no regrouping. A non-null answer means every row of that
+ * date carries that version, which makes the per-CVE `MAX(model_version)` a
+ * constant: the ranked queries can join the version directly instead of
+ * running a GROUP BY over the whole day. NULL means the date really does mix
+ * model versions (or has no rows), and callers fall back to the per-CVE
+ * regroup so the result stays identical to the path that never had this
+ * shortcut.
+ *
+ * Rationale for the check: the importer writes one model version per EPSS run,
+ * so a mixed date is an anomaly, not the normal shape. Measured on the live
+ * volume (10,051,241 rows, 26 score dates): one model version (`v2026.06.15`)
+ * and zero (score_date, cve_id) pairs with more than one version. The runtime
+ * probe keeps that finding a fast path rather than an assumption.
+ */
+function resolveScoreDateModel(db: CveDatabase, scoreDate: string): string | null {
+  const row = db.handle
+    .prepare(
+      "SELECT MIN(model_version) AS lo, MAX(model_version) AS hi FROM epss_daily WHERE score_date = ?",
+    )
+    .get(scoreDate) as { lo: string | null; hi: string | null } | undefined;
+  if (row === undefined || row.lo === null || row.lo !== row.hi) return null;
+  return row.lo;
+}
+
 interface OverviewBase {
   id: string;
   publishedAt: string | null;
@@ -91,9 +121,10 @@ interface OverviewBase {
  * bounded candidate cohort). KEV membership, greatest-model EPSS text, and
  * per-id CVSS metrics come from chunked IN queries so the variable cap is
  * never hit; per-id metric lists keep rowid order, matching primaryMap, so
- * selectPrimaryCvss resolves identically to the full-corpus path.
+ * selectPrimaryCvss resolves identically to the full-corpus path. Also used by
+ * `./ranked-heads` to turn cached ranked ids back into display rows.
  */
-function hydrateOverviewItems(
+export function hydrateOverviewItems(
   db: CveDatabase,
   epssDate: string | null,
   bases: readonly OverviewBase[],
@@ -214,20 +245,6 @@ function epssTextMap(db: CveDatabase, scoreDate: string): Map<string, string> {
   return out;
 }
 
-function modelTextMap(db: CveDatabase, scoreDate: string): Map<string, string> {
-  const rows = db.handle
-    .prepare("SELECT cve_id, model_version FROM epss_daily WHERE score_date = ?")
-    .all(scoreDate) as Array<{ cve_id: string; model_version: string }>;
-  const best = new Map<string, string>();
-  for (const row of rows) {
-    const prior = best.get(row.cve_id);
-    if (prior === undefined || row.model_version > prior) {
-      best.set(row.cve_id, row.model_version);
-    }
-  }
-  return best;
-}
-
 function primaryMap(db: CveDatabase): Map<string, PrimaryCvss> {
   const rows = db.handle
     .prepare("SELECT cve_id, origin, version, base_score, vector, source_order FROM cvss_metrics")
@@ -269,64 +286,54 @@ function minus7Days(day: string): string | null {
   return new Date(ms - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-function getRisingForecastTop(
-  db: CveDatabase,
-  current: string,
-  previous: string,
-  limit: number,
-): RisingResult<PriorityItem>[] {
-  if (limit === 0) return [];
-  const rows = db.handle
+interface RisingRow {
+  id: string;
+  cur: string;
+  curModel: string;
+  prev: string;
+  publishedAt: string | null;
+}
+
+/**
+ * Every current/previous EPSS pair that gained probability, in one SQL pass.
+ *
+ * The regrouped form is retained verbatim for dates that mix model versions:
+ * it resolves `MAX(model_version)` per CVE on both sides and requires the two
+ * to agree, so a model transition is ineligible rather than interpolated.
+ * When both dates carry exactly one model version (the normal shape), the
+ * per-CVE regroup is provably constant and the same rows come from a plain
+ * primary-key join — the join's `p.model_version = ?` then equals `pm.m =
+ * cm.m`, and a changed model between the dates yields no rows in either form.
+ */
+function risingCandidateRows(db: CveDatabase, current: string, previous: string): RisingRow[] {
+  const currentModel = resolveScoreDateModel(db, current);
+  const previousModel = resolveScoreDateModel(db, previous);
+  if (currentModel === null || previousModel === null) {
+    return db.handle
+      .prepare(
+        "SELECT c.cve_id AS id, c.epss AS cur, c.model_version AS curModel, p.epss AS prev, " +
+          "r.date_published AS publishedAt " +
+          "FROM (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) cm " +
+          "JOIN epss_daily c ON c.cve_id = cm.cve_id AND c.score_date = ? AND c.model_version = cm.m " +
+          "JOIN (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) pm " +
+          "ON pm.cve_id = cm.cve_id AND pm.m = cm.m " +
+          "JOIN epss_daily p ON p.cve_id = pm.cve_id AND p.score_date = ? AND p.model_version = pm.m " +
+          "JOIN cve_records r ON r.cve_id = c.cve_id AND r.state = 'PUBLISHED' " +
+          `WHERE ${epssValidSql("c.epss")} AND ${epssValidSql("p.epss")} AND CAST(c.epss AS REAL) > CAST(p.epss AS REAL)`,
+      )
+      .all(current, current, previous, previous) as RisingRow[];
+  }
+  if (currentModel !== previousModel) return [];
+  return db.handle
     .prepare(
       "SELECT c.cve_id AS id, c.epss AS cur, c.model_version AS curModel, p.epss AS prev, " +
-        "r.date_published AS publishedAt " +
-        "FROM (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) cm " +
-        "JOIN epss_daily c ON c.cve_id = cm.cve_id AND c.score_date = ? AND c.model_version = cm.m " +
-        "JOIN (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) pm " +
-        "ON pm.cve_id = cm.cve_id AND pm.m = cm.m " +
-        "JOIN epss_daily p ON p.cve_id = pm.cve_id AND p.score_date = ? AND p.model_version = pm.m " +
+        "r.date_published AS publishedAt FROM epss_daily c " +
+        "JOIN epss_daily p ON p.cve_id = c.cve_id AND p.score_date = ? AND p.model_version = ? " +
         "JOIN cve_records r ON r.cve_id = c.cve_id AND r.state = 'PUBLISHED' " +
-        `WHERE ${epssValidSql("c.epss")} AND ${epssValidSql("p.epss")} AND CAST(c.epss AS REAL) > CAST(p.epss AS REAL)`,
+        "WHERE c.score_date = ? AND c.model_version = ? " +
+        `AND ${epssValidSql("c.epss")} AND ${epssValidSql("p.epss")} AND CAST(c.epss AS REAL) > CAST(p.epss AS REAL)`,
     )
-    .all(current, current, previous, previous) as Array<{
-    id: string;
-    cur: string;
-    curModel: string;
-    prev: string;
-    publishedAt: string | null;
-  }>;
-  const items = hydrateOverviewItems(
-    db,
-    null,
-    rows.map((row) => ({ id: row.id, publishedAt: row.publishedAt, epss: row.cur })),
-  );
-  const byId = new Map(items.map((item) => [item.id, item]));
-  const candidates: RisingCandidate[] = [];
-  for (const row of rows) {
-    const item = byId.get(row.id);
-    if (item === undefined) continue;
-    candidates.push({
-      ...item,
-      currentEpss: row.cur,
-      currentDate: current,
-      currentModel: row.curModel,
-      previousEpss: row.prev,
-      previousDate: previous,
-      previousModel: row.curModel,
-    });
-  }
-  return selectRisingForecast(candidates, current).map(({ item, deltaPp }) => ({
-    item: {
-      id: item.id,
-      kevMember: item.kevMember,
-      epss: item.epss,
-      publishedAt: item.publishedAt,
-      dateAdded: item.dateAdded,
-      kevDueDate: item.kevDueDate,
-      primary: item.primary,
-    },
-    deltaPp,
-  }));
+    .all(previous, currentModel, current, currentModel) as RisingRow[];
 }
 
 function loadItems(db: CveDatabase, epssDate: string | null): PriorityItem[] {
@@ -492,28 +499,55 @@ export function getKnownExploited(db: CveDatabase, limit?: number): PriorityItem
   return take(orderKnownExploited(items), limit);
 }
 
-/** Highest forecast: known EPSS only, raw probability desc. */
+/**
+ * Highest forecast: known EPSS only, raw probability desc.
+ *
+ * The bounded path joins the score date's model version directly when the date
+ * carries exactly one (see resolveScoreDateModel); the regrouped form is kept
+ * for a date that mixes versions, so the rows are byte-identical either way.
+ * The order and the LIMIT are unchanged: the limit still applies after the
+ * full order over the eligible set, keeping the documented prefix contract.
+ */
 export function getHighestForecast(db: CveDatabase, limit?: number): PriorityItem[] {
   if (!hasLimit(limit)) {
     return orderHighestForecast(loadItems(db, getAcceptedEpssDate(db)));
   }
   const epssDate = getAcceptedEpssDate(db);
   if (epssDate === null || limit === 0) return [];
-  const rows = db.handle
-    .prepare(
-      "SELECT c.cve_id AS id, c.epss AS epss, r.date_published AS publishedAt " +
-        "FROM (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) cm " +
-        "JOIN epss_daily c ON c.cve_id = cm.cve_id AND c.score_date = ? AND c.model_version = cm.m " +
-        "JOIN cve_records r ON r.cve_id = c.cve_id AND r.state = 'PUBLISHED' " +
-        `WHERE ${epssValidSql("c.epss")} ` +
-        "ORDER BY CAST(c.epss AS REAL) DESC, (r.date_published IS NULL) ASC, r.date_published DESC, c.cve_id ASC " +
-        "LIMIT ?",
-    )
-    .all(epssDate, epssDate, limit) as Array<{
-    id: string;
-    epss: string;
-    publishedAt: string | null;
-  }>;
+  const modelVersion = resolveScoreDateModel(db, epssDate);
+  const orderBy =
+    "ORDER BY CAST(c.epss AS REAL) DESC, (r.date_published IS NULL) ASC, r.date_published DESC, c.cve_id ASC " +
+    "LIMIT ?";
+  const columns = "SELECT c.cve_id AS id, c.epss AS epss, r.date_published AS publishedAt ";
+  const rows =
+    modelVersion === null
+      ? (db.handle
+          .prepare(
+            columns +
+              "FROM (SELECT cve_id, MAX(model_version) AS m FROM epss_daily WHERE score_date = ? GROUP BY cve_id) cm " +
+              "JOIN epss_daily c ON c.cve_id = cm.cve_id AND c.score_date = ? AND c.model_version = cm.m " +
+              "JOIN cve_records r ON r.cve_id = c.cve_id AND r.state = 'PUBLISHED' " +
+              `WHERE ${epssValidSql("c.epss")} ` +
+              orderBy,
+          )
+          .all(epssDate, epssDate, limit) as Array<{
+          id: string;
+          epss: string;
+          publishedAt: string | null;
+        }>)
+      : (db.handle
+          .prepare(
+            columns +
+              "FROM epss_daily c " +
+              "JOIN cve_records r ON r.cve_id = c.cve_id AND r.state = 'PUBLISHED' " +
+              `WHERE c.score_date = ? AND c.model_version = ? AND ${epssValidSql("c.epss")} ` +
+              orderBy,
+          )
+          .all(epssDate, modelVersion, limit) as Array<{
+          id: string;
+          epss: string;
+          publishedAt: string | null;
+        }>);
   return hydrateOverviewItems(db, epssDate, rows);
 }
 
@@ -559,6 +593,14 @@ export function getNewCritical(db: CveDatabase, cutoffT: string, limit?: number)
 /**
  * Rising forecast: exact current/previous-day same-model positive deltas.
  * Defaults to the accepted EPSS date; an unknown current date yields [].
+ *
+ * Candidate selection is SQL-side (one pass over the day's rows, joined to the
+ * previous date by primary key); the ranking itself stays the exact decimal
+ * contract in `selectRisingForecast`, which needs only the two stored values
+ * and the CVE id. Display fields (KEV, primary CVSS, EPSS text) are hydrated
+ * after ordering, so a bounded request hydrates `limit` rows instead of the
+ * whole candidate cohort, and an unbounded request never materializes one
+ * object per corpus row plus four full-corpus maps.
  */
 export function getRisingForecast(
   db: CveDatabase,
@@ -577,45 +619,42 @@ export function getRisingForecast(
       .prepare("SELECT 1 AS one FROM epss_daily WHERE score_date = ? LIMIT 1")
       .get(previous) !== undefined;
   if (!hasPrevious) return [];
-  if (hasLimit(limit)) {
-    return take(getRisingForecastTop(db, current, previous, limit), limit);
-  }
-  const records = publishedRecords(db);
-  if (records.length === 0) return [];
-  const kevDates = kevDateMap(db);
-  const currentEpss = epssTextMap(db, current);
-  const currentModels = modelTextMap(db, current);
-  const previousEpss = epssTextMap(db, previous);
-  const previousModels = modelTextMap(db, previous);
-  const primaries = primaryMap(db);
-  const candidates: RisingCandidate[] = records.map((record) => ({
-    id: record.cveId,
-    kevMember: kevDates.has(record.cveId),
-    epss: currentEpss.get(record.cveId) ?? null,
-    publishedAt: record.publishedAt,
-    dateAdded: kevDates.get(record.cveId)?.dateAdded ?? null,
-    kevDueDate: kevDates.get(record.cveId)?.dueDate ?? null,
-    primary: primaries.get(record.cveId) ?? null,
-    currentEpss: currentEpss.get(record.cveId) ?? null,
+  const rows = risingCandidateRows(db, current, previous);
+  if (rows.length === 0) return [];
+  // Order on the three ranking keys only (delta, current probability, id) —
+  // the exact contract ignores every display field — then hydrate the rows
+  // that are actually returned.
+  const candidates: RisingCandidate[] = rows.map((row) => ({
+    id: row.id,
+    kevMember: false,
+    epss: null,
+    publishedAt: row.publishedAt,
+    dateAdded: null,
+    kevDueDate: null,
+    primary: null,
+    currentEpss: row.cur,
     currentDate: current,
-    currentModel: currentModels.get(record.cveId) ?? null,
-    previousEpss: previousEpss.get(record.cveId) ?? null,
+    currentModel: row.curModel,
+    previousEpss: row.prev,
     previousDate: previous,
-    previousModel: previousModels.get(record.cveId) ?? null,
+    previousModel: row.curModel,
   }));
-  return take(
-    selectRisingForecast(candidates, current).map(({ item, deltaPp }) => ({
-      item: {
-        id: item.id,
-        kevMember: item.kevMember,
-        epss: item.epss,
-        publishedAt: item.publishedAt,
-        dateAdded: item.dateAdded,
-        kevDueDate: item.kevDueDate,
-        primary: item.primary,
-      },
-      deltaPp,
+  const ordered = take(selectRisingForecast(candidates, current), limit);
+  const items = hydrateOverviewItems(
+    db,
+    null,
+    ordered.map(({ item }) => ({
+      id: item.id,
+      publishedAt: item.publishedAt,
+      epss: item.currentEpss,
     })),
-    limit,
   );
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const results: RisingResult<PriorityItem>[] = [];
+  for (const { item, deltaPp } of ordered) {
+    const hydrated = byId.get(item.id);
+    if (hydrated === undefined) continue;
+    results.push({ item: hydrated, deltaPp });
+  }
+  return results;
 }

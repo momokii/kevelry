@@ -21,6 +21,7 @@ import {
   resolveRunBackupOnce,
   resolveRunVerifyOnce,
   resolveVerifyDir,
+  resolveWarmAggregatesOnce,
   runWorker,
   type SourceJobDeps,
   type WorkerLog,
@@ -575,6 +576,19 @@ describe("CWE_REFRESH_ENABLED fail-closed gate", () => {
     const rendered = String(long[0]?.value);
     expect(rendered.length).toBeLessThanOrEqual(64);
     expect(rendered.endsWith("…")).toBe(true);
+  });
+});
+
+describe("WARM_AGGREGATES_ONCE boot warm (perf pass)", () => {
+  it("only the exact string true enables the one-off warm", () => {
+    // The container entrypoint sets this before the web server binds, so a
+    // typo must never silently turn the boot warm off (the first request would
+    // then wait on a live full-corpus read).
+    expect(resolveWarmAggregatesOnce({})).toBe(false);
+    expect(resolveWarmAggregatesOnce({ WARM_AGGREGATES_ONCE: "" })).toBe(false);
+    expect(resolveWarmAggregatesOnce({ WARM_AGGREGATES_ONCE: "TRUE" })).toBe(false);
+    expect(resolveWarmAggregatesOnce({ WARM_AGGREGATES_ONCE: "1" })).toBe(false);
+    expect(resolveWarmAggregatesOnce({ WARM_AGGREGATES_ONCE: "true" })).toBe(true);
   });
 });
 

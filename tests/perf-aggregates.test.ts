@@ -437,7 +437,12 @@ describe("task 43 aggregate cache (50k fixture)", () => {
       expect(Object.keys(fromCache).sort()).toEqual(Object.keys(fromLive).sort());
       expect(normalize(fromCache)).toEqual(normalize(fromLive));
       expect(normalize(statusCache)).toEqual(normalize(statusLive));
-      expect(normalize(healthCache)).toEqual(normalize(healthLive));
+      // Health is the one surface that *states* which read model answered: the
+      // cached generation is `ok`, the live fallback is `warming`. Same shape
+      // and same provenance; the status is the signal, not a shape difference.
+      expect(healthCache.status).toBe("ok");
+      expect(healthLive.status).toBe("warming");
+      expect(normalize(healthCache)).toEqual({ ...(normalize(healthLive) as object), status: "ok" });
     },
   );
 

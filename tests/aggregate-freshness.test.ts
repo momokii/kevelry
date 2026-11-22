@@ -175,7 +175,9 @@ describe("aggregate freshness (P0.1)", () => {
 
     const health = await getHealth(new Request("http://x/api/v1/health"));
     const healthBody = await bodyOf(health);
-    expect(healthBody.status).toBe("ok");
+    // Accepted data with a stale read model is `warming`, not `ok`: reads are
+    // correct (live branch above) but the precomputed model is being rebuilt.
+    expect(healthBody.status).toBe("warming");
     expect(cveRevisionOf(healthBody)).toBe("rev-2");
     expect(health.headers.get("ETag")).toBeNull();
 

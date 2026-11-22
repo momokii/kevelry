@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
+import { refreshAggregates } from "../src/lib/aggregates";
 import { writeCheckpoint } from "../src/lib/radar";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { GET as getCves } from "../app/api/v1/cves/route";
@@ -394,6 +395,9 @@ describe("docs examples replay against live handlers", () => {
   it("replays fixture equivalents of every documented curl example with documented shapes", async () => {
     const db = makeDocsDb();
     seedDocsCorpus(db);
+    // `ok` means "read model current": build it here, because this example
+    // documents a warm instance rather than a booting one.
+    refreshAggregates(db, "2026-10-24T00:00:00.000Z");
     void db;
 
     // Mirrors docs/api curl examples with fixture IDs (docs use illustrative

@@ -25,11 +25,19 @@ export const GET = withApiRoute(async ({ request, db, rate }) => {
       ? countRows(db, "SELECT COUNT(*) AS n FROM epss_daily")
       : cached.totals.epssRows;
   const nowIso = new Date().toISOString();
+  // `warming` is about the read model, not about rows existing: the corpus is
+  // accepted, the precomputed snapshot is not current yet, so reads are taking
+  // the slower live path (never stale numbers — that is the 3.2.0 freshness
+  // rule). The container entrypoint warms the cache before the web server
+  // binds, and the worker re-warms after every accepted cycle, so a served
+  // `warming` is the few seconds of that rebuild, not a broken instance.
+  const status =
+    published > 0 && kev > 0 && epss > 0 ? (cached === null ? "warming" : "ok") : "initializing";
   return cachedOkResponse(
     request,
     db,
     {
-      status: published > 0 && kev > 0 && epss > 0 ? "ok" : "initializing",
+      status,
       version: "v1",
       provenance: buildProvenance(db, nowIso),
     },

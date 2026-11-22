@@ -776,6 +776,23 @@ export function resolveRefreshAggregatesOnce(
 }
 
 /**
+ * Boot-time aggregate warm, used by the container entrypoint before the HTTP
+ * server binds: `WARM_AGGREGATES_ONCE=true node worker.mjs`.
+ *
+ * Unlike REFRESH_AGGREGATES_ONCE (always recompute), this skips the build when
+ * the stored snapshot already describes the accepted data, so a restart on a
+ * current volume costs one cache read and a restart after a data change costs
+ * exactly one build — always before the first request can arrive. A failed warm
+ * exits non-zero so the supervisor logs it; it never keeps the app offline
+ * forever, because the live read path still answers correctly (only slower).
+ */
+export function resolveWarmAggregatesOnce(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.WARM_AGGREGATES_ONCE === "true";
+}
+
+/**
  * One-off verified backup without running an import cycle:
  * `RUN_BACKUP_ONCE=true BACKUP_DIR=/backups/2026-10-29 node dist/worker.mjs`.
  * Opens the store, writes a hash-verified backup image plus manifest, then
@@ -920,6 +937,30 @@ async function main(): Promise<void> {
       defaultLog({
         event: "worker-fatal",
         reason: "restore-failed",
+        error: errorDetail(error),
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (resolveWarmAggregatesOnce()) {
+    try {
+      const config = loadConfig();
+      const db = openDatabase({ dataDir: config.dataDir });
+      try {
+        const refreshed = ensureAggregates(db, defaultLog);
+        // Report the outcome the supervisor decides on: a non-zero exit means
+        // "the cache is still not current", never "the data is unusable".
+        const warm = aggregatesAreCurrent(db);
+        defaultLog({ event: "aggregate-warm", refreshed, warm });
+        process.exitCode = warm ? 0 : 1;
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      defaultLog({
+        event: "worker-fatal",
+        reason: "aggregate-warm-failed",
         error: errorDetail(error),
       });
       process.exitCode = 1;

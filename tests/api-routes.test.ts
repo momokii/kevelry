@@ -19,6 +19,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
+import { refreshAggregates } from "../src/lib/aggregates";
 import { writeCheckpoint } from "../src/lib/radar";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { exploitReferencesOf } from "../app/api/v1/_lib/records";
@@ -1046,6 +1047,8 @@ describe("v1 overview, status, and health routes", () => {
   it("reports freshness, cohorts, notices, and liveness from the same snapshots", async () => {
     const db = makeDb();
     seedCorpus(db);
+    // `ok` means "read model current"; build it so liveness is asserted warm.
+    refreshAggregates(db, "2026-10-24T00:00:00.000Z");
     void db;
 
     const status = await getStatus(new Request("https://radar.test/api/v1/status"));

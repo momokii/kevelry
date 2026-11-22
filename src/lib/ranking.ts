@@ -89,7 +89,7 @@ function isInRange(value: unknown, max: string): boolean {
   return cmpLo !== null && cmpHi !== null && cmpLo >= 0 && cmpHi <= 0;
 }
 
-function isValidEpss(value: unknown): value is string {
+export function isValidEpss(value: unknown): value is string {
   return typeof value === "string" && isInRange(value, "1");
 }
 

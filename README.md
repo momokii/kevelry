@@ -117,6 +117,15 @@ gigabyte CVE List V5 clone takes many minutes, so the site shows an honest
 initializing state until then. First boot is slow by design — judge freshness
 from `/api/v1/status`, not the first paint.
 
+`/api/v1/health` reports `initializing`, `warming`, or `ok`. The container
+entrypoint warms the precomputed read model (the aggregate cache) _before_ the
+web server binds its port, so the first request is never served cold: a restart
+on current data skips the rebuild, and a restart after a data change pays one
+rebuild before serving. A `warming` answer means the worker has just accepted a
+new snapshot and is rebuilding that model; reads stay correct on the live path
+during those seconds (a stale cached number is never served under a fresh
+revision), only slower.
+
 At full scale this is a few hundred thousand published records, a few thousand
 KEV-listed, and an EPSS score for most of them. Those counts live in the database
 and are printed by `/methodology` and `/api/v1/overview`, not repeated here.
@@ -150,6 +159,7 @@ the app reads is listed there, including the three test/bench-only switches
 | `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                                                |
 | `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                                  |
 | `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                                                |
+| `WARM_AGGREGATES_ONCE`    | no       | `false`                        | Boot warm used by the entrypoint: refresh only when the cache is not current, then serve                                                    |
 | `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft                             |
 | `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                            |
 | `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                     |
