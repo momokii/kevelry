@@ -16,6 +16,7 @@
 import { randomUUID } from "node:crypto";
 
 import { AI_MAX_TOKENS_DEFAULT, AI_MAX_TOKENS_FLOOR, type AiConfig } from "./config";
+import { createGatewayStreamAccumulator } from "./gateway-stream";
 import { parseUsage, type AiUsage } from "./usage";
 
 /** The gateway rejects requests without this header (`400 MissingSessionID`). */
@@ -54,11 +55,22 @@ export interface AiTransportRequest {
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
   readonly signal: AbortSignal;
+  /** True when the caller will consume an SSE body as it arrives. */
+  readonly streaming?: boolean;
 }
 
 export interface AiTransportResponse {
   readonly status: number;
+  /** Whole body. For a streamed response this is `""` and `stream` carries the bytes. */
   readonly body: string;
+  /** Upstream `Content-Type`; a streamed turn must be `text/event-stream`. */
+  readonly contentType?: string | null;
+  /**
+   * SSE bytes as the provider emits them. Absent means the transport buffered
+   * (a deterministic test double, or a non-streaming reply); the client then
+   * feeds `body` to the same parser as one fragment.
+   */
+  readonly stream?: ReadableStream<Uint8Array> | null;
 }
 
 /** Minimal fetch seam: tests hand in a function, production wraps global fetch. */
@@ -112,6 +124,28 @@ export interface ChatCompletion {
   rawBody: string | null;
 }
 
+/** One streamed round, assembled from the frames that arrived. */
+export interface ChatStreamResult extends ChatCompletion {
+  /** True when the provider signalled the end of the stream. */
+  complete: boolean;
+  /** True when a `data:` frame was not valid JSON. */
+  malformed: boolean;
+}
+
+/**
+ * A streamed round in progress. `read()` hands over assistant text as the
+ * provider emits it; the assembled round stays readable even after a failure,
+ * so the caller can bill the usage the provider already reported.
+ */
+export interface ChatStreamReader {
+  /** Next assistant text fragment, or `null` when the round ended cleanly. */
+  read(): Promise<string | null>;
+  /** The round accumulated so far. Safe to call at any point. */
+  result(): ChatStreamResult;
+  /** Cancels the request and stops both timers. Idempotent. */
+  cancel(): void;
+}
+
 export interface AiClientOptions {
   config: AiConfig;
   transport?: AiTransport;
@@ -124,11 +158,14 @@ export interface AiClientOptions {
 }
 
 export interface AiClient {
+  /** Buffered round: the whole body, parsed once. Used by non-streaming callers. */
   chatCompletion(request: ChatRequest): Promise<ChatCompletion>;
+  /** One streamed round: text fragments as they arrive, then the assembled round. */
+  streamChatCompletion(request: ChatRequest): ChatStreamReader;
 }
 
 /** The production transport: one POST, no redirects (the key must not travel). */
-export const fetchTransport: AiTransport = async ({ url, headers, body, signal }) => {
+export const fetchTransport: AiTransport = async ({ url, headers, body, signal, streaming }) => {
   const response = await fetch(url, {
     method: "POST",
     headers,
@@ -137,7 +174,22 @@ export const fetchTransport: AiTransport = async ({ url, headers, body, signal }
     cache: "no-store",
     redirect: "error",
   });
-  return { status: response.status, body: await response.text() };
+  if (streaming === true && response.ok && response.body !== null) {
+    // Hand the bytes over unsipped: `text()` here is the multi-second blank
+    // the turn loop exists to avoid. An error status still reads as text so
+    // the typed error can carry a redacted excerpt.
+    return {
+      status: response.status,
+      body: "",
+      contentType: response.headers.get("content-type"),
+      stream: response.body,
+    };
+  }
+  return {
+    status: response.status,
+    body: await response.text(),
+    contentType: response.headers.get("content-type"),
+  };
 };
 
 function defaultSleep(ms: number): Promise<void> {
@@ -348,6 +400,288 @@ function upstreamFailure(
   );
 }
 
+/** Gap with no SSE bytes that means the provider stalled rather than thought. */
+export const AI_STREAM_IDLE_TIMEOUT_MS = 20_000;
+
+/**
+ * Ordered hand-off between the socket reader and the turn loop. A push wakes
+ * exactly one pending `next()`; a failure drains what already arrived before
+ * throwing, so no token is lost behind an error that followed it.
+ */
+class DeltaQueue {
+  private readonly items: string[] = [];
+  private waiter: (() => void) | null = null;
+  private closed = false;
+  private failure: AiClientError | null = null;
+
+  push(item: string): void {
+    if (this.closed) return;
+    this.items.push(item);
+    this.wake();
+  }
+
+  close(): void {
+    this.closed = true;
+    this.wake();
+  }
+
+  fail(error: AiClientError): void {
+    if (this.closed) return;
+    this.failure = error;
+    this.closed = true;
+    this.wake();
+  }
+
+  async next(): Promise<string | null> {
+    for (;;) {
+      const item = this.items.shift();
+      if (item !== undefined) return item;
+      if (this.failure !== null) throw this.failure;
+      if (this.closed) return null;
+      await new Promise<void>((resolve) => {
+        this.waiter = resolve;
+      });
+    }
+  }
+
+  private wake(): void {
+    const waiter = this.waiter;
+    this.waiter = null;
+    waiter?.();
+  }
+}
+
+function transportError(config: AiConfig, error: unknown): AiClientError {
+  if (error instanceof AiClientError) return error;
+  const detail = error instanceof Error ? error.message : String(error);
+  return new AiClientError("AI_UPSTREAM_ERROR", "The AI provider could not be reached.", {
+    retryable: false,
+    upstreamMessage: excerpt(detail, config.apiKey),
+  });
+}
+
+function streamReadError(config: AiConfig, error: unknown): AiClientError {
+  if (error instanceof AiClientError) return error;
+  const detail = error instanceof Error ? error.message : String(error);
+  return new AiClientError("AI_UPSTREAM_ERROR", "The AI provider's stream ended unexpectedly.", {
+    retryable: false,
+    upstreamMessage: detail === "" ? null : excerpt(detail, config.apiKey),
+  });
+}
+
+/**
+ * Streams one round. `read()` resolves with each assistant text fragment as
+ * the provider emits it; the assembled round is available from `result()` once
+ * `read()` returns `null` or throws.
+ *
+ * Two timers, deliberately separate:
+ *   - `timeoutMs` is the caller's remaining turn budget and covers the whole
+ *     stream, not just the response headers;
+ *   - the idle guard aborts when no bytes arrive for
+ *     `config.streamIdleTimeoutMs`. A stream that stops mid-answer with the
+ *     socket open would otherwise hang until the turn deadline.
+ *
+ * A streaming request is never retried: replaying a partially consumed SSE
+ * body would bill the turn twice and hand the consumer two contradictory
+ * streams.
+ */
+function streamChat(ctx: ClientContext, request: ChatRequest): ChatStreamReader {
+  const config = ctx.config;
+  const apiKey = config.apiKey;
+  if (!config.enabled || apiKey === null) {
+    throw new AiClientError(
+      "AI_DISABLED",
+      "The AI assistant is disabled: it is not enabled or no API key is configured.",
+      { retryable: false },
+    );
+  }
+
+  const timeoutMs = Math.max(1, Math.trunc(request.timeoutMs ?? config.requestTimeoutMs));
+  const idleTimeoutMs = Math.max(1, Math.trunc(config.streamIdleTimeoutMs));
+  const payload = buildPayload(config, request, true);
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    accept: "text/event-stream",
+    authorization: `Bearer ${apiKey}`,
+    [AI_SESSION_HEADER]: ctx.sessionId,
+  };
+  const url = `${config.baseUrl}/chat/completions`;
+
+  const accumulator = createGatewayStreamAccumulator();
+  const queue = new DeltaQueue();
+  const controller = new AbortController();
+  let bodyReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let timedOut = false;
+  let cancelled = false;
+  let settled = false;
+
+  const onPeerAbort = (): void => {
+    cancelled = true;
+    controller.abort();
+  };
+  const onAbort = (): void => {
+    if (cancelled) {
+      fail(new AiClientError("AI_TIMEOUT", "The AI request was cancelled."));
+      return;
+    }
+    if (timedOut) {
+      fail(
+        new AiClientError(
+          "AI_TIMEOUT",
+          `The AI provider did not finish streaming within ${String(timeoutMs)} ms.`,
+        ),
+      );
+      return;
+    }
+    fail(
+      new AiClientError(
+        "AI_TIMEOUT",
+        `The AI provider sent nothing for ${String(idleTimeoutMs)} ms.`,
+      ),
+    );
+  };
+
+  const clearTimers = (): void => {
+    clearTimeout(totalTimer);
+    clearTimeout(idleTimer);
+    request.signal?.removeEventListener("abort", onPeerAbort);
+  };
+
+  const fail = (error: AiClientError): void => {
+    if (settled) return;
+    settled = true;
+    clearTimers();
+    queue.fail(error);
+    // A test double or a wedged proxy may not surface the abort as a stream
+    // error; cancelling the reader makes the pending `read()` settle either way.
+    if (bodyReader !== null) void bodyReader.cancel().catch(() => undefined);
+  };
+
+  const finish = (): void => {
+    if (settled) return;
+    for (const delta of accumulator.end()) queue.push(delta);
+    settled = true;
+    clearTimers();
+    queue.close();
+    // `[DONE]` ends the contract even when the provider keeps the socket open.
+    if (bodyReader !== null) void bodyReader.cancel().catch(() => undefined);
+  };
+
+  const absorb = (text: string): boolean => {
+    for (const delta of accumulator.push(text)) queue.push(delta);
+    if (accumulator.snapshot().done) {
+      // `[DONE]` is the end of the contract even if the socket stays open.
+      finish();
+      return false;
+    }
+    return true;
+  };
+
+  const armIdle = (): void => {
+    if (settled) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      controller.abort();
+    }, idleTimeoutMs);
+  };
+
+  // The total budget covers the whole stream; the idle guard covers a stall.
+  const totalTimer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  let idleTimer = setTimeout(() => {
+    controller.abort();
+  }, idleTimeoutMs);
+
+  controller.signal.addEventListener("abort", onAbort, { once: true });
+  if (request.signal !== undefined) {
+    if (request.signal.aborted) onPeerAbort();
+    else request.signal.addEventListener("abort", onPeerAbort, { once: true });
+  }
+
+  const run = async (): Promise<void> => {
+    let response: AiTransportResponse;
+    try {
+      response = await ctx.transport({
+        url,
+        headers,
+        body: payload,
+        signal: controller.signal,
+        streaming: true,
+      });
+    } catch (error) {
+      if (!settled) fail(transportError(config, error));
+      return;
+    }
+    if (settled) return;
+    if (response.status < 200 || response.status >= 300) {
+      fail(upstreamFailure(response, config, false));
+      return;
+    }
+    const contentType = response.contentType ?? null;
+    // A buffered test double reports no content type; a real provider must
+    // speak SSE, and a JSON 200 on a streamed turn is a protocol failure that
+    // must not be misread as an empty answer.
+    if (contentType !== null && !contentType.toLowerCase().includes("text/event-stream")) {
+      fail(
+        new AiClientError(
+          "AI_UPSTREAM_ERROR",
+          "The AI provider did not return an event stream for a streamed turn.",
+          { status: response.status, retryable: false },
+        ),
+      );
+      return;
+    }
+    if (response.stream === null || response.stream === undefined) {
+      // A buffered transport is one fragment: same parser, same guarantees.
+      if (response.body !== "") absorb(response.body);
+      finish();
+      return;
+    }
+    try {
+      bodyReader = response.stream.getReader();
+      const decoder = new TextDecoder();
+      for (;;) {
+        const { done, value } = await bodyReader.read();
+        if (settled) return;
+        if (done) break;
+        if (value === undefined) continue;
+        armIdle();
+        // `stream: true` holds an incomplete multi-byte character until its
+        // remaining bytes arrive, so a split code point is never mangled.
+        if (!absorb(decoder.decode(value, { stream: true }))) return;
+      }
+      absorb(decoder.decode());
+      finish();
+    } catch (error) {
+      if (!settled) fail(streamReadError(config, error));
+    }
+  };
+  void run();
+
+  return {
+    read: () => queue.next(),
+    result: (): ChatStreamResult => {
+      const parsed = accumulator.snapshot();
+      return {
+        content: parsed.text === "" ? null : parsed.text,
+        toolCalls: parsed.toolCalls,
+        finishReason: parsed.finishReason,
+        usage: parsed.usage,
+        model: parsed.model,
+        rawBody: null,
+        complete: parsed.complete,
+        malformed: parsed.malformed,
+      };
+    },
+    cancel: () => {
+      cancelled = true;
+      controller.abort();
+    },
+  };
+}
+
 async function postChat(ctx: ClientContext, request: ChatRequest): Promise<ChatCompletion> {
   const apiKey = ctx.config.apiKey;
   if (!ctx.config.enabled || apiKey === null) {
@@ -432,5 +766,6 @@ export function createAiClient(options: AiClientOptions): AiClient {
   };
   return {
     chatCompletion: (request: ChatRequest) => postChat(ctx, request),
+    streamChatCompletion: (request: ChatRequest) => streamChat(ctx, request),
   };
 }

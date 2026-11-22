@@ -64,6 +64,7 @@ const MANAGED_ENV = [
   "AI_SESSION_BUDGET_TOKENS",
   "AI_MAX_INPUT_CHARS",
   "AI_REQUEST_TIMEOUT_MS",
+  "AI_STREAM_IDLE_TIMEOUT_MS",
   "AI_WEB_FETCH_ENABLED",
 ] as const;
 
@@ -81,6 +82,7 @@ function baseEnv(): void {
   process.env.AI_API_KEY = KEY;
   process.env.AI_DAILY_BUDGET_USD = "5";
   process.env.AI_REQUEST_TIMEOUT_MS = "5000";
+  delete process.env.AI_STREAM_IDLE_TIMEOUT_MS;
   delete process.env.AI_SESSION_BUDGET_TOKENS;
   delete process.env.AI_MAX_INPUT_CHARS;
   delete process.env.AI_WEB_FETCH_ENABLED;
@@ -388,10 +390,105 @@ describe("assistant route: the streaming turn", () => {
     expect(calls[0]?.body["stream_options"]).toEqual({ include_usage: true });
     expect(Array.isArray(calls[0]?.body["tools"])).toBe(true);
     expect(calls[0]?.headers["authorization"]).toBe(`Bearer ${KEY}`);
+    expect(calls[0]?.headers["accept"]).toBe("text/event-stream");
     const secondMessages = calls[1]?.body["messages"] as Array<Record<string, unknown>>;
     const toolResult = secondMessages.find((message) => message.role === "tool");
     expect(toolResult).toBeDefined();
     expect(String(toolResult?.content)).toContain(CVE_ID);
+  });
+
+  it("streams each provider chunk as its own delta before the round ends", async () => {
+    const encoder = new TextEncoder();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const transport: AiTransport = async () => ({
+      status: 200,
+      body: "",
+      stream: new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame({ choices: [{ delta: { content: "first " }, finish_reason: null }] }),
+            ),
+          );
+          // The round stays open until the test has already seen the first
+          // delta: proof the route does not buffer the provider's body.
+          await gate;
+          controller.enqueue(
+            encoder.encode(
+              sseFrame({ choices: [{ delta: { content: "second" }, finish_reason: null }] }),
+            ),
+          );
+          controller.enqueue(
+            encoder.encode(sseFrame({ choices: [{ delta: {}, finish_reason: "stop" }] })),
+          );
+          controller.enqueue(encoder.encode(sseFrame({ choices: [], usage: USAGE_ROUND_1 })));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      }),
+    });
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    const stream = response.body;
+    if (stream === null) throw new Error("expected a streaming body");
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let received = "";
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.value !== undefined) received += decoder.decode(chunk.value, { stream: true });
+        if (received.includes('"type":"delta"')) break;
+        if (chunk.done) break;
+      }
+      expect(received).toContain('"type":"delta"');
+      expect(received).toContain("first ");
+      expect(received).not.toContain("second");
+    } finally {
+      release();
+    }
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.value !== undefined) received += decoder.decode(chunk.value, { stream: true });
+      if (chunk.done) break;
+    }
+
+    const frames = framesOf(received);
+    expect(frames.map((frame) => frame.type)).toEqual(["delta", "delta", "citations", "done"]);
+    expect(frames[0]).toMatchObject({ type: "delta", text: "first " });
+    expect(frames[1]).toMatchObject({ type: "delta", text: "second" });
+  });
+
+  it("aborts a stalled stream with AI_TIMEOUT after the idle gap", async () => {
+    process.env.AI_STREAM_IDLE_TIMEOUT_MS = "25";
+    const encoder = new TextEncoder();
+    const transport: AiTransport = async () => ({
+      status: 200,
+      body: "",
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              sseFrame({ choices: [{ delta: { content: "partial " }, finish_reason: null }] }),
+            ),
+          );
+          // Never closed and never fed again: a stalled provider.
+        },
+      }),
+    });
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    const frames = framesOf(await response.text());
+
+    expect(frames.map((frame) => frame.type)).toEqual(["delta", "error"]);
+    expect(frames[1]).toMatchObject({ type: "error", code: "AI_TIMEOUT" });
+    // Nothing was reported as spent, so the ledger stays untouched.
+    expect(ledgerRows()).toHaveLength(0);
   });
 
   it("writes exactly one usage row for a completed turn", async () => {

@@ -23,6 +23,7 @@ describe("loadAiConfig", () => {
     expect(config.maxTurns).toBe(12);
     expect(config.maxInputChars).toBe(2000);
     expect(config.requestTimeoutMs).toBe(45_000);
+    expect(config.streamIdleTimeoutMs).toBe(20_000);
     expect(AI_MAX_TOKENS_FLOOR).toBe(512);
   });
 

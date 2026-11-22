@@ -45,6 +45,8 @@ export interface AiConfig {
   readonly maxTurns: number;
   readonly maxInputChars: number;
   readonly requestTimeoutMs: number;
+  /** Gap with no SSE bytes before a streamed round is aborted as `AI_TIMEOUT`. */
+  readonly streamIdleTimeoutMs: number;
 }
 
 export interface AiGate {
@@ -143,6 +145,9 @@ export function loadAiConfig(env: Env = process.env): AiConfig {
     // The gateway is a reasoning model behind a remote proxy: a turn that
     // cannot answer in 45 s is a failure the UI should name, not a hang.
     requestTimeoutMs: parseInteger(env, "AI_REQUEST_TIMEOUT_MS", 45_000, 1000),
+    // A reasoning model can think for seconds before its first token, but a
+    // stream that sends nothing for 20 s is dead, not thinking.
+    streamIdleTimeoutMs: parseInteger(env, "AI_STREAM_IDLE_TIMEOUT_MS", 20_000, 1),
   };
   Object.defineProperty(config, "apiKey", {
     value: apiKey,

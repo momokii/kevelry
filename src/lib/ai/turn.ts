@@ -20,9 +20,14 @@
 // prompt or answer text.
 
 import type { CveDatabase } from "../db";
-import type { AiClient, ChatMessage, ChatToolCall } from "./client";
+import type {
+  AiClient,
+  ChatMessage,
+  ChatStreamReader,
+  ChatStreamResult,
+  ChatToolCall,
+} from "./client";
 import type { AiConfig } from "./config";
-import { parseGatewayStream } from "./gateway-stream";
 import { renderRecordContext, renderSystemPrompt, renderVisionInstruction } from "./prompt";
 import { executeTool, toolDefinitions, type ToolContext, type ToolOutcome } from "./tools";
 import type { AiUsage, AiUsageLedger } from "./usage";
@@ -240,6 +245,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   let usageSeen = false;
   let rounds = 0;
   let answered = false;
+  let activeStream: ChatStreamReader | null = null;
 
   const toolCtx: ToolContext = {
     db: input.db,
@@ -275,22 +281,34 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         return;
       }
 
-      const completion = await input.client.chatCompletion({
+      const completion = input.client.streamChatCompletion({
         messages: conversation,
         tools,
-        stream: true,
         timeoutMs: remaining,
         signal: input.signal,
       });
-      const parsed = parseGatewayStream(completion.rawBody ?? "");
-      if (addUsage(totals, parsed.usage ?? completion.usage)) usageSeen = true;
-
-      // Text first, so a reader sees the answer land before the tool line.
-      for (const chunk of parsed.chunks) {
-        yield { type: "delta", text: chunk };
+      activeStream = completion;
+      let round: ChatStreamResult;
+      try {
+        // Text goes out the moment the provider emits it. A round that ends in
+        // tool calls carries no prose, so a tool-only round emits no `delta`.
+        for (;;) {
+          const text = await completion.read();
+          if (text === null) break;
+          yield { type: "delta", text };
+        }
+        round = completion.result();
+      } catch (error) {
+        // The partial round still carries any usage the provider reported
+        // before the stream broke; the ledger bills it in the `finally`.
+        if (addUsage(totals, completion.result().usage)) usageSeen = true;
+        yield failureEvent(error);
+        return;
       }
+      activeStream = null;
+      if (addUsage(totals, round.usage)) usageSeen = true;
 
-      if (parsed.malformed || !parsed.complete) {
+      if (round.malformed || !round.complete) {
         // Deltas already went out; the stream now says why it stopped. That is
         // the only honest shape once the 200 has been sent.
         yield {
@@ -301,7 +319,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         return;
       }
 
-      if (parsed.finishReason === "length") {
+      if (round.finishReason === "length") {
         yield {
           type: "error",
           code: "AI_TRUNCATED",
@@ -311,7 +329,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         return;
       }
 
-      if (parsed.toolCalls.length === 0) {
+      if (round.toolCalls.length === 0) {
         yield { type: "citations", records: [...citationIds] };
         yield { type: "done", usage: usageFrame(totals), costUsd: totals.costUsd, rounds };
         answered = true;
@@ -320,10 +338,10 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
 
       conversation.push({
         role: "assistant",
-        content: parsed.text,
-        tool_calls: parsed.toolCalls,
+        content: round.content ?? "",
+        tool_calls: round.toolCalls,
       });
-      for (const call of parsed.toolCalls) {
+      for (const call of round.toolCalls) {
         const args = parseToolArguments(call.function.arguments);
         const outcome = args.ok
           ? await executeTool(call.function.name, args.value, toolCtx)
@@ -347,6 +365,9 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   } catch (error) {
     yield failureEvent(error);
   } finally {
+    // A consumer that stops reading mid-stream must not leave a socket, a
+    // timer or a provider request behind. A settled reader ignores this.
+    activeStream?.cancel();
     // Partial and failed turns are billed too: the provider reported them, so
     // they cost money. A ledger write that throws must not lose the answer the
     // reader already has, so it is swallowed after the frame is out.

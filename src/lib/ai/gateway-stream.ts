@@ -16,6 +16,14 @@
 //     `delta.tool_calls[].index`. Concatenating by index is the only way to
 //     reassemble them; parsing each frame alone yields broken JSON.
 //
+// Parsing is incremental, not all-at-once: `createGatewayStreamAccumulator`
+// takes text fragments (a chunk boundary can land anywhere — mid-frame,
+// mid-JSON, mid-UTF-8 code point, which the caller's `TextDecoder` has already
+// handled) and returns the assistant text fragments each fragment completed. A
+// line buffer is the whole strategy: split on `\n`, keep the tail, dispatch on
+// the blank line that ends a frame. The buffered `parseGatewayStream` is the
+// same accumulator fed one whole body, so the two can never disagree.
+//
 // The parser is total: hostile or malformed upstream text can never throw, it
 // only marks the parse `malformed` (an upstream failure the loop reports as a
 // typed error event).
@@ -34,11 +42,14 @@ export interface GatewayStreamParse {
   /** Last non-null `finish_reason` observed. */
   finishReason: string | null;
   usage: AiUsage | null;
+  model: string | null;
   /**
    * True when the provider signalled the end of the stream (`[DONE]` or a
    * `finish_reason`). A body without either is a cut-off response.
    */
   complete: boolean;
+  /** True exactly when the terminal `[DONE]` marker was seen. */
+  done: boolean;
   /** True when a `data:` frame was not valid JSON. */
   malformed: boolean;
 }
@@ -50,23 +61,15 @@ interface PartialToolCall {
   args: string;
 }
 
+interface AccumulatorState {
+  result: GatewayStreamParse;
+  toolCalls: Map<number, PartialToolCall>;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
-}
-
-/** One SSE frame's payload lines, joined the way the SSE spec defines them. */
-function frameData(frame: string): string | null {
-  const lines = frame.split("\n");
-  const data: string[] = [];
-  for (const line of lines) {
-    // `:` comment, `event:`, `id:` and `retry:` carry nothing we consume.
-    if (!line.startsWith("data:")) continue;
-    const value = line.slice("data:".length);
-    data.push(value.startsWith(" ") ? value.slice(1) : value);
-  }
-  return data.length === 0 ? null : data.join("\n");
 }
 
 function mergeToolCalls(raw: unknown, into: Map<number, PartialToolCall>): void {
@@ -92,68 +95,55 @@ function mergeToolCalls(raw: unknown, into: Map<number, PartialToolCall>): void 
   }
 }
 
-/**
- * Parses a buffered gateway SSE body.
- *
- * A buffered parse still preserves frame order, which is what the route's
- * `delta` events promise; a streaming transport would hand the same frames
- * over earlier, and the shape here is what it would produce.
- */
-export function parseGatewayStream(raw: string): GatewayStreamParse {
-  const result: GatewayStreamParse = {
-    chunks: [],
-    text: "",
-    toolCalls: [],
-    finishReason: null,
-    usage: null,
-    complete: false,
-    malformed: false,
-  };
-  if (typeof raw !== "string" || raw.trim() === "") return result;
-
-  const toolCalls = new Map<number, PartialToolCall>();
-  // `\r\n` is legal SSE; normalising keeps one frame separator.
-  const frames = raw.replace(/\r\n/gu, "\n").split("\n\n");
-  for (const frame of frames) {
-    const payload = frameData(frame);
-    if (payload === null) continue;
-    if (payload.trim() === STREAM_DONE_MARKER) {
-      result.complete = true;
-      continue;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(payload);
-    } catch {
-      result.malformed = true;
-      continue;
-    }
-    const root = asRecord(parsed);
-    if (root === null) {
-      result.malformed = true;
-      continue;
-    }
-    const usage = root["usage"];
-    if (asRecord(usage) !== null) result.usage = parseUsage(usage);
-    const choices = Array.isArray(root["choices"]) ? root["choices"] : [];
-    const choice = asRecord(choices[0]);
-    if (choice === null) continue;
-    const finishReason = choice["finish_reason"];
-    if (typeof finishReason === "string" && finishReason !== "") {
-      result.finishReason = finishReason;
-      result.complete = true;
-    }
-    const delta = asRecord(choice["delta"]);
-    if (delta === null) continue;
-    const content = delta["content"];
-    if (typeof content === "string" && content !== "") {
-      result.chunks.push(content);
-    }
-    mergeToolCalls(delta["tool_calls"], toolCalls);
+/** One `data:` payload. Returns the assistant text fragments it carried. */
+function dispatchPayload(payload: string, state: AccumulatorState): string[] {
+  const added: string[] = [];
+  if (payload.trim() === STREAM_DONE_MARKER) {
+    state.result.done = true;
+    state.result.complete = true;
+    return added;
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    state.result.malformed = true;
+    return added;
+  }
+  const root = asRecord(parsed);
+  if (root === null) {
+    state.result.malformed = true;
+    return added;
+  }
+  const model = root["model"];
+  if (typeof model === "string" && model !== "") state.result.model = model;
+  const usage = root["usage"];
+  if (asRecord(usage) !== null) state.result.usage = parseUsage(usage);
+  const choices = Array.isArray(root["choices"]) ? root["choices"] : [];
+  const choice = asRecord(choices[0]);
+  if (choice === null) return added;
+  const finishReason = choice["finish_reason"];
+  if (typeof finishReason === "string" && finishReason !== "") {
+    state.result.finishReason = finishReason;
+    state.result.complete = true;
+  }
+  const delta = asRecord(choice["delta"]);
+  if (delta === null) return added;
+  const content = delta["content"];
+  // Only `content` is answer text. `reasoning_content` (and the provider's
+  // spellings of it) is thinking: it must never reach the reader as prose.
+  // Thinking tokens are billed through `usage.reasoning_tokens` instead.
+  if (typeof content === "string" && content !== "") {
+    added.push(content);
+    state.result.chunks.push(content);
+  }
+  mergeToolCalls(delta["tool_calls"], state.toolCalls);
+  return added;
+}
 
-  result.text = result.chunks.join("");
-  result.toolCalls = [...toolCalls.entries()]
+function finalize(state: AccumulatorState): GatewayStreamParse {
+  state.result.text = state.result.chunks.join("");
+  state.result.toolCalls = [...state.toolCalls.entries()]
     .sort(([left], [right]) => left - right)
     .map(([, call]) => ({
       id: call.id,
@@ -161,5 +151,104 @@ export function parseGatewayStream(raw: string): GatewayStreamParse {
       function: { name: call.name, arguments: call.args },
     }))
     .filter((call) => call.function.name !== "");
-  return result;
+  return { ...state.result, chunks: [...state.result.chunks] };
+}
+
+/**
+ * A line-buffered SSE parser. `push` may be called with any slice of the
+ * body — one byte, half a frame, several frames — and never withholds a
+ * completed frame.
+ */
+export interface GatewayStreamAccumulator {
+  /** Feeds one decoded text fragment; returns the text fragments it completed. */
+  push(fragment: string): string[];
+  /** Flushes the trailing line/frame of a body that did not end in a blank line. */
+  end(): string[];
+  /** The round as it stands; safe to call at any point, including mid-stream. */
+  snapshot(): GatewayStreamParse;
+}
+
+export function createGatewayStreamAccumulator(): GatewayStreamAccumulator {
+  const state: AccumulatorState = {
+    result: {
+      chunks: [],
+      text: "",
+      toolCalls: [],
+      finishReason: null,
+      usage: null,
+      model: null,
+      complete: false,
+      done: false,
+      malformed: false,
+    },
+    toolCalls: new Map<number, PartialToolCall>(),
+  };
+  let lineBuffer = "";
+  let dataLines: string[] = [];
+
+  const consumeLine = (line: string, added: string[]): void => {
+    if (line === "") {
+      // A blank line is the frame terminator. An empty frame dispatches nothing.
+      if (dataLines.length === 0) return;
+      const payload = dataLines.join("\n");
+      dataLines = [];
+      added.push(...dispatchPayload(payload, state));
+      return;
+    }
+    // `:` comment, `event:`, `id:` and `retry:` carry nothing we consume.
+    if (!line.startsWith("data:")) return;
+    const value = line.slice("data:".length);
+    dataLines.push(value.startsWith(" ") ? value.slice(1) : value);
+  };
+
+  return {
+    push(fragment: string): string[] {
+      const added: string[] = [];
+      if (typeof fragment !== "string" || fragment === "") return added;
+      lineBuffer += fragment;
+      let newline = lineBuffer.indexOf("\n");
+      while (newline !== -1) {
+        let line = lineBuffer.slice(0, newline);
+        lineBuffer = lineBuffer.slice(newline + 1);
+        // `\r\n` is legal SSE; the `\r` never belongs to the line.
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        consumeLine(line, added);
+        newline = lineBuffer.indexOf("\n");
+      }
+      return added;
+    },
+    end(): string[] {
+      const added: string[] = [];
+      if (lineBuffer !== "") {
+        let line = lineBuffer;
+        lineBuffer = "";
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        consumeLine(line, added);
+      }
+      // A body whose last frame has no trailing blank line still dispatches.
+      if (dataLines.length > 0) {
+        const payload = dataLines.join("\n");
+        dataLines = [];
+        added.push(...dispatchPayload(payload, state));
+      }
+      return added;
+    },
+    snapshot(): GatewayStreamParse {
+      return finalize(state);
+    },
+  };
+}
+
+/**
+ * Parses a buffered gateway SSE body. Kept for callers that have the whole
+ * body (and for tests that want a deterministic one-shot view); it is the same
+ * accumulator, fed once.
+ */
+export function parseGatewayStream(raw: string): GatewayStreamParse {
+  const accumulator = createGatewayStreamAccumulator();
+  if (typeof raw === "string" && raw !== "") {
+    accumulator.push(raw);
+    accumulator.end();
+  }
+  return accumulator.snapshot();
 }
