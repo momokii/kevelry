@@ -5454,6 +5454,85 @@ a.badge:hover {
   animation: assistant-settle 120ms ease-out both;
 }
 
+/* A formatted answer is the same reading column as a plain one: the measure,
+   size and line rhythm are `.assistant-prose`'s. Only the constructs it adds
+   need anything of their own — block spacing instead of preserved newlines, a
+   scroll container for a wide table, and code that reads as code. */
+.assistant-prose.is-formatted {
+  white-space: normal;
+}
+
+.assistant-prose.is-formatted > * + * {
+  margin-top: var(--ui-sp-4);
+}
+
+.assistant-prose.is-formatted p {
+  margin: 0;
+  max-width: none;
+}
+
+.assistant-prose.is-formatted ul,
+.assistant-prose.is-formatted ol {
+  margin: 0;
+  padding-left: var(--ui-sp-5);
+  max-width: none;
+}
+
+.assistant-prose.is-formatted li + li {
+  margin-top: var(--ui-sp-1);
+}
+
+.assistant-prose.is-formatted li::marker {
+  color: var(--ui-ink-3);
+}
+
+.assistant-prose.is-formatted strong {
+  font-weight: 600;
+  color: var(--ui-ink);
+}
+
+.assistant-prose.is-formatted em {
+  font-style: italic;
+}
+
+.assistant-prose.is-formatted code {
+  font-family: var(--ui-font-mono);
+  font-size: 0.86em;
+  background: var(--ui-paper-deep);
+  border: 1px solid var(--ui-rule-soft);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.assistant-prose.is-formatted pre {
+  margin: 0;
+  padding: var(--ui-sp-3);
+  background: var(--ui-paper-deep);
+  border: 1px solid var(--ui-rule-soft);
+  border-radius: var(--ui-radius-sm);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.assistant-prose.is-formatted pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* An answer table is a data table: it reuses `.table-wrap` for the scroll and
+   `.data-table` for the rows, and only gives up the fixed page min-width so a
+   three-column answer does not scroll on a desktop. */
+.assistant-prose.is-formatted .assistant-table {
+  min-width: 100%;
+}
+
+.assistant-prose.is-formatted .table-wrap {
+  max-width: 100%;
+}
+
 @keyframes assistant-settle {
   from {
     opacity: 0.55;

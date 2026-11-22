@@ -26,7 +26,10 @@ import {
   ensureA11yEvidenceDir,
 } from "./a11y-audit";
 import { resetToBaseline } from "./corpus";
-import { AI_FAKE_UNSUPPORTED_ID } from "../../app/api/assistant/_lib/fake-transport";
+import {
+  AI_FAKE_TABLE_MARKER,
+  AI_FAKE_UNSUPPORTED_ID,
+} from "../../app/api/assistant/_lib/fake-transport";
 
 /** The second dev server: the same app with the assistant switched off. */
 const DISABLED_ORIGIN = "http://localhost:3211";
@@ -238,6 +241,58 @@ test("accessibility audit, zoom reflow and reduced motion stay clean", async ({ 
   await auditRoute(page, { route: "/assistant", name: "assistant", maxLiveRegions: 2 });
   await auditZoomReflow(page, "assistant", `${A11Y_EVIDENCE_DIR}/assistant-zoom.png`);
   await auditReducedMotion(page, "assistant", `${A11Y_EVIDENCE_DIR}/assistant-reduced-motion.png`);
+});
+
+test("a formatted answer renders a real table and the page still audits clean", async ({
+  page,
+}) => {
+  ensureA11yEvidenceDir();
+  // This journey spends its own rate-limit identity. The desk allows ten turns a
+  // minute per client, this file already spends them, and the identity is the
+  // one the route itself uses — the same technique the warm-up above relies on.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.88" });
+
+  await auditRoute(page, {
+    route: "/assistant",
+    name: "assistant answer table",
+    maxLiveRegions: 2,
+    // The state under audit is an answer, so it is produced before anything is
+    // measured: the renderer's output is what the audit has to see.
+    beforeAudit: async (current) => {
+      await current.waitForLoadState("networkidle");
+      await current
+        .locator("#assistant-question")
+        .fill(`Which KEV entries were added? Answer ${AI_FAKE_TABLE_MARKER}.`);
+      await current.keyboard.press("Enter");
+
+      const answer = current.locator('[data-testid="assistant-answer"]');
+      await expect(answer).toContainText("canned answer of the test transport");
+
+      // The model wrote pipes; the page shows a table, not a paragraph of pipes.
+      const table = answer.locator("table");
+      await expect(table).toBeVisible();
+      await expect(answer).not.toContainText("| --- |");
+      await expect(table.locator("thead th")).toHaveCount(3);
+      await expect(table.locator("tbody tr")).toHaveCount(2);
+      await expect(table.locator("thead th").first()).toHaveAttribute("scope", "col");
+
+      // The wrapper is the app's scroll container and is keyboard reachable, so
+      // a wide table can be read without a pointer.
+      const wrapper = current.locator('[data-testid="assistant-table"]');
+      await expect(wrapper).toHaveClass(/table-wrap/);
+      await expect(wrapper).toHaveAttribute("tabindex", "0");
+      expect(await wrapper.evaluate((el) => getComputedStyle(el).overflowX)).toBe("auto");
+
+      // A phone scrolls the table inside its wrapper, never the page.
+      await current.setViewportSize({ width: 390, height: 844 });
+      await auditNoHorizontalOverflow(current, "assistant answer table at 390px");
+      expect(await wrapper.evaluate((el) => getComputedStyle(el).overflowX)).toBe("auto");
+      await current.setViewportSize({ width: 1280, height: 900 });
+    },
+  });
+
+  // Still on screen after the audit: the table was not a transient render.
+  await expect(page.locator('[data-testid="assistant-answer"] table')).toBeVisible();
 });
 
 test("captures the empty and mid-stream states at 1440x900", async ({ page }) => {

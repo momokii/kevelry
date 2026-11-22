@@ -12,6 +12,13 @@ export interface AuditOptions {
   route: string;
   name: string;
   maxLiveRegions: number;
+  /**
+   * Runs after the route has loaded and before anything is measured. A page state
+   * that only exists after an interaction (an answer that rendered a table) is
+   * audited by producing it here, so the same assertions see the real document
+   * instead of a page that was reloaded out of that state.
+   */
+  beforeAudit?: (page: Page) => Promise<void>;
 }
 
 /**
@@ -255,6 +262,7 @@ export async function auditRoute(page: Page, options: AuditOptions): Promise<voi
   const { route, name, maxLiveRegions } = options;
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(route);
+  if (options.beforeAudit !== undefined) await options.beforeAudit(page);
 
   const root = page.locator("#main-content");
   await expect(root, `${name}: skip-link target #main-content exists`).toHaveCount(1);

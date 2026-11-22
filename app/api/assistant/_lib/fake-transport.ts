@@ -29,6 +29,16 @@ export const AI_FAKE_TRANSPORT_ENV = "AI_FAKE_TRANSPORT";
  */
 export const AI_FAKE_UNSUPPORTED_ID = "CVE-2099-9999";
 
+/**
+ * A question naming this phrase gets a canned Markdown table back.
+ *
+ * Same trigger shape as the unsupported id above, and for the same reason: the
+ * browser suite has no live model, and a rendered table is a property of the
+ * desk the audit has to see. The table carries no record ids, so it cannot
+ * disturb the citation or unverified accounting of the other journeys.
+ */
+export const AI_FAKE_TABLE_MARKER = "as a table";
+
 /** One pause between frames; long enough to paint, short enough for a suite. */
 export const AI_FAKE_FRAME_DELAY_MS = 45;
 
@@ -97,14 +107,27 @@ const ANSWER_LINES = [
   "A live deployment never reaches this text.",
 ];
 
+/**
+ * The table the fake appends when the question asks for one. It is written the
+ * way a model writes one — header row, dash separator, body rows — so the desk's
+ * renderer, not a fixture, is what turns it into a `<table>`.
+ */
+const TABLE_LINES = [
+  "\n\n| Metric | Value | Note |\n",
+  "| --- | --- | --- |\n",
+  "| Transport | fake | no socket, no key |\n",
+  "| Answer | canned | a live deployment never reaches this text |\n",
+];
+
 /** Round two: prose, then the terminal usage frame. */
-function answerRound(unsupportedId: boolean): string {
+function answerRound(unsupportedId: boolean, table: boolean): string {
   const lines = unsupportedId
     ? [
         ...ANSWER_LINES,
         `The id ${AI_FAKE_UNSUPPORTED_ID} was named in the question, and no tool above returned it. `,
       ]
-    : ANSWER_LINES;
+    : [...ANSWER_LINES];
+  if (table) lines.push(...TABLE_LINES);
   const frames: string[] = [];
   for (const line of lines) {
     frames.push(frame({ choices: [{ delta: { content: line }, finish_reason: null }] }));
@@ -116,25 +139,21 @@ function answerRound(unsupportedId: boolean): string {
 }
 
 /**
- * Whether the latest user message asks about the unsupported id. The transport
- * sees the same body the route built, so the trigger is the question itself —
- * no extra environment flag, and the default journey is unchanged. Round two's
- * body ends with a tool result, so the last *user* message is the one to read.
+ * The latest user message in the body the route built. Round two's body ends with
+ * a tool result, so the last *user* message is the one to read.
  */
-function questionNamesUnsupportedId(body: string): boolean {
+function latestUserMessage(body: string): string {
   try {
     const parsed = JSON.parse(body) as { messages?: Array<{ role?: unknown; content?: unknown }> };
     const messages = parsed.messages ?? [];
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
       if (message?.role !== "user") continue;
-      return (
-        typeof message.content === "string" && message.content.includes(AI_FAKE_UNSUPPORTED_ID)
-      );
+      return typeof message.content === "string" ? message.content : "";
     }
-    return false;
+    return "";
   } catch {
-    return false;
+    return "";
   }
 }
 
@@ -156,7 +175,13 @@ export function createFakeAssistantTransport(
   let round = 0;
   const transport: AiTransport = async (request): Promise<AiTransportResponse> => {
     const answering = round > 0;
-    const body = answering ? answerRound(questionNamesUnsupportedId(request.body)) : toolRound();
+    const question = answering ? latestUserMessage(request.body) : "";
+    const body = answering
+      ? answerRound(
+          question.includes(AI_FAKE_UNSUPPORTED_ID),
+          question.toLowerCase().includes(AI_FAKE_TABLE_MARKER),
+        )
+      : toolRound();
     round += 1;
     const encoder = new TextEncoder();
     const bytes = encoder.encode(body);

@@ -236,9 +236,17 @@ it can do with record-backed follow-ups, and a turn whose records did not resolv
 shows no citation chips and leaves the ledger's row counts as the evidence.
 
 **Citations are server data.** The chips render exactly the turn's `citations`
-event, which the server builds from the tool results; prose is never parsed for
-ids. An id the tools did not return cannot become a link, and an empty ledger
-says `no rows` instead of showing a blank column.
+event, which the server builds from the tool results. An id the tools did not
+return cannot become a link — prose that names one stays text, and the unverified
+caution says so; an empty ledger says `no rows` instead of showing a blank
+column.
+
+**The answer is rendered, not trusted as markup.** A small whitelist — fenced
+code, pipe tables, lists, bold/italic/inline code and links — becomes nodes; the
+model's text is escaped as text and is never injected as HTML. Links are
+restricted to `https:` and same-origin paths. An id in the prose links to
+`/explore?q=<id>` only when the turn's citations named that record, so a
+formatted answer cannot mint a citation the ledger does not carry.
 
 ### Methodology / API docs
 

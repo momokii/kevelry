@@ -17,6 +17,7 @@ import { AssistantCompare } from "./AssistantCompare";
 import { AssistantLedger } from "./AssistantLedger";
 import { buildFollowUps } from "./assistant-followups";
 import { formatImageSize, type AssistantImage } from "./assistant-image";
+import { renderAnswer } from "./render-answer";
 import {
   MAX_QUESTION_CHARS,
   counterVisible,
@@ -202,13 +203,19 @@ function TurnBlock({
           </div>
         ) : null}
         {turn.answer === "" ? null : (
-          <p
+          // The answer is rendered, never parsed as markup: `renderAnswer` turns
+          // the model's text into React nodes (blocks of paragraphs, lists,
+          // tables, inline emphasis and vetted links). The measure and rhythm
+          // come from the same `.assistant-prose` class a plain answer uses. An
+          // id in the prose links only when the server cited it, so prose can
+          // never mint a citation the ledger does not carry.
+          <div
             key={live ? "settled" : "streaming"}
-            className={`assistant-prose${live ? " is-settled" : ""}`}
+            className={`assistant-prose is-formatted${live ? " is-settled" : ""}`}
             data-testid="assistant-answer"
           >
-            {turn.answer}
-          </p>
+            {renderAnswer(turn.answer, { verifiedIds: turn.citations })}
+          </div>
         )}
         {turn.unverified.length > 0 ? (
           // Above the citations, in the app's voice: the answer is not blocked,
