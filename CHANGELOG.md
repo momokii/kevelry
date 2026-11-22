@@ -3,6 +3,37 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.2 — 2026-11-22
+
+Formatted answers. One presentation change, no migration and no API change: an
+assistant answer is rendered as text and structure instead of one pre-wrap
+paragraph, so a pipe table is a real table and a bullet list is a list.
+
+### Changed
+
+- **Assistant answers are rendered as formatted text.** Pipe tables become real
+  `<table>` elements with scoped headers (`<th scope="col">`) inside a
+  horizontally scrollable wrapper, so a wide answer table scrolls without
+  pushing the page sideways. Unordered and ordered lists, bold, italic, inline
+  code, fenced code blocks, and safe links render as their elements; everything
+  else stays text.
+
+### Security
+
+- **Output is escaped first and rendered without any HTML injection.** No markup
+  string is built from model text and there is no `dangerouslySetInnerHTML`: every
+  character of an answer reaches the DOM as a React text child, and the renderer
+  only adds structure around it.
+- **Links are limited to `https:` and internal paths.** `javascript:`, `data:`,
+  protocol-relative (`//host`), scheme-less and plain-`http:` targets render as
+  the model's own text and create no anchor; external links open with
+  `rel="noopener noreferrer"`.
+- **Ids link to `/explore` only when the turn's citations named them.** Prose can
+  no longer mint a citation the tool calls did not return.
+
+**Upgrade notes:** no migration, no API change. Recreate the container to pick up
+4.0.2 (`docker compose up -d --force-recreate`).
+
 ## 4.0.1 — 2026-11-22
 
 The answer-token fix 4.0.0 shipped without. One behaviour change, no migration

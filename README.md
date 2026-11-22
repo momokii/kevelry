@@ -17,17 +17,18 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.1` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> **Status:** `4.0.2` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.1` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the answer-token fix. The answer round now takes `AI_MAX_ANSWER_TOKENS`
-> (default 4096) instead of the 1024 tool-round cap, so a table answer is no
-> longer truncated. The `4.0.0` entry lists the v4 assistant and its upgrade
-> notes — **migration 011** (`ai_usage`) runs automatically on boot against an
-> existing volume, no manual step, and no `/api/v1` route or response shape
-> changed. The assistant is off on this image unless the operator sets
-> `AI_ENABLED=true` and supplies a gateway key.
+> available as previous releases. The `4.0.2` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the formatted-answers release. An assistant answer is now rendered as text:
+> pipe tables become real tables with scoped headers in a scrollable wrapper,
+> lists, bold, italic, inline code and safe links render as their elements, and
+> the output is escaped first with no HTML injection. The `4.0.0` entry lists the
+> v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
+> automatically on boot against an existing volume, no manual step, and no
+> `/api/v1` route or response shape changed. The assistant is off on this image
+> unless the operator sets `AI_ENABLED=true` and supplies a gateway key.
 
 ## What v4 adds
 
@@ -197,7 +198,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.1
+  docker.io/kelanach/kevelry:4.0.2
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -479,7 +480,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.1 \
+  --image docker.io/kelanach/kevelry:4.0.2 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -688,8 +689,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 982 passing, 3 skipped (network-gated)
-npx playwright test     # browser suite: 152 passing, 0 skipped
+npm test                # vitest: 1012 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 153 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
 
