@@ -217,6 +217,29 @@ change-kind filter, feed on the left, sticky evidence inspector on the right.
 Replay: retained-checkpoint selector, historical banner, then the five replayed
 lists with the same row language.
 
+### Assistant
+
+The assistant is a reading desk, not a chat transcript. The answer measure is the
+reading column (17.5px/1.62, 72ch) and the **evidence ledger** is a sticky fourth
+column beside it (`span-8` / `span-4`; at 1023px and below the ledger folds under
+the answer as a `<details>` disclosure). Question, answer, ledger and composer
+share **one left edge**: no bubbles, no speaker indentation, rules rather than
+cards. The ledger is the design's load-bearing element — the page's claim is that
+an answer is grounded, and the ledger is where the reader checks it.
+
+**Six states, each reachable without network or provider:** empty (counted
+suggestions from this corpus), streaming (named tool activity, never a spinner),
+typed error, rate limited (with the wait), budget exhausted (naming which cap),
+and feature disabled (the reason plus the variable to set, and no composer at
+all). Two more are answer outcomes rather than page states: a refusal offers what
+it can do with record-backed follow-ups, and a turn whose records did not resolve
+shows no citation chips and leaves the ledger's row counts as the evidence.
+
+**Citations are server data.** The chips render exactly the turn's `citations`
+event, which the server builds from the tool results; prose is never parsed for
+ids. An id the tools did not return cannot become a link, and an empty ledger
+says `no rows` instead of showing a blank column.
+
 ### Methodology / API docs
 
 Methodology adds an interactive six-stage pipeline with a detail panel and

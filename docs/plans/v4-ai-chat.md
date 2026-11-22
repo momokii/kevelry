@@ -1,6 +1,7 @@
 # v4 AI Research Assistant — Plan
 
-**Target release:** 4.0.0 · **Status:** planned · **Scope:** one grounded assistant over this
+**Target release:** 4.0.0 · **Status:** P1–P4 shipped on `main`; P5 (these docs and the
+release) pending · **Scope:** one grounded assistant over this
 app's own data; one POST surface, one additive migration, one rail destination. Probe facts,
 endpoint, the mandatory `x-opencode-session` header and the `max_tokens` floor:
 `docs/research/v4-ai-chat.md`.
@@ -194,14 +195,14 @@ answer; chips wrap and never break mid-id, so a citation wraps instead of clippi
 `max_tokens` floor), `provider.ts` (`Transport`, session header, SSE + `include_usage`, abort at
 120 s), `usage.ts` (micro-dollar accounting, absent cost = unknown). **Accept:** mock suite green;
 unset key → `enabled: false` and zero transport calls.
-**Commit:** `feat(ai): add a fail-closed gateway client and usage accounting`
+**Commit:** `feat(ai): add a fail-closed gateway client and usage accounting` · **Done:** `2bb6fd7`
 
 **P2 — tools, validation, prompt, injection fixtures.** `tools.ts` over the existing loaders,
 validators, row/time caps, untrusted envelope, `fetch-guard.ts`, `prompt.ts`, `scope.ts`, the six
 fixtures. **Accept:** every tool rejects out-of-range args with its `BAD_*` code and never reaches
 a loader; each cap asserted at its boundary (26th row denied); `fetch-guard` rejects six hostile
 URLs; a grep test finds no write keyword in `tools.ts`.
-**Commit:** `feat(ai): ground the assistant in eight read-only dataset tools`
+**Commit:** `feat(ai): ground the assistant in eight read-only dataset tools` · **Done:** `425acbe`
 
 **P3 — streaming route, budgets, rate limiting.** `turn/route.ts` on `withApiRoute`, per-IP
 `checkRateLimit`, body bound, session token budget, the `ai_usage` ledger and daily budget, the new
@@ -209,7 +210,7 @@ error codes, and an AI-only semaphore (4) held until the stream ends so a slow t
 of the read API's 32 slots. **Accept:** SSE headers asserted (`no-store`, `text/event-stream`, no
 `Content-Length`); exhaustion returns `429 AI_BUDGET_EXHAUSTED` with the reset instant; a fifth
 concurrent turn gets `429` while `/api/v1/search` answers.
-**Commit:** `feat(ai): stream assistant turns through one guarded route`
+**Commit:** `feat(ai): stream assistant turns through one guarded route` · **Done:** `02ce978`, `fe26a5d`
 
 **P4 — the `/assistant` surface, states, accessibility, e2e.** Page, ledger, chips, five states,
 keyboard contract, comparison table, brief download, image intake, follow-up chips, `Ask about this
@@ -217,7 +218,8 @@ record` entry points. **Accept:** axe clean on all six states in both themes; ke
 stream → cite → export; no overflow at 390px or 200% zoom; one live announcement per answer; a
 stubbed transport runs three e2e journeys with no network call and refuses to run under
 `APP_ENV=production`.
-**Commit:** `feat(assistant): add the ask surface with its provenance ledger`
+**Commit:** `feat(assistant): add the ask surface with its provenance ledger` · **Done:** `e10e355`,
+`df5e7a9`
 
 **P5 — docs, screenshots, release.** `README.md`; `DESIGN.md` (§Assistant, the token list, the rail
 count — §4 says seven destinations, the rail ships ten with `Ask`); `CONTEXT.md`;
@@ -225,7 +227,9 @@ count — §4 says seven destinations, the rail ships ten with `Ask`); `CONTEXT.
 `CHANGELOG.md`; version `4.0.0`; screenshots; tag; image; deploy. **Accept:** `format:check` clean,
 `.env.example` covers every variable a `process.env` grep finds, the spec validates, and a live turn
 cites a record that resolves in `/explore?q=<id>`.
-**Commit:** `docs: document the assistant and release 4.0.0`
+**Commit:** `docs: document the assistant and release 4.0.0` · **Status:** pending — documentation
+and screenshots landed in `docs: document the v4 assistant and its grounding`; the version bump,
+tag, image and deploy are not part of that change.
 
 ## 7. Risks
 
@@ -240,16 +244,38 @@ cites a record that resolves in `/explore?q=<id>`.
 
 ## 8. Release
 
-**`4.0.0`** — major: a new POST endpoint and destination, and no half-on state — no key, no feature.
+**Pending.** **`4.0.0`** — major: a new POST endpoint and destination, and no half-on state — no key, no feature.
 
-Config, all in `.env.example`: `AI_FEATURE_ENABLED` (`false`), `OPENCODE_API_KEY` (unset ⇒
-disabled), `AI_BASE_URL`, `AI_MODEL` (`deepseek-v4.1-flash`), `AI_MAX_TOKENS` (`1024`, floor `512`),
-`AI_WEB_FETCH_ENABLED` (`false`), `AI_MAX_TURNS` (`12`), `AI_SESSION_TOKEN_BUDGET` (`60000`),
-`AI_DAILY_BUDGET_USD` (`1.00`), `AI_REQUEST_TIMEOUT_MS` (`120000`).
+**Env names reconciled to the code.** The names this section originally planned were superseded
+during P1–P3; the deployed variables are the ones in `.env.example`, and these are the mappings:
 
-**One migration is needed.** `011_ai_usage` adds one table — `day` (UTC `YYYY-MM-DD`, primary key),
-`turns`, `prompt_tokens`, `completion_tokens`, `list_cost_micros` (null = unknown), `updated_at` —
-because a budget that resets on restart is a lie. Additive, no backfill, no question or IP stored.
+| Planned here              | Shipped in the code        | Default                           |
+| ------------------------- | -------------------------- | --------------------------------- |
+| `AI_FEATURE_ENABLED`      | `AI_ENABLED`               | `false`                           |
+| `OPENCODE_API_KEY`        | `AI_API_KEY`               | unset                             |
+| `AI_MAX_TOKENS`           | — (constant, not env)      | `1024`, floor `512`               |
+| `AI_SESSION_TOKEN_BUDGET` | `AI_SESSION_BUDGET_TOKENS` | `60000`                           |
+| `AI_DAILY_BUDGET_USD`     | `AI_DAILY_BUDGET_USD`      | `5` (was planned as `1.00`)       |
+| `AI_REQUEST_TIMEOUT_MS`   | `AI_REQUEST_TIMEOUT_MS`    | `45000` (was planned as `120000`) |
+
+`AI_BASE_URL`, `AI_MODEL`, `AI_WEB_FETCH_ENABLED`, `AI_MAX_TURNS` kept their planned names;
+`AI_MAX_INPUT_CHARS` and `AI_STREAM_IDLE_TIMEOUT_MS` were added and were not in the plan. The route
+also moved from the planned `app/api/v1/assistant/turn/route.ts` to
+`app/api/assistant/chat/route.ts`, outside `/api/v1`, so the versioned read contract stays GET-only;
+`provider.ts` shipped as `client.ts`, and the tool loop runs at most 4 rounds
+(`ASSISTANT_MAX_TOOL_ROUNDS`), not 6.
+
+Config, all in `.env.example`: `AI_ENABLED` (`false`), `AI_API_KEY` (unset ⇒ disabled),
+`AI_BASE_URL`, `AI_MODEL` (`deepseek-v4.1-flash`), `AI_WEB_FETCH_ENABLED` (`false`),
+`AI_SESSION_BUDGET_TOKENS` (`60000`), `AI_DAILY_BUDGET_USD` (`5`), `AI_MAX_TURNS` (`12`),
+`AI_MAX_INPUT_CHARS` (`2000`), `AI_REQUEST_TIMEOUT_MS` (`45000`), `AI_STREAM_IDLE_TIMEOUT_MS`
+(`20000`). `max_tokens` is a constant (`AI_MAX_TOKENS_DEFAULT` = 1024, floor 512), not a variable.
+
+**One migration is needed.** `011_ai_usage` adds one table — `day` (UTC `YYYY-MM-DD`, unique) plus
+`requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `cache_read_tokens`,
+`list_cost` (USD, not micros) and `created_at` — because a budget that resets on restart is a lie.
+It differs from the columns planned here: the shipped table keeps one row per day and stores
+dollars, not micro-dollars. Additive, no backfill, no question or IP stored.
 
 **Upgrade notes.** No re-ingest, no `/api/v1` read-contract change; a deployment that sets nothing
 keeps today's behaviour plus a disabled rail item. The key is injected at runtime, never baked into

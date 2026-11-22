@@ -3,6 +3,69 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## Unreleased
+
+The v4 AI research assistant: a grounded desk over this instance's own corpus,
+off by default and outside the versioned read contract. Documentation and
+screenshots only in this entry's commit — no version bump, no tag, no deploy.
+
+### Added
+
+- **Assistant endpoint: `POST /api/assistant/chat`.** Streams SSE
+  (`tool`, `delta`, `citations`, `done`, `error`) with `no-store` and
+  `X-Accel-Buffering: no`. It sits **outside `/api/v1`** so the versioned public
+  contract stays `GET`-only and read-only; the route writes nothing but the
+  aggregate spend row. Typed failures: `AI_DISABLED` 503, `AI_BUDGET_EXHAUSTED`
+  429, `AI_TIMEOUT` 504, `AI_UPSTREAM_ERROR`/`AI_TRUNCATED` 502, `BAD_IMAGE` 400.
+- **A grounded tool layer.** Eight read-only tools — `search_cves`, `get_cve`,
+  `epss_history`, `kev_window`, `coverage_stats`, `list_priority`, `cwe_lookup`,
+  and the optional `fetch_authoritative` — over the existing loaders, arguments
+  validated before any read, every result row- and time-capped. There is no
+  shell, filesystem, host, query-language or write capability to reach.
+- **Server-derived citations.** The `citations` event is built from the turn's
+  own tool results, not parsed from the model's prose; an id the tools did not
+  return can never become a link. The **evidence ledger** beside the answer lists
+  each tool call with its arguments, row count and returned record ids.
+- **Streaming with tool events.** Provider tokens stream through a hand-written
+  SSE reader with a session header and an idle timeout; a reasoning model's
+  thinking time is shown as named tool activity, never a spinner.
+- **Guardrails.** Untrusted tool output is wrapped and labelled as data; a
+  pre-inference scope filter refuses the clearest weaponisation, PoC, targeting
+  and non-CVE requests at $0; per-IP limits of 10/min and 60/hour with their own
+  buckets; a bounded body reader (3 MB, sized for a 1.5 MB image) and a
+  2000-character question cap; a 60 000-token session budget and a daily
+  `list_cost` budget; `max_tokens` floor 512 with `finish_reason: "length"`
+  mapped to `AI_TRUNCATED`, never a short answer. The key is never logged, echoed
+  or placed in an error payload.
+- **Vision intake.** PNG/JPEG/WebP up to 1.5 MB, magic-byte checked. The prompt
+  allows CVE ids read from the image and requires each one to be resolved through
+  `get_cve` before it is described; an id that does not resolve is stated as not
+  in the dataset. Citations remain server-derived, so an unresolvable id cannot
+  become a link.
+- **Compare two records.** A disclosure beside the composer sends one fixed
+  two-id question and answers it field by field. No fused score, no winner.
+- **Brief export.** A completed answer downloads as Markdown with absolute
+  citation links and the full tool ledger. Client-side `Blob`; nothing persisted.
+- **Entry points.** `Ask` in the rail (`/assistant`), `Ask about this record` on a
+  Priority row and the Graph focus (`/assistant?cve=<id>`), and follow-up chips
+  derived by code from the turn's ledger.
+- **An honest disabled state.** A missing key, an exhausted daily budget or an
+  invalid config renders the reason plus the variable to set on `/assistant` —
+  never a composer that fails on submit.
+
+### Changed
+
+- **Schema migration 011 `ai_usage`.** One row per UTC day: requests, token
+  counts and `list_cost`, so a budget cannot reset on restart. Additive, no
+  backfill; no prompt, answer, IP or session is stored.
+- **v1 is still `GET`-only.** The new POST is UI-only and unversioned; no
+  `/api/v1` route or response shape changed.
+
+### Verified
+
+- `966` unit tests passing with `3` skipped (the network-gated live smokes), and
+  `151` Playwright browser tests passing.
+
 ## 3.2.3 — 2026-11-22
 
 Scheduler jitter fix. No migration, no API change, no product surface: the fix is

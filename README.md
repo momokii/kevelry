@@ -25,6 +25,87 @@ risk score.
 > `3.2.2` schema **migration 010**, which widens the `sync_runs` status CHECK to
 > allow `interrupted` (schema max version 010); it runs automatically on boot
 > against an existing volume, with no manual step.
+>
+> **The v4 assistant documented below is on `main`, not in a published image**
+> (documented 2026-11-22). It is off unless an operator sets `AI_ENABLED=true`
+> and a gateway key, and it needs **migration 011** (`ai_usage`) on the next
+> upgrade.
+
+## What v4 adds
+
+The headline is an **AI research assistant** — rail item `Ask`, page
+`/assistant`. You ask a question about this instance's corpus in plain language;
+the answer is produced **only** through tool calls over this deployment's own
+data. Eight read-only tools sit over the same loaders the pages use, with row and
+time caps, and every number in an answer is traceable to the tool call that
+produced it in the **evidence ledger** beside it: one monospace line per tool
+call with its arguments, row count and record ids. Citations are built **by the
+server** from that turn's tool results and never scraped from the model's prose,
+so a record the model did not actually read cannot appear as a link. The
+transcript is the browser's: nothing you type is stored, logged or persisted
+server-side, and the only write a turn makes is the aggregate spend row in
+`ai_usage`.
+
+The trade is stated rather than hidden. An answer is bounded by what this
+deployment ingested, the tool layer can only read, and a question the corpus
+cannot answer comes back as the query and its row count (`0 rows`), not as a
+plausible guess. A live turn costs money, so it is capped — session tokens, a
+daily `list_cost` budget kept in SQLite so a restart cannot reset it, and per-IP
+rate limits — and the desk names the cap, the wait or the variable instead of
+failing silently.
+
+| Capability                    | What it adds                                                                                                                                                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Grounded answers**          | `POST /api/assistant/chat` streams tool events, text, then server-derived citations; the ledger is the proof, not the prose.                                                                                     |
+| **Record-scoped ask**         | `Ask about this record` (Priority row, Graph focus) opens `/assistant?cve=<id>`, which tells the turn to read that record first.                                                                                 |
+| **Compare two records**       | A disclosure beside the composer sends a fixed two-id question and answers it field by field. Never a fused score, never a winner.                                                                               |
+| **Brief export**              | A completed answer downloads as Markdown: the question, each claim with an absolute citation link, then the evidence ledger. Client-side, nothing stored.                                                        |
+| **Screenshot intake**         | PNG/JPEG/WebP up to 1.5 MB: the prompt allows CVE ids read from an image and requires each to be resolved through `get_cve` before it is described; an id that does not resolve is stated as not in the dataset. |
+| **Nothing to jailbreak into** | No shell, filesystem, host, query language or write capability exists in the tool layer. Web fetch is optional, `https`-only and host-allowlisted.                                                               |
+
+### What it will not do
+
+No exploit code, no PoC construction, no targeting advice, and no verdict — it
+will not tell you what is exploitable, urgent or worth patching first. That is
+the product's whole position: KEV, EPSS, CVSS and SSVC stay separate, sourced
+signals and the reader draws the conclusion. A request for any of that is
+refused with what the assistant _can_ do plus record-backed follow-ups. The
+clearest patterns are filtered **before** inference at $0; the rest is a prompt
+rule — tested against a fixture suite, never proven.
+
+### Configuration
+
+The assistant is **off by default**. Set `AI_ENABLED=true` and `AI_API_KEY`,
+then restart. A self-hoster who sets nothing — or sets the flag with no key —
+gets an honest disabled state on `/assistant` that names the variable, not a
+composer that fails on submit. Every knob is in `.env.example`: the two above,
+`AI_MODEL`, `AI_BASE_URL`, the two budgets (`AI_SESSION_BUDGET_TOKENS`,
+`AI_DAILY_BUDGET_USD`), the turn/input caps, the two timeouts, and
+`AI_WEB_FETCH_ENABLED` (off by default; when off the web tool is absent from the
+tool list).
+
+### A grounded answer, with its evidence ledger
+
+![Assistant at 1440×900 in dark theme: the question “Which KEV entries were added in the last 30 days?” with a settled answer, four citation chips, and the Evidence column reading “1 tool call”, “kev_window”, “days=30”, “4 rows”](docs/images/assistant.png)
+
+A settled turn. The question, answer, follow-up, brief action and composer share
+one left edge (no bubbles, no speaker indentation), the citation chips under the
+answer link to `/explore?q=<id>`, and the **Evidence** column on the right names
+the one tool call behind them — `kev_window`, `days=30`, `4 rows` — with the ids
+it returned. The frame is the browser suite's offline **fake transport**
+(`AI_FAKE_TRANSPORT=1`) against the seeded e2e corpus, so the prose is canned and
+says so; the tool call, its row count and the citations are real.
+
+### Compare two records, field by field
+
+![Assistant compare mode at 1440×900 in dark theme: the “Compare two records” disclosure open with CVE-2099-0001 and CVE-2099-0002 filled, its note about status, dates, CVSS, KEV, ransomware, EPSS and CWE, and the Compare button; the Evidence column reads “no tool calls yet”](docs/images/assistant-compare.png)
+
+The compare disclosure beside the composer: two labelled id fields with the same
+shape rules as the API, the fixed question it will send (status, dates, CVSS,
+KEV, ransomware, EPSS, CWE), and the `differs` review left to the reader. This is
+the entry state, before Compare is pressed — the same offline transport is wired
+here, so an answer would be that transport's canned line; what the frame shows
+faithfully is the surface and its validation contract.
 
 ## What v3 added
 
@@ -50,7 +131,9 @@ All four are 1440×900 captures of a production build against a **seeded demo
 corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations —
 not the live instance, so the numbers in the frames are reproducible rather than
 current. For the deployment's own figures, read `/methodology`, which counts the
-accepted snapshot.
+accepted snapshot. The two assistant captures live under
+[What v4 adds](#what-v4-adds); they come from the browser suite's dev server with
+its offline transport, which their captions state.
 
 ### Overview — the KEV rhythm, one month hovered
 
@@ -242,6 +325,9 @@ explicit opt-in and never auto-loads; no `compose.override.yaml` exists.
 - **Public read-only API + docs:** the same local snapshots the website reads,
   versioned routes, OpenAPI plus prose guides and a browsable reference.
 - **Dark console:** persisted light/dark theme across every surface.
+- **Ask the corpus (v4, off by default):** a grounded assistant over this
+  instance's own records, with an evidence ledger and server-derived citations
+  ([What v4 adds](#what-v4-adds)).
 
 ## Interface
 
@@ -551,12 +637,15 @@ These are product decisions, not gaps:
   bounded, and labelled.
 - **No exploit code, no PoC execution, no scraped exploit feeds.** The exploit
   signal is the publisher's own reference tag, quoted as "tagged".
-- **No LLM summaries.** Descriptions are the publisher's text, excerpts are cut,
-  never generated.
+- **No generated record prose.** Descriptions are the publisher's text, excerpts
+  are cut, never generated. The v4 assistant explains what its tool results say
+  and cites them; it never writes a description for a record.
 - **No server-side accounts or saved lists.** Watch lives in one browser's local
   storage.
-- **No writes through the public API.** Every route is a `GET`; imports,
-  migrations and maintenance stay private CLI/internal operations.
+- **No writes through the public API.** Every `/api/v1` route is a `GET`; imports,
+  migrations and maintenance stay private CLI/internal operations. The one
+  non-GET endpoint is `POST /api/assistant/chat`, which is UI-only, outside the
+  versioned namespace, and writes nothing but aggregate spend.
 
 ## Troubleshooting
 
@@ -594,8 +683,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 768 passing, 3 skipped (network-gated)
-npx playwright test     # browser suite: 138 passing, 0 skipped
+npm test                # vitest: 966 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 151 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
 
@@ -649,6 +738,10 @@ each request, so it cannot drift).
 throttled too) but take no concurrency slot. Unknown EPSS renders as explicit
 `null`, never zero. `GET /api/v1/status` reports per-source stale and warning
 states.
+
+The one `POST` in the app is `POST /api/assistant/chat`: UI-only, deliberately
+outside `/api/v1`, with its own 10/min and 60/hour per-IP budget, and it writes
+nothing but aggregate spend. The versioned read contract stays `GET`-only.
 
 ## Security
 
