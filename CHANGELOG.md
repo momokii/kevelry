@@ -3,6 +3,37 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.1 — 2026-11-22
+
+The answer-token fix 4.0.0 shipped without. One behaviour change, no migration
+and no API change: the round that writes the answer gets a 4096-token budget
+instead of the 1024 a tool-discovery round needs, so a table answer is no longer
+cut on `finish_reason: "length"`.
+
+### Fixed
+
+- **The final answer round gets `AI_MAX_ANSWER_TOKENS` (default 4096).** 4.0.0
+  used one completion cap of 1024 for every round. The first live question
+  (`Which KEV entries are due in the next 30 days?`) answers with a table, and
+  1024 tokens cut it mid-table as typed `AI_TRUNCATED`. Tool-discovery rounds
+  keep 1024 — their completion is a call, not prose — and only the round that
+  writes the answer takes the higher budget.
+- **An empty truncated round retries once at the answer budget.** When a round
+  ends on `length` with no text and no tool calls, the cap was too small for the
+  reasoning preamble; it is re-run exactly once at `AI_MAX_ANSWER_TOKENS` and the
+  escalation is announced in the stream as a typed `retry` event before the
+  second attempt. A round that did produce prose still yields `AI_TRUNCATED`
+  rather than a silently short answer, and there is no second retry.
+- **The prompt now asks for ≤12 rows plus a remainder count.** When a table
+  answers the question, the model lists at most about 12 rows and states the
+  total count with how many rows are not shown, so it paces itself instead of
+  running into the cap.
+
+**Upgrade notes:** no migration, no API change. New optional env var
+`AI_MAX_ANSWER_TOKENS` (default `4096`, floor `512`); leave it unset and the
+4096 default applies. Recreate the container to pick up 4.0.1
+(`docker compose up -d --force-recreate`).
+
 ## 4.0.0 — 2026-11-22
 
 The v4 AI research assistant: a grounded desk over this instance's own corpus,
