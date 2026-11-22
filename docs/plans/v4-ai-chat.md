@@ -252,14 +252,14 @@ tag, image and deploy landed in `Release 4.0.0`, tagged `v4.0.0` and published a
 **Env names reconciled to the code.** The names this section originally planned were superseded
 during P1–P3; the deployed variables are the ones in `.env.example`, and these are the mappings:
 
-| Planned here              | Shipped in the code        | Default                           |
-| ------------------------- | -------------------------- | --------------------------------- |
-| `AI_FEATURE_ENABLED`      | `AI_ENABLED`               | `false`                           |
-| `OPENCODE_API_KEY`        | `AI_API_KEY`               | unset                             |
-| `AI_MAX_TOKENS`           | — (constant, not env)      | `1024`, floor `512`               |
-| `AI_SESSION_TOKEN_BUDGET` | `AI_SESSION_BUDGET_TOKENS` | `60000`                           |
-| `AI_DAILY_BUDGET_USD`     | `AI_DAILY_BUDGET_USD`      | `5` (was planned as `1.00`)       |
-| `AI_REQUEST_TIMEOUT_MS`   | `AI_REQUEST_TIMEOUT_MS`    | `45000` (was planned as `120000`) |
+| Planned here              | Shipped in the code        | Default                            |
+| ------------------------- | -------------------------- | ---------------------------------- |
+| `AI_FEATURE_ENABLED`      | `AI_ENABLED`               | `false`                            |
+| `OPENCODE_API_KEY`        | `AI_API_KEY`               | unset                              |
+| `AI_MAX_TOKENS`           | `AI_MAX_ANSWER_TOKENS`     | `4096` for the answer, floor `512` |
+| `AI_SESSION_TOKEN_BUDGET` | `AI_SESSION_BUDGET_TOKENS` | `60000`                            |
+| `AI_DAILY_BUDGET_USD`     | `AI_DAILY_BUDGET_USD`      | `5` (was planned as `1.00`)        |
+| `AI_REQUEST_TIMEOUT_MS`   | `AI_REQUEST_TIMEOUT_MS`    | `45000` (was planned as `120000`)  |
 
 `AI_BASE_URL`, `AI_MODEL`, `AI_WEB_FETCH_ENABLED`, `AI_MAX_TURNS` kept their planned names;
 `AI_MAX_INPUT_CHARS` and `AI_STREAM_IDLE_TIMEOUT_MS` were added and were not in the plan. The route
@@ -272,7 +272,11 @@ Config, all in `.env.example`: `AI_ENABLED` (`false`), `AI_API_KEY` (unset ⇒ d
 `AI_BASE_URL`, `AI_MODEL` (`deepseek-v4.1-flash`), `AI_WEB_FETCH_ENABLED` (`false`),
 `AI_SESSION_BUDGET_TOKENS` (`60000`), `AI_DAILY_BUDGET_USD` (`5`), `AI_MAX_TURNS` (`12`),
 `AI_MAX_INPUT_CHARS` (`2000`), `AI_REQUEST_TIMEOUT_MS` (`45000`), `AI_STREAM_IDLE_TIMEOUT_MS`
-(`20000`). `max_tokens` is a constant (`AI_MAX_TOKENS_DEFAULT` = 1024, floor 512), not a variable.
+(`20000`), `AI_MAX_ANSWER_TOKENS` (`4096`). Two completion budgets are in play: a
+tool-discovery round is a constant (`AI_MAX_TOKENS_DEFAULT` = 1024), the round that writes the
+answer takes `AI_MAX_ANSWER_TOKENS` (4096, floor 512). The single 1024 cap the plan assumed cut
+the first live table answer (`Which KEV entries are due in the next 30 days?`) mid-table and
+surfaced as `AI_TRUNCATED`, so the answer budget is a variable now, not a constant.
 
 **One migration is needed.** `011_ai_usage` adds one table — `day` (UTC `YYYY-MM-DD`, unique) plus
 `requests`, `prompt_tokens`, `completion_tokens`, `reasoning_tokens`, `cache_read_tokens`,

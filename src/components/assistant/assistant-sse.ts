@@ -22,7 +22,7 @@ import type { AssistantEvent } from "@/lib/ai/turn";
 const CRLF = /\r\n/g;
 
 /** Payloads the desk acts on. Anything else is not part of the contract. */
-const EVENT_TYPES = ["tool", "delta", "citations", "unverified", "done", "error"] as const;
+const EVENT_TYPES = ["tool", "delta", "retry", "citations", "unverified", "done", "error"] as const;
 
 export interface AssistantSseParser {
   /** Feeds one decoded chunk; returns every frame that is now complete. */

@@ -203,6 +203,13 @@ export function AssistantDesk({
         updateTurn(id, (turn) => ({ ...turn, answer: turn.answer + event.text }));
         return;
       }
+      if (event.type === "retry") {
+        // The server re-ran a round that hit its completion cap with nothing to
+        // show. That is not a fault and needs no copy: the retried round's own
+        // deltas or error arrive next, and inventing a "retrying…" line would
+        // narrate plumbing the reader did not ask about.
+        return;
+      }
       if (event.type === "citations") {
         const records = Array.isArray(event.records) ? event.records : [];
         updateTurn(id, (turn) => ({ ...turn, citations: records }));

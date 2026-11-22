@@ -28,8 +28,21 @@ export const AI_MODEL_DEFAULT = "deepseek-v4.1-flash";
  */
 export const AI_MAX_TOKENS_FLOOR = 512;
 
-/** Budget for a turn that cites records, matching the plan's default. */
+/**
+ * Budget for a tool-discovery round. Those rounds mostly emit a tool call, so
+ * the 1024 the plan chose is enough; prose is not what they write.
+ */
 export const AI_MAX_TOKENS_DEFAULT = 1024;
+
+/**
+ * Budget for the round that writes the answer.
+ *
+ * A table is prose: the first live question (`Which KEV entries are due in the
+ * next 30 days?`) came back as ~25 rows, and the 1024 cap cut it mid-table with
+ * `finish_reason: "length"`. 4096 leaves room for a paced table plus the
+ * mandatory tool line, and is the value `AI_MAX_ANSWER_TOKENS` overrides.
+ */
+export const AI_MAX_ANSWER_TOKENS_DEFAULT = 4096;
 
 export type AiDisabledReason = "off" | "no-key" | "over-budget" | "invalid-config";
 
@@ -44,6 +57,8 @@ export interface AiConfig {
   readonly dailyBudgetUsd: number;
   readonly maxTurns: number;
   readonly maxInputChars: number;
+  /** Completion budget for the round that writes the answer, not a tool round. */
+  readonly maxAnswerTokens: number;
   readonly requestTimeoutMs: number;
   /** Gap with no SSE bytes before a streamed round is aborted as `AI_TIMEOUT`. */
   readonly streamIdleTimeoutMs: number;
@@ -142,6 +157,15 @@ export function loadAiConfig(env: Env = process.env): AiConfig {
     dailyBudgetUsd: parseUsd(env, "AI_DAILY_BUDGET_USD", 5),
     maxTurns: parseInteger(env, "AI_MAX_TURNS", 12, 1),
     maxInputChars: parseInteger(env, "AI_MAX_INPUT_CHARS", 2000, 1),
+    // Answer prose needs more room than a tool call does, and a table needs the
+    // most. The 512 floor still applies: below it the reasoning model returns
+    // empty content with `finish_reason: "length"`.
+    maxAnswerTokens: parseInteger(
+      env,
+      "AI_MAX_ANSWER_TOKENS",
+      AI_MAX_ANSWER_TOKENS_DEFAULT,
+      AI_MAX_TOKENS_FLOOR,
+    ),
     // The gateway is a reasoning model behind a remote proxy: a turn that
     // cannot answer in 45 s is a failure the UI should name, not a hang.
     requestTimeoutMs: parseInteger(env, "AI_REQUEST_TIMEOUT_MS", 45_000, 1000),

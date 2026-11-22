@@ -60,6 +60,7 @@ function makeConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     dailyBudgetUsd: 5,
     maxTurns: 12,
     maxInputChars: 2000,
+    maxAnswerTokens: 4096,
     requestTimeoutMs: 45_000,
     streamIdleTimeoutMs: 20_000,
     ...overrides,
@@ -539,5 +540,128 @@ describe("streaming turn: usage, truncation and failures", () => {
     expect(errorCodes(events)).toEqual(["AI_UPSTREAM_ERROR"]);
     expect(recorded).toHaveLength(1);
     expect(recorded[0]).toMatchObject({ promptTokens: 120, reasoningTokens: 17 });
+  });
+});
+
+// The completion budget, per round.
+//
+// The first live question (`Which KEV entries are due in the next 30 days?`)
+// came back as a table of ~25 rows and the 1024 cap cut it, surfacing as
+// `AI_TRUNCATED`. The fix is two budgets, not one: a tool-discovery round keeps
+// 1024 because its completion is a call, and the round that writes the answer
+// gets `AI_MAX_ANSWER_TOKENS` (4096 by default). These tests assert the wire
+// body, because that is the only place a budget is real.
+describe("streaming turn: completion budget per round", () => {
+  const CUT = [stopFrame("length"), frame(USAGE_FRAME), DONE].join("");
+
+  /** Serves one canned SSE body per request, in order, recording each body sent. */
+  function scripted(bodies: readonly string[]): {
+    transport: AiTransport;
+    sent: Record<string, unknown>[];
+  } {
+    const sent: Record<string, unknown>[] = [];
+    let index = 0;
+    const transport: AiTransport = async (request) => {
+      sent.push(JSON.parse(request.body) as Record<string, unknown>);
+      const body = bodies[index] ?? "";
+      index += 1;
+      return { status: 200, body: "", stream: streamOf([new TextEncoder().encode(body)]) };
+    };
+    return { transport, sent };
+  }
+
+  function answerBody(text: string): string {
+    return [contentFrame(text), stopFrame("stop"), frame(USAGE_FRAME), DONE].join("");
+  }
+
+  /** One tool round: a call the loop can execute (and fail) without a database. */
+  function toolCallBody(): string {
+    return [
+      frame({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "get_cve", arguments: '{"id":42}' },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      stopFrame("tool_calls"),
+      frame(USAGE_FRAME),
+      DONE,
+    ].join("");
+  }
+
+  function maxTokensOf(sent: readonly Record<string, unknown>[]): unknown[] {
+    return sent.map((body) => body["max_tokens"]);
+  }
+
+  it("asks the first (tool) round for 1024 and reports AI_TRUNCATED when it is cut", async () => {
+    const { transport, sent } = scripted([
+      [contentFrame("The first rows are"), stopFrame("length"), frame(USAGE_FRAME), DONE].join(""),
+    ]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024]);
+    // A round that produced prose was genuinely cut, so there is nothing to
+    // retry: the turn says so and asks for a narrower question.
+    expect(events.map((event) => event.type)).toEqual(["delta", "error"]);
+    expect(errorCodes(events)).toEqual(["AI_TRUNCATED"]);
+    expect(events.some((event) => event.type === "retry")).toBe(false);
+  });
+
+  it("asks the round that writes the answer for the answer budget", async () => {
+    const { transport, sent } = scripted([toolCallBody(), answerBody("One record matched.")]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.map((event) => event.type)).toEqual(["tool", "delta", "citations", "done"]);
+  });
+
+  it("takes the answer budget from AI_MAX_ANSWER_TOKENS", async () => {
+    const { transport, sent } = scripted([toolCallBody(), answerBody("One record matched.")]);
+    await runTurn(transport, { maxAnswerTokens: 6144 });
+
+    expect(maxTokensOf(sent)).toEqual([1024, 6144]);
+  });
+
+  it("retries an empty truncated round exactly once at the answer budget", async () => {
+    const { transport, sent } = scripted([CUT, answerBody("Twelve of twenty-five rows shown.")]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    // The escalation is stated in the stream rather than charged silently.
+    expect(events.map((event) => event.type)).toEqual(["retry", "delta", "citations", "done"]);
+    const retries = events.filter((event) => event.type === "retry");
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({ code: "AI_TRUNCATED", maxTokens: 4096 });
+  });
+
+  it("stops after one retry when the higher budget truncates too", async () => {
+    const { transport, sent } = scripted([CUT, CUT]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.filter((event) => event.type === "retry")).toHaveLength(1);
+    expect(errorCodes(events)).toEqual(["AI_TRUNCATED"]);
+  });
+
+  it("does not retry a truncated round that already used the answer budget", async () => {
+    const { transport, sent } = scripted([
+      toolCallBody(),
+      [contentFrame("partial table"), stopFrame("length"), frame(USAGE_FRAME), DONE].join(""),
+    ]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.some((event) => event.type === "retry")).toBe(false);
+    expect(errorCodes(events)).toEqual(["AI_TRUNCATED"]);
   });
 });

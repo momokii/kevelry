@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AI_BASE_URL_DEFAULT,
+  AI_MAX_ANSWER_TOKENS_DEFAULT,
   AI_MAX_TOKENS_FLOOR,
   AiConfigError,
   aiEnabled,
@@ -22,6 +23,8 @@ describe("loadAiConfig", () => {
     expect(config.dailyBudgetUsd).toBe(5);
     expect(config.maxTurns).toBe(12);
     expect(config.maxInputChars).toBe(2000);
+    expect(config.maxAnswerTokens).toBe(4096);
+    expect(AI_MAX_ANSWER_TOKENS_DEFAULT).toBe(4096);
     expect(config.requestTimeoutMs).toBe(45_000);
     expect(config.streamIdleTimeoutMs).toBe(20_000);
     expect(AI_MAX_TOKENS_FLOOR).toBe(512);
@@ -57,6 +60,21 @@ describe("loadAiConfig", () => {
   it("refuses a malformed token budget instead of silently defaulting", () => {
     expect(() => loadAiConfig({ AI_SESSION_BUDGET_TOKENS: "lots" })).toThrowError(
       /AI_SESSION_BUDGET_TOKENS/,
+    );
+  });
+
+  it("overrides the answer budget from the environment and keeps the 512 floor", () => {
+    expect(loadAiConfig({ AI_MAX_ANSWER_TOKENS: "6144" }).maxAnswerTokens).toBe(6144);
+    expect(
+      loadAiConfig({ AI_MAX_ANSWER_TOKENS: String(AI_MAX_TOKENS_FLOOR) }).maxAnswerTokens,
+    ).toBe(AI_MAX_TOKENS_FLOOR);
+    // A cap under the reasoning floor truncates to empty content, so it is a
+    // configuration bug rather than a cheaper answer.
+    expect(() => loadAiConfig({ AI_MAX_ANSWER_TOKENS: "256" })).toThrowError(
+      /AI_MAX_ANSWER_TOKENS/,
+    );
+    expect(() => loadAiConfig({ AI_MAX_ANSWER_TOKENS: "plenty" })).toThrowError(
+      /AI_MAX_ANSWER_TOKENS/,
     );
   });
 

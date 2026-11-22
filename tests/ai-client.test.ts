@@ -26,6 +26,7 @@ function makeConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     dailyBudgetUsd: 5,
     maxTurns: 12,
     maxInputChars: 2000,
+    maxAnswerTokens: 4096,
     requestTimeoutMs: 45_000,
     streamIdleTimeoutMs: 20_000,
     ...overrides,

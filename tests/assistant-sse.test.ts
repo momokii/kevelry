@@ -107,6 +107,7 @@ describe("assistant SSE parser: event validation", () => {
         ids: ["CVE-2099-0001"],
       },
       { type: "delta", text: "text" },
+      { type: "retry", code: "AI_TRUNCATED", maxTokens: 4096 },
       { type: "citations", records: ["CVE-2099-0001"] },
       { type: "unverified", ids: ["CVE-2099-9999"] },
       {

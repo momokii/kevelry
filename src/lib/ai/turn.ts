@@ -11,6 +11,10 @@
 //              terminal `citations` event is the whole turn and cannot be
 //              attributed back to one call.
 //   delta      assistant text, in arrival order.
+//   retry      a round ended on its completion cap with no text and no tool
+//              calls, so it is re-run once at the answer budget. Emitted before
+//              the second attempt, so the stream states the escalation instead
+//              of silently billing a second round.
 //   citations  ids the *server* read from tool payloads this turn — never ids
 //              the model claimed. A model-hallucinated id cannot become a chip.
 //   unverified ids the *prose* named that no tool payload contained. Emitted
@@ -34,7 +38,7 @@ import type {
   ChatStreamResult,
   ChatToolCall,
 } from "./client";
-import type { AiConfig } from "./config";
+import { AI_MAX_TOKENS_DEFAULT, type AiConfig } from "./config";
 import { renderRecordContext, renderSystemPrompt, renderVisionInstruction } from "./prompt";
 import { executeTool, toolDefinitions, type ToolContext, type ToolOutcome } from "./tools";
 import type { AiUsage, AiUsageLedger } from "./usage";
@@ -97,6 +101,13 @@ export type AssistantEvent =
       ids: string[];
     }
   | { type: "delta"; text: string }
+  | {
+      type: "retry";
+      /** The round that is being re-run was cut by its completion cap. */
+      code: "AI_TRUNCATED";
+      /** Completion budget the retried round is given. */
+      maxTokens: number;
+    }
   | { type: "citations"; records: string[] }
   | { type: "unverified"; ids: string[] }
   | {
@@ -322,6 +333,8 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   let usageSeen = false;
   let rounds = 0;
   let answered = false;
+  /** One empty truncated round may be re-run at the answer budget, never two. */
+  let retriedTruncatedRound = false;
   let activeStream: ChatStreamReader | null = null;
 
   const toolCtx: ToolContext = {
@@ -332,6 +345,8 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   };
   const tools = toolDefinitions(input.config.webFetchEnabled);
   const conversation = buildConversation(input);
+  // The answer round gets the larger budget; a tool round does not need it.
+  const answerMaxTokens = Math.max(1, Math.trunc(input.config.maxAnswerTokens));
 
   /**
    * The terminal frames. `citations` stays the tool-backed set, unchanged; the
@@ -375,9 +390,15 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         return;
       }
 
+      // Round one is tool discovery: the prompt requires a call before any
+      // claim, so its completion is a call and 1024 tokens cover it. From then
+      // on the model is writing prose, and a table needs the larger budget.
+      const roundMaxTokens =
+        rounds === 0 && !retriedTruncatedRound ? AI_MAX_TOKENS_DEFAULT : answerMaxTokens;
       const completion = input.client.streamChatCompletion({
         messages: conversation,
         tools,
+        maxTokens: roundMaxTokens,
         timeoutMs: remaining,
         signal: input.signal,
       });
@@ -415,6 +436,17 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       }
 
       if (round.finishReason === "length") {
+        // A round that produced nothing — no tool call, no text — is the cap
+        // being too small for the reasoning preamble, not an answer that was
+        // cut. Re-run that round once at the answer budget, and say so in the
+        // stream. Bounded by the flag: a provider that truncates twice still
+        // ends with an honest error rather than a retry loop.
+        const silent = round.toolCalls.length === 0 && (round.content ?? "").trim() === "";
+        if (silent && !retriedTruncatedRound && roundMaxTokens < answerMaxTokens) {
+          retriedTruncatedRound = true;
+          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens };
+          continue;
+        }
         yield {
           type: "error",
           code: "AI_TRUNCATED",
