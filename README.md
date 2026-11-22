@@ -487,6 +487,10 @@ Backup: follow [`docs/backup-runbook.md`](docs/backup-runbook.md) for backup,
 restore, and upgrade. `scripts/nightly-backup.sh` verifies twice — the image before
 compression inside the container, then the stored gzip artifact — and refuses a
 backup root that is empty, relative, `/`, or shallower than two path components.
+Off-site copies are deliberately **not** automated here (backups share a disk with
+the database); the runbook's "Off-site copy is not included" section has the
+`rsync` command to run or cron, and `scripts/backup-check.sh` is the 03:00 check
+that makes a missed or corrupt night loud.
 
 Repairing severity data: volumes populated before the importer wrote CVSS metrics
 show empty severity filters and "new critical" lists. Repair in place with

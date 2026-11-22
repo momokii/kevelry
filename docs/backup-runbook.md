@@ -164,6 +164,30 @@ compression runs with `gzip -f` inside a throwaway staging directory.
 A refusal (`refusing: generation <date> is already verified … pass --force`) also
 exits `2` and touches nothing; it is the guard, not a failure.
 
+### Freshness check (03:00, after the backup window)
+
+`scripts/backup-check.sh` asserts the outcome from outside the backup script, so a
+night when cron never ran — or a run that failed with nobody reading the log —
+is not silent. Install it beside the backup job:
+
+```bash
+(crontab -l 2>/dev/null; echo "0 3 * * * <repo>/scripts/backup-check.sh >> ~/cve-backups/check.log 2>&1") | crontab -
+```
+
+It exits `0` healthy, `1` unhealthy, `2` usage/config error — the same contract as
+`scripts/health-watch.sh`, so one external monitor can watch both — and prints one
+`PASS`/`FAIL` line per assertion plus a verdict, each line timestamped for
+`check.log`: the newest `backup-done` marker is at most 36 h old (one missed night
+is tolerated, two are not); the archive beside it is non-empty and its gzip sha256
+and byte count match that marker, with a `manifest.json` carrying a `dbSha256`
+entry (`--deep` additionally streams the archive through `gzip -dc | sha256sum`
+and compares that to the manifest); no generation holds a raw uncompressed
+`cve-backup.db`; and the newest verified generation is still inside the retention
+window. It reads the backup root and nothing else — no Docker, no network, no
+writes. `BACKUP_ROOT`, `MAX_AGE_HOURS` and `RETAIN_DAYS` override the defaults,
+which is how the failure path is exercised against a throwaway root instead of the
+real backups.
+
 **Verifying a stored backup.** Any generation can be re-checked without touching
 the backup volume, using the same check the nightly run applies:
 
@@ -196,6 +220,41 @@ be a broad system delete. It also re-checks that the root still exists and is a
 directory immediately before pruning, and skips pruning entirely when either
 verification failed. `--verify <dir>` is exempt from the root guard because it
 never prunes: it only reads one existing directory.
+
+## Off-site copy is not included
+
+Every generation lives under `~/cve-backups/`, on the same NVMe as the database
+volume (183 GB free, one failure domain): losing that disk loses the live
+database and every backup of it at the same moment, and no local check can see
+that coming.
+
+Nothing in this repo copies backups off the host. The target is the operator's
+decision — a NAS, a second machine, object storage — and so is running it:
+
+```bash
+# Manual, or from cron. -a keeps timestamps and the backup-done marker intact.
+rsync -a --delete ~/cve-backups/ user@host:/path/backups/
+```
+
+Only the newest _verified_ generation is strictly needed to restore; the older
+ones are retention, not redundancy, so mirroring one generation is enough and
+costs one ~615 MB transfer instead of seven:
+
+```bash
+rsync -a ~/cve-backups/$(date -u +%F)/ user@host:/path/backups/current/
+```
+
+`--delete` keeps the mirror equal to the source, which also propagates an
+accidental prune — drop it, or write to a versioned bucket, if the off-site copy
+is meant to outlive a mistake on the host. Copy the newest generation first when
+the source disk is already gone; that is the one the restore needs.
+
+**Why this repo does not ship it:** off-site replication means credentials, a
+provider and a retention policy, and guessing any of them would either fail
+silently in cron or put backup credentials on the same disk as the data they are
+supposed to survive. `scripts/backup-check.sh` therefore checks only what it can
+observe locally — marker, archive, hash, retention — and off-site status stays
+the operator's responsibility. That gap is deliberate and open.
 
 ## Compatibility policy
 

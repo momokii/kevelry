@@ -27,6 +27,18 @@ contract change, no version bump.
   failure works and the scheduled run still takes a fresh dump; a past date that
   already verifies is refused unless `--force`, and `--date YYYY-MM-DD` selects
   the date to rebuild (the failure is normally found after the date rolled over).
+- **A failed or missing backup is now detected instead of trusted.** The nightly
+  script only ever spoke through `backup-cron.log` and a non-zero exit, so a
+  night when cron never ran — or 2026-11-21's aborted run — stayed invisible
+  until someone read the log a day later. `scripts/backup-check.sh` (cron
+  `0 3 * * *`, appending to `~/cve-backups/check.log`) asserts the outcome from
+  outside: the newest `backup-done` marker is within 36 h, its archive is
+  non-empty and its gzip SHA-256 and byte count match that marker (with a
+  `manifest.json` carrying a `dbSha256`; `--deep` also streams `gzip -dc |
+sha256sum` against it), no generation holds a raw uncompressed `cve-backup.db`,
+  and the newest verified generation is still inside the retention window. One
+  timestamped `PASS`/`FAIL` line per assertion plus a verdict, exit `0`/`1`/`2`
+  on the same contract as `scripts/health-watch.sh`, no Docker and no network.
 
 ### Changed
 
@@ -41,6 +53,13 @@ contract change, no version bump.
   plus a 0-byte `/data/cve-radar.sqlite` in the data volume were deleted after
   checking that no code path references them. The `cve-repo` and
   `vulnrichment-repo` git feeds in `/data` are untouched.
+- **The off-site gap is documented, not papered over.** Backups live on the same
+  NVMe as the database, so disk loss takes both. `docs/backup-runbook.md` now has
+  an "Off-site copy is not included" section with the `rsync -a --delete
+~/cve-backups/ user@host:/path/backups/` command an operator can run or cron,
+  the note that only the newest verified generation is strictly needed, and the
+  reason this repo does not ship replication (no credentials, no provider
+  assumptions, operator choice).
 
 ## 3.2.1 — 2026-11-22
 
