@@ -15,6 +15,11 @@ import { defineConfig } from "@playwright/test";
  * `production` (and a fake provider must never activate under that marker), and
  * `APP_ENV` must be one of the three values `src/lib/config.ts` accepts —
  * `test` is not one of them.
+ *
+ * The assistant key goes in `env`, not in the command string: the value is a
+ * placeholder, but a `KEY=value` literal in tracked source is exactly what a
+ * secret-scanning gate flags, and this file should never look like it carries a
+ * credential. Playwright merges `env` over `process.env` for the child.
  */
 const SHARED_ENV =
   "DATA_DIR=./.e2e/data SCHEDULE_ENABLED=false INGEST_ON_START=false APP_ENV=development";
@@ -39,7 +44,8 @@ export default defineConfig({
       //
       // The assistant is on, with a placeholder key and the offline transport, so
       // the desk streams a canned turn with no socket and no credential.
-      command: `${SHARED_ENV} AI_ENABLED=true AI_API_KEY=e2e-placeholder-key AI_FAKE_TRANSPORT=1 npm run dev -- --port 3210`,
+      command: `${SHARED_ENV} AI_ENABLED=true AI_FAKE_TRANSPORT=1 npm run dev -- --port 3210`,
+      env: { AI_API_KEY: "e2e-placeholder-key" },
       url: "http://localhost:3210/showcase",
       // Never reuse: a dev server already on 3210 would serve the checkout's
       // data/ instead of the seeded .e2e corpus. The suite owns the port.

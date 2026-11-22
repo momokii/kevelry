@@ -3,11 +3,28 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
-## Unreleased
+## 4.0.0 — 2026-11-22
 
 The v4 AI research assistant: a grounded desk over this instance's own corpus,
-off by default and outside the versioned read contract. Documentation and
-screenshots only in this entry's commit — no version bump, no tag, no deploy.
+off by default and outside the versioned read contract. Everything below ships
+in this image — the feature is **built and deployed, not enabled by default**,
+and it has no effect on an instance that does not set `AI_ENABLED=true`.
+
+### Upgrade notes
+
+- **Migration 011 (`ai_usage`) runs automatically** on the next boot, against an
+  existing volume, with no manual step. Additive: one aggregate row per UTC day,
+  no backfill, no fact-table change, no read-contract change.
+- **The assistant is off unless `AI_ENABLED=true` and a gateway key is present.**
+  `AI_API_KEY` is read from the runtime environment only. Without both, the
+  `/assistant` page renders the reason and the variable to set; it never renders
+  a composer that would fail on submit.
+- **`POST /api/assistant/chat` is new but outside the v1 contract.** `/api/v1`
+  stays `GET`-only and read-only; no existing endpoint, response shape or status
+  code changed. There is no breaking change to upgrade past.
+- **Outbound fetch is opt-in.** The `fetch_authoritative` tool is absent from the
+  tool list unless `AI_WEB_FETCH_ENABLED=true`, and even then it is limited to an
+  allowlist of vulnerability authorities.
 
 ### Added
 
@@ -63,8 +80,13 @@ screenshots only in this entry's commit — no version bump, no tag, no deploy.
 
 ### Verified
 
-- `966` unit tests passing with `3` skipped (the network-gated live smokes), and
-  `151` Playwright browser tests passing.
+- `975` unit tests passing with `3` skipped (the network-gated live smokes), and
+  `152` Playwright browser tests passing. Lint, typecheck, build and
+  `npm audit --omit=dev` (0 vulnerabilities) clean.
+- Released as image `kelanach/kevelry:4.0.0` (`latest` points at it) and verified
+  live: two real turns on `/assistant` against the gateway, the spend ledger
+  written for the day, and `/api/v1/health` reporting schema 11 with four fresh
+  sources.
 
 ## 3.2.3 — 2026-11-22
 

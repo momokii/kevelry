@@ -17,19 +17,14 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `3.2.3` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `3.2.2` (2026-11-22), `3.2.1` (2026-11-22), `3.2.0`
-> (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain available as
-> previous releases. The `3.2.3` entry in [CHANGELOG.md](CHANGELOG.md) lists what
-> changed and the upgrade notes — no migration, no API change. It builds on the
-> `3.2.2` schema **migration 010**, which widens the `sync_runs` status CHECK to
-> allow `interrupted` (schema max version 010); it runs automatically on boot
-> against an existing volume, with no manual step.
->
-> **The v4 assistant documented below is on `main`, not in a published image**
-> (documented 2026-11-22). It is off unless an operator sets `AI_ENABLED=true`
-> and a gateway key, and it needs **migration 011** (`ai_usage`) on the next
-> upgrade.
+> **Status:** `4.0.0` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
+> available as previous releases. The `4.0.0` entry in [CHANGELOG.md](CHANGELOG.md)
+> lists the v4 assistant and its upgrade notes — **migration 011** (`ai_usage`)
+> runs automatically on boot against an existing volume, no manual step, and no
+> `/api/v1` route or response shape changed. The assistant is off on this image
+> unless the operator sets `AI_ENABLED=true` and supplies a gateway key.
 
 ## What v4 adds
 
@@ -199,7 +194,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:3.2.3
+  docker.io/kelanach/kevelry:4.0.0
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -481,7 +476,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:3.2.3 \
+  --image docker.io/kelanach/kevelry:4.0.0 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -690,8 +685,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 966 passing, 3 skipped (network-gated)
-npx playwright test     # browser suite: 151 passing, 0 skipped
+npm test                # vitest: 975 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 152 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
 

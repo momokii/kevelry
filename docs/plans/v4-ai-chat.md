@@ -1,7 +1,8 @@
 # v4 AI Research Assistant — Plan
 
-**Target release:** 4.0.0 · **Status:** P1–P4 shipped on `main`; P5 (these docs and the
-release) pending · **Scope:** one grounded assistant over this
+**Target release:** 4.0.0 · **Status:** P1–P5 shipped; **4.0.0 released** (tag `v4.0.0`,
+image `kelanach/kevelry:4.0.0`, `latest` pointing at it, deployed and verified live)
+· **Scope:** one grounded assistant over this
 app's own data; one POST surface, one additive migration, one rail destination. Probe facts,
 endpoint, the mandatory `x-opencode-session` header and the `max_tokens` floor:
 `docs/research/v4-ai-chat.md`.
@@ -227,9 +228,11 @@ count — §4 says seven destinations, the rail ships ten with `Ask`); `CONTEXT.
 `CHANGELOG.md`; version `4.0.0`; screenshots; tag; image; deploy. **Accept:** `format:check` clean,
 `.env.example` covers every variable a `process.env` grep finds, the spec validates, and a live turn
 cites a record that resolves in `/explore?q=<id>`.
-**Commit:** `docs: document the assistant and release 4.0.0` · **Status:** pending — documentation
+**Commit:** `docs: document the assistant and release 4.0.0` · **Status:** done — documentation
 and screenshots landed in `docs: document the v4 assistant and its grounding`; the version bump,
-tag, image and deploy are not part of that change.
+tag, image and deploy landed in `Release 4.0.0`, tagged `v4.0.0` and published as
+`kelanach/kevelry:4.0.0` (`latest` repointed) with the deploy recreated and verified live
+(two real turns, ledger written, schema 11).
 
 ## 7. Risks
 

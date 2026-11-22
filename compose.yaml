@@ -47,6 +47,18 @@ services:
       # EPSS history window in UTC days (30-3650). Bounds the only table that
       # grows with time; see src/lib/retention.ts.
       EPSS_RETENTION_DAYS: ${EPSS_RETENTION_DAYS:-45}
+      # AI research assistant (v4). Fail-closed: `AI_ENABLED=false` unless the
+      # host's `.env` says otherwise, and the feature still needs a key. Values
+      # come from the host `.env` (gitignored) at `up` time — never baked into
+      # the image and never written into this file. Omit `AI_API_KEY` on a host
+      # without one and the desk renders its honest disabled state.
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://opencode.ai/inference/go/openai/v1}
+      AI_MODEL: ${AI_MODEL:-deepseek-v4.1-flash}
+      AI_WEB_FETCH_ENABLED: ${AI_WEB_FETCH_ENABLED:-false}
+      AI_DAILY_BUDGET_USD: ${AI_DAILY_BUDGET_USD:-5}
+      AI_SESSION_BUDGET_TOKENS: ${AI_SESSION_BUDGET_TOKENS:-60000}
     ports:
       # Loopback-bound by default. Host side honors $BIND_ADDR (default
       # 127.0.0.1) and $PORT (default 3000); the container always listens
