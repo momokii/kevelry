@@ -3,6 +3,51 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 3.2.1 — 2026-11-22
+
+Performance and cold start. No new product surface, no schema migration, no API
+contract change.
+
+### Performance
+
+- **The ranked priority views no longer regroup 10M EPSS rows or sort 410k rows per
+  request.** `getHighestForecast` and `getRisingForecast` opened with a
+  `GROUP BY cve_id` over the whole `epss_daily` table and joined it back, so every
+  request built a temp B-tree over 10,051,241 rows before sorting ~410k
+  candidates. The score date's model version is now resolved once (a covering key
+  scan, ~53 ms) and joined as `(score_date, model_version)`; a date that mixes
+  versions returns null and falls back to the per-CVE regroup verbatim, so ranking
+  cannot change. Rising candidates are selected in SQL and only the returned rows
+  are hydrated, instead of building four full-corpus maps. Both views read the
+  head the aggregate refresh already stores and re-read every displayed value
+  live. Measured warm on the live corpus: `?view=highest-forecast` 1.7 s → ~0.14 s,
+  `?view=rising-forecast` 2.6 s → ~0.13 s, and the rendered row order is proven
+  byte-identical to 3.2.0 by a test that compares the full ordered output of both
+  paths.
+
+### Fixed
+
+- **Cold start no longer costs a 20-second first request.** The aggregate read
+  model is warmed by the entrypoint (`WARM_AGGREGATES_ONCE=true`, ensure-semantics:
+  refresh only when not current) before the port opens, so the first request reads
+  the cache instead of falling back to full-corpus live queries under import
+  contention. The first response after `up -d --force-recreate` was 20.6 s, now
+  ~1.5 s. While that build runs `/api/v1/health` reports `warming` rather than
+  publishing stale aggregate numbers.
+
+### Upgrade notes
+
+- **No database migration.** The schema stays at 009; an existing volume needs no
+  action and the upgrade is a container replacement.
+- **No API contract change.** Every route under `/api/v1` keeps the shape it had in
+  3.2.0; the 3.2.1 entries are latency and cold-start behavior.
+- **`AGGREGATE_VERSION` is unchanged**, so 3.2.1 does not invalidate the aggregate
+  cache on its own. The warm-up at boot is an ensure, not a forced rebuild: a
+  current snapshot is left alone.
+- **Freshness semantics are unchanged from 3.2.0.** A cached snapshot whose
+  revision predates the acceptance ledger is still treated as absent and recomputed
+  live; `/api/v1/health` still reports `initializing`, `warming`, or `ok`.
+
 ## 3.2.0 — 2026-11-21
 
 The v3 wrap-up: correctness first, then structure and hardening. No new product
