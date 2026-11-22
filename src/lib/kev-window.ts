@@ -93,3 +93,27 @@ export function readKevWindow(db: CveDatabase, query: KevWindowQuery): KevWindow
     })),
   };
 }
+
+/**
+ * Catalog due dates inside `[startDay, endDay]`, counted over the whole catalog.
+ *
+ * `readKevWindow` scopes its due counts to the additions of one window, which is
+ * the right denominator for "of this month's additions, how many are due" but
+ * the wrong one for "which deadlines fall in the next 30 days": that question is
+ * about the catalog, not about a publication cohort. A missing or malformed due
+ * date is ineligible here for the same reason it is ineligible everywhere else —
+ * absence is not a deadline.
+ */
+export function countKevDueBetween(
+  db: CveDatabase,
+  window: { startDay: string; endDay: string },
+): number {
+  const row = db.handle
+    .prepare(
+      "SELECT COUNT(*) AS n FROM kev_entries " +
+        "WHERE due_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' " +
+        "AND due_date >= ? AND due_date <= ?",
+    )
+    .get(window.startDay, window.endDay) as { n: number } | undefined;
+  return row?.n ?? 0;
+}

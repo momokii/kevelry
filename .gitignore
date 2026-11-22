@@ -54,6 +54,9 @@ Thumbs.db
 # ---------------------------------------------------------------------------
 node_modules/
 .next/
+# The browser suite's second dev server (AI_ENABLED=false) builds here so the
+# two compilers never share a directory; see playwright.config.ts.
+.next-ai-off/
 dist/
 next-env.d.ts
 coverage/

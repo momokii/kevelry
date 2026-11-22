@@ -18,6 +18,12 @@ const PAGE_SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // The browser suite runs two dev servers — one with the assistant enabled and
+  // one with it disabled — because the gate is read from the environment at
+  // boot. Two servers on one checkout must not share a build directory, so the
+  // directory is overridable; production leaves it at the default. Nothing else
+  // reads this variable.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   async headers() {
     return [
       {

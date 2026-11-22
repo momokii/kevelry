@@ -8,7 +8,16 @@ import prettier from "eslint-config-prettier";
 // Revisit once typescript-eslint publishes TypeScript 7 support.
 export default [
   {
-    ignores: [".next/**", "node_modules/**", "coverage/**", "playwright-report/**", "test-results/**"],
+    ignores: [
+      ".next/**",
+      // The browser suite's second dev server builds here (AI_ENABLED=false);
+      // generated output is never linted.
+      ".next-ai-off/**",
+      "node_modules/**",
+      "coverage/**",
+      "playwright-report/**",
+      "test-results/**",
+    ],
   },
   js.configs.recommended,
   prettier,

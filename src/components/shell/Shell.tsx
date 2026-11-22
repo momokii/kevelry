@@ -10,6 +10,7 @@ import { TimeZoneSelect } from "@/components/ledger/TimeZoneSelect";
 import {
   ActivityIcon,
   ApiIcon,
+  AskIcon,
   CloseIcon,
   CollapseIcon,
   ExpandIcon,
@@ -29,6 +30,7 @@ import {
 const NAV = [
   { href: "/", label: "Overview", icon: OverviewIcon },
   { href: "/explore", label: "Search", icon: SearchIcon },
+  { href: "/assistant", label: "Ask", icon: AskIcon },
   { href: "/priority", label: "Priority", icon: PriorityIcon, count: "6 views" },
   { href: "/radar", label: "Radar", icon: RadarIcon },
   { href: "/replay", label: "Replay", icon: ReplayIcon },
@@ -41,6 +43,7 @@ const NAV = [
 const MASTHEAD_IDS: Record<string, string> = {
   "/": "overview-masthead",
   "/explore": "explore-masthead",
+  "/assistant": "assistant-masthead",
   "/priority": "priority-masthead",
   "/radar": "radar-masthead",
   "/replay": "replay-masthead",

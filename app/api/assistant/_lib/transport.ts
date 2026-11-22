@@ -2,14 +2,20 @@
 //
 // `client.ts` already takes an `AiTransport`, but the route builds its client
 // per request, so the suite needs one place to substitute the socket for a
-// canned response. That place is here — a module-level override, resolved at
-// call time, and refused outright under `APP_ENV=production` so a misconfigured
+// canned response. That place is here — a module-level override for in-process
+// tests, plus `AI_FAKE_TRANSPORT=1` for the browser suite, resolved at call
+// time. Both refuse to activate under `APP_ENV=production`, so a misconfigured
 // deployment cannot be talked into pointing the assistant at a fake provider.
 //
-// Production never sets it: `resolveAssistantTransport()` returns the real
+// `AI_FAKE_TRANSPORT` is test-only and documented as such: it exists so
+// `tests/e2e/assistant.spec.ts` can stream a turn offline, and it is not a
+// configuration knob a deployment should ever set.
+//
+// Production never sets either: `resolveAssistantTransport()` returns the real
 // `fetchTransport`, which sends the bearer key and refuses redirects.
 
 import { fetchTransport, type AiTransport } from "../../../../src/lib/ai/client";
+import { createFakeAssistantTransport, fakeAssistantTransportEnabled } from "./fake-transport";
 
 let override: AiTransport | null = null;
 
@@ -26,5 +32,7 @@ export function setAssistantTransport(transport: AiTransport | null): void {
 
 /** The transport this process should use. */
 export function resolveAssistantTransport(): AiTransport {
-  return override ?? fetchTransport;
+  if (override !== null) return override;
+  if (fakeAssistantTransportEnabled()) return createFakeAssistantTransport();
+  return fetchTransport;
 }

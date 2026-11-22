@@ -86,6 +86,19 @@
   --ui-base: 180ms;
   --ui-slow: 260ms;
 
+  /* Assistant desk aliases. Each one is an assignment to a value that already
+     exists, so both themes get the right colour without a second palette:
+     --ui-ask-well  rgb(252,251,248) / rgb(44,42,37)  = --ui-surface-raised
+     --ui-cite      rgb(0,106,159)   / rgb(104,186,228) = --ui-accent
+     --ui-cite-bg   rgb(230,243,249) / rgb(20,48,62)  = --ui-accent-soft
+     --ui-untrusted rgb(142,104,0)   / rgb(222,176,66) = --ui-medium
+     --ui-ledger-ink rgb(132,129,123)/ rgb(138,134,125)= --ui-ink-3 */
+  --ui-ask-well: var(--ui-surface-raised);
+  --ui-cite: var(--ui-accent);
+  --ui-cite-bg: var(--ui-accent-soft);
+  --ui-untrusted: var(--ui-medium);
+  --ui-ledger-ink: var(--ui-ink-3);
+
   --ledger-canvas: var(--ui-paper);
   --ledger-surface: var(--ui-surface);
   --ledger-ink: var(--ui-ink);
@@ -900,7 +913,7 @@ a {
   text-decoration: none;
   cursor: pointer;
   transition:
-    background var(--ui-fast) ease-out,
+    background-color var(--ui-fast) ease-out,
     border-color var(--ui-fast) ease-out;
 }
 
@@ -5339,4 +5352,648 @@ a.badge {
 
 a.badge:hover {
   text-decoration: underline;
+}
+
+/* ---------- assistant desk ---------- */
+
+/* One sentence per tool call, the count that made a question offerable, and the
+   composer well. Everything here is quiet except the ledger, which is the proof
+   and therefore the only thing that may raise its voice. */
+.assistant-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.assistant-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ui-sp-3) var(--ui-sp-5);
+  padding-bottom: var(--ui-sp-5);
+  border-bottom: 1px solid var(--ui-rule);
+  margin-bottom: var(--ui-sp-6);
+}
+
+.assistant-head-main h1 {
+  margin: 0;
+  max-width: 22ch;
+}
+
+.assistant-asof {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ui-ink-3);
+  white-space: nowrap;
+}
+
+.assistant-desk {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--ui-sp-6);
+  align-items: start;
+}
+
+.assistant-main {
+  grid-column: span 8;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-5);
+}
+
+.assistant-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-8);
+}
+
+/* No bubbles and no speaker indent: the question is set tighter and quieter, the
+   answer is document text, and both start at the same x. */
+.assistant-question-label {
+  margin: 0 0 4px;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ui-ink-3);
+}
+
+.assistant-question {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  font-weight: 550;
+  max-width: 58ch;
+  overflow-wrap: break-word;
+}
+
+.assistant-answer {
+  margin-top: var(--ui-sp-3);
+  margin-left: calc(-1 * var(--ui-sp-5) - 1px);
+  padding-left: var(--ui-sp-5);
+  border-left: 1px solid var(--ui-rule);
+  min-width: 0;
+}
+
+.assistant-prose {
+  margin: 0;
+  font-size: 17.5px;
+  line-height: 1.62;
+  max-width: 72ch;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.assistant-prose.is-settled {
+  animation: assistant-settle 120ms ease-out both;
+}
+
+@keyframes assistant-settle {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The progress rule advances at tool boundaries and is replaced by the text:
+   it reports activity without promising a speed. */
+.assistant-progress {
+  width: 100%;
+  max-width: 240px;
+  height: 2px;
+  margin: 4px 0 0;
+  background: var(--ui-rule-soft);
+  overflow: hidden;
+}
+
+.assistant-progress > span {
+  display: block;
+  height: 2px;
+  background: var(--ui-ink-3);
+  transition: width var(--ui-fast) ease-out;
+}
+
+.assistant-activity {
+  margin: 0 0 2px;
+  font-family: var(--ui-font-mono);
+  font-size: 11.5px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-turn-note {
+  margin: var(--ui-sp-3) 0 0;
+  font-size: 13px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-citations {
+  margin-top: var(--ui-sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assistant-citations-label {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Chips wrap as whole ids and never break mid-record. */
+.assistant-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--ui-cite);
+  border-radius: 999px;
+  background: var(--ui-cite-bg);
+  color: var(--ui-cite);
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.assistant-chip:hover {
+  text-decoration: underline;
+}
+
+.assistant-empty-lede {
+  margin: 0;
+  color: var(--ui-ink-2);
+  font-size: 14.5px;
+}
+
+.assistant-empty-note {
+  margin: 0;
+  color: var(--ui-ink-2);
+  font-size: 14.5px;
+}
+
+.assistant-suggestions {
+  list-style: none;
+  margin: var(--ui-sp-5) 0 0;
+  padding: 0;
+}
+
+.assistant-suggestion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 8px 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--ui-rule-soft);
+  background: transparent;
+  color: var(--ui-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ui-fast) ease-out;
+}
+
+.assistant-suggestion:hover {
+  background: var(--ui-surface-raised);
+}
+
+.assistant-suggestion-question {
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.assistant-suggestions li:last-child .assistant-suggestion {
+  border-bottom: 0;
+}
+
+.assistant-suggestion-count {
+  font-family: var(--ui-font-mono);
+  font-size: 11.5px;
+  color: var(--ui-ink-3);
+}
+
+/* ---------- provenance ledger ---------- */
+
+.assistant-ledger {
+  grid-column: span 4;
+  position: sticky;
+  top: calc(var(--ui-topbar) + var(--ui-sp-4));
+  align-self: start;
+  max-height: calc(100vh - var(--ui-topbar) - var(--ui-sp-8));
+  overflow: auto;
+  padding-left: var(--ui-sp-5);
+  border-left: 1px solid var(--ui-rule);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-3);
+}
+
+/* The column has a title on a wide screen and a disclosure on a narrow one;
+   exactly one of the two is visible, so the label is never repeated. */
+.assistant-ledger-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ui-sp-2);
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.assistant-ledger-disclosure {
+  min-width: 0;
+}
+
+.assistant-ledger-summary {
+  display: none;
+}
+
+.assistant-ledger-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-3);
+}
+
+.assistant-ledger-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ui-ink-3);
+  max-width: 42ch;
+}
+
+.assistant-ledger-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-ledger-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-4);
+}
+
+.assistant-ledger-entry {
+  min-width: 0;
+  padding-bottom: var(--ui-sp-3);
+  border-bottom: 1px solid var(--ui-rule-soft);
+}
+
+.assistant-ledger-entry:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.assistant-ledger-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ui-sp-2);
+}
+
+.assistant-ledger-tool {
+  font-family: var(--ui-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ui-ink);
+  overflow-wrap: anywhere;
+}
+
+.assistant-ledger-rows {
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink);
+  white-space: nowrap;
+}
+
+.assistant-ledger-rows.is-failed {
+  color: var(--ui-ink-3);
+}
+
+.assistant-ledger-args {
+  margin: 3px 0 8px;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ui-ledger-ink);
+  overflow-wrap: anywhere;
+}
+
+.assistant-ledger .assistant-chip {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+/* ---------- faults and the composer ---------- */
+
+.assistant-fault {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-rule);
+  border-left: 3px solid var(--ui-ink-3);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+}
+
+.assistant-fault-headline {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.assistant-fault-next {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ui-ink-2);
+}
+
+.assistant-fault-detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ui-ink-2);
+}
+
+.assistant-fault-meta {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-3);
+  overflow-wrap: anywhere;
+}
+
+.assistant-retry {
+  margin-top: 4px;
+  min-height: 44px;
+}
+
+/* No composer and no transcript: the page says why and stops. The rule above
+   the block is the page head's own, so a second one here would read as a
+   separator between nothing and nothing. */
+.assistant-disabled {
+  max-width: 62ch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-3);
+}
+
+.assistant-disabled-headline {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.assistant-disabled-next {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ui-ink-2);
+}
+
+.assistant-disabled-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px var(--ui-sp-4);
+  margin: 0;
+  font-size: 13px;
+}
+
+.assistant-disabled-facts dt {
+  color: var(--ui-ink-3);
+}
+
+.assistant-disabled-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.assistant-disabled-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-2);
+  padding-top: var(--ui-sp-4);
+  border-top: 1px solid var(--ui-rule);
+}
+
+.assistant-context {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-sp-2);
+  flex-wrap: wrap;
+}
+
+.assistant-context-label {
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-context-clear {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--ui-ink-3);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.assistant-context-clear:hover {
+  color: var(--ui-ink);
+  background: var(--ui-surface-raised);
+}
+
+.assistant-well {
+  width: 100%;
+  min-height: 84px;
+  max-height: 200px;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-rule);
+  border-radius: var(--ui-radius-sm);
+  /* 16px is the floor: below it iOS zooms on focus and the keyboard covers
+     the field. */
+  font-family: var(--ui-font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ui-ink);
+  background: var(--ui-ask-well);
+  resize: vertical;
+}
+
+.assistant-well:disabled {
+  color: var(--ui-ink-3);
+  cursor: not-allowed;
+}
+
+.assistant-well:read-only {
+  color: var(--ui-ink-2);
+}
+
+.assistant-well::placeholder {
+  color: var(--ui-ink-3);
+}
+
+.assistant-composer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-sp-2) var(--ui-sp-3);
+}
+
+.assistant-composer-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-counter {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.assistant-send,
+.assistant-stop {
+  margin-left: auto;
+  min-height: 44px;
+}
+
+.assistant-send:disabled {
+  background: var(--ui-surface);
+  border-color: var(--ui-rule);
+  color: var(--ui-ink-3);
+  cursor: not-allowed;
+}
+
+.assistant-composer-privacy {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-3);
+  max-width: 68ch;
+}
+
+@media (max-width: 1023px) {
+  .assistant-desk {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-main,
+  .assistant-ledger {
+    grid-column: 1 / -1;
+  }
+
+  .assistant-ledger {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-left: 0;
+    padding-top: var(--ui-sp-3);
+    border-left: 0;
+    border-top: 1px solid var(--ui-rule);
+  }
+
+  .assistant-ledger-heading {
+    display: none;
+  }
+
+  .assistant-ledger-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-sp-3);
+    min-height: 44px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .assistant-ledger-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .assistant-ledger-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+}
+
+.assistant-ledger-count {
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ui-ink-3);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .assistant-answer {
+    margin-left: calc(-1 * var(--ui-sp-3) - 1px);
+    padding-left: var(--ui-sp-3);
+  }
+
+  .assistant-prose,
+  .assistant-question {
+    max-width: none;
+  }
+
+  .assistant-composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--ui-paper);
+    padding-bottom: calc(var(--ui-sp-2) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .assistant-send,
+  .assistant-stop {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .assistant-asof {
+    white-space: normal;
+  }
 }

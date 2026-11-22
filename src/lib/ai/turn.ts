@@ -6,7 +6,10 @@
 // a fact the UI needs:
 //
 //   tool       emitted *before* the result is fed back, so the reader sees
-//              "reading 1 record…" while the model is still working.
+//              "reading 1 record…" while the model is still working, and carrying
+//              the ids *that call* returned so the ledger can chip them — the
+//              terminal `citations` event is the whole turn and cannot be
+//              attributed back to one call.
 //   delta      assistant text, in arrival order.
 //   citations  ids the *server* read from tool payloads this turn — never ids
 //              the model claimed. A model-hallucinated id cannot become a chip.
@@ -43,6 +46,17 @@ export const ASSISTANT_MAX_TOOL_ROUNDS = 4;
 /** Upper bound on citation ids one turn may report. */
 export const ASSISTANT_CITATION_CAP = 200;
 
+/**
+ * Record ids a single `tool` frame carries for the provenance ledger.
+ *
+ * The ledger chips the records a tool call actually returned, so the ids have to
+ * travel on the frame that names the call — the terminal `citations` event is the
+ * whole turn and cannot be attributed back to one call. Twelve is a display
+ * sample, not a result cap: `rows` still reports the real row count and the
+ * `citations` event still carries the full set (up to the citation cap).
+ */
+export const ASSISTANT_TOOL_ID_SAMPLE = 12;
+
 /** CVE id shape. The same pattern the tools validate against. */
 const CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
 
@@ -63,7 +77,15 @@ export type AssistantStreamErrorCode =
   "AI_TIMEOUT" | "AI_UPSTREAM_ERROR" | "AI_TRUNCATED" | "AI_BUDGET_EXHAUSTED" | "AI_DISABLED";
 
 export type AssistantEvent =
-  | { type: "tool"; name: string; args: unknown; ok: boolean; rows: number }
+  | {
+      type: "tool";
+      name: string;
+      args: unknown;
+      ok: boolean;
+      rows: number;
+      /** First ids the call returned, for the ledger's chips. Display sample only. */
+      ids: string[];
+    }
   | { type: "delta"; text: string }
   | { type: "citations"; records: string[] }
   | { type: "done"; usage: AssistantUsageFrame; costUsd: number; rounds: number }
@@ -348,16 +370,16 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
           : malformedArguments(call.function.name);
         // Emitted before the result is appended: the UI can name the tool and
         // its row count while the model is still reading.
+        const returnedIds = outcome.ok ? collectRecordIds(outcome.data) : [];
+        for (const id of returnedIds) citationIds.add(id);
         yield {
           type: "tool",
           name: call.function.name,
           args: args.ok ? args.value : null,
           ok: outcome.ok,
           rows: outcome.ok ? outcome.rows : 0,
+          ids: returnedIds.slice(0, ASSISTANT_TOOL_ID_SAMPLE),
         };
-        if (outcome.ok) {
-          for (const id of collectRecordIds(outcome.data)) citationIds.add(id);
-        }
         conversation.push(toolMessage(call, outcome));
       }
       rounds += 1;

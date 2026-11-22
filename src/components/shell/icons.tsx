@@ -32,6 +32,17 @@ export function SearchIcon({ className }: IconProps) {
   );
 }
 
+/** A question mark inside a speech outline: asking, not broadcasting. */
+export function AskIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M20.5 14.5A2.5 2.5 0 0 1 18 17H8l-4 3.5V6a2.5 2.5 0 0 1 2.5-2.5h11.5A2.5 2.5 0 0 1 20.5 6z" />
+      <path d="M9.8 8.4a2.2 2.2 0 1 1 3 2.1c-.5.25-.8.65-.8 1.2v.4" />
+      <path d="M12 14.9h.01" />
+    </svg>
+  );
+}
+
 export function PriorityIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

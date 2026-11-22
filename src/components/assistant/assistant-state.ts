@@ -1,0 +1,404 @@
+// The desk's copy and its state shapes.
+//
+// Every fault the desk can show is built here, from a typed code the server sent
+// — never from prose, never from an HTTP status alone. That is the whole reason
+// this module is separate from the view: a state that exists only as a branch in
+// JSX cannot be rendered in a test, and an error message that exists only inside
+// a `catch` cannot be reviewed for honesty.
+//
+// Three rules the copy obeys:
+//
+//  1. Name what happened, in one sentence, without an apology and without the
+//     word "unfortunately".
+//  2. Always say what to do next — except where the answer is "wait", which is
+//     stated with the time remaining instead of a call to action.
+//  3. Never invent a duration, a reason, or a variable. If the server did not
+//     send the reset instant or the disabled reason, the desk says what it knows
+//     and stops there.
+
+import type { AssistantStreamErrorCode } from "@/lib/ai/turn";
+
+/** Longest question the route accepts; the composer enforces the same number. */
+export const MAX_QUESTION_CHARS = 2000;
+
+/**
+ * The counter appears only near the limit: a character count that is always on
+ * screen is a form telling the reader about itself instead of about the corpus.
+ */
+export const QUESTION_COUNTER_VISIBLE_AT = 1800;
+
+export type AssistantFaultKind = "error" | "rate-limited" | "budget" | "disabled";
+
+export type AssistantDisabledReason = "off" | "no-key" | "over-budget" | "invalid-config";
+
+export type AssistantBudgetReason = "daily" | "session";
+
+export interface AssistantFault {
+  kind: AssistantFaultKind;
+  /** The typed code, printed in the ledger line so the state is greppable. */
+  code: string;
+  /** What happened, in one sentence. */
+  headline: string;
+  /** What to do next. */
+  next: string;
+  /** A server-authored detail, only when it carries a fact the headline lacks. */
+  detail: string | null;
+  /** Whether the same question may be asked again unchanged. */
+  retryable: boolean;
+  disabledReason: AssistantDisabledReason | null;
+  /** The exact variable an operator sets, for the disabled and budget states. */
+  envVar: string | null;
+  budgetReason: AssistantBudgetReason | null;
+  /** ISO instant a budget resets, when the server sent one. */
+  resetAt: string | null;
+  /** Seconds until a rate limit lifts, when the server sent one. */
+  retryAfterSeconds: number | null;
+}
+
+/** One tool call, as the provenance ledger states it. */
+export interface AssistantToolLine {
+  id: string;
+  name: string;
+  /** Rendered arguments, one line. */
+  args: string;
+  rows: number;
+  ok: boolean;
+  /** Record ids the call returned (the server's display sample). */
+  ids: string[];
+}
+
+export interface AssistantTurn {
+  id: string;
+  question: string;
+  answer: string;
+  /** True once the turn ended, however it ended. */
+  settled: boolean;
+  /** True when the reader pressed Stop before the answer finished. */
+  stopped: boolean;
+  /** Record ids from the server's `citations` event — never parsed from prose. */
+  citations: string[];
+  tools: AssistantToolLine[];
+  /** The pinned record this question was asked about. */
+  aboutCve: string | null;
+}
+
+/** The feature gate as the page found it, rendered, never re-evaluated client-side. */
+export type AssistantGate = { enabled: true } | { enabled: false; reason: AssistantDisabledReason };
+
+const ERROR_COPY: Record<string, { headline: string; next: string; retryable: boolean }> = {
+  AI_TIMEOUT: {
+    headline: "The model took too long; the question was not answered.",
+    next: "Ask again, or narrow the question to one record.",
+    retryable: true,
+  },
+  AI_UPSTREAM_ERROR: {
+    headline: "The provider failed before the answer finished.",
+    next: "Ask again. If it fails twice, the provider is the problem, not this corpus.",
+    retryable: true,
+  },
+  AI_TRUNCATED: {
+    headline: "The answer was cut off; ask a narrower question.",
+    next: "Ask about one record, or one list, at a time.",
+    retryable: true,
+  },
+  AI_REFUSED: {
+    headline: "That question is outside what this desk answers.",
+    next: "Ask about a CVE record, a priority list, or the shape of this corpus.",
+    retryable: false,
+  },
+  BAD_QUERY: {
+    headline: "The question could not be sent as written.",
+    next: "Rephrase it as a question about a CVE record or this corpus.",
+    retryable: true,
+  },
+  BAD_ID: {
+    headline: "That record id is not a CVE id.",
+    next: "Use the form CVE-YYYY-NNNN, then ask again.",
+    retryable: true,
+  },
+  BAD_IMAGE: {
+    headline: "The image was refused.",
+    next: "Use a PNG, JPEG, or WebP under 1.5 MB.",
+    retryable: true,
+  },
+  BAD_REQUEST: {
+    headline: "The question was refused before the model saw it.",
+    next: "Reload the page and ask again; if it repeats, the transcript was too long for one turn.",
+    retryable: false,
+  },
+  INTERNAL: {
+    headline: "The server failed while answering.",
+    next: "Ask again in a moment. Nothing about the question was stored.",
+    retryable: true,
+  },
+};
+
+/** Fallback copy for a code this build does not know. Never shows the raw code as prose. */
+const UNKNOWN_ERROR = {
+  headline: "The answer stopped unexpectedly.",
+  next: "Ask again, or check the deployment's source status page.",
+  retryable: true,
+};
+
+const DISABLED_VARIABLE: Record<AssistantDisabledReason, string> = {
+  off: "AI_ENABLED",
+  "no-key": "AI_API_KEY",
+  "over-budget": "AI_DAILY_BUDGET_USD",
+  "invalid-config": "AI_ENABLED",
+};
+
+const DISABLED_HEADLINE: Record<AssistantDisabledReason, string> = {
+  off: "The assistant is turned off on this deployment.",
+  "no-key": "The assistant has no gateway key, so it is disabled.",
+  "over-budget": "The assistant has spent today's budget.",
+  "invalid-config": "The assistant's configuration is not valid.",
+};
+
+const DISABLED_NEXT: Record<AssistantDisabledReason, string> = {
+  off: "An operator enables it by setting AI_ENABLED=true and AI_API_KEY, then restarting the app.",
+  "no-key": "An operator sets AI_API_KEY at runtime — the key is never baked into the image.",
+  "over-budget":
+    "The daily cap resets at 00:00 UTC; raising AI_DAILY_BUDGET_USD is the operator's call.",
+  "invalid-config":
+    "An operator corrects AI_ENABLED, AI_API_KEY or AI_MAX_TOKENS in the environment.",
+};
+
+function baseFault(
+  overrides: Partial<AssistantFault> & Pick<AssistantFault, "kind" | "code">,
+): AssistantFault {
+  return {
+    headline: UNKNOWN_ERROR.headline,
+    next: UNKNOWN_ERROR.next,
+    detail: null,
+    retryable: UNKNOWN_ERROR.retryable,
+    disabledReason: null,
+    envVar: null,
+    budgetReason: null,
+    resetAt: null,
+    retryAfterSeconds: null,
+    ...overrides,
+  };
+}
+
+/** A feature-disabled state: the page's gate, or an `AI_DISABLED` event. */
+export function disabledFault(reason: AssistantDisabledReason): AssistantFault {
+  return baseFault({
+    kind: "disabled",
+    code: "AI_DISABLED",
+    headline: DISABLED_HEADLINE[reason],
+    next: DISABLED_NEXT[reason],
+    retryable: false,
+    disabledReason: reason,
+    envVar: DISABLED_VARIABLE[reason],
+  });
+}
+
+export interface BudgetFaultInput {
+  reason: AssistantBudgetReason;
+  resetAt: string | null;
+}
+
+/**
+ * Budget exhaustion. The two caps are different facts and are never merged: the
+ * daily cap is money the deployment spent, the session cap is this transcript's
+ * token estimate. Both say which one ran out.
+ */
+export function budgetFault(input: BudgetFaultInput): AssistantFault {
+  const daily = input.reason === "daily";
+  return baseFault({
+    kind: "budget",
+    code: "AI_BUDGET_EXHAUSTED",
+    headline: daily
+      ? "The assistant has spent today's AI budget."
+      : "This transcript has reached its token budget.",
+    next: daily
+      ? "The budget resets at 00:00 UTC. The composer unlocks when it does, or an operator raises AI_DAILY_BUDGET_USD."
+      : "Start a new question in a fresh tab — this transcript is the only thing counted, and nothing is stored server-side.",
+    retryable: false,
+    budgetReason: input.reason,
+    envVar: daily ? "AI_DAILY_BUDGET_USD" : "AI_SESSION_BUDGET_TOKENS",
+    resetAt: input.resetAt,
+  });
+}
+
+/** A 429 from the route, carrying the wait it reported. */
+export function rateLimitedFault(retryAfterSeconds: number): AssistantFault {
+  return baseFault({
+    kind: "rate-limited",
+    code: "RATE_LIMITED",
+    headline: "The assistant is rate limited on this connection.",
+    next: "Wait for the window to reset. The composer unlocks on its own; nothing is lost.",
+    retryable: false,
+    retryAfterSeconds,
+  });
+}
+
+/** A typed error event from inside the stream, or a pre-stream typed failure. */
+export function faultFromCode(code: string, detail: string | null = null): AssistantFault {
+  if (code === "AI_DISABLED") {
+    // A stream event carries no reason: the gate said why at page load, and this
+    // path means the gate changed underneath the page. State the fact, not a
+    // guessed cause.
+    return baseFault({
+      kind: "disabled",
+      code: "AI_DISABLED",
+      headline: "The assistant was disabled while this page was open.",
+      next: "Reload once an operator has set AI_ENABLED and AI_API_KEY. Nothing was stored.",
+      retryable: false,
+      envVar: "AI_ENABLED",
+    });
+  }
+  if (code === "AI_BUDGET_EXHAUSTED") return budgetFault({ reason: "daily", resetAt: null });
+  const copy = ERROR_COPY[code] ?? UNKNOWN_ERROR;
+  return baseFault({
+    kind: "error",
+    code,
+    headline: copy.headline,
+    next: copy.next,
+    retryable: copy.retryable,
+    detail,
+  });
+}
+
+/**
+ * Maps an in-stream `error` event. The event's own message is not used: it is
+ * written for an operator, and the desk speaks in one voice.
+ */
+export function faultFromStreamError(code: AssistantStreamErrorCode): AssistantFault {
+  return faultFromCode(code);
+}
+
+export interface HttpFaultInput {
+  status: number;
+  /** Parsed JSON error body, when there was one. */
+  snapshot: unknown;
+  retryAfterSeconds: number | null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function detailsOf(body: Record<string, unknown> | null): Record<string, unknown> | null {
+  return body === null ? null : asRecord(body["details"]);
+}
+
+function readString(source: Record<string, unknown> | null, key: string): string | null {
+  if (source === null) return null;
+  const value = source[key];
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
+ * Maps a pre-stream HTTP failure. The route's error envelope is the v1 shape:
+ * `{ code, message, details }`, with `Retry-After` on a 429 — so a 429 without
+ * a `Retry-After` still becomes the rate-limited state, with a one-second wait,
+ * rather than an unactionable "something failed".
+ */
+export function faultFromHttp(input: HttpFaultInput): AssistantFault {
+  const body = asRecord(input.snapshot);
+  const details = detailsOf(body);
+  const code = readString(body, "code") ?? (input.status === 429 ? "RATE_LIMITED" : "INTERNAL");
+  const message = readString(body, "message");
+  const reason = readString(details, "reason");
+  const resetAt = readString(details, "resetAt");
+
+  if (code === "AI_DISABLED") {
+    const disabledReason: AssistantDisabledReason =
+      reason === "no-key" || reason === "over-budget" || reason === "invalid-config"
+        ? reason
+        : "off";
+    return { ...disabledFault(disabledReason), detail: message };
+  }
+  if (code === "AI_BUDGET_EXHAUSTED") {
+    return budgetFault({
+      reason: reason === "session" ? "session" : "daily",
+      resetAt,
+    });
+  }
+  if (code === "RATE_LIMITED") {
+    return rateLimitedFault(Math.max(1, input.retryAfterSeconds ?? 1));
+  }
+  return { ...faultFromCode(code, null), detail: null };
+}
+
+// ---------------------------------------------------------------------------
+// Wording helpers
+// ---------------------------------------------------------------------------
+
+const TOOL_VERBS: Record<string, string> = {
+  search_cves: "searching the corpus",
+  get_cve: "reading the record",
+  epss_history: "reading the EPSS history",
+  kev_window: "checking the KEV window",
+  coverage_stats: "reading corpus coverage",
+  list_priority: "ranking a priority list",
+  cwe_lookup: "looking up the weakness class",
+  fetch_authoritative: "reading an authoritative page",
+};
+
+/** The streaming line: what the server is doing right now, in words. */
+export function toolActivity(name: string, rows: number): string {
+  const verb = TOOL_VERBS[name] ?? "running a tool";
+  if (!Number.isFinite(rows) || rows <= 0) return `${verb} · no rows yet…`;
+  return `${verb} · ${String(rows)} ${rows === 1 ? "record" : "records"}…`;
+}
+
+/** Arguments on one line: `days=30`, `id=CVE-2021-44228`, strings quoted. */
+export function formatToolArgs(args: unknown): string {
+  if (args === null || args === undefined) return "no arguments";
+  if (typeof args !== "object" || Array.isArray(args)) return JSON.stringify(args);
+  const entries = Object.entries(args as Record<string, unknown>);
+  if (entries.length === 0) return "no arguments";
+  return entries.map(([key, value]) => `${key}=${formatArgValue(value)}`).join(" · ");
+}
+
+function formatArgValue(value: unknown): string {
+  if (typeof value === "string") {
+    // Ids and day counts are the common case; quote only what needs it.
+    return /^[A-Za-z0-9_.:-]+$/.test(value) ? value : JSON.stringify(value);
+  }
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+const COUNT_FORMAT = new Intl.NumberFormat("en-US");
+
+export function formatCount(count: number): string {
+  return COUNT_FORMAT.format(count);
+}
+
+/** `43 s`, `2 m 05 s`, `5 h 41 m` — coarse above a minute, exact below it. */
+export function formatRemaining(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  if (seconds < 60) return `${String(seconds)} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${String(minutes)} m ${String(seconds % 60).padStart(2, "0")} s`;
+  const hours = Math.floor(minutes / 60);
+  return `${String(hours)} h ${String(minutes % 60).padStart(2, "0")} m`;
+}
+
+/** `00:00 UTC`, or null when the instant is absent or malformed. */
+export function formatResetInstant(iso: string | null): string | null {
+  if (iso === null) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const at = new Date(ms);
+  return `${String(at.getUTCHours()).padStart(2, "0")}:${String(at.getUTCMinutes()).padStart(2, "0")} UTC`;
+}
+
+/** Seconds between now and an instant; null when the instant is unusable. */
+export function secondsUntil(iso: string | null, nowMs: number): number | null {
+  if (iso === null) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.round((ms - nowMs) / 1000));
+}
+
+/** The counter is a near-limit warning, not a permanent rubric. */
+export function counterVisible(length: number): boolean {
+  return length >= QUESTION_COUNTER_VISIBLE_AT;
+}
