@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BRIEF_DISCLAIMER,
+  BRIEF_UNVERIFIED_NOTE,
   briefFileName,
   buildBriefMarkdown,
   type BriefInput,
@@ -24,6 +25,7 @@ function input(overrides: Partial<BriefInput> = {}): BriefInput {
       question: "Which KEV entries were added in the last 30 days?",
       answer: "Forty-one records entered the catalog. CVE-2026-41077 is one of them.",
       citations: ["CVE-2026-41077", "CVE-2026-41820"],
+      unverified: [],
       tools: [
         {
           id: "tool-1",
@@ -101,6 +103,23 @@ describe("brief Markdown", () => {
     expect(markdown).toContain(BRIEF_DISCLAIMER);
     expect(markdown).toContain("The prose above is model-written");
     expect(markdown).toContain("Every figure comes from the dataset");
+  });
+
+  it("[CODE] includes an Unverified ids section only when the list is non-empty", () => {
+    const clean = buildBriefMarkdown(input());
+    expect(clean).not.toContain("## Unverified ids");
+    expect(clean).not.toContain(BRIEF_UNVERIFIED_NOTE);
+
+    const flagged = buildBriefMarkdown(
+      input({ turn: { ...input().turn, unverified: ["CVE-2099-9999"] } }),
+    );
+    expect(flagged).toContain("## Unverified ids");
+    expect(flagged).toContain("- `CVE-2099-9999`");
+    // Not a link: the brief must not dress an unsupported id as a citation.
+    expect(flagged).not.toContain("[CVE-2099-9999](");
+    expect(flagged).toContain(BRIEF_UNVERIFIED_NOTE);
+    // The footer's main claim is still there and still true of the evidence.
+    expect(flagged).toContain(BRIEF_DISCLAIMER);
   });
 
   it("[CODE] dates the file name and keeps it a .md", () => {

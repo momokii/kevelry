@@ -96,7 +96,7 @@ describe("assistant SSE parser: frame boundaries", () => {
 });
 
 describe("assistant SSE parser: event validation", () => {
-  it("accepts each of the five contract events", () => {
+  it("accepts each of the six contract events", () => {
     const payloads = [
       {
         type: "tool",
@@ -108,11 +108,13 @@ describe("assistant SSE parser: event validation", () => {
       },
       { type: "delta", text: "text" },
       { type: "citations", records: ["CVE-2099-0001"] },
+      { type: "unverified", ids: ["CVE-2099-9999"] },
       {
         type: "done",
         usage: { prompt: 1, completion: 2, reasoning: 0, cacheRead: 0 },
         costUsd: 0.1,
         rounds: 1,
+        unverified: ["CVE-2099-9999"],
       },
       { type: "error", code: "AI_TIMEOUT", message: "too slow" },
     ];

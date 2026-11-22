@@ -63,6 +63,13 @@ failing silently.
 | **Screenshot intake**         | PNG/JPEG/WebP up to 1.5 MB: the prompt allows CVE ids read from an image and requires each to be resolved through `get_cve` before it is described; an id that does not resolve is stated as not in the dataset. |
 | **Nothing to jailbreak into** | No shell, filesystem, host, query language or write capability exists in the tool layer. Web fetch is optional, `https`-only and host-allowlisted.                                                               |
 
+The id rule is enforced in code, not only asked for in the prompt. Every citation
+is an id a tool returned, and the turn scans the prose for ids that no tool
+payload contained; a non-empty list is sent as an `unverified` event, shown above
+the citations as a quiet caution, and carried into the downloaded brief under its
+own heading. The answer is not blocked or rewritten — the reader sees which id is
+doubtful and can treat it as a typo or a record this deployment does not hold.
+
 ### What it will not do
 
 No exploit code, no PoC construction, no targeting advice, and no verdict — it

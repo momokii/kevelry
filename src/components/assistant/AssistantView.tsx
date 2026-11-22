@@ -24,6 +24,7 @@ import {
   formatCount,
   formatRemaining,
   formatResetInstant,
+  unverifiedNote,
   type AssistantFault,
   type AssistantGate,
   type AssistantTurn,
@@ -209,6 +210,17 @@ function TurnBlock({
             {turn.answer}
           </p>
         )}
+        {turn.unverified.length > 0 ? (
+          // Above the citations, in the app's voice: the answer is not blocked,
+          // but an id without a tool behind it is never allowed to look sourced.
+          <p
+            className="assistant-unverified"
+            data-testid="assistant-unverified"
+            data-count={String(turn.unverified.length)}
+          >
+            {unverifiedNote(turn.unverified)}
+          </p>
+        ) : null}
         {turn.citations.length > 0 ? (
           <div className="assistant-citations">
             <p className="assistant-citations-label">Cited</p>

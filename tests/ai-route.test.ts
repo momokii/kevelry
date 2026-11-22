@@ -397,6 +397,40 @@ describe("assistant route: the streaming turn", () => {
     expect(String(toolResult?.content)).toContain(CVE_ID);
   });
 
+  it("flags an id the prose named but no tool returned, and keeps citations tool-backed", async () => {
+    // Two ids in the answer: the one get_cve returned, and one the dataset does
+    // not hold. The turn must say so without editing the answer or the chips.
+    const unsupported = "CVE-2099-0002";
+    const { transport } = fakeTransport(async (_call, index) =>
+      index === 0
+        ? { status: 200, body: toolStream("get_cve", { id: CVE_ID }, USAGE_ROUND_1) }
+        : {
+            status: 200,
+            body: textStream(`${CVE_ID} matches; ${unsupported} does not.`, USAGE_ROUND_2),
+          },
+    );
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    const frames = framesOf(await response.text());
+
+    expect(frames.map((frame) => frame.type)).toEqual([
+      "tool",
+      "delta",
+      "citations",
+      "unverified",
+      "done",
+    ]);
+    expect(frames[2]).toEqual({ type: "citations", records: [CVE_ID] });
+    expect(frames[3]).toEqual({ type: "unverified", ids: [unsupported] });
+    expect(frames[4]).toMatchObject({ type: "done", unverified: [unsupported] });
+    // The prose was not rewritten: the reader sees the sentence and the doubt.
+    expect(frames[1]).toMatchObject({
+      type: "delta",
+      text: `${CVE_ID} matches; ${unsupported} does not.`,
+    });
+  });
+
   it("streams each provider chunk as its own delta before the round ends", async () => {
     const encoder = new TextEncoder();
     let release: () => void = () => undefined;

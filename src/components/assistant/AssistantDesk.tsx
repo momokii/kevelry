@@ -208,12 +208,28 @@ export function AssistantDesk({
         updateTurn(id, (turn) => ({ ...turn, citations: records }));
         return;
       }
+      if (event.type === "unverified") {
+        const ids = Array.isArray(event.ids) ? event.ids : [];
+        updateTurn(id, (turn) => ({ ...turn, unverified: ids }));
+        return;
+      }
+      if (event.type === "done") {
+        // `done` also carries usage, which the desk does not display: the ledger
+        // is about evidence, and a token count in the reader's face is not
+        // evidence. Its `unverified` list is the one field kept: the event above
+        // is the live path, and this fills the gap if that frame was lost.
+        if (Array.isArray(event.unverified)) {
+          const ids = event.unverified;
+          updateTurn(id, (turn) =>
+            turn.unverified.length > 0 ? turn : { ...turn, unverified: ids },
+          );
+        }
+        return;
+      }
       if (event.type === "error") {
         setFaultState({ fault: faultFromStreamError(event.code), deadlineMs: null });
         finishTurn(id);
       }
-      // `done` carries usage, which the desk does not display: the ledger is
-      // about evidence, and a token count in the reader's face is not evidence.
     },
     [finishTurn, updateTurn],
   );
@@ -236,6 +252,7 @@ export function AssistantDesk({
         settled: false,
         stopped: false,
         citations: [],
+        unverified: [],
         tools: [],
         aboutCve: scoped,
       };

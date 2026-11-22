@@ -13,7 +13,7 @@
 import type { AssistantToolLine, AssistantTurn } from "./assistant-state";
 
 export interface BriefInput {
-  turn: Pick<AssistantTurn, "id" | "question" | "answer" | "citations" | "tools">;
+  turn: Pick<AssistantTurn, "id" | "question" | "answer" | "citations" | "unverified" | "tools">;
   /** The model the deployment is configured with; printed, never guessed. */
   modelId: string;
   /** `window.location.origin`, so citation links resolve outside this tab. */
@@ -24,6 +24,14 @@ export interface BriefInput {
 /** The model-written/dataset-sourced statement every brief ends with. */
 export const BRIEF_DISCLAIMER =
   "The prose above is model-written and grounded only in the records listed in this brief. Every figure comes from the dataset; the model wrote the sentences around those figures.";
+
+/**
+ * Appended only when the answer named an id no tool returned. The footer above
+ * says the prose is grounded in the brief's records; this says the unverified
+ * ids are the exception, so the two claims cannot contradict each other.
+ */
+export const BRIEF_UNVERIFIED_NOTE =
+  "The ids under Unverified ids are the model's own words: no tool returned them, so this brief does not vouch for them.";
 
 /** `kevelry-brief-2026-11-22.md`: dated, so two downloads never collide by name. */
 export function briefFileName(now: Date = new Date()): string {
@@ -75,6 +83,21 @@ export function buildBriefMarkdown(input: BriefInput): string {
   }
   parts.push("");
 
+  if (turn.unverified.length > 0) {
+    // Not links: a link would claim the record exists, which is the one thing
+    // this section says the brief cannot support.
+    parts.push("## Unverified ids");
+    parts.push("");
+    parts.push(
+      turn.unverified.length === 1
+        ? "The answer named one record id that no tool returned this turn. It may be a typo or a record this deployment does not hold."
+        : `The answer named ${String(turn.unverified.length)} record ids that no tool returned this turn. They may be typos or records this deployment does not hold.`,
+    );
+    parts.push("");
+    for (const id of turn.unverified) parts.push(`- \`${id}\``);
+    parts.push("");
+  }
+
   parts.push("## Evidence");
   parts.push("");
   if (turn.tools.length === 0) {
@@ -90,6 +113,10 @@ export function buildBriefMarkdown(input: BriefInput): string {
   parts.push("");
   parts.push(BRIEF_DISCLAIMER);
   parts.push("");
+  if (turn.unverified.length > 0) {
+    parts.push(BRIEF_UNVERIFIED_NOTE);
+    parts.push("");
+  }
 
   return parts.join("\n");
 }

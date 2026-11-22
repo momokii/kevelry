@@ -44,6 +44,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     settled: true,
     stopped: false,
     citations: ["CVE-2099-0001", "CVE-2099-0002"],
+    unverified: [],
     tools: [
       {
         id: "tool-1",
@@ -255,6 +256,39 @@ describe("state 6 — feature disabled", () => {
       gate: { enabled: false, reason: disabledFault("off").disabledReason ?? "off" },
     });
     expect(gateOff).toContain(disabledFault("off").headline);
+  });
+});
+
+describe("unverified ids", () => {
+  it("renders one quiet caution above the chips, naming the count and the id", () => {
+    const html = render({ turns: [turn({ unverified: ["CVE-2099-9999"] })] });
+    expect(html).toContain('data-testid="assistant-unverified"');
+    expect(html).toContain('data-count="1"');
+    expect(html).toContain(
+      "1 record id in this answer was not found in the dataset: CVE-2099-9999.",
+    );
+    expect(html).toContain("It may be a typo or a record this deployment does not hold.");
+    // Above the citations: the doubt is read before the evidence it qualifies.
+    expect(html.indexOf('data-testid="assistant-unverified"')).toBeLessThan(
+      html.indexOf('class="assistant-citations"'),
+    );
+  });
+
+  it("counts in the plural and still spells the ids out", () => {
+    const html = render({
+      turns: [turn({ unverified: ["CVE-2099-9999", "CVE-2099-8888"] })],
+    });
+    expect(html).toContain('data-count="2"');
+    expect(html).toContain("2 record ids in this answer were not found in the dataset");
+    expect(html).toContain("CVE-2099-9999, CVE-2099-8888");
+    expect(html).toContain("They may be typos or records this deployment does not hold.");
+  });
+
+  it("renders nothing when the server reported no unverified id", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).not.toContain('data-testid="assistant-unverified"');
+    // The supported citations are untouched by the absence of the caution.
+    expect(html).toContain('data-testid="assistant-citation"');
   });
 });
 

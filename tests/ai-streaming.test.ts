@@ -356,6 +356,62 @@ describe("streaming client: text and framing", () => {
   });
 });
 
+describe("streaming turn: unverified ids in the prose", () => {
+  function unverifiedOf(events: readonly AssistantEvent[]): string[][] {
+    return events.flatMap((event) => (event.type === "unverified" ? [event.ids] : []));
+  }
+
+  function answerBody(text: string): string {
+    return [contentFrame(text), stopFrame("stop"), frame(USAGE_FRAME), DONE].join("");
+  }
+
+  it("emits no unverified frame when the answer names no id", async () => {
+    const { events } = await runTurn(
+      transportOfBody(answerBody("No record matched that question.")),
+    );
+
+    expect(events.map((event) => event.type)).toEqual(["delta", "citations", "done"]);
+    expect(events.some((event) => event.type === "unverified")).toBe(false);
+    expect(events[events.length - 1]).toMatchObject({ type: "done", unverified: [] });
+  });
+
+  it("lists an id the prose named and no tool returned, and reports it in done", async () => {
+    const { events } = await runTurn(transportOfBody(answerBody("See CVE-2099-9999 for context.")));
+
+    expect(events.map((event) => event.type)).toEqual(["delta", "citations", "unverified", "done"]);
+    expect(unverifiedOf(events)).toEqual([["CVE-2099-9999"]]);
+    expect(events[events.length - 1]).toMatchObject({
+      type: "done",
+      unverified: ["CVE-2099-9999"],
+    });
+    // The tool-backed set is untouched: prose never becomes a citation.
+    expect(events.find((event) => event.type === "citations")).toEqual({
+      type: "citations",
+      records: [],
+    });
+  });
+
+  it("lists a repeated unverified id once", async () => {
+    const { events } = await runTurn(
+      transportOfBody(answerBody("CVE-2099-9999 is not in the data. CVE-2099-9999 may be a typo.")),
+    );
+
+    expect(unverifiedOf(events)).toEqual([["CVE-2099-9999"]]);
+    expect(events[events.length - 1]).toMatchObject({
+      type: "done",
+      unverified: ["CVE-2099-9999"],
+    });
+  });
+
+  it("normalises a lowercase cve id before classifying it", async () => {
+    const { events } = await runTurn(
+      transportOfBody(answerBody("The id cve-2021-44228 is famous.")),
+    );
+
+    expect(unverifiedOf(events)).toEqual([["CVE-2021-44228"]]);
+  });
+});
+
 describe("streaming turn: usage, truncation and failures", () => {
   it("carries the final usage chunk into done", async () => {
     const { events, recorded } = await runTurn(transportOfBody(textBody()));

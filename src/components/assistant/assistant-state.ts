@@ -77,6 +77,11 @@ export interface AssistantTurn {
   stopped: boolean;
   /** Record ids from the server's `citations` event — never parsed from prose. */
   citations: string[];
+  /**
+   * Ids the prose named that no tool returned. Reported by the server, never
+   * derived from the answer in the browser: the verified set lives server-side.
+   */
+  unverified: string[];
   tools: AssistantToolLine[];
   /** The pinned record this question was asked about. */
   aboutCve: string | null;
@@ -366,6 +371,27 @@ function formatArgValue(value: unknown): string {
 }
 
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
+
+/**
+ * The caution line for ids the dataset never returned.
+ *
+ * One sentence, with the ids spelled out: the reader has to be able to see which
+ * id is doubtful, not just that something is. Singular and plural are written
+ * separately because "1 record ids" is the kind of detail that makes a warning
+ * read as machine output.
+ */
+export function unverifiedNote(ids: readonly string[]): string {
+  const count = ids.length;
+  const lead =
+    count === 1
+      ? "1 record id in this answer was not found in the dataset"
+      : `${formatCount(count)} record ids in this answer were not found in the dataset`;
+  const tail =
+    count === 1
+      ? "It may be a typo or a record this deployment does not hold."
+      : "They may be typos or records this deployment does not hold.";
+  return `${lead}: ${ids.join(", ")}. ${tail}`;
+}
 
 export function formatCount(count: number): string {
   return COUNT_FORMAT.format(count);

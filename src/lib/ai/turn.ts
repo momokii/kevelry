@@ -13,7 +13,11 @@
 //   delta      assistant text, in arrival order.
 //   citations  ids the *server* read from tool payloads this turn — never ids
 //              the model claimed. A model-hallucinated id cannot become a chip.
-//   done       token totals, cost, and how many tool rounds the turn spent.
+//   unverified ids the *prose* named that no tool payload contained. Emitted
+//              only when the list is non-empty, and never used to edit the
+//              answer: the reader sees the doubt instead of losing the sentence.
+//   done       token totals, cost, how many tool rounds the turn spent, and the
+//              unverified list again so a downloaded brief can carry it.
 //   error      a typed, redacted failure. Once the stream is open there is no
 //              second HTTP status; this event is the status.
 //
@@ -60,6 +64,12 @@ export const ASSISTANT_TOOL_ID_SAMPLE = 12;
 /** CVE id shape. The same pattern the tools validate against. */
 const CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
 
+/**
+ * CVE ids as they appear in prose: case-insensitive, so a model that writes
+ * `cve-2021-44228` is still checked rather than slipping past the classifier.
+ */
+const ANSWER_ID_PATTERN = /\bCVE-\d{4}-\d{4,}\b/gi;
+
 export interface AssistantMessage {
   role: "user" | "assistant";
   content: string;
@@ -88,7 +98,15 @@ export type AssistantEvent =
     }
   | { type: "delta"; text: string }
   | { type: "citations"; records: string[] }
-  | { type: "done"; usage: AssistantUsageFrame; costUsd: number; rounds: number }
+  | { type: "unverified"; ids: string[] }
+  | {
+      type: "done";
+      usage: AssistantUsageFrame;
+      costUsd: number;
+      rounds: number;
+      /** Ids the prose named without a tool behind them; empty when none. */
+      unverified: string[];
+    }
   | { type: "error"; code: AssistantStreamErrorCode; message: string };
 
 export interface AssistantTurnInput {
@@ -145,6 +163,39 @@ export function collectRecordIds(value: unknown): string[] {
   };
   walk(value, 0);
   return found;
+}
+
+/**
+ * Every record id the answer text names, deduplicated and case-normalised.
+ *
+ * This is the prose side of the provenance rule: `collectRecordIds` walks what a
+ * tool returned, this walks what the reader was told. It is a separate walk on
+ * purpose — the answer is a string, not a payload, and a single regex is the
+ * whole extraction rule.
+ */
+export function extractAnswerIds(text: string): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(ANSWER_ID_PATTERN)) {
+    const id = match[0].toUpperCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    found.push(id);
+  }
+  return found;
+}
+
+/**
+ * Ids in the prose that no tool payload in this turn contained.
+ *
+ * `verified` is the set the turn already collected from tool results — the same
+ * set `citations` reports — so a citation and a verified id cannot disagree.
+ * The list is complete rather than sampled: the answer is bounded by the model's
+ * token cap, and a dropped id would be exactly the silent omission this check
+ * exists to prevent.
+ */
+export function unverifiedAnswerIds(text: string, verified: ReadonlySet<string>): string[] {
+  return extractAnswerIds(text).filter((id) => !verified.has(id));
 }
 
 /** `{ ok: true, value }` or `{ ok: false }`: the model's JSON was not an object. */
@@ -264,6 +315,10 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   const deadline = startedAt + Math.max(1, turnTimeoutMs);
   const totals: Totals = { prompt: 0, completion: 0, reasoning: 0, cacheRead: 0, costUsd: 0 };
   const citationIds = new Set<string>();
+  // The prose exactly as the reader received it: every delta, in order. The
+  // answer the model wrote in an earlier round that ended in tool calls is on
+  // screen too, so it is classified too.
+  let answerText = "";
   let usageSeen = false;
   let rounds = 0;
   let answered = false;
@@ -277,6 +332,24 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   };
   const tools = toolDefinitions(input.config.webFetchEnabled);
   const conversation = buildConversation(input);
+
+  /**
+   * The terminal frames. `citations` stays the tool-backed set, unchanged; the
+   * `unverified` frame exists only when the prose named something that set does
+   * not hold, and `done` carries the same list for the brief's export.
+   */
+  function* settle(totals: Totals, rounds: number): Generator<AssistantEvent> {
+    const unverified = unverifiedAnswerIds(answerText, citationIds);
+    yield { type: "citations", records: [...citationIds] };
+    if (unverified.length > 0) yield { type: "unverified", ids: unverified };
+    yield {
+      type: "done",
+      usage: usageFrame(totals),
+      costUsd: totals.costUsd,
+      rounds,
+      unverified,
+    };
+  }
 
   try {
     while (true) {
@@ -297,8 +370,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // The cap is a budget, not a failure: the turn ends with the evidence
         // it gathered and says so, instead of looping on a model that keeps
         // asking for tools.
-        yield { type: "citations", records: [...citationIds] };
-        yield { type: "done", usage: usageFrame(totals), costUsd: totals.costUsd, rounds };
+        yield* settle(totals, rounds);
         answered = true;
         return;
       }
@@ -317,6 +389,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         for (;;) {
           const text = await completion.read();
           if (text === null) break;
+          answerText += text;
           yield { type: "delta", text };
         }
         round = completion.result();
@@ -352,8 +425,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       }
 
       if (round.toolCalls.length === 0) {
-        yield { type: "citations", records: [...citationIds] };
-        yield { type: "done", usage: usageFrame(totals), costUsd: totals.costUsd, rounds };
+        yield* settle(totals, rounds);
         answered = true;
         return;
       }

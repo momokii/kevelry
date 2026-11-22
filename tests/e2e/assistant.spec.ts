@@ -26,6 +26,7 @@ import {
   ensureA11yEvidenceDir,
 } from "./a11y-audit";
 import { resetToBaseline } from "./corpus";
+import { AI_FAKE_UNSUPPORTED_ID } from "../../app/api/assistant/_lib/fake-transport";
 
 /** The second dev server: the same app with the assistant switched off. */
 const DISABLED_ORIGIN = "http://localhost:3211";
@@ -382,6 +383,43 @@ test("the compare disclosure validates two ids and sends one comparison question
   await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
     "canned answer of the test transport",
   );
+});
+
+test("an unsupported id in the answer is flagged and never becomes a citation", async ({
+  page,
+}) => {
+  await gotoDesk(page);
+  // The fake transport repeats this id in its prose because the question named
+  // it; the kev_window tool never returns it. That is the model failure the
+  // server's classifier is for — driven by a question, not by a special build.
+  await page
+    .locator("#assistant-question")
+    .fill(`Which KEV entries are new? For reference: ${AI_FAKE_UNSUPPORTED_ID}.`);
+  await page.keyboard.press("Enter");
+
+  const warning = page.locator('[data-testid="assistant-unverified"]');
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText("1 record id in this answer was not found in the dataset");
+  await expect(warning).toContainText(AI_FAKE_UNSUPPORTED_ID);
+  await expect(warning).toHaveAttribute("data-count", "1");
+
+  // The supported records are still chipped; the unsupported id is not, and it
+  // never gets a link that would imply the dataset holds it.
+  const citations = page.locator('[data-testid="assistant-citation"]');
+  await expect(citations.first()).toBeVisible();
+  await expect(page.locator(`a[href="/explore?q=${AI_FAKE_UNSUPPORTED_ID}"]`)).toHaveCount(0);
+  expect(await citations.allInnerTexts()).not.toContain(AI_FAKE_UNSUPPORTED_ID);
+
+  // The exported brief carries the same doubt, under its own heading.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator('[data-testid="assistant-brief"]').click(),
+  ]);
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const text = await readFile(path as string, "utf8");
+  expect(text).toContain("## Unverified ids");
+  expect(text).toContain(`- \`${AI_FAKE_UNSUPPORTED_ID}\``);
 });
 
 test("a completed answer exports a brief and offers a ledger-derived follow-up", async ({

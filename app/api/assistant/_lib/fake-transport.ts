@@ -19,6 +19,16 @@ import type { AiTransport, AiTransportResponse } from "../../../../src/lib/ai/cl
 /** The switch itself, spelled once so the docs and the tests cannot drift. */
 export const AI_FAKE_TRANSPORT_ENV = "AI_FAKE_TRANSPORT";
 
+/**
+ * An id the fake names in prose but no tool ever returns.
+ *
+ * The browser suite needs one answer that contains an id the dataset never
+ * returned, and the fake is the only provider it has. Asking a question that
+ * contains this id makes the canned answer repeat it: exactly the model failure
+ * the `unverified` frame exists to catch, and no other journey is touched.
+ */
+export const AI_FAKE_UNSUPPORTED_ID = "CVE-2099-9999";
+
 /** One pause between frames; long enough to paint, short enough for a suite. */
 export const AI_FAKE_FRAME_DELAY_MS = 45;
 
@@ -88,15 +98,44 @@ const ANSWER_LINES = [
 ];
 
 /** Round two: prose, then the terminal usage frame. */
-function answerRound(): string {
+function answerRound(unsupportedId: boolean): string {
+  const lines = unsupportedId
+    ? [
+        ...ANSWER_LINES,
+        `The id ${AI_FAKE_UNSUPPORTED_ID} was named in the question, and no tool above returned it. `,
+      ]
+    : ANSWER_LINES;
   const frames: string[] = [];
-  for (const line of ANSWER_LINES) {
+  for (const line of lines) {
     frames.push(frame({ choices: [{ delta: { content: line }, finish_reason: null }] }));
   }
   frames.push(frame({ choices: [{ delta: {}, finish_reason: "stop" }] }));
   frames.push(frame({ choices: [], usage: USAGE }));
   frames.push("data: [DONE]\n\n");
   return frames.join("");
+}
+
+/**
+ * Whether the latest user message asks about the unsupported id. The transport
+ * sees the same body the route built, so the trigger is the question itself —
+ * no extra environment flag, and the default journey is unchanged. Round two's
+ * body ends with a tool result, so the last *user* message is the one to read.
+ */
+function questionNamesUnsupportedId(body: string): boolean {
+  try {
+    const parsed = JSON.parse(body) as { messages?: Array<{ role?: unknown; content?: unknown }> };
+    const messages = parsed.messages ?? [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role !== "user") continue;
+      return (
+        typeof message.content === "string" && message.content.includes(AI_FAKE_UNSUPPORTED_ID)
+      );
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function pause(ms: number): Promise<void> {
@@ -115,9 +154,9 @@ export function createFakeAssistantTransport(
   answerDelayMs: number = AI_FAKE_ANSWER_DELAY_MS,
 ): AiTransport {
   let round = 0;
-  const transport: AiTransport = async (): Promise<AiTransportResponse> => {
+  const transport: AiTransport = async (request): Promise<AiTransportResponse> => {
     const answering = round > 0;
-    const body = answering ? answerRound() : toolRound();
+    const body = answering ? answerRound(questionNamesUnsupportedId(request.body)) : toolRound();
     round += 1;
     const encoder = new TextEncoder();
     const bytes = encoder.encode(body);
