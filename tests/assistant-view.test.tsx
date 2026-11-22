@@ -69,9 +69,16 @@ function baseProps(overrides: Partial<AssistantViewProps> = {}): AssistantViewPr
     activity: null,
     draft: "",
     aboutCve: null,
+    image: null,
+    imageFault: null,
     remainingSeconds: null,
     ledgerOpen: true,
     onDraftChange: () => undefined,
+    onImagePick: () => undefined,
+    onImageRemove: () => undefined,
+    onCompare: () => undefined,
+    onFollowUp: () => undefined,
+    onBrief: () => undefined,
     onSubmit: () => undefined,
     onStop: () => undefined,
     onRetry: () => undefined,
@@ -302,5 +309,74 @@ describe("the ledger and the citations", () => {
   it("marks the question as scoped to the pinned record", () => {
     const html = render({ turns: [turn({ aboutCve: "CVE-2021-44228" })] });
     expect(html).toContain("You asked about CVE-2021-44228");
+  });
+});
+
+describe("screenshot intake", () => {
+  it("labels the file input and says what an image may and may not be used for", () => {
+    const html = render();
+    expect(html).toContain('type="file"');
+    expect(html).toContain('accept="image/png,image/jpeg,image/webp"');
+    // The label wraps the input, so the visible 44px target is the control's
+    // own accessible name and the audit's target-size rule sees one box.
+    expect(html).toContain('<label class="assistant-image-pick"><input id="assistant-image-input"');
+    expect(html).toContain("Attach a screenshot");
+    expect(html).toContain("The image is only used to find CVE ids");
+    expect(html).toContain("every id is checked against the dataset before it is used");
+  });
+
+  it("shows a thumbnail, its name and size, and a Remove that names the file", () => {
+    const html = render({
+      image: {
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        name: "shot.png",
+        size: 62_000,
+        mime: "image/png",
+      },
+    });
+    expect(html).toContain('data-testid="assistant-image-preview"');
+    expect(html).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+    expect(html).toContain('aria-label="Remove shot.png"');
+    expect(html).toContain("61 KB");
+    expect(html).toContain("PNG");
+  });
+
+  it("states a refusal in the reader's words, as an alert", () => {
+    const html = render({ imageFault: "That image is 2.0 MB. The limit is 1.5 MB." });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('data-testid="assistant-image-fault"');
+    expect(html).toContain("The limit is 1.5 MB");
+  });
+});
+
+describe("compare disclosure", () => {
+  it("offers two labelled id fields inside a disclosure beside the composer", () => {
+    const html = render();
+    expect(html).toContain("Compare two records");
+    expect(html).toContain('for="assistant-compare-a"');
+    expect(html).toContain('for="assistant-compare-b"');
+    expect(html).toContain("First record");
+    expect(html).toContain("Second record");
+    expect(html).toContain('data-testid="assistant-compare-send"');
+  });
+});
+
+describe("follow-ups and the brief", () => {
+  it("offers a brief only for a completed, non-empty, non-stopped answer", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).toContain('data-testid="assistant-brief"');
+    expect(html).toContain("Download brief");
+    expect(render({ turns: [turn({ settled: false })] })).not.toContain("Download brief");
+    expect(render({ turns: [turn({ stopped: true })] })).not.toContain("Download brief");
+    expect(render({ turns: [turn({ answer: "" })] })).not.toContain("Download brief");
+  });
+
+  it("derives follow-up chips from the ledger and offers none without it", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).toContain('data-testid="assistant-followups"');
+    expect(html).toContain('data-testid="assistant-followup-kev"');
+    expect(html).toContain("When is CVE-2099-0001 due?");
+    const noLedger = render({ turns: [turn({ tools: [] })] });
+    expect(noLedger).not.toContain('data-testid="assistant-followups"');
   });
 });

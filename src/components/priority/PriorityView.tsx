@@ -1366,6 +1366,13 @@ export function PriorityRow({
           <a className="btn btn-sm" href={row.officialUrl} data-testid="priority-row-action">
             Official CVE record
           </a>
+          <a
+            className="btn btn-sm"
+            href={`/assistant?cve=${encodeURIComponent(row.id)}`}
+            data-testid="priority-row-ask"
+          >
+            Ask about this record
+          </a>
         </div>
       ) : null}
     </article>

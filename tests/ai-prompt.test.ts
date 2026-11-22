@@ -52,6 +52,35 @@ describe("renderSystemPrompt grounding rules", () => {
   });
 });
 
+describe("renderSystemPrompt comparison rule", () => {
+  it("[PROMPT] requires both records to be read before they are compared", () => {
+    expect(PROMPT).toContain("## Comparisons");
+    expect(PROMPT).toContain("call `get_cve` for each of them first");
+    expect(PROMPT).toContain("Never compare from memory");
+  });
+
+  it("[PROMPT] fixes the comparison fields and forbids omitting one that agrees", () => {
+    expect(PROMPT).toContain(
+      "status, publication date, primary CVSS score and version, secondary CVSS scores, KEV membership and catalog due date, ransomware use, latest EPSS score and its date, and the CWE list",
+    );
+    expect(PROMPT).toContain("Never omit a field because the two records agree");
+    expect(PROMPT).toContain("say that they agree and show both values");
+    expect(SYSTEM_PROMPT.comparisons.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("[PROMPT] requires a missing field to be stated, never guessed or dropped", () => {
+    expect(PROMPT).toContain("write that it is missing from the dataset for that record");
+    expect(PROMPT).toContain("Never leave the field out");
+    expect(PROMPT).toContain("never fill it from memory");
+  });
+
+  it("[PROMPT] forbids a fused score and a winner in a comparison", () => {
+    expect(PROMPT).toContain("A comparison is not a ranking");
+    expect(PROMPT).toContain("do not combine the signals into one score");
+    expect(PROMPT).toContain("do not name a winner");
+  });
+});
+
 describe("renderSystemPrompt refusals", () => {
   it("[PROMPT] denies exploit construction, PoC code, targeting, non-CVE topics and personal data", () => {
     expect(PROMPT).toContain("No exploit construction, exploit code, proof-of-concept code");

@@ -11,9 +11,12 @@
 // only rule, and it sits outside the text column so every line still starts at
 // the same x.
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 
+import { AssistantCompare } from "./AssistantCompare";
 import { AssistantLedger } from "./AssistantLedger";
+import { buildFollowUps } from "./assistant-followups";
+import { formatImageSize, type AssistantImage } from "./assistant-image";
 import {
   MAX_QUESTION_CHARS,
   counterVisible,
@@ -41,11 +44,20 @@ export interface AssistantViewProps {
   draft: string;
   /** The pinned record the next question is asked about. */
   aboutCve: string | null;
+  /** The screenshot attached to the next question, already validated. */
+  image: AssistantImage | null;
+  /** Why the last attach attempt was refused, in plain language. */
+  imageFault: string | null;
   /** Live seconds remaining for a timed fault (rate limit, budget reset). */
   remainingSeconds: number | null;
   ledgerOpen: boolean;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   onDraftChange: (value: string) => void;
+  onImagePick: (file: File) => void;
+  onImageRemove: () => void;
+  onCompare: (question: string) => void;
+  onFollowUp: (question: string) => void;
+  onBrief: (turn: AssistantTurn) => void;
   onSubmit: () => void;
   onStop: () => void;
   onRetry: () => void;
@@ -156,14 +168,21 @@ function TurnBlock({
   streaming,
   isLast,
   activity,
+  onFollowUp,
+  onBrief,
 }: {
   turn: AssistantTurn;
   streaming: boolean;
   isLast: boolean;
   activity: string | null;
+  onFollowUp: (question: string) => void;
+  onBrief: (turn: AssistantTurn) => void;
 }) {
   const live = turn.settled;
   const progress = Math.min(86, 22 + turn.tools.length * 18);
+  // Derived from the ledger, never from the prose: a chip that names an id the
+  // turn never read would be a hallucination with a button on it.
+  const followUps = turn.settled && !turn.stopped ? buildFollowUps(turn) : [];
   return (
     <article className="assistant-turn" data-testid="assistant-turn">
       <p className="assistant-question-label">
@@ -209,6 +228,41 @@ function TurnBlock({
           </div>
         ) : null}
       </div>
+      {followUps.length > 0 ? (
+        <div className="assistant-followups" data-testid="assistant-followups">
+          <p className="assistant-citations-label">Follow up</p>
+          <ul className="assistant-chip-row" aria-label="Follow-up questions">
+            {followUps.map((followUp) => (
+              <li key={followUp.id}>
+                <button
+                  type="button"
+                  className="assistant-followup"
+                  data-testid={`assistant-followup-${followUp.kind}`}
+                  onClick={() => {
+                    onFollowUp(followUp.question);
+                  }}
+                >
+                  {followUp.question}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {turn.settled && !turn.stopped && turn.answer !== "" ? (
+        <div className="assistant-turn-actions">
+          <button
+            type="button"
+            className="btn btn-sm assistant-brief"
+            data-testid="assistant-brief"
+            onClick={() => {
+              onBrief(turn);
+            }}
+          >
+            Download brief
+          </button>
+        </div>
+      ) : null}
       {turn.stopped ? (
         <p className="assistant-turn-note" data-testid="assistant-stopped">
           Stopped before the answer finished. What is above is what arrived.
@@ -234,8 +288,13 @@ function Composer({
   status,
   disabled,
   aboutCve,
+  image,
+  imageFault,
   inputRef,
   onDraftChange,
+  onImagePick,
+  onImageRemove,
+  onCompare,
   onSubmit,
   onStop,
   onClearContext,
@@ -244,24 +303,111 @@ function Composer({
   status: AssistantStatus;
   disabled: boolean;
   aboutCve: string | null;
+  image: AssistantImage | null;
+  imageFault: string | null;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   onDraftChange: (value: string) => void;
+  onImagePick: (file: File) => void;
+  onImageRemove: () => void;
+  onCompare: (question: string) => void;
   onSubmit: () => void;
   onStop: () => void;
   onClearContext: () => void;
 }) {
+  const [dragging, setDragging] = useState(false);
   const streaming = status === "streaming";
+  const busy = disabled || streaming;
   const tooLong = draft.length > MAX_QUESTION_CHARS;
-  const sendBlocked = disabled || streaming || draft.trim() === "" || tooLong;
+  const sendBlocked = busy || draft.trim() === "" || tooLong;
   return (
     <form
-      className="assistant-composer"
+      className={`assistant-composer${dragging ? " is-dragging" : ""}`}
       data-testid="assistant-composer"
       onSubmit={(event) => {
         event.preventDefault();
         if (!sendBlocked) onSubmit();
       }}
+      onDragOver={(event) => {
+        if (busy || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => {
+        setDragging(false);
+      }}
+      onDrop={(event) => {
+        setDragging(false);
+        if (busy) return;
+        event.preventDefault();
+        const file = event.dataTransfer.files[0];
+        if (file !== undefined) onImagePick(file);
+      }}
+      onPaste={(event) => {
+        if (busy) return;
+        const file = Array.from(event.clipboardData.files).find((candidate) =>
+          candidate.type.startsWith("image/"),
+        );
+        if (file === undefined) return;
+        // An image paste is an attachment, not text; take it and keep the draft.
+        event.preventDefault();
+        onImagePick(file);
+      }}
     >
+      <div className="assistant-image" data-testid="assistant-image-intake">
+        {image === null ? (
+          <div className="assistant-image-row">
+            {/* The input fills the visible label: the target is 44px, and the
+                native control keeps its own keyboard behaviour. */}
+            <label className="assistant-image-pick">
+              <input
+                id="assistant-image-input"
+                className="assistant-image-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={busy}
+                aria-describedby="assistant-image-note"
+                data-testid="assistant-image-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  // Reset the value so picking the same file twice fires again.
+                  event.target.value = "";
+                  if (file !== undefined) onImagePick(file);
+                }}
+              />
+              <span>Attach a screenshot</span>
+            </label>
+          </div>
+        ) : (
+          <div className="assistant-image-preview" data-testid="assistant-image-preview">
+            <img className="assistant-image-thumb" src={image.dataUrl} alt="" aria-hidden="true" />
+            <div className="assistant-image-meta">
+              <p className="assistant-image-name">{image.name}</p>
+              <p className="assistant-image-size">
+                {formatImageSize(image.size)} · {image.mime.replace("image/", "").toUpperCase()}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="assistant-image-remove"
+              aria-label={`Remove ${image.name}`}
+              data-testid="assistant-image-remove"
+              disabled={busy}
+              onClick={onImageRemove}
+            >
+              Remove
+            </button>
+          </div>
+        )}
+        <p className="assistant-image-note" id="assistant-image-note">
+          PNG, JPEG or WebP, up to 1.5 MB. The image is only used to find CVE ids, and every id is
+          checked against the dataset before it is used.
+        </p>
+        {imageFault === null ? null : (
+          <p className="assistant-image-fault" role="alert" data-testid="assistant-image-fault">
+            {imageFault}
+          </p>
+        )}
+      </div>
       {aboutCve !== null ? (
         <div className="assistant-context" data-testid="assistant-context">
           <span className="assistant-context-label">about</span>
@@ -335,6 +481,7 @@ function Composer({
           </button>
         )}
       </div>
+      <AssistantCompare disabled={busy} onCompare={onCompare} />
       <p className="assistant-composer-privacy" id="assistant-composer-privacy">
         The transcript lives in this tab and nowhere else — a reload starts clean, and neither the
         question nor the answer is written to this browser's storage.
@@ -372,10 +519,17 @@ export function AssistantView(props: AssistantViewProps) {
     activity,
     draft,
     aboutCve,
+    image,
+    imageFault,
     remainingSeconds,
     ledgerOpen,
     inputRef,
     onDraftChange,
+    onImagePick,
+    onImageRemove,
+    onCompare,
+    onFollowUp,
+    onBrief,
     onSubmit,
     onStop,
     onRetry,
@@ -413,6 +567,8 @@ export function AssistantView(props: AssistantViewProps) {
                 streaming={status === "streaming"}
                 isLast={index === turns.length - 1}
                 activity={activity}
+                onFollowUp={onFollowUp}
+                onBrief={onBrief}
               />
             ))
           )}
@@ -427,8 +583,13 @@ export function AssistantView(props: AssistantViewProps) {
           status={status}
           disabled={disabled}
           aboutCve={aboutCve}
+          image={image}
+          imageFault={imageFault}
           inputRef={inputRef}
           onDraftChange={onDraftChange}
+          onImagePick={onImagePick}
+          onImageRemove={onImageRemove}
+          onCompare={onCompare}
           onSubmit={onSubmit}
           onStop={onStop}
           onClearContext={onClearContext}

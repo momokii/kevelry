@@ -276,6 +276,13 @@ function DialogBody({
                   : "Publication date unknown"}
                 {summary.kevDueDate != null ? ` · remediation due ${summary.kevDueDate}` : ""}
               </p>
+              <Link
+                className="btn btn-sm graph-dialog-ask"
+                href={`/assistant?cve=${encodeURIComponent(id)}`}
+                data-testid={`graph-more-ask-${id}`}
+              >
+                Ask about this record
+              </Link>
             </li>
           );
         })}
@@ -942,6 +949,13 @@ export function GraphView({ cohort, limit }: { cohort: GraphCohort; limit: numbe
           </Link>
           <Link className="btn btn-sm" href={`/watch`}>
             Watch list
+          </Link>
+          <Link
+            className="btn btn-sm"
+            href={`/assistant?cve=${encodeURIComponent(cohort.focus ?? "")}`}
+            data-testid="graph-ask"
+          >
+            Ask about this record
           </Link>
         </div>
       </div>

@@ -20,6 +20,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 
 import { AssistantView } from "./AssistantView";
 import { createAssistantSseParser, parseAssistantEvent } from "./assistant-sse";
+import { briefFileName, buildBriefMarkdown } from "./assistant-brief";
+import { readImageFile, type AssistantImage } from "./assistant-image";
 import {
   MAX_QUESTION_CHARS,
   faultFromCode,
@@ -44,6 +46,8 @@ export interface AssistantDeskProps {
   suggestions: readonly AssistantSuggestion[];
   /** From `/assistant?cve=…`; validated by the page before it reaches here. */
   initialCveContext: string | null;
+  /** `AI_MODEL`, printed in a downloaded brief. */
+  modelId: string;
 }
 
 interface FaultState {
@@ -96,7 +100,12 @@ function networkFault(): AssistantFault {
   };
 }
 
-export function AssistantDesk({ gate, suggestions, initialCveContext }: AssistantDeskProps) {
+export function AssistantDesk({
+  gate,
+  suggestions,
+  initialCveContext,
+  modelId,
+}: AssistantDeskProps) {
   const [turns, setTurns] = useState<AssistantTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<"idle" | "streaming">("idle");
@@ -105,6 +114,8 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [aboutCve, setAboutCve] = useState<string | null>(initialCveContext);
   const [ledgerOpen, setLedgerOpen] = useState(true);
+  const [image, setImage] = useState<AssistantImage | null>(null);
+  const [imageFault, setImageFault] = useState<string | null>(null);
 
   const inputRef: RefObject<HTMLTextAreaElement | null> = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -112,6 +123,7 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
   const toolSeq = useRef(0);
   const lastQuestion = useRef<string | null>(null);
   const turnsRef = useRef<AssistantTurn[]>([]);
+  const imageSeq = useRef(0);
   turnsRef.current = turns;
 
   // One polite ticker, only while a timed fault is counting down.
@@ -215,6 +227,7 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
       turnSeq.current += 1;
       const id = `turn-${String(turnSeq.current)}`;
       const scoped = aboutCve;
+      const attached = image;
       lastQuestion.current = question;
       const turn: AssistantTurn = {
         id,
@@ -228,6 +241,8 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
       };
       setTurns((current) => [...current, turn]);
       setDraft("");
+      setImage(null);
+      setImageFault(null);
       setFaultState(null);
       setActivity(null);
       setStatus("streaming");
@@ -241,6 +256,7 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
         messages: buildHistory(turnsRef.current, question),
       };
       if (scoped !== null) body.cveContext = scoped;
+      if (attached !== null) body.image = { dataUrl: attached.dataUrl };
 
       try {
         const response = await fetch("/api/assistant/chat", {
@@ -309,13 +325,52 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [aboutCve, applyEvent, finishTurn, updateTurn],
+    [aboutCve, applyEvent, finishTurn, updateTurn, image],
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
   }, []);
+
+  const pickImage = useCallback((file: File) => {
+    imageSeq.current += 1;
+    const seq = imageSeq.current;
+    void readImageFile(file).then((result) => {
+      // A slower earlier read never overwrites a later choice.
+      if (seq !== imageSeq.current) return;
+      if (!result.ok) {
+        setImageFault(result.message);
+        return;
+      }
+      setImage(result.image);
+      setImageFault(null);
+    });
+  }, []);
+
+  const downloadBrief = useCallback(
+    (turn: AssistantTurn) => {
+      const markdown = buildBriefMarkdown({
+        turn,
+        modelId,
+        origin: window.location.origin,
+      });
+      const url = URL.createObjectURL(
+        new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = briefFileName(new Date());
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      // Revoking synchronously can cancel the download in some browsers.
+      window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 0);
+    },
+    [modelId],
+  );
 
   const retry = useCallback(() => {
     const previous = lastQuestion.current;
@@ -340,10 +395,26 @@ export function AssistantDesk({ gate, suggestions, initialCveContext }: Assistan
       activity={activity}
       draft={draft}
       aboutCve={aboutCve}
+      image={image}
+      imageFault={imageFault}
       remainingSeconds={remainingSeconds}
       ledgerOpen={ledgerOpen}
       inputRef={inputRef}
       onDraftChange={setDraft}
+      onImagePick={pickImage}
+      onImageRemove={() => {
+        setImage(null);
+        setImageFault(null);
+      }}
+      onCompare={(question) => {
+        if (disabled) return;
+        void ask(question);
+      }}
+      onFollowUp={(question) => {
+        if (disabled) return;
+        void ask(question);
+      }}
+      onBrief={downloadBrief}
       onSubmit={() => {
         if (disabled) return;
         void ask(draft);

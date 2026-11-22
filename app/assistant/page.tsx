@@ -18,7 +18,7 @@
 
 import { AssistantDesk } from "@/components/assistant/AssistantDesk";
 import { ASSISTANT_CVE_CONTEXT_PATTERN } from "@/app/api/assistant/_lib/body";
-import { aiGate, loadAiConfig, type AiDisabledReason } from "@/lib/ai/config";
+import { AI_MODEL_DEFAULT, aiGate, loadAiConfig, type AiDisabledReason } from "@/lib/ai/config";
 import { readSuggestionCounts, buildAssistantSuggestions } from "@/lib/ai/suggestions";
 import { createAiUsageLedger } from "@/lib/ai/usage";
 import { buildProvenance } from "@/lib/provenance";
@@ -59,6 +59,8 @@ interface DeskFacts {
   reason: AiDisabledReason | null;
   suggestions: ReturnType<typeof buildAssistantSuggestions>;
   asOf: string | null;
+  /** `AI_MODEL`, printed in a downloaded brief. */
+  modelId: string;
 }
 
 /**
@@ -74,7 +76,7 @@ function readDeskFacts(): DeskFacts {
   try {
     config = loadAiConfig(process.env);
   } catch {
-    return { reason: "invalid-config", suggestions: [], asOf: null };
+    return { reason: "invalid-config", suggestions: [], asOf: null, modelId: AI_MODEL_DEFAULT };
   }
 
   let db: CveDatabase | null = null;
@@ -102,12 +104,17 @@ function readDeskFacts(): DeskFacts {
     }
   }
 
-  if (!gate.enabled) return { reason: gate.disabled ?? "off", suggestions: [], asOf: null };
-  if (db === null) return { reason: null, suggestions: [], asOf: null };
+  if (!gate.enabled) {
+    return { reason: gate.disabled ?? "off", suggestions: [], asOf: null, modelId: config.model };
+  }
+  if (db === null) {
+    return { reason: null, suggestions: [], asOf: null, modelId: config.model };
+  }
   return {
     reason: null,
     suggestions: buildAssistantSuggestions(readSuggestionCounts(db)),
     asOf: formatAsOf(buildProvenance(db, new Date().toISOString()).sources.cve.lastAcceptedAt),
+    modelId: config.model,
   };
 }
 
@@ -146,7 +153,12 @@ export default async function AssistantPage({
         ) : null}
       </header>
 
-      <AssistantDesk gate={gate} suggestions={facts.suggestions} initialCveContext={cveContext} />
+      <AssistantDesk
+        gate={gate}
+        suggestions={facts.suggestions}
+        initialCveContext={cveContext}
+        modelId={facts.modelId}
+      />
     </main>
   );
 }

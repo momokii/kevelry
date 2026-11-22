@@ -13,7 +13,9 @@
 // keyboard-only run works, and 390px never overflows. What it does not prove:
 // that a real model answers well. No test can prove that.
 
-import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   A11Y_EVIDENCE_DIR,
@@ -34,6 +36,19 @@ const MIDSTREAM_SHOT = "/tmp/assistant-midstream-1440.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
 
+/**
+ * Opens the desk and lets hydration finish.
+ *
+ * Every interaction below is a React handler. On a cold dev server the
+ * server-rendered markup can be painted (and clicked) before the client bundle
+ * attaches those handlers, which looks exactly like a broken feature. Waiting
+ * for the network to go quiet is the cheapest reliable signal in this suite.
+ */
+async function gotoDesk(page: Page): Promise<void> {
+  await page.goto("/assistant");
+  await page.waitForLoadState("networkidle");
+}
+
 test.beforeAll(async ({ request }) => {
   // The ledger's row count and the citation ids are asserted against the seeded
   // corpus, so this file starts from the documented baseline rather than from
@@ -44,15 +59,18 @@ test.beforeAll(async ({ request }) => {
   // page — which remounts the desk and aborts the request it just made. That is
   // a property of `next dev`, not of the desk, so it is paid for once here, with
   // no page open to interrupt.
+  // Its own rate-limit identity: the warm-up must not spend the page's 10/min
+  // budget, which the journeys below rely on.
   await request
     .post("/api/assistant/chat", {
+      headers: { "x-forwarded-for": "203.0.113.77" },
       data: { messages: [{ role: "user", content: "Warm the assistant route." }] },
     })
     .catch(() => undefined);
 });
 
 test("the empty desk offers counted questions and an empty ledger", async ({ page }) => {
-  await page.goto("/assistant");
+  await gotoDesk(page);
   await expect(page.locator("h1")).toHaveText("Ask the corpus");
   await expect(page.locator('[data-testid="assistant-asof"]')).toContainText("corpus as of");
 
@@ -78,7 +96,10 @@ test("the empty desk offers counted questions and an empty ledger", async ({ pag
 });
 
 test("a question streams tool activity, then text, then server citations", async ({ page }) => {
-  await page.goto("/assistant");
+  await gotoDesk(page);
+  // Hydration is what attaches the click handler; on a cold dev server the
+  // first click can otherwise land on server-rendered markup and do nothing.
+  await page.waitForLoadState("networkidle");
   await page.locator('[data-testid="assistant-suggestion-kev-additions"]').click();
 
   // Activity in words, before any prose: the reader is told what is running.
@@ -116,7 +137,7 @@ test("a question streams tool activity, then text, then server citations", async
 });
 
 test("Stop aborts the turn and keeps what arrived", async ({ page }) => {
-  await page.goto("/assistant");
+  await gotoDesk(page);
   await page.locator("#assistant-question").fill(QUESTION);
   await page.keyboard.press("Enter");
   await expect(page.locator('[data-testid="assistant-activity"]')).toBeVisible();
@@ -129,7 +150,7 @@ test("Stop aborts the turn and keeps what arrived", async ({ page }) => {
 });
 
 test("a keyboard-only run asks, streams and stops without a pointer", async ({ page }) => {
-  await page.goto("/assistant");
+  await gotoDesk(page);
   for (let step = 0; step < 40; step += 1) {
     const focused = await page.evaluate(() => document.activeElement?.id === "assistant-question");
     if (focused) break;
@@ -186,7 +207,7 @@ test("the disabled desk names the variable and has no composer", async ({ page }
 
 test("390px has no horizontal overflow, with the ledger folded below", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/assistant");
+  await gotoDesk(page);
   await auditNoHorizontalOverflow(page, "assistant empty at 390px");
 
   const ledger = page.locator('[data-testid="assistant-ledger"]');
@@ -220,7 +241,7 @@ test("accessibility audit, zoom reflow and reduced motion stay clean", async ({ 
 
 test("captures the empty and mid-stream states at 1440x900", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/assistant");
+  await gotoDesk(page);
   await expect(page.locator('[data-testid="assistant-empty"]')).toBeVisible();
   await page.screenshot({ path: EMPTY_SHOT });
 
@@ -236,4 +257,228 @@ test("captures the empty and mid-stream states at 1440x900", async ({ page }) =>
   await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
     "canned answer of the test transport",
   );
+});
+
+/** A 1x1 PNG: real magic bytes, so the client sniffer and the route agree. */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+test("a screenshot is picked, previewed, sent with the question, and removable", async ({
+  page,
+}) => {
+  await gotoDesk(page);
+  const input = page.locator('[data-testid="assistant-image-input"]');
+  await expect(input).toHaveAttribute("type", "file");
+  await expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp");
+  // The file input has a real label, and the note says what the image is for.
+  await expect(page.locator(".assistant-image-pick")).toHaveText("Attach a screenshot");
+  await expect(page.locator("#assistant-image-note")).toContainText(
+    "The image is only used to find CVE ids",
+  );
+  await expect(page.locator("#assistant-image-note")).toContainText(
+    "every id is checked against the dataset before it is used",
+  );
+
+  await page.setInputFiles('[data-testid="assistant-image-input"]', {
+    name: "advisory.png",
+    mimeType: "image/png",
+    buffer: PNG_1X1,
+  });
+  const preview = page.locator('[data-testid="assistant-image-preview"]');
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("advisory.png");
+  await expect(preview).toContainText("PNG");
+  await expect(page.locator('[data-testid="assistant-image-remove"]')).toHaveAttribute(
+    "aria-label",
+    "Remove advisory.png",
+  );
+
+  await page.locator("#assistant-question").fill(QUESTION);
+  const [request] = await Promise.all([
+    page.waitForRequest(
+      (candidate) =>
+        candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST",
+    ),
+    page.keyboard.press("Enter"),
+  ]);
+  const body = request.postDataJSON() as { image?: { dataUrl: string } };
+  expect(body.image?.dataUrl).toMatch(/^data:image\/png;base64,/);
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+  await expect(page.locator('[data-testid="assistant-citation"]').first()).toBeVisible();
+  // One image per turn: the composer is clean again for the next question.
+  await expect(preview).toHaveCount(0);
+
+  // An oversized file is refused in plain language, before it is read.
+  await page.setInputFiles('[data-testid="assistant-image-input"]', {
+    name: "huge.png",
+    mimeType: "image/png",
+    buffer: Buffer.alloc(1_600_000),
+  });
+  const fault = page.locator('[data-testid="assistant-image-fault"]');
+  await expect(fault).toContainText("The limit is 1.5 MB");
+
+  // A wrong type is named, and Remove clears a valid attachment.
+  await page.setInputFiles('[data-testid="assistant-image-input"]', {
+    name: "advisory.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from("GIF89a", "utf8"),
+  });
+  await expect(fault).toContainText("Only PNG, JPEG and WebP");
+  await page.setInputFiles('[data-testid="assistant-image-input"]', {
+    name: "advisory.png",
+    mimeType: "image/png",
+    buffer: PNG_1X1,
+  });
+  await expect(preview).toBeVisible();
+  await page.locator('[data-testid="assistant-image-remove"]').click();
+  await expect(preview).toHaveCount(0);
+  await expect(input).toHaveCount(1);
+});
+
+test("the compare disclosure validates two ids and sends one comparison question", async ({
+  page,
+}) => {
+  await gotoDesk(page);
+  await page.locator('[data-testid="assistant-compare"] summary').click();
+  await expect(page.locator('label[for="assistant-compare-a"]')).toHaveText("First record");
+
+  await page.locator('[data-testid="assistant-compare-a"]').fill("not-an-id");
+  await page.locator('[data-testid="assistant-compare-b"]').fill("CVE-2099-0002");
+  await page.locator('[data-testid="assistant-compare-send"]').click();
+  await expect(page.locator("#assistant-compare-a-error")).toHaveText(
+    "Use the form CVE-YYYY-NNNN.",
+  );
+  await expect(page.locator('[data-testid="assistant-compare-a"]')).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+
+  // The same record twice is refused on the second field.
+  await page.locator('[data-testid="assistant-compare-a"]').fill("cve-2099-0001");
+  await page.locator('[data-testid="assistant-compare-b"]').fill("CVE-2099-0001");
+  await page.locator('[data-testid="assistant-compare-send"]').click();
+  await expect(page.locator("#assistant-compare-b-error")).toHaveText(
+    "Pick a second record — this is the first one.",
+  );
+
+  await page.locator('[data-testid="assistant-compare-b"]').fill("CVE-2099-0002");
+  const [request] = await Promise.all([
+    page.waitForRequest(
+      (candidate) =>
+        candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST",
+    ),
+    page.locator('[data-testid="assistant-compare-send"]').click(),
+  ]);
+  const body = request.postDataJSON() as { messages: Array<{ content: string }> };
+  const question = body.messages[body.messages.length - 1]?.content ?? "";
+  expect(question).toContain("Compare CVE-2099-0001 and CVE-2099-0002 field by field.");
+  expect(question).toContain("KEV membership and catalog due date");
+  expect(question).toContain("say that it is missing from the dataset");
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+});
+
+test("a completed answer exports a brief and offers a ledger-derived follow-up", async ({
+  page,
+}) => {
+  await gotoDesk(page);
+  await page.locator('[data-testid="assistant-suggestion-kev-additions"]').click();
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+
+  // The brief: question, answer, absolute citations, evidence, model and footer.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator('[data-testid="assistant-brief"]').click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^kevelry-brief-\d{4}-\d{2}-\d{2}\.md$/);
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const text = await readFile(path as string, "utf8");
+
+  expect(text.startsWith(`# ${QUESTION}`)).toBe(true);
+  expect(text).toContain("canned answer of the test transport");
+  expect(text).toContain("## Citations");
+  expect(text).toMatch(/\]\(http:\/\/localhost:3210\/explore\?q=CVE-\d{4}-\d+\)/);
+  expect(text).toContain("| kev_window | days=30 |");
+  expect(text).toContain("model `deepseek-v4.1-flash`");
+  expect(text).toContain(
+    "The prose above is model-written and grounded only in the records listed in this brief.",
+  );
+  expect(text).toContain("Every figure comes from the dataset");
+
+  // The follow-up: its id comes from the ledger, and it asks its question verbatim.
+  const chip = page.locator('[data-testid="assistant-followup-kev"]').first();
+  await expect(chip).toBeVisible();
+  const question = (await chip.innerText()).trim();
+  expect(question).toMatch(/^When is CVE-\d{4}-\d+ due\?$/);
+  const ledgerIds = await page
+    .locator('[data-testid="assistant-ledger-entry"] a[href^="/explore?q=CVE-"]')
+    .allInnerTexts();
+  expect(ledgerIds).toContain(question.replace(/^When is /, "").replace(/ due\?$/, ""));
+
+  const [request] = await Promise.all([
+    page.waitForRequest(
+      (candidate) =>
+        candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST",
+    ),
+    chip.click(),
+  ]);
+  const body = request.postDataJSON() as { messages: Array<{ content: string }> };
+  expect(body.messages[body.messages.length - 1]?.content).toBe(question);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(2);
+});
+
+test("the priority and graph entry points pin the record in the desk", async ({ page }) => {
+  await page.goto("/priority");
+  const ask = page.locator('[data-testid="priority-row-ask"]').first();
+  await expect(ask).toBeVisible();
+  await expect(ask).toHaveText("Ask about this record");
+  const priorityHref = await ask.getAttribute("href");
+  expect(priorityHref).toMatch(/^\/assistant\?cve=CVE-\d{4}-\d+$/);
+  const priorityId = new URL(`http://localhost${priorityHref ?? ""}`).searchParams.get("cve");
+
+  await ask.click();
+  await expect(page).toHaveURL(new RegExp(`/assistant\\?cve=${priorityId ?? ""}$`));
+  const context = page.locator('[data-testid="assistant-context"]');
+  await expect(context).toContainText(priorityId ?? "");
+  const [request] = await Promise.all([
+    page.waitForRequest(
+      (candidate) =>
+        candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST",
+    ),
+    page
+      .locator("#assistant-question")
+      .fill("What is this record?")
+      .then(() => page.keyboard.press("Enter")),
+  ]);
+  expect((request.postDataJSON() as { cveContext?: string }).cveContext).toBe(priorityId);
+
+  // The graph drill-down offers the same action on every listed record.
+  await page.goto("/graph");
+  await expect(
+    page.locator('[data-testid="graph-hubs"], [data-testid="graph-empty"]').first(),
+  ).toBeVisible();
+  const hub = (
+    await page.locator('[data-testid="graph-hubs"] a.graph-hub-id').first().innerText()
+  ).trim();
+  await page.goto(`/graph?focus=${encodeURIComponent(hub)}`);
+  // The centered record is the drill-down: every action on it is on this page.
+  const graphAsk = page.locator('[data-testid="graph-ask"]');
+  await expect(graphAsk).toBeVisible();
+  await expect(graphAsk).toHaveText("Ask about this record");
+  const graphHref = await graphAsk.getAttribute("href");
+  expect(graphHref).toMatch(/^\/assistant\?cve=CVE-\d{4}-\d+$/);
+
+  await graphAsk.click();
+  const graphId = new URL(`http://localhost${graphHref ?? ""}`).searchParams.get("cve");
+  await expect(page).toHaveURL(new RegExp(`/assistant\\?cve=${graphId ?? ""}$`));
+  await expect(page.locator('[data-testid="assistant-context"]')).toContainText(graphId ?? "");
 });
