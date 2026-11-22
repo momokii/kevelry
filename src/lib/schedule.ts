@@ -15,6 +15,12 @@
 // gate one cycle ran all four every 60 min, so the 24 h EPSS/SSVC intervals in
 // DEFAULT_INTERVALS_MS were decorative and EPSS was re-imported 24 times a day.
 //
+// The tick is not exact, so due-ness carries a grace window and the next wake is
+// adaptive. A timer that starts a cycle a few seconds before a source's boundary
+// must never cost that source a whole interval; and when a cycle leaves nothing
+// to run but a source becomes due moments later, the scheduler wakes for it
+// instead of sleeping a full tick.
+//
 // The retry rule is what keeps the gate safe for "always latest": an attempt
 // that accepted NO new version (a failure such as today's EPSS 403 before the
 // file is published, or an unchanged feed) does not spend the source's whole
@@ -71,21 +77,58 @@ export interface SourceIntervalsMs {
  */
 export const SOURCE_RETRY_MS = 60 * 60 * 1000;
 
+/**
+ * Slack on the due comparison: a source counts as due when
+ * `now >= nextDueAt - grace`. The wake timer is not exact — a timer fires on its
+ * own schedule and a cycle can start seconds before the boundary it was meant
+ * for. Live evidence (3.2.2): CVE was due at 08:48:07 and the 60 min tick fired
+ * at 08:47:55, 12 s early, so the gate skipped it and it waited a whole extra
+ * hour (effective interval ≈ 2 h). Tick jitter must never cost an interval, so
+ * two minutes of grace makes the just-missed boundary harmless.
+ */
+export const SOURCE_DUE_GRACE_MS = 120_000;
+
+/**
+ * Grace is bounded by the source's own interval — never more than 1/4 of it — so
+ * a short configured/test interval keeps its cadence instead of becoming
+ * "always due": a 60 s interval gets 15 s of grace, not 120 s.
+ */
+export const SOURCE_DUE_GRACE_INTERVAL_DIVISOR = 4;
+
+/**
+ * Floor for the adaptive wake: a wake that lands a hair too early must not spin
+ * the loop, so the scheduler tries again shortly. Capped by the tick itself, so
+ * a test configuration with sub-second intervals still ticks at its own rate.
+ */
+export const SOURCE_WAKE_FLOOR_MS = 30_000;
+
+/** Grace applied to a source's due comparison: min(120 s, interval / 4). */
+export function dueGraceMs(intervalMs: number): number {
+  return Math.min(SOURCE_DUE_GRACE_MS, Math.floor(intervalMs / SOURCE_DUE_GRACE_INTERVAL_DIVISOR));
+}
+
 /** Why a source is due this cycle. */
 export type GateDueReason = "first" | "interval-elapsed" | "retry-elapsed";
 /** Why a source was skipped: still inside its own interval, or inside the retry window. */
 export type GateSkipReason = "interval" | "retry";
 
 /**
- * Per-cycle gate decision. Emitted once per cycle, before any job runs, so the
- * log answers "which sources did this cycle consider, and why was each one
- * skipped?" without inference from per-source start lines.
+ * Per-cycle gate decision. Emitted once per cycle, after the cycle settled, so
+ * `nextWakeInMs` is the delay the wake timer will actually use and the log
+ * answers "which sources did this cycle consider, why was each one skipped, and
+ * when does the scheduler wake next?" without inference.
  */
 export interface CycleGateReport {
   at: string;
   ran: SourceName[];
   due: Partial<Record<SourceName, GateDueReason>>;
   skipped: Partial<Record<SourceName, { reason: GateSkipReason; nextDueAt: string }>>;
+  /**
+   * Milliseconds until the next automatic wake: the earliest moment any gate is
+   * due (grace included), bounded below by SOURCE_WAKE_FLOOR_MS and above by the
+   * tick. Audited from logs so a boundary miss cannot hide for hours.
+   */
+  nextWakeInMs: number;
 }
 
 export interface SchedulerOptions {
@@ -316,7 +359,7 @@ export class IngestionScheduler {
     ssvc: "first",
   };
 
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private started = false;
   private shuttingDown = false;
@@ -435,24 +478,74 @@ export class IngestionScheduler {
     }
     this.started = true;
     if (!this.manual) {
-      // Wake-up cadence only: the shortest configured interval. What actually
-      // runs is decided per source by the gate in runCycle.
-      const tick = Math.min(
-        this.intervalsMs.cve,
-        this.intervalsMs.kev,
-        this.intervalsMs.epss,
-        this.intervalsMs.ssvc,
-      );
-      this.timer = setInterval(() => {
-        void this.runCycle();
-      }, tick);
-      this.timer.unref?.();
+      // No cycle has settled yet, so no gate is armed: the first automatic wake
+      // keeps the historical tick delay. Every cycle after this one re-arms the
+      // timer from the gates it settled (see scheduleNextWake).
+      this.scheduleWake(this.tickIntervalMs());
       this.heartbeat = setInterval(() => {
         this.renewLease();
       }, this.heartbeatMs);
       this.heartbeat.unref?.();
     }
     return true;
+  }
+
+  /** Wake-up ceiling: the shortest configured interval, as before. */
+  private tickIntervalMs(): number {
+    return Math.min(
+      this.intervalsMs.cve,
+      this.intervalsMs.kev,
+      this.intervalsMs.epss,
+      this.intervalsMs.ssvc,
+    );
+  }
+
+  /**
+   * Milliseconds until the next automatic wake: the earliest moment any gate
+   * becomes due (grace included), clamped to SOURCE_WAKE_FLOOR_MS below and to
+   * the tick above. A source due in 12 s therefore wakes in 12 s instead of a
+   * full tick — that is what stops a just-missed boundary from costing a whole
+   * interval. The tick stays the ceiling, so an idle cycle is still cheap.
+   */
+  private computeNextWakeMs(nowMs: number): number {
+    const tick = this.tickIntervalMs();
+    let earliest = tick;
+    for (const source of CORE_SOURCES) {
+      const remaining = this.nextDueAtMs[source] - dueGraceMs(this.intervalsMs[source]) - nowMs;
+      if (remaining < earliest) {
+        earliest = remaining;
+      }
+    }
+    return Math.min(tick, Math.max(SOURCE_WAKE_FLOOR_MS, earliest));
+  }
+
+  /**
+   * Delay until the next automatic wake, given the gates as they stand now.
+   * Exposed for the gate log line and for tests: asserting the computed wake is
+   * deterministic, unlike watching a wall clock.
+   */
+  getNextWakeMs(): number {
+    return this.computeNextWakeMs(this.clock().getTime());
+  }
+
+  private scheduleWake(delayMs: number): void {
+    if (!this.started || this.shuttingDown || this.fatalError !== null || this.manual) {
+      return;
+    }
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+    }
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      // The cycle's own settle path re-arms the timer; if a cycle is already in
+      // progress this call returns at once and that cycle schedules instead.
+      void this.runCycle();
+    }, delayMs);
+    this.timer.unref?.();
+  }
+
+  private scheduleNextWake(): void {
+    this.scheduleWake(this.computeNextWakeMs(this.clock().getTime()));
   }
 
   private readonly onCycleComplete?: (outcome: {
@@ -491,12 +584,17 @@ export class IngestionScheduler {
       ran: [],
       due: {},
       skipped: {},
+      nextWakeInMs: this.computeNextWakeMs(nowMs),
     };
     const due: Record<SourceName, boolean> = { cve: false, kev: false, epss: false, ssvc: false };
     for (const source of CORE_SOURCES) {
       const dueAtMs = this.nextDueAtMs[source];
       const pending = this.pendingGate[source];
-      if (nowMs >= dueAtMs) {
+      // Grace, not strict equality: a cycle that starts seconds before the
+      // boundary still counts the source as due. The alternative is a skipped
+      // source that waits a whole interval for a boundary it just missed.
+      const graceMs = dueGraceMs(this.intervalsMs[source]);
+      if (nowMs + graceMs >= dueAtMs) {
         due[source] = true;
         report.ran.push(source);
         report.due[source] =
@@ -534,7 +632,6 @@ export class IngestionScheduler {
       };
       const updates: Partial<PublicationManifest> = {};
       const plan = this.planCycle(this.clock().getTime());
-      this.onGate?.(plan.report);
       const attempted: SourceName[] = [];
       for (const source of CORE_SOURCES) {
         // Not due: the source keeps its accepted snapshot and is not attempted.
@@ -610,6 +707,11 @@ export class IngestionScheduler {
       if (!isShutdown()) {
         this.manifest = built.manifest;
       }
+      // Emitted once the cycle settled: the gates are armed by now, so
+      // `nextWakeInMs` is the delay the wake timer will actually use. `ran` and
+      // `skipped` still describe the decisions this cycle made.
+      plan.report.nextWakeInMs = this.computeNextWakeMs(this.clock().getTime());
+      this.onGate?.(plan.report);
       // Reported even when a source failed: the sources that did succeed moved
       // the data, and the derived cache must follow them. `attempted` excludes
       // gated sources so a skipped source is never mistaken for a success.
@@ -621,6 +723,7 @@ export class IngestionScheduler {
     } finally {
       this.cycleInProgress = false;
       this.inFlight = null;
+      this.scheduleNextWake();
     }
   }
 
@@ -721,7 +824,7 @@ export class IngestionScheduler {
     }
     this.shuttingDown = true;
     if (this.timer !== null) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
     if (this.heartbeat !== null) {

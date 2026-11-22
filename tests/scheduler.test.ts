@@ -7,6 +7,9 @@ import { type CveDatabase, openDatabase } from "../src/lib/db";
 import {
   CORE_SOURCES,
   IngestionScheduler,
+  SOURCE_DUE_GRACE_MS,
+  SOURCE_WAKE_FLOOR_MS,
+  dueGraceMs,
   type CycleGateReport,
   type SourceIntervalsMs,
   type SourceJob,
@@ -502,6 +505,7 @@ function gateHarness(
   reports: CycleGateReport[];
   cycle: () => Promise<void>;
   lastReport: () => CycleGateReport;
+  nextWakeMs: () => number;
   shutdown: () => Promise<void>;
 } {
   const clock = makeClock("2026-11-09T00:00:00.000Z");
@@ -529,6 +533,7 @@ function gateHarness(
     reports,
     cycle: () => scheduler.runCycle(),
     lastReport: () => reports[reports.length - 1] as CycleGateReport,
+    nextWakeMs: () => scheduler.getNextWakeMs(),
     shutdown: () => scheduler.shutdown(),
   };
 }
@@ -542,12 +547,13 @@ describe("per-source poll gate", () => {
       expect(gate.lastReport().ran).toEqual([...CORE_SOURCES]);
       expect(gate.lastReport().due.cve).toBe("first");
 
-      // One minute short of the interval: nothing is due.
-      gate.clock.advance(59 * 60_000);
+      // Three minutes short of the interval: outside the 2 min grace, so still
+      // not due. (Within grace it would deliberately run early.)
+      gate.clock.advance(57 * 60_000);
       await gate.cycle();
       expect(gate.calls).toEqual({ cve: 1, kev: 1, epss: 1, ssvc: 1 });
 
-      gate.clock.advance(60_000);
+      gate.clock.advance(3 * 60_000);
       await gate.cycle();
       expect(gate.calls).toEqual({ cve: 2, kev: 2, epss: 1, ssvc: 1 });
       expect(gate.lastReport().ran).toEqual(["cve", "kev"]);
@@ -590,12 +596,13 @@ describe("per-source poll gate", () => {
       expect(gate.lastReport().due.epss).toBe("interval-elapsed");
 
       // The same score date came back: no fresh accept, so the gate retries.
-      gate.clock.advance(60 * 60 * 1000 - 1);
+      // Three minutes short stays outside the 2 min grace.
+      gate.clock.advance(60 * 60 * 1000 - 3 * 60_000);
       await gate.cycle();
       expect(gate.calls.epss).toBe(2);
       expect(gate.lastReport().skipped.epss?.reason).toBe("retry");
 
-      gate.clock.advance(1);
+      gate.clock.advance(3 * 60_000);
       await gate.cycle();
       expect(gate.calls.epss).toBe(3);
       expect(gate.lastReport().due.epss).toBe("retry-elapsed");
@@ -613,12 +620,12 @@ describe("per-source poll gate", () => {
       expect(gate.calls.ssvc).toBe(2);
       expect(gate.lastReport().due.ssvc).toBe("interval-elapsed");
 
-      gate.clock.advance(60 * 60 * 1000 - 1);
+      gate.clock.advance(60 * 60 * 1000 - 3 * 60_000);
       await gate.cycle();
       expect(gate.calls.ssvc).toBe(2);
       expect(gate.lastReport().skipped.ssvc?.reason).toBe("retry");
 
-      gate.clock.advance(1);
+      gate.clock.advance(3 * 60_000);
       await gate.cycle();
       expect(gate.calls.ssvc).toBe(3);
       expect(gate.lastReport().due.ssvc).toBe("retry-elapsed");
@@ -644,6 +651,73 @@ describe("per-source poll gate", () => {
         epss: { reason: "interval", nextDueAt: "2026-11-10T00:00:00.000Z" },
         ssvc: { reason: "interval", nextDueAt: "2026-11-10T00:00:00.000Z" },
       });
+    } finally {
+      await gate.shutdown();
+    }
+  });
+});
+
+describe("tick-jitter resilience", () => {
+  it("runs a source that becomes due 12 s after the tick", async () => {
+    // Production evidence (3.2.2): CVE was accepted at 07:48:07, so it was due
+    // at 08:48:07, but the 60 min tick fired at 08:47:55 — 12 s early. The gate
+    // called it not-due and the source waited a whole extra hour. This test is
+    // the same 12 s miss: with the grace window it must run on this cycle.
+    const gate = gateHarness({ kev: "2026.11.08", epss: "2026-11-09", ssvc: "rev-ssvc" });
+    try {
+      await gate.cycle();
+      expect(gate.calls.cve).toBe(1);
+
+      gate.clock.advance(60 * 60_000 - 12_000);
+      await gate.cycle();
+      expect(gate.calls.cve).toBe(2);
+      expect(gate.lastReport().due.cve).toBe("interval-elapsed");
+    } finally {
+      await gate.shutdown();
+    }
+  });
+
+  it("wakes at the earliest due time instead of the full tick", async () => {
+    // 60 s CVE interval → 15 s grace → 45 s until it is due. Nothing is due yet,
+    // so the next wake must be that 45 s, not the 60 min tick ceiling.
+    const gate = gateHarness({}, { cve: 60_000, kev: 3_600_000, epss: 3_600_000, ssvc: 3_600_000 });
+    try {
+      await gate.cycle();
+      const wake = gate.nextWakeMs();
+      expect(wake).toBeLessThanOrEqual(45_000);
+      expect(wake).toBe(45_000);
+      expect(wake).toBeGreaterThan(SOURCE_WAKE_FLOOR_MS);
+      // The logged value is the value the timer will use, not a guess.
+      expect(gate.lastReport().nextWakeInMs).toBe(wake);
+    } finally {
+      await gate.shutdown();
+    }
+  });
+
+  it("never lets grace exceed a quarter of the interval", () => {
+    expect(SOURCE_DUE_GRACE_MS).toBe(120_000);
+    // A short interval keeps its cadence instead of becoming "always due".
+    expect(dueGraceMs(60_000)).toBe(15_000);
+    expect(dueGraceMs(4 * 60_000)).toBe(60_000);
+    expect(dueGraceMs(60 * 60_000)).toBe(SOURCE_DUE_GRACE_MS);
+  });
+
+  it("still skips a source that just ran and is not due", async () => {
+    // Regression: the grace must not turn the gate off. Half an interval after
+    // a fresh accept is genuinely not due.
+    const gate = gateHarness({ kev: "2026.11.08", epss: "2026-11-09", ssvc: "rev-ssvc" });
+    try {
+      await gate.cycle();
+      gate.clock.advance(30 * 60_000);
+      await gate.cycle();
+      expect(gate.calls).toEqual({ cve: 1, kev: 1, epss: 1, ssvc: 1 });
+      expect(gate.lastReport().ran).toEqual([]);
+      expect(gate.lastReport().skipped.cve).toEqual({
+        reason: "interval",
+        nextDueAt: "2026-11-09T01:00:00.000Z",
+      });
+      // Adaptive wake still applies: 30 min remain, so wake at due − grace.
+      expect(gate.nextWakeMs()).toBe(30 * 60_000 - SOURCE_DUE_GRACE_MS);
     } finally {
       await gate.shutdown();
     }

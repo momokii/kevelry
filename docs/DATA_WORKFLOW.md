@@ -313,6 +313,20 @@ every 24 h. Gating on each source's last attempt is what makes those targets rea
 before the gate one cycle ran all four every hour, so EPSS was re-imported 24 times
 a day.
 
+**Tick jitter.** The wake is not exact, so due-ness carries a grace window: a
+source is due when `now >= nextDueAt - 120 s`, and the grace is never more than a
+quarter of that source's interval (a 60 s interval gets 15 s). Without it a cycle
+that starts seconds before a boundary skipped the source and it waited a whole
+interval — observed on 2026-11-22, when an 08:47:55 tick was 12 s ahead of CVE's
+08:48:07 due time and CVE/KEV were effectively polled every 2 h.
+
+**Adaptive wake.** After every cycle the scheduler wakes at
+`min(tick, earliest due)` — `nextDueAt - grace` for each source — clamped to a
+30 s floor. A source left due in 12 s is picked up in 12 s rather than a full
+tick, which is the second half of the same guarantee; the 60 min tick stays the
+ceiling so an idle cycle is still cheap. The cycle's `ingest-gate` line reports
+the delay it armed as `nextWakeInMs`.
+
 **Retry rule.** An attempt that accepted nothing new — a failure such as EPSS
 answering 403 before today's file exists, or an unchanged feed returning the same
 accepted version — makes that source due again after 60 min, not after its full
