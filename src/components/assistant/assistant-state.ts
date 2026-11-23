@@ -131,6 +131,11 @@ const ERROR_COPY: Record<string, { headline: string; next: string; retryable: bo
     next: "Reload the page and ask again; if it repeats, the transcript was too long for one turn.",
     retryable: false,
   },
+  PAYLOAD_TOO_LARGE: {
+    headline: "The question was too large to send.",
+    next: "Shorten the transcript, or remove the screenshot and ask about one record.",
+    retryable: true,
+  },
   INTERNAL: {
     headline: "The server failed while answering.",
     next: "Ask again in a moment. Nothing about the question was stored.",

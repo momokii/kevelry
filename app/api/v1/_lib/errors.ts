@@ -21,7 +21,13 @@ export type ErrorCode =
   | "AI_UPSTREAM_ERROR"
   | "AI_TRUNCATED"
   | "AI_REFUSED"
-  | "BAD_IMAGE";
+  | "BAD_IMAGE"
+  /**
+   * The envelope, not the schema: a body over the read cap. Its own code
+   * because `400` under-reports it — nothing about the request was malformed,
+   * it was simply larger than the route accepts.
+   */
+  | "PAYLOAD_TOO_LARGE";
 
 export class ApiError extends Error {
   readonly code: ErrorCode;
@@ -54,8 +60,14 @@ export function errorStatus(code: ErrorCode): number {
     case "AI_UPSTREAM_ERROR":
     case "AI_TRUNCATED":
       return 502;
+    // `422` is semantic refusal: the request was well-formed and understood,
+    // and what it carried is what cannot be accepted — a refused question, or
+    // an image that is a second one, too large, or not one of the three types.
     case "AI_REFUSED":
+    case "BAD_IMAGE":
       return 422;
+    case "PAYLOAD_TOO_LARGE":
+      return 413;
     case "INTERNAL":
       return 500;
     default:

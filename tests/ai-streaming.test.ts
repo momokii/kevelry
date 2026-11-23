@@ -58,7 +58,6 @@ function makeConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     webFetchEnabled: false,
     sessionBudgetTokens: 60_000,
     dailyBudgetUsd: 5,
-    maxTurns: 12,
     maxInputChars: 2000,
     maxAnswerTokens: 4096,
     requestTimeoutMs: 45_000,

@@ -86,7 +86,7 @@ then restart. A self-hoster who sets nothing â€” or sets the flag with no key â€
 gets an honest disabled state on `/assistant` that names the variable, not a
 composer that fails on submit. Every knob is in `.env.example`: the two above,
 `AI_MODEL`, `AI_BASE_URL`, the two budgets (`AI_SESSION_BUDGET_TOKENS`,
-`AI_DAILY_BUDGET_USD`), the turn/input caps, the two timeouts, and
+`AI_DAILY_BUDGET_USD`), the input cap, the two timeouts, and
 `AI_WEB_FETCH_ENABLED` (off by default; when off the web tool is absent from the
 tool list).
 

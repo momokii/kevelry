@@ -223,6 +223,42 @@ describe("lists, emphasis and inline code", () => {
     expect(doc.body.textContent).toBe("2 * 3 * 4");
   });
 
+  it("reads underscore emphasis the same way it reads asterisks", () => {
+    const html = markup("_italic_ and __bold__ and a *star* mixed in");
+    expect(html).toContain("<em>italic</em>");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain("<em>star</em>");
+    expect(parse(html).body.textContent).toBe("italic and bold and a star mixed in");
+  });
+
+  it("never italicises an underscore inside a word", () => {
+    // Identifiers are the common case: a tool name, a column, a field. The
+    // intraword rule is why none of these can become emphasis.
+    for (const fixture of [
+      "snake_case_name",
+      "the kev_window call returned 4 rows",
+      "set foo_bar_baz to 1",
+      "_foo_bar is not emphasis",
+      "CVE-2024-1234_edited",
+    ]) {
+      const doc = parse(markup(fixture));
+      expect(doc.querySelector("em"), fixture).toBeNull();
+      expect(doc.querySelector("strong"), fixture).toBeNull();
+      expect(doc.body.textContent, fixture).toBe(fixture);
+    }
+  });
+
+  it("keeps an unbalanced underscore literal and does not read two words as emphasis", () => {
+    const lone = parse(markup("A _lone marker here"));
+    expect(lone.querySelector("em")).toBeNull();
+    expect(lone.body.textContent).toBe("A _lone marker here");
+
+    // Whitespace inside the pair is arithmetic, exactly as it is for `*`.
+    const spaced = parse(markup("rate _ 5 _ per hour"));
+    expect(spaced.querySelector("em")).toBeNull();
+    expect(spaced.body.textContent).toBe("rate _ 5 _ per hour");
+  });
+
   it("keeps inline code verbatim, including its own asterisks", () => {
     const doc = parse(markup("use `a**b**c` here"));
     expect(doc.querySelector("code")?.textContent).toBe("a**b**c");

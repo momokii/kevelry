@@ -5,15 +5,17 @@
 // place untrusted bytes enter a code path with a budget attached. Three rules:
 //
 //  1. **Bounded read.** The body is consumed from the request stream with a
-//     hard byte cap; a body over the cap is refused *while reading*, not after
-//     it has been buffered. A screenshot is at most 1.5 MB decoded, so a 3 MB
-//     envelope is generous and still finite.
+//     hard byte cap; a body over the cap is refused *while reading* with
+//     `PAYLOAD_TOO_LARGE` (`413`), not after it has been buffered. A screenshot
+//     is at most 1.5 MB decoded, so a 3 MB envelope is generous and still
+//     finite, and the message says which limit it crossed.
 //  2. **No unknown keys.** `messages`, `image`, `cveContext` and nothing else.
 //     An unknown key is a client bug, and silently ignoring it hides the bug
 //     until it matters.
 //  3. **The image is checked, not trusted.** Declared MIME type, decoded size
-//     and magic bytes must agree; a `data:image/gif` URL or a PNG header on a
-//     WebP declaration is refused with `BAD_IMAGE` before the model sees it.
+//     and magic bytes must agree; a second image, one over 1.5 MB, a
+//     `data:image/gif` URL or a PNG header on a WebP declaration is refused with
+//     `BAD_IMAGE` (`422`) before the model sees it, naming which rule it broke.
 //
 // Nothing here interprets the text: screening for weaponisation is
 // `preScreen`'s job, in the route, so a body can be valid and still refused.
@@ -74,6 +76,23 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** A byte cap as the message states it: `3 MB`, `1.5 MB`, or exact bytes. */
+function formatByteLimit(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${String(bytes)} bytes`;
+  const mb = Math.round((bytes / (1024 * 1024)) * 10) / 10;
+  return `${String(mb)} MB`;
+}
+
+/** The body cap's refusal. Both read paths share it so the two cannot drift. */
+function payloadTooLarge(maxBytes: number): ReadBodyResult {
+  return {
+    ok: false,
+    code: "PAYLOAD_TOO_LARGE",
+    message: `The request body is larger than the ${formatByteLimit(maxBytes)} limit.`,
+    details: { maxBytes },
+  };
+}
+
 /**
  * Reads the request body with a hard cap. Returns a typed failure instead of
  * throwing, so the route's guard sequence has one shape to branch on.
@@ -92,12 +111,7 @@ export async function readAssistantBody(
   }
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > maxBytes) {
-    return {
-      ok: false,
-      code: "BAD_REQUEST",
-      message: "The request body is too large.",
-      details: { maxBytes },
-    };
+    return payloadTooLarge(maxBytes);
   }
   const body = request.body;
   if (body === null) {
@@ -113,12 +127,7 @@ export async function readAssistantBody(
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel();
-        return {
-          ok: false,
-          code: "BAD_REQUEST",
-          message: "The request body is too large.",
-          details: { maxBytes },
-        };
+        return payloadTooLarge(maxBytes);
       }
       chunks.push(value);
     }
@@ -207,9 +216,10 @@ function validateImage(
   const payload = match[2] as string;
   const bytes = base64ByteLength(payload);
   if (bytes > ASSISTANT_MAX_IMAGE_BYTES) {
-    return imageFailure("The image is larger than the 1.5 MB limit.", {
-      maxBytes: ASSISTANT_MAX_IMAGE_BYTES,
-    });
+    return imageFailure(
+      `The image is larger than the ${formatByteLimit(ASSISTANT_MAX_IMAGE_BYTES)} limit.`,
+      { maxBytes: ASSISTANT_MAX_IMAGE_BYTES, received: bytes },
+    );
   }
   if (bytes === 0) return imageFailure("The image is empty.");
   // Sniff the header only: the payload itself is never decoded here, and a

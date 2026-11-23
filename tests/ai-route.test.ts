@@ -18,9 +18,13 @@ import type Database from "better-sqlite3";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "../app/api/assistant/chat/route";
+import {
+  ASSISTANT_MAX_BODY_BYTES,
+  ASSISTANT_MAX_IMAGE_BYTES,
+} from "../app/api/assistant/_lib/body";
 import {
   resetAssistantRateLimitState,
   setAssistantRateLimitClock,
@@ -56,6 +60,12 @@ const PNG_DATA_URL = `data:image/png;base64,${Buffer.from([
 ]).toString("base64")}`;
 const GIF_DATA_URL = `data:image/gif;base64,${Buffer.from("GIF89a").toString("base64")}`;
 const MISMATCHED_DATA_URL = `data:image/png;base64,${Buffer.from("GIF89a").toString("base64")}`;
+/** One byte over the image cap, with a real PNG header so only the size is wrong. */
+const OVERSIZED_IMAGE_DATA_URL = (() => {
+  const bytes = new Uint8Array(ASSISTANT_MAX_IMAGE_BYTES + 1);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
+})();
 
 const MANAGED_ENV = [
   "AI_ENABLED",
@@ -301,6 +311,32 @@ describe("assistant route: rate budget", () => {
     const other = await POST(request(ONE_QUESTION, "198.51.100.22"));
     expect(other.status).toBe(503);
   });
+
+  it("admits exactly 10 of 20 concurrent requests and refuses the other 10", async () => {
+    // The increment happens synchronously in the route's first statement, before
+    // its first `await`, so a burst cannot slip past the window: 20 requests
+    // started in one microtask-free batch consume 20 tokens, and only the first
+    // 10 are admitted. Eleven would be a limiter bug, not a test bug.
+    const ip = "198.51.100.24";
+    const upstream = vi.fn(async () => ({ status: 200, body: textStream("admitted") }));
+    setAssistantTransport(upstream);
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, () => POST(request(ONE_QUESTION, ip))),
+    );
+    const statuses = responses.map((response) => response.status);
+    const bodies = await Promise.all(responses.map((response) => response.text()));
+
+    expect(statuses.filter((status) => status === 200)).toHaveLength(10);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(10);
+    // The admitted ten are the only turns that reached the provider: a refused
+    // request is answered before a single byte of body is read.
+    expect(upstream).toHaveBeenCalledTimes(10);
+    for (const [index, body] of bodies.entries()) {
+      if (statuses[index] === 200) continue;
+      expect((JSON.parse(body) as Record<string, any>).code).toBe("RATE_LIMITED");
+    }
+  });
 });
 
 describe("assistant route: budgets", () => {
@@ -315,11 +351,10 @@ describe("assistant route: budgets", () => {
         )
         .run(utcDay(), STAMP);
     });
-    const { transport, calls } = fakeTransport(async () => ({
-      status: 200,
-      body: textStream("never"),
-    }));
-    setAssistantTransport(transport);
+    // A spy, not a fixture: the claim is that the budget check runs *before* the
+    // provider is touched, and `not.toHaveBeenCalled()` is that claim.
+    const upstream = vi.fn(async () => ({ status: 200, body: textStream("never") }));
+    setAssistantTransport(upstream);
 
     const response = await POST(request(ONE_QUESTION));
     const body = (await response.json()) as Record<string, any>;
@@ -328,16 +363,15 @@ describe("assistant route: budgets", () => {
     expect(body.code).toBe("AI_BUDGET_EXHAUSTED");
     expect(body.details.reason).toBe("daily");
     expect(Date.parse(body.details.resetAt as string)).toBeGreaterThan(Date.now());
-    expect(calls).toHaveLength(0);
+    expect(upstream).not.toHaveBeenCalled();
+    // Nor is the spent day written to: a refused turn is not a billed one.
+    expect(ledgerRows()).toHaveLength(1);
   });
 
   it("refuses a history past the session token budget without calling the provider", async () => {
     process.env.AI_SESSION_BUDGET_TOKENS = "1";
-    const { transport, calls } = fakeTransport(async () => ({
-      status: 200,
-      body: textStream("never"),
-    }));
-    setAssistantTransport(transport);
+    const upstream = vi.fn(async () => ({ status: 200, body: textStream("never") }));
+    setAssistantTransport(upstream);
 
     const response = await POST(request(ONE_QUESTION));
     const body = (await response.json()) as Record<string, any>;
@@ -345,7 +379,8 @@ describe("assistant route: budgets", () => {
     expect(response.status).toBe(429);
     expect(body.code).toBe("AI_BUDGET_EXHAUSTED");
     expect(body.details.reason).toBe("session");
-    expect(calls).toHaveLength(0);
+    expect(upstream).not.toHaveBeenCalled();
+    expect(ledgerRows()).toHaveLength(0);
   });
 });
 
@@ -669,19 +704,25 @@ describe("assistant route: request body", () => {
     {
       name: "an image array",
       body: { ...ONE_QUESTION, image: [{ dataUrl: PNG_DATA_URL }, { dataUrl: PNG_DATA_URL }] },
-      status: 400,
+      status: 422,
       code: "BAD_IMAGE",
     },
     {
       name: "a non-png data URL",
       body: { ...ONE_QUESTION, image: { dataUrl: GIF_DATA_URL } },
-      status: 400,
+      status: 422,
       code: "BAD_IMAGE",
     },
     {
       name: "an image whose bytes contradict its type",
       body: { ...ONE_QUESTION, image: { dataUrl: MISMATCHED_DATA_URL } },
-      status: 400,
+      status: 422,
+      code: "BAD_IMAGE",
+    },
+    {
+      name: "an image over 1.5 MB",
+      body: { ...ONE_QUESTION, image: { dataUrl: OVERSIZED_IMAGE_DATA_URL } },
+      status: 422,
       code: "BAD_IMAGE",
     },
     {
@@ -714,6 +755,64 @@ describe("assistant route: request body", () => {
       expect(calls).toHaveLength(0);
     });
   }
+
+  it("answers 413 PAYLOAD_TOO_LARGE for a body over the envelope, naming the limit", async () => {
+    const upstream = vi.fn(async () => ({ status: 200, body: textStream("never") }));
+    setAssistantTransport(upstream);
+    // A content-length that under-declares the body, so the refusal comes from
+    // the counted read rather than the header check above it.
+    const oversized = "x".repeat(ASSISTANT_MAX_BODY_BYTES + 1);
+    const response = await POST(
+      new Request("http://localhost/api/assistant/chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": "10",
+          "x-forwarded-for": "198.51.100.31",
+        },
+        body: oversized,
+      }),
+    );
+    const body = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(413);
+    expect(body.code).toBe("PAYLOAD_TOO_LARGE");
+    expect(body.message).toContain("3 MB");
+    expect(body.details.maxBytes).toBe(ASSISTANT_MAX_BODY_BYTES);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("names the image rule each 422 refusal broke", async () => {
+    const upstream = vi.fn(async () => ({ status: 200, body: textStream("never") }));
+    setAssistantTransport(upstream);
+
+    const refusals: Array<{ name: string; image: unknown; expected: string }> = [
+      {
+        name: "a second image",
+        image: [{ dataUrl: PNG_DATA_URL }, { dataUrl: PNG_DATA_URL }],
+        expected: "At most 1 image per request.",
+      },
+      {
+        name: "an oversized image",
+        image: { dataUrl: OVERSIZED_IMAGE_DATA_URL },
+        expected: "larger than the 1.5 MB limit",
+      },
+      {
+        name: "a GIF",
+        image: { dataUrl: GIF_DATA_URL },
+        expected: "image/png, image/jpeg, image/webp",
+      },
+    ];
+
+    for (const refusal of refusals) {
+      const response = await POST(request({ ...ONE_QUESTION, image: refusal.image }));
+      const body = (await response.json()) as Record<string, any>;
+      expect(response.status, refusal.name).toBe(422);
+      expect(body.code, refusal.name).toBe("BAD_IMAGE");
+      expect(String(body.message), refusal.name).toContain(refusal.expected);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
 
   it("refuses a weaponisation question before any inference with 422 AI_REFUSED", async () => {
     const { transport, calls } = fakeTransport(async () => ({

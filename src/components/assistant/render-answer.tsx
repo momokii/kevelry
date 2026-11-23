@@ -17,7 +17,7 @@
 //   4. blockquotes (`>`), consecutive lines, one paragraph per bracketed run;
 //   5. pipe tables (header row + dash separator row + body rows);
 //   6. unordered and ordered lists;
-//   7. `**bold**`, `*italic*`, `` `inline code` ``;
+//   7. `**bold**` / `__bold__`, `*italic*` / `_italic_`, `` `inline code` ``;
 //   8. links — markdown `[label](target)` and bare `https://` URLs;
 //   9. bare record ids in prose (`CVE-YYYY-NNNN`) as `/explore?q=` links, but
 //      only ids the server cited this turn (see `AnswerRenderOptions`).
@@ -26,7 +26,7 @@
 // renders as the characters the model wrote, not as something decoded.
 //
 // **Degradation is the rule, not a fallback.** A marker that is not balanced
-// renders as the characters the model wrote: a lone `**`, `*` or backtick, an
+// renders as the characters the model wrote: a lone `**`, `*`, `_` or backtick, an
 // unclosed `[label](target`, a heading marker with no text after it, a `>` with
 // nothing quoted, a `---` that is not a line of its own (a paragraph line above
 // or below it keeps it literal), and an unterminated code fence — backticks
@@ -75,6 +75,8 @@ const CONTINUATION = /^\s{2,}\S/;
 const INLINE_CODE = /^(`+)([\s\S]*?)\1(?!`)/;
 const STRONG = /^\*\*([\s\S]+?)\*\*/;
 const EMPHASIS = /^\*([^*\n]+?)\*/;
+const STRONG_UNDERSCORE = /^__([\s\S]+?)__/;
+const EMPHASIS_UNDERSCORE = /^_([^_\n]+?)_/;
 const BARE_URL = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s<>"'`]+/;
 const SEPARATOR_CELL = /^:?-{1,}:?$/;
 
@@ -179,6 +181,43 @@ function isTight(value: string): boolean {
   return value.trim() !== "" && !/^\s/.test(value) && !/\s$/.test(value);
 }
 
+function isWordChar(value: string | undefined): boolean {
+  return value !== undefined && /[A-Za-z0-9]/.test(value);
+}
+
+interface UnderscoreRun {
+  readonly kind: "strong" | "em";
+  readonly body: string;
+  /** Length of the whole construct, delimiters included. */
+  readonly length: number;
+}
+
+/**
+ * Reads `__bold__` / `_italic_` at `start`, or `null` when the run is not
+ * emphasis.
+ *
+ * Same degradation rule as asterisks — an unbalanced marker renders as the
+ * characters the model wrote — plus the rule underscores need and asterisks do
+ * not: an underscore inside a word belongs to the word. `snake_case_name`,
+ * `kev_window` and `foo_bar_baz` are identifiers, so an opening `_` after a
+ * letter or digit and a closing `_` before one are both refused. That is
+ * CommonMark's intraword rule, and it is what keeps a tool name from turning
+ * into italics mid-sentence.
+ */
+function readUnderscore(text: string, start: number): UnderscoreRun | null {
+  if (isWordChar(start === 0 ? "" : text[start - 1])) return null;
+  const double = text[start + 1] === "_";
+  const pattern = double ? STRONG_UNDERSCORE : EMPHASIS_UNDERSCORE;
+  const match = pattern.exec(text.slice(start));
+  if (match === null) return null;
+  const body = match[1] ?? "";
+  // `___` is a run of markers, not a strong opening: it degrades to text.
+  if (double && body.startsWith("_")) return null;
+  if (isWordChar(text[start + match[0].length])) return null;
+  if (!isTight(body)) return null;
+  return { kind: double ? "strong" : "em", body, length: match[0].length };
+}
+
 function suppressLinks(context: InlineContext): InlineContext {
   return { ...context, linkIds: false, linkUrls: false };
 }
@@ -265,7 +304,8 @@ function renderInline(
       continue;
     }
 
-    // 3. Strong, then emphasis. Both refuse to span a line break.
+    // 3. Strong, then emphasis. Asterisks and underscores read the same way,
+    //    and neither spans a line break.
     if (char === "*" && depth < MAX_DEPTH) {
       const strong = text[index + 1] === "*" ? STRONG.exec(rest) : null;
       if (strong !== null && isTight(strong[1] ?? "")) {
@@ -287,6 +327,20 @@ function renderInline(
           </em>,
         );
         index += emphasis[0].length;
+        continue;
+      }
+    }
+
+    if (char === "_" && depth < MAX_DEPTH) {
+      const run = readUnderscore(text, index);
+      if (run !== null) {
+        flush();
+        const key = nextKey(run.kind);
+        const body = renderInline(run.body, context, `${key}-body`, depth + 1);
+        nodes.push(
+          run.kind === "strong" ? <strong key={key}>{body}</strong> : <em key={key}>{body}</em>,
+        );
+        index += run.length;
         continue;
       }
     }

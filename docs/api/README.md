@@ -123,6 +123,19 @@ stable; `message` is sanitized; no stack traces, paths, or secrets.
 | `RATE_LIMITED`           | 429  | Per-IP budget spent; `Retry-After` tells when to return       |
 | `INTERNAL`               | 500  | Sanitized failure; report `requestId`                         |
 
+Two codes below are **assistant-only** (`POST /api/assistant/chat`, which lives
+outside `/api/v1` and shares this error shape rather than inventing a second
+one). They are listed here because a client that reads this catalog will meet
+them if it talks to the desk:
+
+| Code                | HTTP | Meaning                                                                                           |
+| ------------------- | ---- | ------------------------------------------------------------------------------------------------- |
+| `PAYLOAD_TOO_LARGE` | 413  | The body is over the 3 MB envelope; `details.maxBytes` states the limit and the message names it  |
+| `BAD_IMAGE`         | 422  | A second image, an image over 1.5 MB, or bytes that are not PNG/JPEG/WebP — `message` names which |
+
+A malformed body (bad JSON, an unknown key, too many messages) stays
+`400 BAD_REQUEST`: those are client bugs, not size or content.
+
 ## Limits
 
 Defaults, enforced per client IP and visible on every response:

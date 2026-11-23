@@ -609,6 +609,12 @@ export function AssistantView(props: AssistantViewProps) {
   return (
     <div className="assistant-desk">
       <div className="assistant-main">
+        {/* The transcript's own heading. Without it the first `h3` an answer
+            renders skips a level under the page `h1` — the renderer clamps
+            model headings to `h3`/`h4`, so the missing level has to be the
+            region's. It is outside the live region: a heading inside
+            `role="log"` would be re-announced on every delta. */}
+        <h2 className="sr-only">Answer</h2>
         <section
           className="assistant-transcript"
           role="log"

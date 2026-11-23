@@ -27,6 +27,7 @@ import {
 } from "./a11y-audit";
 import { resetToBaseline } from "./corpus";
 import {
+  AI_FAKE_HEADING_MARKER,
   AI_FAKE_TABLE_MARKER,
   AI_FAKE_UNSUPPORTED_ID,
 } from "../../app/api/assistant/_lib/fake-transport";
@@ -315,6 +316,44 @@ test("a formatted answer renders a real table and the page still audits clean", 
 
   // Still on screen after the audit: the table was not a transient render.
   await expect(page.locator('[data-testid="assistant-answer"] table')).toBeVisible();
+});
+
+test("an answer's first heading never skips a level under the page h1", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  // Its own rate-limit identity, for the same reason the table journey has one:
+  // this file spends the ten turns a client gets per minute.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.89" });
+
+  await auditRoute(page, {
+    route: "/assistant",
+    name: "assistant answer heading",
+    maxLiveRegions: 2,
+    // `auditRoute` checks that no heading jumps more than one level. It needs an
+    // answer that actually carries a heading, because that is where the skip
+    // was: the renderer clamps a model `###` to an `h3`, and the transcript
+    // region had no `h2` for it to sit under.
+    beforeAudit: async (current) => {
+      await current.waitForLoadState("networkidle");
+      await current
+        .locator("#assistant-question")
+        .fill(`Which KEV entries were added? Answer ${AI_FAKE_HEADING_MARKER}.`);
+      await current.keyboard.press("Enter");
+
+      const answer = current.locator('[data-testid="assistant-answer"]');
+      await expect(answer).toContainText("canned answer of the test transport");
+      await expect(answer.locator("h3")).toHaveText("Canned answer");
+    },
+  });
+
+  // The sequence the audit just walked, stated plainly: the page h1, the
+  // transcript's own h2, then the answer's h3. Before the fix it read 1 → 3.
+  const levels = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("h1, h2, h3, h4")).map((el) =>
+      Number(el.tagName.slice(1)),
+    ),
+  );
+  expect(levels.slice(0, 3)).toEqual([1, 2, 3]);
+  await expect(page.getByRole("heading", { level: 2, name: "Answer", exact: true })).toHaveCount(1);
 });
 
 test("captures the empty and mid-stream states at 1440x900", async ({ page }) => {

@@ -5,10 +5,14 @@
 // (`off`, `no-key`, `over-budget`) instead of throwing into a page render, so
 // the UI can say "disabled" honestly rather than rendering a broken composer.
 //
-// Validation is strict for supplied values: a malformed budget, turn cap or
-// timeout is a configuration bug, and silently falling back to a default would
-// make the budget a lie. Missing values are different — they take the documented
+// Validation is strict for supplied values: a malformed budget or timeout is a
+// configuration bug, and silently falling back to a default would make the
+// budget a lie. Missing values are different — they take the documented
 // default.
+//
+// There is no turn cap here. The enforced cap on a turn's size is
+// `ASSISTANT_MAX_MESSAGES` (12) in the route's body schema, and a knob this
+// file parsed but no code read was a promise the deployment could not keep.
 //
 // The API key is held in a non-enumerable property: `config.apiKey` works for
 // the client, while `JSON.stringify(config)` and object spreads cannot carry it
@@ -55,7 +59,6 @@ export interface AiConfig {
   readonly webFetchEnabled: boolean;
   readonly sessionBudgetTokens: number;
   readonly dailyBudgetUsd: number;
-  readonly maxTurns: number;
   readonly maxInputChars: number;
   /** Completion budget for the round that writes the answer, not a tool round. */
   readonly maxAnswerTokens: number;
@@ -155,7 +158,6 @@ export function loadAiConfig(env: Env = process.env): AiConfig {
     webFetchEnabled: parseBoolean(env, "AI_WEB_FETCH_ENABLED", false),
     sessionBudgetTokens: parseInteger(env, "AI_SESSION_BUDGET_TOKENS", 60_000, 1),
     dailyBudgetUsd: parseUsd(env, "AI_DAILY_BUDGET_USD", 5),
-    maxTurns: parseInteger(env, "AI_MAX_TURNS", 12, 1),
     maxInputChars: parseInteger(env, "AI_MAX_INPUT_CHARS", 2000, 1),
     // Answer prose needs more room than a tool call does, and a table needs the
     // most. The 512 floor still applies: below it the reasoning model returns

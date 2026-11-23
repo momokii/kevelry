@@ -21,7 +21,6 @@ describe("loadAiConfig", () => {
     expect(config.webFetchEnabled).toBe(false);
     expect(config.sessionBudgetTokens).toBe(60_000);
     expect(config.dailyBudgetUsd).toBe(5);
-    expect(config.maxTurns).toBe(12);
     expect(config.maxInputChars).toBe(2000);
     expect(config.maxAnswerTokens).toBe(4096);
     expect(AI_MAX_ANSWER_TOKENS_DEFAULT).toBe(4096);

@@ -39,6 +39,16 @@ export const AI_FAKE_UNSUPPORTED_ID = "CVE-2099-9999";
  */
 export const AI_FAKE_TABLE_MARKER = "as a table";
 
+/**
+ * A question naming this phrase gets a canned Markdown heading back.
+ *
+ * Same shape and same reason as the table marker: the desk clamps a model
+ * heading to `h3`/`h4`, so the answer's first heading is the level that would
+ * skip under the page `h1` if the transcript region had no heading of its own.
+ * The browser suite needs an answer that really carries one to audit that.
+ */
+export const AI_FAKE_HEADING_MARKER = "with a heading";
+
 /** One pause between frames; long enough to paint, short enough for a suite. */
 export const AI_FAKE_FRAME_DELAY_MS = 45;
 
@@ -120,13 +130,14 @@ const TABLE_LINES = [
 ];
 
 /** Round two: prose, then the terminal usage frame. */
-function answerRound(unsupportedId: boolean, table: boolean): string {
+function answerRound(unsupportedId: boolean, table: boolean, heading: boolean): string {
   const lines = unsupportedId
     ? [
         ...ANSWER_LINES,
         `The id ${AI_FAKE_UNSUPPORTED_ID} was named in the question, and no tool above returned it. `,
       ]
     : [...ANSWER_LINES];
+  if (heading) lines.unshift("### Canned answer\n\n");
   if (table) lines.push(...TABLE_LINES);
   const frames: string[] = [];
   for (const line of lines) {
@@ -180,6 +191,7 @@ export function createFakeAssistantTransport(
       ? answerRound(
           question.includes(AI_FAKE_UNSUPPORTED_ID),
           question.toLowerCase().includes(AI_FAKE_TABLE_MARKER),
+          question.toLowerCase().includes(AI_FAKE_HEADING_MARKER),
         )
       : toolRound();
     round += 1;
