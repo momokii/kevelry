@@ -5595,6 +5595,24 @@ a.badge:hover {
   gap: 6px;
 }
 
+/* The turn's citation union is one line until it is opened: the rail already
+   lists each id under the call that returned it, and a second wall of chips
+   above the composer reads as a duplicate rather than as evidence. */
+.assistant-citations-summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.assistant-citations-summary::-webkit-details-marker {
+  display: none;
+}
+
 .assistant-citations-label {
   margin: 0;
   font-family: var(--ui-font-mono);
@@ -5689,13 +5707,14 @@ a.badge:hover {
 
 /* ---------- provenance ledger ---------- */
 
+/* No inner scrollbar: the rail is sticky but content-capped (three calls, six
+   chips each), so the page keeps one scroll context. The narrow layout folds
+   the whole column into a disclosure instead of scrolling it. */
 .assistant-ledger {
   grid-column: span 4;
   position: sticky;
   top: calc(var(--ui-topbar) + var(--ui-sp-4));
   align-self: start;
-  max-height: calc(100vh - var(--ui-topbar) - var(--ui-sp-8));
-  overflow: auto;
   padding-left: var(--ui-sp-5);
   border-left: 1px solid var(--ui-rule);
   min-width: 0;
@@ -5752,6 +5771,27 @@ a.badge:hover {
   display: flex;
   flex-direction: column;
   gap: var(--ui-sp-4);
+}
+
+/* `+N more` and `See all N calls`: one control, one pattern, 44px tall and
+   keyboard-native — a real button, never a click handler on a chip. */
+.assistant-ledger-more {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-cite);
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.assistant-ledger-calls {
+  margin-top: 0;
 }
 
 .assistant-ledger-entry {
@@ -6279,8 +6319,6 @@ a.badge:hover {
 
   .assistant-ledger {
     position: static;
-    max-height: none;
-    overflow: visible;
     padding-left: 0;
     padding-top: var(--ui-sp-3);
     border-left: 0;

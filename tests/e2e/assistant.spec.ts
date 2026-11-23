@@ -37,6 +37,8 @@ const DISABLED_ORIGIN = "http://localhost:3211";
 /** Screenshots for the change report; never committed. */
 const EMPTY_SHOT = "/tmp/assistant-empty-1440.png";
 const MIDSTREAM_SHOT = "/tmp/assistant-midstream-1440.png";
+const RAIL_COLLAPSED_SHOT = "/tmp/assistant-rail-collapsed-1440.png";
+const RAIL_EXPANDED_SHOT = "/tmp/assistant-rail-expanded-1440.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
 
@@ -118,7 +120,11 @@ test("a question streams tool activity, then text, then server citations", async
   await expect(activity).toHaveCount(0);
   await expect(page.locator('[data-testid="assistant-stop"]')).toHaveCount(0);
 
-  // Citations come from the server's event, never from the prose.
+  // Citations come from the server's event, never from the prose. The turn's
+  // union is one line until it is opened: the rail is already per call.
+  const citedSummary = page.locator('[data-testid="assistant-citations"] summary');
+  await expect(citedSummary).toHaveText(/^\d+ records? cited$/);
+  await citedSummary.click();
   const citations = page.locator('[data-testid="assistant-citation"]');
   await expect(citations.first()).toBeVisible();
   await expect(citations.first()).toHaveAttribute("href", /^\/explore\?q=CVE-\d{4}-\d+$/);
@@ -229,7 +235,9 @@ test("390px has no horizontal overflow, with the ledger folded below", async ({ 
   );
   await auditNoHorizontalOverflow(page, "assistant answer at 390px");
 
-  // The chips never break mid-id: each citation is a whole, wrapped link.
+  // The chips never break mid-id: each citation is a whole, wrapped link. The
+  // block is folded, so it is opened first — the summary is the whole line.
+  await page.locator('[data-testid="assistant-citations"] summary').click();
   const chip = page.locator('[data-testid="assistant-citation"]').first();
   await expect(chip).toBeVisible();
   const box = await chip.boundingBox();
@@ -313,6 +321,38 @@ test("captures the empty and mid-stream states at 1440x900", async ({ page }) =>
   await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
     "canned answer of the test transport",
   );
+});
+
+/**
+ * The dense rail, photographed both ways.
+ *
+ * Four questions give four calls — one more than the rail shows — so the
+ * collapsed shot is the state a reader meets and the expanded shot is what the
+ * control reveals. Its own rate-limit identity: this test asks four times, and
+ * the page's 10/minute budget is spent by the journeys above.
+ */
+test("captures the rail collapsed and expanded at 1440x900", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.91" });
+  await gotoDesk(page);
+  for (let index = 0; index < 4; index += 1) {
+    await page.locator("#assistant-question").fill(`${QUESTION} (${String(index + 1)})`);
+    await page.keyboard.press("Enter");
+    await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(index + 1);
+    await expect(page.locator('[data-testid="assistant-answer"]').nth(index)).toContainText(
+      "canned answer of the test transport",
+    );
+  }
+
+  // The rail caps itself: three calls, and one control naming the real total.
+  const control = page.locator('[data-testid="assistant-ledger-calls-more"]');
+  await expect(control).toHaveText("See all 4 calls");
+  await expect(page.locator('[data-testid="assistant-ledger-entry"]')).toHaveCount(3);
+  await page.screenshot({ path: RAIL_COLLAPSED_SHOT });
+
+  await control.click();
+  await expect(page.locator('[data-testid="assistant-ledger-entry"]')).toHaveCount(4);
+  await page.screenshot({ path: RAIL_EXPANDED_SHOT });
 });
 
 /** A 1x1 PNG: real magic bytes, so the client sniffer and the route agree. */
@@ -460,6 +500,7 @@ test("an unsupported id in the answer is flagged and never becomes a citation", 
 
   // The supported records are still chipped; the unsupported id is not, and it
   // never gets a link that would imply the dataset holds it.
+  await page.locator('[data-testid="assistant-citations"] summary').click();
   const citations = page.locator('[data-testid="assistant-citation"]');
   await expect(citations.first()).toBeVisible();
   await expect(page.locator(`a[href="/explore?q=${AI_FAKE_UNSUPPORTED_ID}"]`)).toHaveCount(0);

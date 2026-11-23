@@ -10,9 +10,20 @@
 // Chips are real links to the record, focusable and 44px tall like every other
 // standalone target in the app.
 //
+// Density is a hierarchy, not a scrollbar. The rail shows the transcript's first
+// three calls and six chips per call, each with its own in-place disclosure, and
+// it never sets a max-height: the column is as tall as what it says. Two things
+// are never collapsed — a `no rows` call and a `failed` call, because an empty
+// result is the evidence that a question had no answer — and the row label is
+// derived from what came back, so it cannot claim ids the server never sent.
+//
 // One component, two shapes: a titled column on a wide screen (`<h2>`), and a
 // `<details>` disclosure below the transcript on a narrow one. The visible label
 // switches with the layout, so "Evidence" is stated once either way.
+
+"use client";
+
+import { useState } from "react";
 
 import type { AssistantToolLine, AssistantTurn } from "./assistant-state";
 
@@ -23,10 +34,32 @@ export interface AssistantLedgerProps {
   onToggle: (open: boolean) => void;
 }
 
-function rowsLabel(line: AssistantToolLine): string {
+/** Chips a single call shows before its own `+N more` disclosure. */
+export const LEDGER_CHIPS_PER_CALL = 6;
+/** Calls the rail shows before `See all N calls`. */
+export const LEDGER_CALLS_VISIBLE = 3;
+
+/** A call whose emptiness is the answer, and therefore is never hidden. */
+function isPinned(line: AssistantToolLine): boolean {
+  return !line.ok || line.rows === 0;
+}
+
+/**
+ * The row label, derived from what the server actually sent.
+ *
+ * `rows` is the real count and `ids` is a display sample, so the two numbers are
+ * stated together whenever they differ: a line reading `25 rows` beside six
+ * chips is not a cap the reader can see, and `25 rows · 12 ids available` is.
+ */
+export function rowsLabel(line: AssistantToolLine): string {
   if (!line.ok) return "failed";
   if (line.rows === 0) return "no rows";
-  return `${String(line.rows)} ${line.rows === 1 ? "row" : "rows"}`;
+  const rows = `${String(line.rows)} ${line.rows === 1 ? "row" : "rows"}`;
+  if (line.ids.length === 0) return `${rows} · no ids available`;
+  if (line.ids.length < line.rows) {
+    return `${rows} · ${String(line.ids.length)} ids available`;
+  }
+  return rows;
 }
 
 function callsLabel(callCount: number): string {
@@ -34,19 +67,38 @@ function callsLabel(callCount: number): string {
   return `${String(callCount)} tool ${callCount === 1 ? "call" : "calls"}`;
 }
 
-function LedgerEntry({ line }: { line: AssistantToolLine }) {
+function LedgerEntry({
+  line,
+  chipsOpen,
+  onChipsToggle,
+}: {
+  line: AssistantToolLine;
+  chipsOpen: boolean;
+  onChipsToggle: (id: string) => void;
+}) {
+  const hiddenChips = line.ids.length - LEDGER_CHIPS_PER_CALL;
+  const shown = chipsOpen ? line.ids : line.ids.slice(0, LEDGER_CHIPS_PER_CALL);
   return (
     <li className="assistant-ledger-entry" data-testid="assistant-ledger-entry">
       <div className="assistant-ledger-line">
         <span className="assistant-ledger-tool">{line.name}</span>
-        <span className={`assistant-ledger-rows${line.ok ? "" : " is-failed"}`}>
+        <span
+          className={`assistant-ledger-rows${line.ok ? "" : " is-failed"}`}
+          data-testid="assistant-ledger-rows"
+          data-rows={String(line.rows)}
+          data-ids={String(line.ids.length)}
+        >
           {rowsLabel(line)}
         </span>
       </div>
       <p className="assistant-ledger-args">{line.args}</p>
       {line.ids.length > 0 ? (
-        <ul className="assistant-chip-row" aria-label={`Records returned by ${line.name}`}>
-          {line.ids.map((id) => (
+        <ul
+          className="assistant-chip-row"
+          aria-label={`Records returned by ${line.name}`}
+          data-testid="assistant-ledger-chips"
+        >
+          {shown.map((id) => (
             <li key={id}>
               <a className="assistant-chip" href={`/explore?q=${encodeURIComponent(id)}`}>
                 <span className="assistant-chip-id">{id}</span>
@@ -55,6 +107,19 @@ function LedgerEntry({ line }: { line: AssistantToolLine }) {
           ))}
         </ul>
       ) : null}
+      {hiddenChips > 0 ? (
+        <button
+          type="button"
+          className="assistant-ledger-more"
+          aria-expanded={chipsOpen}
+          data-testid="assistant-ledger-chip-more"
+          onClick={() => {
+            onChipsToggle(line.id);
+          }}
+        >
+          {chipsOpen ? "Show fewer" : `+${String(hiddenChips)} more`}
+        </button>
+      ) : null}
     </li>
   );
 }
@@ -62,6 +127,27 @@ function LedgerEntry({ line }: { line: AssistantToolLine }) {
 export function AssistantLedger({ turns, open, onToggle }: AssistantLedgerProps) {
   const lines = turns.flatMap((turn) => turn.tools);
   const callCount = lines.length;
+  // Expansion is keyed by call id and lives above the entries, so a later
+  // stream delta that re-renders the list cannot fold a disclosure the reader
+  // opened. Nothing here closes itself.
+  const [openChips, setOpenChips] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [allCalls, setAllCalls] = useState(false);
+
+  const collapsible = lines.some((line, index) => index >= LEDGER_CALLS_VISIBLE && !isPinned(line));
+  const shownCalls =
+    allCalls || !collapsible
+      ? lines
+      : lines.filter((line, index) => index < LEDGER_CALLS_VISIBLE || isPinned(line));
+
+  const toggleChips = (id: string): void => {
+    setOpenChips((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <aside
       className="assistant-ledger"
@@ -95,11 +181,31 @@ export function AssistantLedger({ turns, open, onToggle }: AssistantLedgerProps)
               Nothing has run yet. The first question fills this column.
             </p>
           ) : (
-            <ol className="assistant-ledger-list">
-              {lines.map((line) => (
-                <LedgerEntry key={line.id} line={line} />
-              ))}
-            </ol>
+            <>
+              <ol className="assistant-ledger-list">
+                {shownCalls.map((line) => (
+                  <LedgerEntry
+                    key={line.id}
+                    line={line}
+                    chipsOpen={openChips.has(line.id)}
+                    onChipsToggle={toggleChips}
+                  />
+                ))}
+              </ol>
+              {collapsible ? (
+                <button
+                  type="button"
+                  className="assistant-ledger-more assistant-ledger-calls"
+                  aria-expanded={allCalls}
+                  data-testid="assistant-ledger-calls-more"
+                  onClick={() => {
+                    setAllCalls((current) => !current);
+                  }}
+                >
+                  {allCalls ? "Show fewer calls" : `See all ${String(callCount)} calls`}
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </details>

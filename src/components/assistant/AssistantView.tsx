@@ -229,8 +229,13 @@ function TurnBlock({
           </p>
         ) : null}
         {turn.citations.length > 0 ? (
-          <div className="assistant-citations">
-            <p className="assistant-citations-label">Cited</p>
+          // The turn's union, one line closed: the rail is already per call, so
+          // these chips answer "what can this answer cite" and nothing else.
+          <details className="assistant-citations" data-testid="assistant-citations">
+            <summary className="assistant-citations-summary">
+              {String(turn.citations.length)} record
+              {turn.citations.length === 1 ? "" : "s"} cited
+            </summary>
             <ul className="assistant-chip-row" aria-label="Cited records">
               {turn.citations.map((id) => (
                 <li key={id}>
@@ -244,7 +249,7 @@ function TurnBlock({
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         ) : null}
       </div>
       {followUps.length > 0 ? (
