@@ -59,11 +59,14 @@ export const ASSISTANT_CITATION_CAP = 200;
  *
  * The ledger chips the records a tool call actually returned, so the ids have to
  * travel on the frame that names the call — the terminal `citations` event is the
- * whole turn and cannot be attributed back to one call. Twelve is a display
- * sample, not a result cap: `rows` still reports the real row count and the
- * `citations` event still carries the full set (up to the citation cap).
+ * whole turn and cannot be attributed back to one call. Twenty-five is a display
+ * sample, not a result cap: it is the row cap of `search_cves` and `list_priority`,
+ * so the common call states one number and the honest `rows · ids available` form
+ * is reserved for a tool that really returns more (`kev_window` caps at 50).
+ * `rows` still reports the real row count and the `citations` event still carries
+ * the full set (up to the citation cap).
  */
-export const ASSISTANT_TOOL_ID_SAMPLE = 12;
+export const ASSISTANT_TOOL_ID_SAMPLE = 25;
 
 /** CVE id shape. The same pattern the tools validate against. */
 const CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;

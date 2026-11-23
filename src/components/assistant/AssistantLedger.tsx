@@ -50,7 +50,7 @@ function isPinned(line: AssistantToolLine): boolean {
  *
  * `rows` is the real count and `ids` is a display sample, so the two numbers are
  * stated together whenever they differ: a line reading `25 rows` beside six
- * chips is not a cap the reader can see, and `25 rows · 12 ids available` is.
+ * chips is not a cap the reader can see, and `50 rows · 25 ids available` is.
  */
 export function rowsLabel(line: AssistantToolLine): string {
   if (!line.ok) return "failed";

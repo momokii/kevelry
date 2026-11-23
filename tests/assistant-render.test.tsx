@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderAnswer, safeHref } from "../src/components/assistant/render-answer";
 import { buildBriefMarkdown } from "../src/components/assistant/assistant-brief";
+import { TOOL_NAMES } from "../src/lib/ai/tools";
 
 function markup(text: string, verifiedIds: readonly string[] = []): string {
   return renderToStaticMarkup(<>{renderAnswer(text, { verifiedIds })}</>);
@@ -178,7 +179,7 @@ describe("tables", () => {
     const doc = parse(html);
     expect(doc.querySelector("table")).toBeNull();
     expect(doc.querySelector("p")?.textContent).toBe(
-      "| Record | Score |" + "| CVE-2024-1234 | 9.8 |",
+      "| Record | Score | " + "| CVE-2024-1234 | 9.8 |",
     );
     // The line break survives, so the header still reads as its own line.
     expect(doc.querySelectorAll("br")).toHaveLength(1);
@@ -387,7 +388,7 @@ describe("horizontal rules", () => {
     // line, and the marker stays the model's own characters.
     const doc = parse(markup("Before\n---"));
     expect(doc.querySelector("hr")).toBeNull();
-    expect(doc.querySelector("p")?.textContent).toBe("Before---");
+    expect(doc.querySelector("p")?.textContent).toBe("Before ---");
   });
 
   it("does not read a table's separator row as a rule", () => {
@@ -455,7 +456,7 @@ describe("broken markers degrade to the characters the model wrote", () => {
     expect(html).not.toContain("<code");
     const doc = parse(html);
     expect(doc.querySelector("pre")).toBeNull();
-    expect(doc.body.textContent).toBe(streaming.replace("\n", ""));
+    expect(doc.body.textContent).toBe(streaming.replace("\n", " "));
     expect(doc.querySelectorAll("br")).toHaveLength(1);
   });
 
@@ -478,6 +479,23 @@ describe("broken markers degrade to the characters the model wrote", () => {
     const doc = parse(markup("To read `kev use the tool."));
     expect(doc.querySelector("code")).toBeNull();
     expect(doc.body.textContent).toBe("To read `kev use the tool.");
+  });
+});
+
+describe("the answer's text is never a run-on", () => {
+  it("separates the tool line from the prose for every tool in the list", () => {
+    // The answer's closing `Tools used:` line is what the model appends after its
+    // prose; a `<br>` between the two lines is whitespace-free in the text, which
+    // is how a copied or announced answer read `latest list.Tools used: …`. The
+    // join is a space, so the same string holds a word boundary.
+    for (const name of TOOL_NAMES) {
+      const joined = parse(markup(`Here is the latest list.\nTools used: ${name}`)).body
+        .textContent;
+      expect(joined, name).toBe(`Here is the latest list. Tools used: ${name}`);
+      expect(joined, name).toContain(". ");
+      // `.U`-style run-ons: a sentence end glued to the next word.
+      expect(joined, name).not.toMatch(/\.\p{Lu}/u);
+    }
   });
 });
 

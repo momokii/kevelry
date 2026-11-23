@@ -104,6 +104,19 @@ const PRIORITY_ORDERING: Record<PriorityList, readonly string[]> = {
 export const TOOL_TIMEOUT_MS = 3000;
 export const WEB_FETCH_TIMEOUT_MS = 8000;
 
+/**
+ * The `Accept` header the web fallback sends.
+ *
+ * JSON first, because the machine-readable endpoints the prompt prefers are
+ * JSON APIs and they negotiate: NVD's API answers `406 Not Acceptable` to a
+ * text-only `Accept` (verified live on 4.0.3 for both `CVE-2099-12345` and
+ * `CVE-2021-44228`, which answer `200` with `accept: application/json`). HTML
+ * and plain text stay acceptable for the advisory pages, and a trailing
+ * wildcard is the last resort so a source with an unusual content type is still
+ * readable.
+ */
+export const WEB_FETCH_ACCEPT = "application/json, text/html;q=0.9, text/plain;q=0.8, */*;q=0.1";
+
 /** Web fallback caps: 256 KB read, ~8k characters of extracted text. */
 export const WEB_FETCH_MAX_BYTES = 256 * 1024;
 export const WEB_FETCH_MAX_CHARS = Math.min(8000, UNTRUSTED_MAX_CHARS);
@@ -1227,7 +1240,7 @@ async function runFetchAuthoritative(
         redirect: "manual",
         cache: "no-store",
         signal: AbortSignal.timeout(ctx.timeoutMs ?? WEB_FETCH_TIMEOUT_MS),
-        headers: { accept: "text/plain, text/html;q=0.9" },
+        headers: { accept: WEB_FETCH_ACCEPT },
       });
       if (isRedirect(response.status)) {
         const location = response.headers.get("location");

@@ -51,6 +51,15 @@ describe("renderSystemPrompt grounding rules", () => {
     expect(PROMPT).toContain(`${TOOLS_USED_PREFIX} name1, name2`);
     expect(PROMPT).toContain(`${TOOLS_USED_PREFIX} none`);
   });
+
+  it("[PROMPT] pins the columns of a time-window table", () => {
+    // Live 4.0.3 answered the same time-window question with 4, 2, 3 and 3
+    // columns on four runs: the shape moved while the question did not. The
+    // column set is stated once so a reader can compare two runs.
+    expect(PROMPT).toContain("KEV entries due, recent additions");
+    expect(PROMPT).toContain("exactly these columns, in this order: `CVE | Date | EPSS`");
+    expect(PROMPT).toContain("no column is added, dropped or reordered");
+  });
 });
 
 describe("renderSystemPrompt comparison rule", () => {

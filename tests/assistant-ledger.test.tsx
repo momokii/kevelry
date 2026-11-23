@@ -23,6 +23,7 @@ import {
 } from "../src/components/assistant/AssistantLedger";
 import { AssistantView, type AssistantViewProps } from "../src/components/assistant/AssistantView";
 import type { AssistantToolLine, AssistantTurn } from "../src/components/assistant/assistant-state";
+import { ASSISTANT_TOOL_ID_SAMPLE } from "../src/lib/ai/turn";
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -145,8 +146,20 @@ describe("the row label", () => {
   });
 
   it("prints the ids sample beside the real count when they differ", () => {
-    const host = renderLedger([turn([line({ rows: 50, ids: ids(12) })])]);
-    expect(rowLabels(host)).toEqual(["50 rows · 12 ids available"]);
+    // A tool whose cap is above the sample (`kev_window` returns up to 50) is the
+    // one case the two numbers can still disagree on, and it says so.
+    const host = renderLedger([turn([line({ rows: 50, ids: ids(ASSISTANT_TOOL_ID_SAMPLE) })])]);
+    expect(ASSISTANT_TOOL_ID_SAMPLE).toBe(25);
+    expect(rowLabels(host)).toEqual(["50 rows · 25 ids available"]);
+  });
+
+  it("states one number when the sample covers the whole result", () => {
+    // `search_cves` and `list_priority` cap at 25 rows, the sample size, so the
+    // common call reads `25 rows` and not a rows/ids pair the reader must parse.
+    const host = renderLedger([
+      turn([line({ rows: ASSISTANT_TOOL_ID_SAMPLE, ids: ids(ASSISTANT_TOOL_ID_SAMPLE) })]),
+    ]);
+    expect(rowLabels(host)).toEqual(["25 rows"]);
   });
 
   it("says no rows for an empty result and failed for a call that did not run", () => {

@@ -18,7 +18,7 @@ import { KEV_FEED_URL } from "../kev-import";
 import { toolDefinitions } from "./tools";
 
 /** Bumped when the wording changes in a way an eval fixture would notice. */
-export const PROMPT_VERSION = "v4-p5b";
+export const PROMPT_VERSION = "v4-p5c";
 
 /**
  * The machine-readable sources the web fallback should prefer, in order.
@@ -146,6 +146,7 @@ export const SYSTEM_PROMPT: SystemPromptSpec = {
   answerShape: [
     "Answer in plain prose with the numbers and ids you actually read. Short is better: one to three short paragraphs unless the question asks for a list.",
     "When a table answers the question, list at most about 12 rows and state the total count with how many rows are not shown — a table cut off mid-row is worse than a short one.",
+    "A time-window table — KEV entries due, recent additions — always has exactly these columns, in this order: `CVE | Date | EPSS`, so the same question keeps the same shape on every run and no column is added, dropped or reordered.",
     "Every figure is stated with the context that bounds it (source, date, limit). Say `unknown` where a field is unknown instead of omitting it silently.",
     "Never mention tool names or ids inside the prose unless they are the evidence you are citing.",
     `End the answer with exactly one final line in the form \`${TOOLS_USED_PREFIX} name1, name2\`, listing the tools you actually called, in call order. If you called none, write \`${TOOLS_USED_PREFIX} none\`.`,

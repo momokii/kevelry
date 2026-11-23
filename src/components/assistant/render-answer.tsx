@@ -549,7 +549,16 @@ function renderLines(
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
   lines.forEach((line, position) => {
-    if (position > 0) nodes.push(<br key={`${keyPrefix}-br-${String(position)}`} />);
+    if (position > 0) {
+      // A `<br>` is a line break in the layout and nothing at all in the text, so
+      // two model lines used to run straight on from each other the moment the
+      // answer was read as a string: copied, announced by a screen reader, or
+      // read out of the DOM by a check (`latest list.Tools used: kev_window`).
+      // The space is collapsible, so a line box drops it at the break and the
+      // render does not move; the joined text just keeps its word boundary.
+      nodes.push(" ");
+      nodes.push(<br key={`${keyPrefix}-br-${String(position)}`} />);
+    }
     nodes.push(...renderInline(line, context, `${keyPrefix}-${String(position)}`));
   });
   return nodes;

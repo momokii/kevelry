@@ -184,6 +184,9 @@ horizontal overflow at 390px. **Commit:**
 scrollbar`. Note: `ASSISTANT_TOOL_ID_SAMPLE` stayed at **12**, not the 25 this plan proposed.
 The honest label (`25 rows · 12 ids available`) is what removes the contradiction, so the
 cheaper fix won and the row/ids distinction is now stated instead of widened.
+**Amended in 4.0.4:** the sample is now **25**, the row cap of `search_cves` and
+`list_priority`, so the common call reads `25 rows` and only a wider tool (`kev_window`, 50)
+carries the `rows · ids available` pair.
 
 **P2 — comprehension copy.** §2: legend, "How this works", five `HelpTip`s, empty-state edges, the
 `webEnabled` page fact. **Accept:** every new string asserted; no tip names an env var or a file; the

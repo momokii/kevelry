@@ -673,6 +673,11 @@ describe("fetch_authoritative", () => {
     expect(calls[0]?.init?.redirect).toBe("manual");
     const headers = (calls[0]?.init?.headers ?? {}) as Record<string, string>;
     expect(Object.keys(headers).map((key) => key.toLowerCase())).toEqual(["accept"]);
+    // Negotiation is what makes the fetch work at all: NVD's API answers 406 to a
+    // text-only Accept and 200 to `application/json`. JSON first, then a page,
+    // then plain text, then anything.
+    expect(headers.accept).toBe("application/json, text/html;q=0.9, text/plain;q=0.8, */*;q=0.1");
+    expect(headers.accept).toContain("application/json");
     expect(data).toMatchObject({ source: "web", untrusted: true, host: "nvd.nist.gov" });
     expect(data.text).toContain("untrusted-begin");
     expect(data.text).toContain("Advisory");
