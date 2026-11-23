@@ -17,18 +17,23 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.3` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> **Status:** `4.0.4` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.3`, `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.3` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the assistant-hardening release: answers render as structure (real tables with
-> scoped headers in a scrollable wrapper, headings, rules, quotes, lists, code), the
+> available as previous releases. The `4.0.4` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the assistant-fixes release: the web fallback negotiates JSON (it sent a
+> text-only `accept`, so NVD API 2.0 answered `406` and the fallback returned no
+> content), the rail's id sample is 25 so a full 25-row call reads `25 rows`, an
+> answer's lines keep a word boundary in the copied or announced text, and a
+> time-window table is pinned to `CVE | Date | EPSS`. Everything is still escaped
+> first and rendered with no HTML injection. From 4.0.3: the assistant-hardening
+> release — answers render as structure (real tables with scoped headers in a
+> scrollable wrapper, headings, rules, quotes, lists, code), the
 > evidence rail is capped by calls and records instead of by a scrollbar, one legend
 > plus a three-sentence "How this works" disclosure and five help tips explain the
 > page, an oversized body answers `413` and a bad second image `422`, and the web
 > fallback returns machine-readable sources as JSON instead of describing a
-> client-rendered shell. Everything is still escaped first and rendered with no HTML
-> injection. From 4.0.2: formatted answers. The `4.0.0` entry lists the
+> client-rendered shell. From 4.0.2: formatted answers. The `4.0.0` entry lists the
 > v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
 > automatically on boot against an existing volume, no manual step, and no
 > `/api/v1` route or response shape changed. The assistant is off on this image
@@ -211,7 +216,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.3
+  docker.io/kelanach/kevelry:4.0.4
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -493,7 +498,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.3 \
+  --image docker.io/kelanach/kevelry:4.0.4 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -702,7 +707,7 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1079 passing, 3 skipped (network-gated)
+npm test                # vitest: 1082 passing, 3 skipped (network-gated)
 npx playwright test     # browser suite: 155 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```

@@ -3,6 +3,44 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.4 — 2026-11-23
+
+Four fixes in the v4 assistant, all found on the live 4.0.3 instance. No
+migration and no API change; the image and the test suite carry the change.
+
+### Fixed
+
+- **The web fallback now negotiates JSON.** It sent a text-only
+  `accept: text/plain, text/html`, so a JSON API answered `406 Not Acceptable` and
+  the fallback never returned content at all — NVD API 2.0 did this for both
+  `CVE-2099-12345` and `CVE-2021-44228`. The header is now JSON first, then a page,
+  then plain text, then anything:
+
+  `application/json, text/html;q=0.9, text/plain;q=0.8, */*;q=0.1`
+
+  A JSON endpoint negotiates, an advisory page still comes back as a page, and an
+  unusual content type is readable as a last resort. https, the exact-host
+  allow-list, `redirect: manual` with one re-checked hop, the 8 s timeout and the
+  256 KB read cap are unchanged.
+
+- **The rail's id sample is 25, the row cap of the common calls.** `search_cves`
+  and `list_priority` return at most 25 rows, so a full call reads `25 rows` and
+  no longer `25 rows · 12 ids available`, a pair the reader had to decode. A tool
+  that really returns more keeps the honest pair: a 50-row `kev_window` reads
+  `50 rows · 25 ids available`. Both forms are pinned by tests.
+- **The answer's lines keep a word boundary in the text.** A `<br>` is a line
+  break in the layout and nothing in `textContent`, so the closing tool line
+  arrived glued to the prose — `latest list.Using…` when copied, announced by a
+  screen reader, or read out of the DOM. Each line join now emits a collapsible
+  space that a line box drops at the break: the render is unchanged and the
+  joined string reads `latest list. Using…`.
+- **A time-window table has a fixed shape.** KEV entries due and recent additions
+  were answered with 4, 2, 3 and 3 columns across four identical questions. The
+  prompt now pins `CVE | Date | EPSS`, in that order, on every run.
+
+**Upgrade notes:** no migration, no config change. Recreate the container to pick
+up 4.0.4 (`docker compose up -d --force-recreate`).
+
 ## 4.0.3 — 2026-11-23
 
 The hardening release for the v4 assistant: the answers read as formatted documents,
