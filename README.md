@@ -110,19 +110,26 @@ fetch the API endpoint instead of describing an empty page.
 
 ### A grounded answer, with its evidence ledger
 
-![Assistant at 1440×900 in dark theme: the question “Which KEV entries were added in the last 30 days?” with a settled answer, four citation chips, and the Evidence column reading “1 tool call”, “kev_window”, “days=30”, “4 rows”](docs/images/assistant.png)
+![Assistant at 1440×900 in dark theme: the question “Which KEV entries were added in the last 30 days? Answer as a table.” settled with a two-row table, the citation union folded to one line reading “12 records cited”, and the Evidence column showing its legend, “1 tool call”, “kev_window”, “days=30”, “12 rows”, six chips and a “+6 more” control](docs/images/assistant.png)
 
 A settled turn. The question, answer, follow-up, brief action and composer share
-one left edge (no bubbles, no speaker indentation), the citation chips under the
-answer link to `/explore?q=<id>`, and the **Evidence** column on the right names
-the one tool call behind them — `kev_window`, `days=30`, `4 rows` — with the ids
-it returned. The frame is the browser suite's offline **fake transport**
-(`AI_FAKE_TRANSPORT=1`) against the seeded e2e corpus, so the prose is canned and
-says so; the tool call, its row count and the citations are real.
+one left edge (no bubbles, no speaker indentation), and the answer is rendered —
+the table with its metric/value/note header is the desk's own, never a model's
+markup. The turn's citation union is **folded to one line** (`12 records cited`);
+opening it lists chips that link to `/explore?q=<id>`. The **Evidence** column on
+the right states its legend — each line is one server-side lookup, `Rows` is how
+many records it returned, the chips are what the answer can cite — then names
+the one tool call behind the answer, `kev_window` with `days=30` and `12 rows`,
+and shows six of its ids plus a `+6 more` disclosure: density is a hierarchy of
+calls and records, never an inner scrollbar. The frame is a local production
+build of 4.0.4 driven through the browser suite's offline **fake transport**
+(`AI_FAKE_TRANSPORT=1`) against the suite's dense twelve-record fixture, so the
+prose is canned and says so; the tool call, its row count and the citations are
+real.
 
 ### Compare two records, field by field
 
-![Assistant compare mode at 1440×900 in dark theme: the “Compare two records” disclosure open with CVE-2099-0001 and CVE-2099-0002 filled, its note about status, dates, CVSS, KEV, ransomware, EPSS and CWE, and the Compare button; the Evidence column reads “no tool calls yet”](docs/images/assistant-compare.png)
+![Assistant compare mode at 1440×900 in dark theme: the “Compare two records” disclosure open with CVE-2099-0001 and CVE-2099-0002 filled, its note about status, dates, CVSS, KEV, ransomware, EPSS and CWE, and the Compare button; the Evidence column reads “no tool calls yet” above its legend and “Nothing has run yet. The first question fills this column.”](docs/images/assistant-compare.png)
 
 The compare disclosure beside the composer: two labelled id fields with the same
 shape rules as the API, the fixed question it will send (status, dates, CVSS,
@@ -156,8 +163,9 @@ corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations
 not the live instance, so the numbers in the frames are reproducible rather than
 current. For the deployment's own figures, read `/methodology`, which counts the
 accepted snapshot. The two assistant captures live under
-[What v4 adds](#what-v4-adds); they come from the browser suite's dev server with
-its offline transport, which their captions state.
+[What v4 adds](#what-v4-adds); they are a local production build of 4.0.4 served
+against the browser suite's dense twelve-record fixture with its offline
+transport, which their captions state.
 
 ### Overview — the KEV rhythm, one month hovered
 
