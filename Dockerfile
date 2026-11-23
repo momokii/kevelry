@@ -27,6 +27,22 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
+# libc guard: package-lock.json lists @next/swc-linux-x64-gnu and -musl WITHOUT
+# the `libc` field npm uses to filter optional platform deps, so `npm ci` on
+# this glibc base can resolve to the musl build alone. Next then loads no
+# native swc binding and `next build` aborts with "Turbopack is not supported
+# on this platform (linux/x64) because native bindings are not available" and
+# "@next/swc-linux-x64-musl ... /lib/x86_64-linux-gnu/libc.so: invalid ELF
+# header". Assert the glibc binding, repair it if missing, then hard-fail if it
+# still will not load. Do not delete this step: without it a musl-only install
+# only surfaces one cached layer later, at `npm run build`.
+RUN NEXT_SWC_VERSION="$(node -p "require('./package.json').dependencies.next")" \
+  && if ! node -e "require('@next/swc-linux-x64-gnu')" >/dev/null 2>&1; then \
+       echo "==> @next/swc-linux-x64-gnu is not loadable on this glibc base; installing ${NEXT_SWC_VERSION}"; \
+       npm install --no-save --include=optional --ignore-scripts --no-audit --no-fund \
+         "@next/swc-linux-x64-gnu@${NEXT_SWC_VERSION}"; \
+     fi \
+  && node -e "try{const p=require.resolve('@next/swc-linux-x64-gnu');require('@next/swc-linux-x64-gnu');console.log('Next SWC glibc binding OK:',p)}catch(e){console.error('FATAL: @next/swc-linux-x64-gnu is not loadable on this glibc image ('+e.message+').');console.error('Cause: only the musl variant was installed; next build would fall back to WASM and Turbopack would abort.');process.exit(1)}"
 
 # --------------------------------------------------------------------------
 # Stage 2: builder — ephemeral standalone config, production build,
