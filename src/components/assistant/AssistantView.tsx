@@ -13,6 +13,7 @@
 
 import { useState, type RefObject } from "react";
 
+import { HelpTip } from "../ledger/HelpTip";
 import { AssistantCompare } from "./AssistantCompare";
 import { AssistantLedger } from "./AssistantLedger";
 import { buildFollowUps } from "./assistant-followups";
@@ -88,7 +89,20 @@ function FaultMeta({
     if (waiting) parts.push(formatRemaining(remainingSeconds));
   }
   if (fault.envVar !== null) parts.push(fault.envVar);
-  return <p className="assistant-fault-meta">{parts.join(" · ")}</p>;
+  return (
+    <p className="assistant-fault-meta">
+      {parts.join(" · ")}
+      {fault.kind === "budget" ? (
+        <>
+          {" "}
+          <HelpTip term="session / daily budget" testId="assistant-tip-budget">
+            A session budget counts this conversation; the daily budget counts everyone on this
+            deployment and resets at 00:00 UTC. The panel names which one ran out.
+          </HelpTip>
+        </>
+      ) : null}
+    </p>
+  );
 }
 
 function FaultPanel({
@@ -132,7 +146,8 @@ function EmptyDesk({
     return (
       <p className="assistant-empty-note" data-testid="assistant-suggestions-empty">
         This corpus has no KEV, exploit-tagged or EPSS-scored records yet, so there is nothing to
-        suggest. Ask about the corpus itself — coverage is always answerable.
+        suggest. Ask about the corpus itself — coverage is always answerable. It will not write
+        exploit code or give targeting advice.
       </p>
     );
   }
@@ -161,6 +176,12 @@ function EmptyDesk({
           </li>
         ))}
       </ul>
+      {/* The edges, stated once: a desk that never says what it will not do
+          invites the reader to assume it will do anything. */}
+      <p className="assistant-empty-capacity" data-testid="assistant-empty-capacity">
+        Ask about records in this deployment — its catalogs, scores, and dates. It will not write
+        exploit code or give targeting advice.
+      </p>
     </div>
   );
 }
@@ -226,6 +247,10 @@ function TurnBlock({
             data-count={String(turn.unverified.length)}
           >
             {unverifiedNote(turn.unverified)}
+            <HelpTip term="unverified ids" testId="assistant-tip-unverified">
+              An id the answer named that the records did not contain. It is text, not a link,
+              because this dataset cannot confirm it.
+            </HelpTip>
           </p>
         ) : null}
         {turn.citations.length > 0 ? (
@@ -233,8 +258,22 @@ function TurnBlock({
           // these chips answer "what can this answer cite" and nothing else.
           <details className="assistant-citations" data-testid="assistant-citations">
             <summary className="assistant-citations-summary">
-              {String(turn.citations.length)} record
-              {turn.citations.length === 1 ? "" : "s"} cited
+              <span data-testid="assistant-citations-label">
+                {String(turn.citations.length)} record
+                {turn.citations.length === 1 ? "" : "s"} cited
+              </span>
+              <span
+                onClick={(event) => {
+                  // The trigger is its own control: opening the tip must not
+                  // also fold or unfold the chips under it.
+                  event.stopPropagation();
+                }}
+              >
+                <HelpTip term="cited" testId="assistant-tip-cited">
+                  Records the answer's numbers came from. The same ids appear in the rail under the
+                  call that returned them.
+                </HelpTip>
+              </span>
             </summary>
             <ul className="assistant-chip-row" aria-label="Cited records">
               {turn.citations.map((id) => (

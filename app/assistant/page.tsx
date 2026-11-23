@@ -17,6 +17,7 @@
 // every turn is a POST that the route answers from the corpus.
 
 import { AssistantDesk } from "@/components/assistant/AssistantDesk";
+import { AssistantHowThisWorks } from "@/components/assistant/AssistantHowThisWorks";
 import { ASSISTANT_CVE_CONTEXT_PATTERN } from "@/app/api/assistant/_lib/body";
 import { AI_MODEL_DEFAULT, aiGate, loadAiConfig, type AiDisabledReason } from "@/lib/ai/config";
 import { readSuggestionCounts, buildAssistantSuggestions } from "@/lib/ai/suggestions";
@@ -61,6 +62,8 @@ interface DeskFacts {
   asOf: string | null;
   /** `AI_MODEL`, printed in a downloaded brief. */
   modelId: string;
+  /** `AI_WEB_FETCH_ENABLED`: whether "How this works" may mention the fallback. */
+  webEnabled: boolean;
 }
 
 /**
@@ -76,7 +79,13 @@ function readDeskFacts(): DeskFacts {
   try {
     config = loadAiConfig(process.env);
   } catch {
-    return { reason: "invalid-config", suggestions: [], asOf: null, modelId: AI_MODEL_DEFAULT };
+    return {
+      reason: "invalid-config",
+      suggestions: [],
+      asOf: null,
+      modelId: AI_MODEL_DEFAULT,
+      webEnabled: false,
+    };
   }
 
   let db: CveDatabase | null = null;
@@ -105,16 +114,29 @@ function readDeskFacts(): DeskFacts {
   }
 
   if (!gate.enabled) {
-    return { reason: gate.disabled ?? "off", suggestions: [], asOf: null, modelId: config.model };
+    return {
+      reason: gate.disabled ?? "off",
+      suggestions: [],
+      asOf: null,
+      modelId: config.model,
+      webEnabled: config.webFetchEnabled,
+    };
   }
   if (db === null) {
-    return { reason: null, suggestions: [], asOf: null, modelId: config.model };
+    return {
+      reason: null,
+      suggestions: [],
+      asOf: null,
+      modelId: config.model,
+      webEnabled: config.webFetchEnabled,
+    };
   }
   return {
     reason: null,
     suggestions: buildAssistantSuggestions(readSuggestionCounts(db)),
     asOf: formatAsOf(buildProvenance(db, new Date().toISOString()).sources.cve.lastAcceptedAt),
     modelId: config.model,
+    webEnabled: config.webFetchEnabled,
   };
 }
 
@@ -141,10 +163,10 @@ export default async function AssistantPage({
       <header className="assistant-head">
         <div className="assistant-head-main">
           <h1>Ask the corpus</h1>
-          <p className="page-lede">
-            Answers come from the records this instance holds. Every number is linked to the record
-            it came from, and each tool call the server ran is listed beside the answer.
-          </p>
+          <p className="page-lede">Answers come from the records this instance holds.</p>
+          {/* The mechanics, one click away: the lede states the source, the
+              disclosure states the limits. */}
+          <AssistantHowThisWorks webEnabled={facts.webEnabled} />
         </div>
         {facts.asOf !== null ? (
           <p className="assistant-asof" data-testid="assistant-asof">

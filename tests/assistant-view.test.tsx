@@ -229,7 +229,14 @@ describe("state 5 — budget exhausted", () => {
     const html = render({ fault: budgetFault({ reason: "session", resetAt: null }) });
     expect(html).toContain("This transcript has reached its token budget.");
     expect(html).toContain("AI_SESSION_BUDGET_TOKENS");
-    expect(html).not.toContain("00:00 UTC");
+    // The panel's own line promises no reset for a session cap. The midnight
+    // fact lives in the budget tip's explanation, which is supplementary and
+    // names which cap ran out, so it is read from the meta line without it.
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const meta = host.querySelector(".assistant-fault-meta");
+    meta?.querySelector(".ledger-helptip")?.remove();
+    expect(meta?.textContent).not.toContain("00:00 UTC");
   });
 });
 
@@ -412,5 +419,93 @@ describe("follow-ups and the brief", () => {
     expect(html).toContain("When is CVE-2099-0001 due?");
     const noLedger = render({ turns: [turn({ tools: [] })] });
     expect(noLedger).not.toContain('data-testid="assistant-followups"');
+  });
+});
+
+/** Every rendered tip panel, as text: the copy a reader gets on open or focus. */
+function panelTexts(html: string): string[] {
+  const host = document.createElement("div");
+  host.innerHTML = html;
+  return [...host.querySelectorAll(".ledger-helptip-panel")].map((node) => node.textContent ?? "");
+}
+
+describe("comprehension — the rail legend", () => {
+  it("states the rail in one sentence pair instead of a paragraph", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).toContain('data-testid="assistant-ledger-legend"');
+    expect(html).toContain("Each line is one server-side lookup");
+    expect(html).toContain("<strong>Rows</strong>");
+    expect(html).toContain(
+      "is how many records it returned; the chips are the records the answer can cite.",
+    );
+    // The three-sentence explanation is gone: the disclosure carries it now.
+    expect(html).not.toContain("Every line is one tool call the server ran for this transcript.");
+  });
+});
+
+describe("comprehension — the tips", () => {
+  const allTips = render({
+    turns: [turn({ unverified: ["CVE-2099-9999"] })],
+    fault: budgetFault({ reason: "daily", resetAt: "2026-11-23T00:00:00.000Z" }),
+  });
+
+  it("names every term it explains, so each trigger has an accessible name", () => {
+    for (const term of ["rows", "tool call", "cited", "unverified ids", "session / daily budget"]) {
+      expect(allTips, term).toContain(`aria-label="About ${term}"`);
+    }
+  });
+
+  it("explains meaning only: no variable, no file, no implementation", () => {
+    const panels = panelTexts(allTips);
+    expect(panels.length).toBe(5);
+    for (const panel of panels) {
+      expect(panel).not.toMatch(/AI_[A-Z_]+/);
+      expect(panel).not.toMatch(/\.tsx?\b/);
+      expect(panel).not.toMatch(/src\//);
+    }
+    expect(allTips).toContain("The panel names which one ran out.");
+  });
+
+  it("puts the cited tip on the citation summary it explains", () => {
+    const host = document.createElement("div");
+    host.innerHTML = allTips;
+    const summary = host.querySelector('[data-testid="assistant-citations"] summary');
+    expect(summary?.querySelector('[data-testid="assistant-tip-cited-trigger"]')).not.toBeNull();
+    expect(summary?.textContent).toContain("records cited");
+  });
+
+  it("puts the unverified tip on the caution line and the budget tip on the fault meta", () => {
+    const host = document.createElement("div");
+    host.innerHTML = allTips;
+    expect(
+      host.querySelector(
+        '[data-testid="assistant-unverified"] [data-testid="assistant-tip-unverified-trigger"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      host.querySelector(
+        '[data-testid="assistant-fault"] [data-testid="assistant-tip-budget-trigger"]',
+      ),
+    ).not.toBeNull();
+  });
+});
+
+describe("comprehension — the empty state", () => {
+  it("names what the desk can and cannot answer", () => {
+    const html = render();
+    expect(html).toContain('data-testid="assistant-empty-capacity"');
+    expect(html).toContain(
+      "Ask about records in this deployment — its catalogs, scores, and dates.",
+    );
+    expect(html).toContain("It will not write exploit code or give targeting advice.");
+    // The suggestions themselves are unchanged: the edges are added, not swapped in.
+    expect(html).toContain('data-testid="assistant-suggestion-kev-additions"');
+  });
+
+  it("keeps the same edge on a corpus with nothing to suggest", () => {
+    const html = render({ suggestions: [] });
+    expect(html).toContain('data-testid="assistant-suggestions-empty"');
+    expect(html).toContain("nothing to suggest");
+    expect(html).toContain("It will not write exploit code or give targeting advice.");
   });
 });

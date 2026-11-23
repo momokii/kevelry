@@ -5384,6 +5384,37 @@ a.badge:hover {
   max-width: 22ch;
 }
 
+/* The mechanics, one click below the lede: a reader who wants an answer never
+   reads past it, and a reader who wants the contract knows where it is. */
+.assistant-how {
+  margin-top: var(--ui-sp-3);
+}
+
+.assistant-how-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-3);
+  cursor: pointer;
+  list-style: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.assistant-how-summary::-webkit-details-marker {
+  display: none;
+}
+
+.assistant-how-body {
+  margin: 0 0 var(--ui-sp-2);
+  max-width: 62ch;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-2);
+}
+
 .assistant-asof {
   margin: 0;
   font-family: var(--ui-font-mono);
@@ -5660,6 +5691,16 @@ a.badge:hover {
   margin: 0;
   color: var(--ui-ink-2);
   font-size: 14.5px;
+}
+
+/* The edge of the desk, stated under the suggestions: what it reads, and the two
+   things it will not do with it. Quieter than the questions above it. */
+.assistant-empty-capacity {
+  margin: var(--ui-sp-5) 0 0;
+  max-width: 62ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ui-ink-3);
 }
 
 .assistant-suggestions {

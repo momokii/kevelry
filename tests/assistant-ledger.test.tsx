@@ -256,7 +256,9 @@ describe("the cited block", () => {
     const details = host.querySelector<HTMLDetailsElement>('[data-testid="assistant-citations"]');
     expect(details).not.toBeNull();
     expect(details?.open).toBe(false);
-    expect(details?.querySelector("summary")?.textContent).toBe("15 records cited");
+    expect(details?.querySelector('[data-testid="assistant-citations-label"]')?.textContent).toBe(
+      "15 records cited",
+    );
 
     act(() => details?.querySelector("summary")?.click());
     expect(details?.open).toBe(true);
@@ -269,7 +271,7 @@ describe("the cited block", () => {
         {...viewProps({ turns: [turn([line({ rows: 1, ids: ids(1) })], { citations: ids(1) })] })}
       />,
     );
-    expect(host.querySelector('[data-testid="assistant-citations"] summary')?.textContent).toBe(
+    expect(host.querySelector('[data-testid="assistant-citations-label"]')?.textContent).toBe(
       "1 record cited",
     );
   });

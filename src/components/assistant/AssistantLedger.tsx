@@ -25,6 +25,7 @@
 
 import { useState } from "react";
 
+import { HelpTip } from "../ledger/HelpTip";
 import type { AssistantToolLine, AssistantTurn } from "./assistant-state";
 
 export interface AssistantLedgerProps {
@@ -172,9 +173,18 @@ export function AssistantLedger({ turns, open, onToggle }: AssistantLedgerProps)
           <span className="assistant-ledger-count">{callsLabel(callCount)}</span>
         </summary>
         <div className="assistant-ledger-body">
-          <p className="assistant-ledger-note">
-            Every line is one tool call the server ran for this transcript. The ids are the records
-            that call returned — the answer text never adds a citation of its own.
+          <p className="assistant-ledger-note" data-testid="assistant-ledger-legend">
+            Each line is one server-side lookup{" "}
+            <HelpTip term="tool call" testId="assistant-tip-tool-call">
+              One question the server asked the dataset on your behalf. The answer is written from
+              these results only.
+            </HelpTip>
+            . <strong>Rows</strong>{" "}
+            <HelpTip term="rows" testId="assistant-tip-rows">
+              How many records the lookup returned. A lookup that stops at its own limit says so,
+              and the count is the limit, not the match total.
+            </HelpTip>{" "}
+            is how many records it returned; the chips are the records the answer can cite.
           </p>
           {callCount === 0 ? (
             <p className="assistant-ledger-empty" data-testid="assistant-ledger-empty">

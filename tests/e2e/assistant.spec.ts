@@ -99,6 +99,17 @@ test("the empty desk offers counted questions and an empty ledger", async ({ pag
   await expect(page.locator('[data-testid="assistant-ledger-empty"]')).toBeVisible();
   await expect(page.locator("#assistant-question")).toBeVisible();
   await expect(page.locator('[data-testid="assistant-send"]')).toBeDisabled();
+
+  // The rail explains itself in one sentence pair, not a paragraph.
+  await expect(page.locator('[data-testid="assistant-ledger-legend"]')).toContainText(
+    "Each line is one server-side lookup",
+  );
+  // And the page states its contract once, closed, under the lede.
+  const how = page.locator('[data-testid="assistant-how"]');
+  await expect(how).toBeVisible();
+  await expect(how).not.toHaveAttribute("open", "");
+  await how.locator("summary").click();
+  await expect(how).toContainText("Nothing you type is stored");
 });
 
 test("a question streams tool activity, then text, then server citations", async ({ page }) => {
@@ -122,12 +133,8 @@ test("a question streams tool activity, then text, then server citations", async
 
   // Citations come from the server's event, never from the prose. The turn's
   // union is one line until it is opened: the rail is already per call.
-  const citedSummary = page.locator('[data-testid="assistant-citations"] summary');
-  await expect(citedSummary).toHaveText(/^\d+ records? cited$/);
-  await citedSummary.click();
-  const citations = page.locator('[data-testid="assistant-citation"]');
-  await expect(citations.first()).toBeVisible();
-  await expect(citations.first()).toHaveAttribute("href", /^\/explore\?q=CVE-\d{4}-\d+$/);
+  const citedLabel = page.locator('[data-testid="assistant-citations-label"]');
+  await expect(citedLabel).toHaveText(/^\d+ records? cited$/);
 
   // The ledger is the proof: the call, its arguments, its row count, its ids.
   const entry = page.locator('[data-testid="assistant-ledger-entry"]').first();
@@ -137,8 +144,15 @@ test("a question streams tool activity, then text, then server citations", async
   await expect(entry.locator('a[href^="/explore?q=CVE-"]').first()).toBeVisible();
 
   // Focus stayed in the composer, and the question was cleared for the next one.
+  // Read before the disclosure is opened: opening one takes focus, by design.
   await expect(page.locator("#assistant-question")).toBeFocused();
   await expect(page.locator("#assistant-question")).toHaveValue("");
+
+  // Opened, the one line is the chips the answer may cite, from the event.
+  await page.locator('[data-testid="assistant-citations"] summary').click();
+  const citations = page.locator('[data-testid="assistant-citation"]');
+  await expect(citations.first()).toBeVisible();
+  await expect(citations.first()).toHaveAttribute("href", /^\/explore\?q=CVE-\d{4}-\d+$/);
 
   // Nothing is stored: a reload is a new desk, as the composer's note promises.
   await page.reload();
@@ -404,6 +418,11 @@ test("a screenshot is picked, previewed, sent with the question, and removable",
   await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
     "canned answer of the test transport",
   );
+  // The turn's union is one line: the answer cited what the image named.
+  await expect(page.locator('[data-testid="assistant-citations-label"]')).toHaveText(
+    /^\d+ records? cited$/,
+  );
+  await page.locator('[data-testid="assistant-citations"] summary').click();
   await expect(page.locator('[data-testid="assistant-citation"]').first()).toBeVisible();
   // One image per turn: the composer is clean again for the next question.
   await expect(preview).toHaveCount(0);
