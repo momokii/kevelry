@@ -27,6 +27,7 @@ import {
   WEB_FETCH_MAX_BYTES,
   WEB_FETCH_MAX_CHARS,
   WEB_FETCH_ALLOWLIST,
+  WEB_FETCH_SHORT_BODY_CHARS,
   executeTool,
   parseAllowedFetchUrl,
   toolDefinitions,
@@ -241,6 +242,17 @@ function dataOf(outcome: ToolOutcome): Record<string, any> {
   expect(outcome.ok).toBe(true);
   if (!outcome.ok) throw new Error(outcome.error);
   return outcome.data as Record<string, any>;
+}
+
+/** The payload inside an `untrusted` envelope, without the delimiters. */
+function envelopeBody(wrappedText: string): string {
+  expect(wrappedText.startsWith("<untrusted-begin")).toBe(true);
+  const body = wrappedText.slice(
+    wrappedText.indexOf("\n") + 1,
+    wrappedText.lastIndexOf("</untrusted-end>"),
+  );
+  // `wrapUntrusted` puts the close token on its own line.
+  return body.endsWith("\n") ? body.slice(0, -1) : body;
 }
 
 interface StubCall {
@@ -666,6 +678,130 @@ describe("fetch_authoritative", () => {
     expect(data.text).toContain("Advisory");
     expect(data.text).not.toContain("alert(1)");
     expect(data.text).not.toContain(".x{}");
+  });
+
+  it("[CODE] returns a JSON body as JSON text instead of stripping it like HTML", async () => {
+    // The NVD API 2.0 shape: the machine-readable answer the prompt tells the
+    // model to reach for when a cve.org page comes back as an empty shell.
+    const body = JSON.stringify({
+      resultsPerPage: 1,
+      totalResults: 1,
+      vulnerabilities: [
+        {
+          cve: {
+            id: "CVE-2099-12345",
+            vulnStatus: "Rejected",
+            descriptions: [{ lang: "en", value: "Rejected reason: duplicate of CVE-2099-0001." }],
+          },
+        },
+      ],
+    });
+    for (const contentType of [
+      "application/json",
+      "application/json; charset=utf-8",
+      "application/vnd.api+json",
+    ]) {
+      const { impl } = stub(
+        new Response(body, { status: 200, headers: { "content-type": contentType } }),
+      );
+      const data = dataOf(
+        await executeTool(
+          "fetch_authoritative",
+          { url: "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2099-12345" },
+          context(makeSeededDb(), { webFetchEnabled: true, fetchImpl: impl }),
+        ),
+      );
+      expect(data).toMatchObject({
+        source: "web",
+        untrusted: true,
+        contentKind: "json",
+        jsonParsed: true,
+        // JSON is not a page: nothing was rendered, and no `<title>` exists.
+        mayBeClientRendered: false,
+        title: null,
+        textTruncated: false,
+      });
+      const text = envelopeBody(data.text as string);
+      // `extractText` collapses all whitespace, so an indented multi-line body
+      // is the proof that the HTML path was skipped.
+      expect(text).toMatch(/\n {2,}"id": "CVE-2099-12345",/);
+      expect(JSON.parse(text)).toEqual(JSON.parse(body));
+    }
+  });
+
+  it("[CODE] keeps tag-shaped JSON strings as data, not as markup to remove", async () => {
+    const body = JSON.stringify({
+      cveId: "CVE-2099-12345",
+      description: "<p>Rejected reason: duplicate.</p>",
+    });
+    const { impl } = stub(
+      new Response(body, { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    const data = dataOf(
+      await executeTool(
+        "fetch_authoritative",
+        { url: "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2099-12345" },
+        context(makeSeededDb(), { webFetchEnabled: true, fetchImpl: impl }),
+      ),
+    );
+    const text = envelopeBody(data.text as string);
+    // Not stripped: the tags survive as inert `‹p›` text, exactly like any other
+    // web prose that passes through `wrapUntrusted`.
+    expect(text).toContain("description");
+    expect(text).toContain("‹p›Rejected reason: duplicate.‹/p›");
+    expect(text).not.toContain("<p>");
+  });
+
+  it("[CODE] flags a client-rendered shell from its own heading-length body", async () => {
+    // The live evidence: cve.org's record page is a client-rendered app, and its
+    // extracted text was only the heading.
+    const html =
+      '<!doctype html><html><head><title>Common vulnerabilities and Exposures (CVE)</title></head><body><div id="app"></div><script>renderRecord()</script></body></html>';
+    const { impl } = stub(
+      new Response(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }),
+    );
+    const data = dataOf(
+      await executeTool(
+        "fetch_authoritative",
+        { url: "https://www.cve.org/CVERecord?id=CVE-2099-12345" },
+        context(makeSeededDb(), { webFetchEnabled: true, fetchImpl: impl }),
+      ),
+    );
+    expect(data).toMatchObject({
+      contentKind: "html",
+      mayBeClientRendered: true,
+      jsonParsed: null,
+    });
+    expect(envelopeBody(data.title as string)).toBe("Common vulnerabilities and Exposures (CVE)");
+    const text = envelopeBody(data.text as string);
+    expect(text).toContain("Common vulnerabilities and Exposures (CVE)");
+    expect(text).not.toContain("renderRecord()");
+  });
+
+  it("[CODE] does not flag an HTML page whose body is at or above the threshold", async () => {
+    // No `<title>` here, so the extracted length is exactly the body length and
+    // the boundary can be stated instead of approximated.
+    const page = (chars: number): string => `<html><body><p>${"x".repeat(chars)}</p></body></html>`;
+    for (const [chars, expected] of [
+      [WEB_FETCH_SHORT_BODY_CHARS - 1, true],
+      [WEB_FETCH_SHORT_BODY_CHARS, false],
+      [WEB_FETCH_SHORT_BODY_CHARS * 4, false],
+    ] as const) {
+      const { impl } = stub(
+        new Response(page(chars), { status: 200, headers: { "content-type": "text/html" } }),
+      );
+      const data = dataOf(
+        await executeTool(
+          "fetch_authoritative",
+          { url: "https://nvd.nist.gov/vuln/detail/CVE-2099-12345" },
+          context(makeSeededDb(), { webFetchEnabled: true, fetchImpl: impl }),
+        ),
+      );
+      expect(data.mayBeClientRendered).toBe(expected);
+      expect(data.contentKind).toBe("html");
+      expect(data.title).toBeNull();
+      expect(envelopeBody(data.text as string)).toHaveLength(chars);
+    }
   });
 
   it("[CODE] truncates an oversized body at the byte cap", async () => {
