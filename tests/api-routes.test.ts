@@ -16,7 +16,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { refreshAggregates } from "../src/lib/aggregates";
@@ -44,6 +44,11 @@ const STAMP = "2026-10-24T00:00:00.000Z";
 const MODEL = "v2026.06.15";
 const SCORE_DATE = "2026-10-23";
 const PREV_DATE = "2026-10-16";
+// The retained-replay fixtures pin absolute checkpoint days (2026-10-23 kept,
+// 2026-08-01 expired) against the route's 30-day window, so the replay test
+// pins the clock to the fixtures' own day. Otherwise the kept checkpoint ages
+// out of the window and the test fails on a calendar date, not on a code change.
+const REPLAY_FIXTURE_NOW = new Date("2026-10-24T00:00:00.000Z");
 const LONG_DESC = `A denial of service flaw was found in the packet parser when handling fragmented datagrams with overlapping offsets. A remote attacker can trigger unbounded memory growth and worker starvation by sending a crafted sequence of overlapping fragments over several minutes, leading to sustained CPU pressure, dropped legitimate traffic, additional memory allocator churn, repeated reassembly timeouts, and eventual process termination across affected builds. ${"Padding text to push this description past the excerpt limit. ".repeat(6)}`;
 
 function makeDb(): CveDatabase {
@@ -56,6 +61,7 @@ function makeDb(): CveDatabase {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   resetDbOverride();
   while (openDbs.length > 0) {
     try {
@@ -960,6 +966,7 @@ describe("v1 radar and replay routes", () => {
   });
 
   it("lists retained checkpoints and replays a view or fails with the named reason", async () => {
+    vi.useFakeTimers({ now: REPLAY_FIXTURE_NOW, shouldAdvanceTime: true });
     const db = makeDb();
     seedRadarHistory(db);
     void db;

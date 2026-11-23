@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { refreshAggregates } from "../src/lib/aggregates";
@@ -28,7 +28,9 @@ function readSpec(): string {
 }
 
 function readDocs(): Map<string, string> {
-  const files = readdirSync(DOCS_DIR).filter((name) => name.endsWith(".md")).sort();
+  const files = readdirSync(DOCS_DIR)
+    .filter((name) => name.endsWith(".md"))
+    .sort();
   const pages = new Map<string, string>();
   for (const name of files) {
     pages.set(name, readFileSync(join(DOCS_DIR, name), "utf8"));
@@ -110,7 +112,9 @@ describe("api contract completeness", () => {
   });
 
   it("carries provenance in every path block", () => {
-    const chunks = readSpec().split(/^\s{2}\/api\/v1/gm).slice(1);
+    const chunks = readSpec()
+      .split(/^\s{2}\/api\/v1/gm)
+      .slice(1);
     expect(chunks.length).toBeGreaterThan(0);
     for (const chunk of chunks) {
       expect(chunk.includes("provenance")).toBe(true);
@@ -146,6 +150,11 @@ const STAMP = "2026-10-24T00:00:00.000Z";
 const MODEL = "v2026.06.15";
 const SCORE_DATE = "2026-10-23";
 const PREV_DATE = "2026-10-16";
+// The replay docs fixture pins absolute checkpoint days (2026-10-23 kept,
+// 2026-08-01 expired) against the route's 30-day window, so the replay example
+// pins the clock to the fixture's own day. Otherwise the kept checkpoint ages
+// out of the window and the example fails on a calendar date, not on a change.
+const REPLAY_FIXTURE_NOW = new Date("2026-10-24T00:00:00.000Z");
 const LONG_DESC = `A denial of service flaw was found in the packet parser when handling fragmented datagrams with overlapping offsets. A remote attacker can trigger unbounded memory growth and worker starvation by sending a crafted sequence of overlapping fragments over several minutes, leading to sustained CPU pressure, dropped legitimate traffic, additional memory allocator churn, repeated reassembly timeouts, and eventual process termination across affected builds. ${"Padding text to push this description past the excerpt limit. ".repeat(6)}`;
 
 function makeDocsDb(): CveDatabase {
@@ -158,6 +167,7 @@ function makeDocsDb(): CveDatabase {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   resetDbOverride();
   while (openDbs.length > 0) {
     try {
@@ -176,8 +186,24 @@ function seedDocsSyncRuns(db: CveDatabase): void {
     const insert = db.handle.prepare(
       "INSERT INTO sync_runs (source, started_at, finished_at, status, revision, content_hash, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
     );
-    insert.run("cve", "2026-10-24T03:50:00.000Z", "2026-10-24T03:55:00.000Z", "succeeded", "rev-test-aaa", "hash-cve", null);
-    insert.run("kev", "2026-10-24T03:50:00.000Z", "2026-10-24T03:55:00.000Z", "succeeded", "2026.10.23", "hash-kev", null);
+    insert.run(
+      "cve",
+      "2026-10-24T03:50:00.000Z",
+      "2026-10-24T03:55:00.000Z",
+      "succeeded",
+      "rev-test-aaa",
+      "hash-cve",
+      null,
+    );
+    insert.run(
+      "kev",
+      "2026-10-24T03:50:00.000Z",
+      "2026-10-24T03:55:00.000Z",
+      "succeeded",
+      "2026.10.23",
+      "hash-kev",
+      null,
+    );
     insert.run(
       "epss",
       "2026-10-24T03:50:00.000Z",
@@ -252,7 +278,14 @@ function seedDocsCorpus(db: CveDatabase): void {
     title: "CVE-2099-0001",
     description: LONG_DESC,
     published: "2026-10-20T14:02:00.000Z",
-    metrics: [{ origin: "CNA", version: "4.0", baseScore: "9.2", vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" }],
+    metrics: [
+      {
+        origin: "CNA",
+        version: "4.0",
+        baseScore: "9.2",
+        vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+      },
+    ],
     kev: "2026-10-23",
     epss: [{ date: SCORE_DATE, value: "0.1162", percentile: "0.96047" }],
   });
@@ -263,7 +296,9 @@ function seedDocsCorpus(db: CveDatabase): void {
   });
   seedDocsRecord(db, "CVE-2099-0003", {
     published: "2026-10-18T07:45:00.000Z",
-    metrics: [{ origin: "CNA", version: "2.0", baseScore: "10.0", vector: "AV:N/AC:L/Au:N/C:C/I:C/A:C" }],
+    metrics: [
+      { origin: "CNA", version: "2.0", baseScore: "10.0", vector: "AV:N/AC:L/Au:N/C:C/I:C/A:C" },
+    ],
     epss: [{ date: SCORE_DATE, value: "0", percentile: "0.08100" }],
   });
   seedDocsRecord(db, "CVE-2099-0005", {
@@ -350,7 +385,11 @@ function expectDocsProvenance(body: Record<string, unknown>): void {
 }
 
 function expectPaginationShape(body: Record<string, unknown>, limit: number): void {
-  const pagination = body.pagination as { limit: number; hasMore: boolean; nextCursor: string | null };
+  const pagination = body.pagination as {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
   expect(pagination.limit).toBe(limit);
   expect(typeof pagination.hasMore).toBe("boolean");
   expect(pagination.nextCursor === null || typeof pagination.nextCursor === "string").toBe(true);
@@ -490,6 +529,7 @@ describe("docs examples replay against live handlers", () => {
   });
 
   it("replays radar and replay docs examples including the unavailable shape", async () => {
+    vi.useFakeTimers({ now: REPLAY_FIXTURE_NOW, shouldAdvanceTime: true });
     const db = makeDocsDb();
     seedDocsRadar(db);
     void db;

@@ -5,7 +5,7 @@
 // turned the old unbounded fan-out + unbounded IN clause into a 500.
 
 import { rmSync } from "node:fs";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { type CveDatabase, openDatabase } from "../src/lib/db";
 import { getDefaultPriority, getHighestForecast, getKnownExploited } from "../src/lib/priority";
@@ -34,6 +34,12 @@ import {
 } from "./helpers/scale-corpus";
 
 const tempDirs: string[] = [];
+
+// The scale corpus pins an absolute checkpoint day (SCALE_DAY) against the
+// replay route's 30-day retention window, so the replay test pins the clock to
+// the corpus' own stamp. Otherwise the checkpoint ages out of the window and the
+// test fails on a calendar date instead of on a code change.
+const REPLAY_FIXTURE_NOW = new Date(STAMP);
 
 const PINS = {
   cveRevision: "rev-scale-37",
@@ -160,6 +166,7 @@ describe("bounded radar checkpoints at scale (task 37.1)", () => {
   });
 
   it("replays byte-equal results with boundedTopN surfaced", async () => {
+    vi.useFakeTimers({ now: REPLAY_FIXTURE_NOW, shouldAdvanceTime: true });
     const db = openDatabase({ dataDir: sharedDir });
     try {
       setDbOverride(db);
@@ -174,9 +181,7 @@ describe("bounded radar checkpoints at scale (task 37.1)", () => {
       expect(JSON.stringify(replayed.results)).toBe(JSON.stringify(stored.views));
 
       const response = await getReplay(
-        new Request(
-          "https://radar.test/api/v1/replay?date=2026-10-24&view=highest-forecast&limit=5",
-        ),
+        new Request(`https://radar.test/api/v1/replay?date=${DAY}&view=highest-forecast&limit=5`),
       );
       expect(response.status).toBe(200);
       const body = await bodyOf(response);
@@ -184,6 +189,7 @@ describe("bounded radar checkpoints at scale (task 37.1)", () => {
       expect(typeof body.boundedNotice).toBe("string");
       expect(body.checkpointDate).toBe(DAY);
     } finally {
+      vi.useRealTimers();
       resetDbOverride();
       db.close();
     }
