@@ -275,6 +275,176 @@ describe("record ids in prose", () => {
   });
 });
 
+describe("headings, clamped inside the answer", () => {
+  it("renders ### as an h3 and #### as an h4", () => {
+    const doc = parse(markup("### What changed\n\n#### By severity"));
+    expect(doc.querySelectorAll("h3")).toHaveLength(1);
+    expect(doc.querySelectorAll("h4")).toHaveLength(1);
+    expect(doc.querySelector("h3")?.textContent).toBe("What changed");
+    expect(doc.querySelector("h4")?.textContent).toBe("By severity");
+    expect(doc.querySelector("h1, h2")).toBeNull();
+  });
+
+  it.each(["# Title", "## Section"])(
+    "keeps %s as text, because the page owns h1 and h2",
+    (fixture) => {
+      const html = markup(fixture);
+      expect(html).not.toContain("<h1");
+      expect(html).not.toContain("<h2");
+      const doc = parse(html);
+      expect(doc.querySelector("h1, h2, h3, h4")).toBeNull();
+      expect(doc.body.textContent).toBe(fixture);
+      expect(doc.querySelector("p")?.textContent).toBe(fixture);
+    },
+  );
+
+  it("strips trailing hashes from a heading instead of reading them as text", () => {
+    expect(parse(markup("### Title ###")).querySelector("h3")?.textContent).toBe("Title");
+  });
+
+  it("keeps a heading marker with no text as literal characters", () => {
+    const doc = parse(markup("###"));
+    expect(doc.querySelector("h3, h4")).toBeNull();
+    expect(doc.body.textContent).toBe("###");
+  });
+
+  it("keeps a heading whose text is only closing hashes as literal characters", () => {
+    const doc = parse(markup("### ###"));
+    expect(doc.querySelector("h3, h4")).toBeNull();
+    expect(doc.body.textContent).toBe("### ###");
+  });
+
+  it("renders markup in a heading as characters, and no element", () => {
+    const html = markup("### <script>alert(1)</script>");
+    expect(html).not.toContain("<script");
+    expect(html).toContain("&lt;script&gt;");
+    const doc = parse(html);
+    expect(doc.querySelector("script")).toBeNull();
+    expect(doc.querySelector("h3")?.textContent).toBe("<script>alert(1)</script>");
+  });
+
+  it("links an id in a heading only when the turn cited it", () => {
+    const html = markup("### CVE-2024-1234", ["CVE-2024-1234"]);
+    const links = Array.from(parse(html).querySelectorAll("h3 a"));
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute("href")).toBe("/explore?q=CVE-2024-1234");
+    expect(parse(markup("### CVE-2024-1234")).querySelector("a")).toBeNull();
+  });
+});
+
+describe("horizontal rules", () => {
+  it.each(["---", "***", "___", "- - -"])("renders a %s line as an hr", (rule) => {
+    const doc = parse(markup(`Before\n\n${rule}\n\nAfter`));
+    expect(doc.querySelectorAll("hr")).toHaveLength(1);
+    expect(doc.querySelector("p")?.textContent).toBe("Before");
+    expect(doc.body.textContent).not.toContain(rule);
+  });
+
+  it("keeps dashes inside a paragraph as text", () => {
+    const doc = parse(markup("text --- text"));
+    expect(doc.querySelector("hr")).toBeNull();
+    expect(doc.body.textContent).toBe("text --- text");
+  });
+
+  it("keeps a --- line that touches a paragraph as text", () => {
+    // A setext-style underline is not a rule: the paragraph above it keeps its
+    // line, and the marker stays the model's own characters.
+    const doc = parse(markup("Before\n---"));
+    expect(doc.querySelector("hr")).toBeNull();
+    expect(doc.querySelector("p")?.textContent).toBe("Before---");
+  });
+
+  it("does not read a table's separator row as a rule", () => {
+    const doc = parse(markup(TABLE));
+    expect(doc.querySelector("hr")).toBeNull();
+    expect(doc.querySelectorAll("table tbody tr")).toHaveLength(2);
+  });
+});
+
+describe("blockquotes", () => {
+  it("renders a quoted line as a blockquote with inline constructs applied", () => {
+    const doc = parse(markup("> KEV lists **4 records**, see `kev`."));
+    const quote = doc.querySelector("blockquote");
+    expect(quote).not.toBeNull();
+    expect(quote?.querySelector("p")?.textContent).toBe("KEV lists 4 records, see kev.");
+    expect(quote?.querySelector("strong")?.textContent).toBe("4 records");
+    expect(quote?.querySelector("code")?.textContent).toBe("kev");
+    // The marker itself is structure, not characters on screen.
+    expect(doc.body.textContent).not.toContain("> KEV");
+  });
+
+  it("carries two paragraphs in one quote", () => {
+    const doc = parse(markup("> first line\n>\n> second line"));
+    expect(doc.querySelectorAll("blockquote")).toHaveLength(1);
+    const paragraphs = Array.from(doc.querySelectorAll("blockquote p"));
+    expect(paragraphs.map((p) => p.textContent)).toEqual(["first line", "second line"]);
+  });
+
+  it("keeps a > with no text as a character", () => {
+    const doc = parse(markup(">"));
+    expect(doc.querySelector("blockquote")).toBeNull();
+    expect(doc.body.textContent).toBe(">");
+  });
+
+  it("keeps a > mid-line as text", () => {
+    const doc = parse(markup("3 > 2 and 1 < 2"));
+    expect(doc.querySelector("blockquote")).toBeNull();
+    expect(doc.body.textContent).toBe("3 > 2 and 1 < 2");
+  });
+
+  it("links an id in a quote only when the turn cited it", () => {
+    const doc = parse(markup("> CVE-2024-1234 was added.", ["CVE-2024-1234"]));
+    expect(doc.querySelector("blockquote a")?.getAttribute("href")).toBe(
+      "/explore?q=CVE-2024-1234",
+    );
+    expect(parse(markup("> CVE-2024-1234 was added.")).querySelector("a")).toBeNull();
+  });
+});
+
+describe("broken markers degrade to the characters the model wrote", () => {
+  it("keeps a lone ** as literal characters and still reads a closed one as strong", () => {
+    const lone = parse(markup("A 5 ** increase was reported."));
+    expect(lone.querySelector("strong")).toBeNull();
+    expect(lone.body.textContent).toBe("A 5 ** increase was reported.");
+
+    const closed = parse(markup("A **bold** claim."));
+    expect(closed.querySelector("strong")?.textContent).toBe("bold");
+    expect(closed.body.textContent).toBe("A bold claim.");
+  });
+
+  it("keeps an unterminated fence visible as text and creates no pre", () => {
+    const streaming = '```json\n{"rows": 25}';
+    const html = markup(streaming);
+    expect(html).not.toContain("<pre");
+    expect(html).not.toContain("<code");
+    const doc = parse(html);
+    expect(doc.querySelector("pre")).toBeNull();
+    expect(doc.body.textContent).toBe(streaming.replace("\n", ""));
+    expect(doc.querySelectorAll("br")).toHaveLength(1);
+  });
+
+  it("turns the same text into a code block once the closing fence arrives", () => {
+    const doc = parse(markup('```json\n{"rows": 25}\n```'));
+    expect(doc.querySelector("pre code")?.textContent).toBe('{"rows": 25}');
+    expect(doc.body.textContent).not.toContain("```");
+  });
+
+  it("keeps an unterminated link literal, paren and all", () => {
+    // No closing paren: the label is never an anchor. (An https target would
+    // still be auto-linked as a bare URL, which is the URL policy's own rule.)
+    const fixture = "See [the method](/about and nothing else.";
+    const doc = parse(markup(fixture));
+    expect(doc.querySelector("a")).toBeNull();
+    expect(doc.body.textContent).toBe(fixture);
+  });
+
+  it("keeps a lone backtick literal", () => {
+    const doc = parse(markup("To read `kev use the tool."));
+    expect(doc.querySelector("code")).toBeNull();
+    expect(doc.body.textContent).toBe("To read `kev use the tool.");
+  });
+});
+
 describe("briefs keep the raw answer", () => {
   it("emits the model's text unchanged, pipes and all", () => {
     const markdown = buildBriefMarkdown({

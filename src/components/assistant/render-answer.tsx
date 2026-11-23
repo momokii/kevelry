@@ -11,15 +11,27 @@
 // the same reading:
 //
 //   1. fenced code blocks (```), verbatim, never inline-parsed;
-//   2. pipe tables (header row + dash separator row + body rows);
-//   3. unordered and ordered lists;
-//   4. `**bold**`, `*italic*`, `` `inline code` ``;
-//   5. links — markdown `[label](target)` and bare `https://` URLs;
-//   6. bare record ids in prose (`CVE-YYYY-NNNN`) as `/explore?q=` links, but
+//   2. `###`/`####` headings — `h3`/`h4`, never `h1`/`h2`, because the page owns
+//      those two levels and the answer sits inside them;
+//   3. horizontal rules — a `---`, `***` or `___` line of its own;
+//   4. blockquotes (`>`), consecutive lines, one paragraph per bracketed run;
+//   5. pipe tables (header row + dash separator row + body rows);
+//   6. unordered and ordered lists;
+//   7. `**bold**`, `*italic*`, `` `inline code` ``;
+//   8. links — markdown `[label](target)` and bare `https://` URLs;
+//   9. bare record ids in prose (`CVE-YYYY-NNNN`) as `/explore?q=` links, but
 //      only ids the server cited this turn (see `AnswerRenderOptions`).
 //
 // Anything else is text, which is the safe default: an unsupported construct
 // renders as the characters the model wrote, not as something decoded.
+//
+// **Degradation is the rule, not a fallback.** A marker that is not balanced
+// renders as the characters the model wrote: a lone `**`, `*` or backtick, an
+// unclosed `[label](target`, a heading marker with no text after it, a `>` with
+// nothing quoted, a `---` that is not a line of its own (a paragraph line above
+// or below it keeps it literal), and an unterminated code fence — backticks
+// included, until the closing fence arrives. No half-built element is ever on
+// screen, so what a stream shows is what the settled answer shows.
 //
 // Streaming is a first-class case. The renderer runs on partial text on every
 // delta, so a table whose separator row has not arrived yet is *not* a table: it
@@ -52,6 +64,11 @@ const CVE_ID = /^CVE-\d{4}-\d{4,7}(?![0-9A-Za-z_])/;
 const CVE_CELL = /^CVE-\d{4}-\d{4,7}$/;
 const FENCE_OPEN = /^ {0,3}(`{3,})[ \t]*([^`]*)$/;
 const FENCE_CLOSE = /^ {0,3}`{3,}[ \t]*$/;
+/** One to six hashes and text; levels other than three and four stay text. */
+const HEADING = /^ {0,3}(#{1,6})[ \t]+(\S.*)$/;
+/** A rule needs three of the same marker, and no puzzle-rule ambiguity. */
+const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const QUOTE = /^ {0,3}>[ \t]?(.*)$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const ORDERED = /^\s*(\d{1,9})[.)]\s+(.*)$/;
 const CONTINUATION = /^\s{2,}\S/;
@@ -192,8 +209,17 @@ function renderInline(
     const rest = text.slice(index);
     const char = text[index] ?? "";
 
-    // 1. Inline code: verbatim, and nothing inside it is a construct.
+    // 1. Inline code: verbatim, and nothing inside it is a construct. A run of
+    //    three backticks or more is never inline code: it is a fence marker the
+    //    block layer refused (the closing fence has not arrived), and leaving it
+    //    as characters is what keeps a half-built block off the screen.
     if (char === "`") {
+      const run = /^`+/.exec(rest)?.[0] ?? "`";
+      if (run.length > 2) {
+        buffer += run;
+        index += run.length;
+        continue;
+      }
       const code = INLINE_CODE.exec(rest);
       if (code !== null) {
         flush();
@@ -357,6 +383,95 @@ function isTableStart(lines: readonly string[], index: number): boolean {
   return head.includes("|") && separator.includes("|") && isSeparatorRow(separator);
 }
 
+/**
+ * The closing fence's index, or `null` while the fence is still open.
+ *
+ * This is what makes an unterminated fence degrade to text instead of becoming a
+ * `<pre>` the closing fence may never match: the block exists only once both
+ * ends of it have arrived.
+ */
+function fenceClose(lines: readonly string[], start: number): number | null {
+  if (!FENCE_OPEN.test(lines[start] ?? "")) return null;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (FENCE_CLOSE.test(lines[index] ?? "")) return index;
+  }
+  return null;
+}
+
+/**
+ * A heading, clamped inside the answer.
+ *
+ * `#` and `##` are refused: the page's own `h1`/`h2` are the levels above this
+ * text, so a model heading is at most an `h3`, one step under the section the
+ * answer sits in, and `h4` is the one level below that. A model `#` therefore
+ * never outranks the page, and the levels an answer can reach are exactly the
+ * two below its own section. A marker with no text after it is not a heading —
+ * it stays characters.
+ */
+function headingAt(line: string): { level: 3 | 4; text: string } | null {
+  const match = HEADING.exec(line);
+  if (match === null) return null;
+  const level = (match[1] ?? "").length;
+  if (level !== 3 && level !== 4) return null;
+  // Closing hashes are decoration: `### Title ###` is the heading "Title". A
+  // marker followed only by closing hashes carries no text, so it stays text.
+  const text = (match[2] ?? "").replace(/(?:^|[ \t]+)#+$/, "").trim();
+  if (text === "") return null;
+  return { level: level === 4 ? 4 : 3, text };
+}
+
+/**
+ * A thematic break, and only as a line of its own.
+ *
+ * The `|` check keeps a table's `| --- | --- |` separator row out of this rule;
+ * a blank line on each side keeps `text\n---` literal, so a paragraph is never
+ * cut in half by a rule the model meant as dashes.
+ */
+function isStandaloneRule(lines: readonly string[], index: number): boolean {
+  const line = lines[index] ?? "";
+  if (line.includes("|") || !RULE.test(line)) return false;
+  const before = lines[index - 1];
+  const after = lines[index + 1];
+  return (
+    (before === undefined || before.trim() === "") && (after === undefined || after.trim() === "")
+  );
+}
+
+interface QuoteBlock {
+  /** The first line after the quote. */
+  readonly end: number;
+  /** One entry per paragraph, each holding that paragraph's own lines. */
+  readonly paragraphs: readonly (readonly string[])[];
+}
+
+/**
+ * Consecutive `>` lines, as one blockquote.
+ *
+ * A `>` line with nothing after it separates paragraphs inside the quote, which
+ * is how a quote carries two paragraphs and still reads as one block. A run with
+ * no quoted text at all is not a quote: `>` alone stays a character.
+ */
+function quoteAt(lines: readonly string[], start: number): QuoteBlock | null {
+  const paragraphs: string[][] = [];
+  let current: string[] = [];
+  let index = start;
+  while (index < lines.length) {
+    const match = QUOTE.exec(lines[index] ?? "");
+    if (match === null) break;
+    const inner = match[1] ?? "";
+    if (inner.trim() === "") {
+      if (current.length > 0) paragraphs.push(current);
+      current = [];
+    } else {
+      current.push(inner);
+    }
+    index += 1;
+  }
+  if (current.length > 0) paragraphs.push(current);
+  if (paragraphs.length === 0) return null;
+  return { end: index, paragraphs };
+}
+
 function isListItem(line: string, ordered: boolean): string | null {
   const match = ordered ? ORDERED.exec(line) : BULLET.exec(line);
   if (match === null) return null;
@@ -365,7 +480,10 @@ function isListItem(line: string, ordered: boolean): string | null {
 
 function startsBlock(lines: readonly string[], index: number): boolean {
   const line = lines[index] ?? "";
-  if (FENCE_OPEN.test(line)) return true;
+  if (fenceClose(lines, index) !== null) return true;
+  if (headingAt(line) !== null) return true;
+  if (isStandaloneRule(lines, index)) return true;
+  if (quoteAt(lines, index) !== null) return true;
   if (isListItem(line, false) !== null || isListItem(line, true) !== null) return true;
   return isTableStart(lines, index);
 }
@@ -526,21 +644,48 @@ function renderBlocks(text: string, context: InlineContext): ReactNode[] {
       continue;
     }
 
-    // Fenced code: verbatim, and an unterminated fence is still code (the model
-    // is mid-block, and showing the block is truer than showing the backticks).
-    if (FENCE_OPEN.test(line)) {
-      index += 1;
-      const code: string[] = [];
-      while (index < lines.length && !FENCE_CLOSE.test(lines[index] ?? "")) {
-        code.push(lines[index] ?? "");
-        index += 1;
-      }
-      if (index < lines.length) index += 1;
+    // Fenced code: verbatim, and a block only once the closing fence has
+    // arrived. An unterminated fence falls through to the paragraph branch, so
+    // the marker and its body stay visible as the characters the model wrote
+    // until the fence closes — never a `<pre>` that a retraction would undo.
+    const close = fenceClose(lines, index);
+    if (close !== null) {
       blocks.push(
         <pre className="assistant-code" key={nextKey("code")}>
-          <code>{code.join("\n")}</code>
+          <code>{lines.slice(index + 1, close).join("\n")}</code>
         </pre>,
       );
+      index = close + 1;
+      continue;
+    }
+
+    const heading = headingAt(line);
+    if (heading !== null) {
+      const key = nextKey("heading");
+      const body = renderInline(heading.text, context, key);
+      blocks.push(heading.level === 4 ? <h4 key={key}>{body}</h4> : <h3 key={key}>{body}</h3>);
+      index += 1;
+      continue;
+    }
+
+    if (isStandaloneRule(lines, index)) {
+      blocks.push(<hr key={nextKey("rule")} />);
+      index += 1;
+      continue;
+    }
+
+    const quote = quoteAt(lines, index);
+    if (quote !== null) {
+      const key = nextKey("quote");
+      blocks.push(
+        <blockquote key={key}>
+          {quote.paragraphs.map((paragraph, position) => {
+            const paragraphKey = `${key}-p${String(position)}`;
+            return <p key={paragraphKey}>{renderLines(paragraph, context, paragraphKey)}</p>;
+          })}
+        </blockquote>,
+      );
+      index = quote.end;
       continue;
     }
 

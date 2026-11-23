@@ -5525,6 +5525,65 @@ a.badge:hover {
 .assistant-prose.is-formatted em {
   font-style: italic;
 }
+/* An answer's own structure. The page owns h1 and h2, so a model heading is an
+   h3 at most: one step under the section it sits in, and one step above an h4.
+   The sizes are the reading column's own, not the page scale's — an in-answer
+   heading must never look like the section title above it. */
+.assistant-prose.is-formatted h3,
+.assistant-prose.is-formatted h4 {
+  margin: 0;
+  color: var(--ui-ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  max-width: none;
+  overflow-wrap: break-word;
+}
+
+.assistant-prose.is-formatted h3 {
+  font-size: 18px;
+  line-height: 1.28;
+}
+
+.assistant-prose.is-formatted h4 {
+  font-size: 16px;
+  line-height: 1.32;
+}
+
+/* A quote is the answer's muted voice: set back to the secondary ink behind a
+   rule, never a tinted panel. */
+.assistant-prose.is-formatted blockquote {
+  margin: 0;
+  padding-left: var(--ui-sp-4);
+  border-left: 2px solid var(--ui-rule);
+  color: var(--ui-ink-2);
+  max-width: none;
+}
+
+.assistant-prose.is-formatted blockquote p + p {
+  margin-top: var(--ui-sp-2);
+}
+
+/* A rule separates blocks of the answer; it is a hairline on the reading
+   column, not the edge of a card. */
+.assistant-prose.is-formatted hr {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-rule);
+  max-width: none;
+}
+/* The rules above reset their own margins, so the block rhythm is theirs to
+   start: a heading, rule or quote keeps the gap its siblings get, and the first
+   block of an answer sits flush with its top. */
+.assistant-prose.is-formatted > h3,
+.assistant-prose.is-formatted > h4,
+.assistant-prose.is-formatted > hr,
+.assistant-prose.is-formatted > blockquote {
+  margin-top: var(--ui-sp-4);
+}
+
+.assistant-prose.is-formatted > :first-child {
+  margin-top: 0;
+}
 
 .assistant-prose.is-formatted code {
   font-family: var(--ui-font-mono);
