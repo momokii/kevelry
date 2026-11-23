@@ -1,6 +1,8 @@
 # v4 UX & Guardrail Hardening — Plan
 
-**Target release:** 4.0.3 · **Status:** planned, docs only · **Scope:** no new capability — density,
+**Target release:** 4.0.3 · **Status:** P1–P5 shipped (see the **Shipped** line under each
+phase); P6 is in progress — its docs half is committed, its screenshots, image and deploy are still
+pending · **Scope:** no new capability — density,
 copy, renderer coverage, and the guardrail gaps the live 4.0.2 instance exposed · **Predecessor:**
 `docs/plans/v4-ai-chat.md` (ships 4.0.0–4.0.2) · **Design owner:** `DESIGN.md` §6 Assistant, §7.0
 
@@ -178,22 +180,48 @@ acceptance sentences in `tests/assistant-view.test.tsx`, axe clean on a 7-call t
 horizontal overflow at 390px. **Commit:**
 `feat(assistant): cap the rail by calls and records, not by a scrollbar`
 
+**Shipped:** `435fd9a` — `feat(assistant): cap the rail by calls and records, not by a
+scrollbar`. Note: `ASSISTANT_TOOL_ID_SAMPLE` stayed at **12**, not the 25 this plan proposed.
+The honest label (`25 rows · 12 ids available`) is what removes the contradiction, so the
+cheaper fix won and the row/ids distinction is now stated instead of widened.
+
 **P2 — comprehension copy.** §2: legend, "How this works", five `HelpTip`s, empty-state edges, the
 `webEnabled` page fact. **Accept:** every new string asserted; no tip names an env var or a file; the
 disclosure is three sentences; axe clean with all tips open at 390px. **Commit:**
 `feat(assistant): explain the rail in one legend, one disclosure and five tips`
 
+**Shipped:** `202f469` — `feat(assistant): explain the rail in one legend, one disclosure and
+five tips`.
+
 **P3 — renderer gaps.** §3: headings, rules, quotes, and the fence degradation change. **Accept:**
 every §3 render test passes with the existing link-policy tests untouched. **Commit:**
 `feat(assistant): render headings, rules and quotes and degrade broken markers to text`
+
+**Shipped:** `e359118` — `feat(assistant): render headings, rules and quotes and degrade broken
+markers to text`. The last acceptance row (a heading that skips a level) was not caught until
+P4; `6fc3778` stops the skip and adds the assertion.
 
 **P4 — guardrail gaps.** §4: `PAYLOAD_TOO_LARGE` 413, `BAD_IMAGE` 422, the concurrent-burst test, the
 budget-before-upstream assertions, `AI_MAX_TURNS` deleted, the API doc paragraph. **Accept:** §4's four
 items. **Commit:** `fix(assistant): answer 413 and 422 for oversize bodies and images, and prove the burst cap`
 
+**Shipped:** `6fc3778` — `fix(assistant): answer 413 and 422 for oversize input, prove the burst
+cap, and stop skipping a heading level` (one commit, both concerns: the heading-level skip is
+§3's last acceptance row). The suite-health fix for the wall-clock-dependent fixtures landed
+separately as `94a13ab` — `fix(tests): stop the radar/replay fixtures depending on the wall
+clock` — so a retained-checkpoint assertion no longer expires with the calendar.
+
 **P5 — web-fallback proof.** §5: the once-per-turn assertion, the disabled-tool test, the live check
 with a screenshot of the ledger line and the `web` chip. **Accept:** §5 (a) (b) (c). **Commit:**
 `test(assistant): prove the web fallback runs once and only when enabled`
+
+**Shipped:** `eba2175` — `feat(ai): fetch machine-readable sources instead of client-rendered
+pages`. The commit does more than prove the fallback: the live check showed the model fetching a
+client-rendered page whose extracted text was one line of chrome, so `fetch_authoritative` now
+returns `application/json`/`*+json` as pretty-printed JSON and reports `title` plus
+`mayBeClientRendered` for a short HTML body. The once-per-turn and disabled-tool assertions ship
+with it, and the prompt now names the NVD API 2.0, CISA KEV and FIRST EPSS endpoints ahead of the
+page, kept honest by an allowlist-parity test.
 
 **P6 — docs, screenshots, release 4.0.3.** `DESIGN.md` §6 Assistant (density rules, legend, citation
 summary), `README.md`, `CHANGELOG.md`, `docs/api/README.md`, `CONTEXT.md`, `.env.example`
@@ -201,6 +229,12 @@ summary), `README.md`, `CHANGELOG.md`, `docs/api/README.md`, `CONTEXT.md`, `.env
 **Accept:** `lint`, `typecheck`, `build`, `npm test`, `npx playwright test` and `format:check` clean,
 `.env.example` still covers every `process.env` read, and a live turn shows the new rail. **Commit:**
 `docs: document the hardened assistant and release 4.0.3`
+
+**Status:** pending. The docs half ships now — `CHANGELOG.md` (`## 4.0.3`), `README.md`,
+`CLAUDE.md`, `docs/api/README.md`, version `4.0.3` — committed as `Release 4.0.3` and tagged
+`v4.0.3`. **Not done and not claimed:** no image was built or pushed, nothing was deployed, and no
+new screenshots were captured. `DESIGN.md` §6 and `CONTEXT.md` are unchanged by this commit; a
+screenshot pass needs a running instance.
 
 ## 7. Non-goals (G)
 

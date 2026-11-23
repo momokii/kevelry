@@ -3,6 +3,107 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.3 — 2026-11-23
+
+The hardening release for the v4 assistant: the answers read as formatted documents,
+the evidence rail fits without its own scrollbar, the page explains itself, and the
+guardrails the live 4.0.2 instance exposed now refuse with the right status. No
+migration and no `/api/v1` change; two fixes touch the image and the test suite.
+
+### Assistant readability
+
+- **Assistant answers render as structure, not as one block of text.** Pipe tables
+  become real `<table>` elements with `<th scope="col">` headers inside a
+  horizontally scrollable wrapper, so a wide table scrolls without pushing the page
+  sideways. Headings, horizontal rules, blockquotes, ordered and unordered lists,
+  bold, italic, inline code and fenced code all render as their elements.
+- **A broken marker degrades to the characters the model wrote.** An unterminated
+  fence stays literal text — backticks included — until the closing fence arrives,
+  so no half-built `<pre>` is ever on screen and a streaming answer agrees with the
+  settled one. A lone `**`, a `###` with no text, and `[label](target` with no closing
+  paren stay text.
+- **Ids link to `/explore` only when the turn's citations named them.** Unchanged from
+  4.0.2 and now pinned by a test per construct: prose can never mint a citation the
+  tool calls did not return.
+
+### Evidence rail
+
+- **Per call, 6 chips then `+N more`.** Each rail line shows its first six record ids
+  and reveals the rest in place; the expanded state is keyed by call, so a later
+  delta cannot collapse it.
+- **Three calls, then `See all N calls`.** A long transcript no longer becomes a
+  scrolling column. `no rows` and `failed` calls are pinned above the disclosure and
+  always visible — an empty result is the evidence that a question had no answer.
+- **The row labels are honest.** `rows === 0` reads `no rows`, a failed call reads
+  `failed`, and a call that returned more rows than ids says so explicitly — a 25-row
+  call with a 12-id sample labels itself `25 rows` · `12 ids available`, not `25 rows`
+  alone. The row count and the id sample are now visibly different things.
+- **"Cited" folds to one line** (`<details>` closed by default at every width) — it is
+  the turn's union while the rail is per call, and the summary says which is which.
+- **The rail no longer scrolls inside the page.** `max-height` and `overflow` are gone
+  at ≥1024px; the ledger stays sticky and its length is content, not a scrollbar.
+
+### Comprehension
+
+- **A legend, a disclosure and five help tips.** The rail opens with one line naming
+  what each part is (`Evidence · 4 tool calls`, then rows and chips). A three-sentence
+  **How this works** disclosure under the subtitle says where answers come from, that
+  every number is quoted from the records the calls returned, and that nothing typed is
+  stored. Five `HelpTip`s define `rows`, `tool call`, `cited`, `unverified ids` and
+  `session / daily budget` — meaning only, never a file name or an env var.
+- **The empty state names its edges.** "Ask about KEV additions, EPSS scores, CVSS, CWE
+  or exploit references in this snapshot. It does not forecast, and it will not answer
+  from anywhere else."
+
+### Guardrails
+
+- **An oversized body answers `413`, a bad image `422`.** A body over the 3 MB envelope
+  used to answer a generic `400`; it now returns `PAYLOAD_TOO_LARGE` with
+  `details.maxBytes`. A second image, an image over 1.5 MB, or bytes that are not
+  PNG/JPEG/WebP now answer `BAD_IMAGE` with `422`. A malformed body (bad JSON, unknown
+  key, too many messages) stays `400 BAD_REQUEST` — those are client bugs, not size or
+  content.
+- **The burst cap is proven, not assumed.** The reserve is the route's first statement
+  and consumes both windows synchronously, so 20 concurrent `POST`s yield exactly 10
+  `200` bodies and 10 `429`s; a test asserts it.
+- **`AI_MAX_TURNS` is deleted.** It was parsed, asserted in one test, and read by no
+  code — a knob no code consumes is a lie with a default. The enforced message cap
+  stays 12.
+- **The budget is checked before any provider call.** The daily-ledger and session
+  tests now also assert the transport spy saw zero calls, so a refusal costs $0.
+
+### Web fallback
+
+- **Machine-readable sources are returned as JSON.** A response whose media type is
+  `application/json` or `*+json` comes back as pretty-printed JSON instead of being
+  tag-stripped like HTML — the live trigger was a CVE record page that extracted to
+  one line of chrome. An HTML page keeps its extraction and now reports its `title`
+  plus `mayBeClientRendered`, true when the extracted body is under 200 characters,
+  so the model is told the page is a client-rendered shell instead of describing an
+  empty one.
+- **The prompt names the API before the page:** NVD API 2.0
+  (`/rest/json/cves/2.0?cveId=…`), the CISA KEV feed and FIRST EPSS. The tool
+  description names both `contentKind` values and the flag.
+- **A parity test keeps the prompt and the allowlist together**, so a URL the prompt
+  recommends can never be a host the guard refuses.
+
+### Fixed
+
+- **The Docker image installs the glibc Next SWC binding.** `package-lock.json` lists
+  both the gnu and the musl variants, and on a glibc base the resolution could land on
+  musl alone; Next then loaded no native binding and `next build` aborted. A build step
+  asserts the gnu binding, installs it when absent, and hard-fails with the cause when
+  it still will not load. This was latent — it only appeared when the dependency layer
+  cache was invalidated, so a warm rebuild hid it.
+- **Two replay tests no longer rot with the wall clock** (`94a13ab`). The radar and
+  replay fixtures derive their dates from a fixed instant instead of "now", so the
+  suite passes on any day rather than only inside a retention window.
+
+**Upgrade notes:** no migration, no `/api/v1` change. **`AI_MAX_TURNS` is removed** —
+if your `.env` sets it, the value is now ignored and can be deleted. The optional
+`AI_MAX_ANSWER_TOKENS` (default `4096`) from 4.0.1 is unchanged. Recreate the container
+to pick up 4.0.3 (`docker compose up -d --force-recreate`).
+
 ## 4.0.2 — 2026-11-22
 
 Formatted answers. One presentation change, no migration and no API change: an

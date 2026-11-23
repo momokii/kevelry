@@ -17,14 +17,18 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.2` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> **Status:** `4.0.3` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.2` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the formatted-answers release. An assistant answer is now rendered as text:
-> pipe tables become real tables with scoped headers in a scrollable wrapper,
-> lists, bold, italic, inline code and safe links render as their elements, and
-> the output is escaped first with no HTML injection. The `4.0.0` entry lists the
+> available as previous releases. The `4.0.3` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the assistant-hardening release: answers render as structure (real tables with
+> scoped headers in a scrollable wrapper, headings, rules, quotes, lists, code), the
+> evidence rail is capped by calls and records instead of by a scrollbar, one legend
+> plus a three-sentence "How this works" disclosure and five help tips explain the
+> page, an oversized body answers `413` and a bad second image `422`, and the web
+> fallback returns machine-readable sources as JSON instead of describing a
+> client-rendered shell. Everything is still escaped first and rendered with no HTML
+> injection. From 4.0.2: formatted answers. The `4.0.0` entry lists the
 > v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
 > automatically on boot against an existing volume, no manual step, and no
 > `/api/v1` route or response shape changed. The assistant is off on this image
@@ -86,9 +90,18 @@ then restart. A self-hoster who sets nothing — or sets the flag with no key �
 gets an honest disabled state on `/assistant` that names the variable, not a
 composer that fails on submit. Every knob is in `.env.example`: the two above,
 `AI_MODEL`, `AI_BASE_URL`, the two budgets (`AI_SESSION_BUDGET_TOKENS`,
-`AI_DAILY_BUDGET_USD`), the input cap, the two timeouts, and
-`AI_WEB_FETCH_ENABLED` (off by default; when off the web tool is absent from the
-tool list).
+`AI_DAILY_BUDGET_USD`), `AI_MAX_INPUT_CHARS`, `AI_MAX_ANSWER_TOKENS`, the two
+timeouts, and `AI_WEB_FETCH_ENABLED` (off by default; when off the web tool is
+absent from the tool list and refused by name). `AI_MAX_TURNS` was removed in
+4.0.3 — no code ever read it.
+
+When the web fallback is on, one allowlisted source may be fetched per turn, and
+it is asked for a **machine-readable** endpoint before a page: NVD API 2.0
+(`/rest/json/cves/2.0?cveId=…`), the CISA KEV feed, FIRST EPSS. A JSON response
+comes back as JSON text; an HTML page comes back with its title and a
+`mayBeClientRendered` flag, which is set when the extracted body is under 200
+characters — the page is then a client-rendered shell and the model is told to
+fetch the API endpoint instead of describing an empty page.
 
 ### A grounded answer, with its evidence ledger
 
@@ -198,7 +211,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.2
+  docker.io/kelanach/kevelry:4.0.3
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -480,7 +493,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.2 \
+  --image docker.io/kelanach/kevelry:4.0.3 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -689,8 +702,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1012 passing, 3 skipped (network-gated)
-npx playwright test     # browser suite: 153 passing, 0 skipped
+npm test                # vitest: 1079 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 155 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
 

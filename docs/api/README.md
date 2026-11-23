@@ -136,6 +136,18 @@ them if it talks to the desk:
 A malformed body (bad JSON, an unknown key, too many messages) stays
 `400 BAD_REQUEST`: those are client bugs, not size or content.
 
+The desk's own budgets are **separate from the v1 limiter**: 10 requests per
+minute and 60 per hour per IP, both consumed together, answering `429` with
+`Retry-After` and naming which window ran out. Only the minute window refuses a
+burst, so the two cannot be traded against each other. What bounds _spend_ is
+that per-IP window plus the persistent daily ledger (`AI_DAILY_BUDGET_USD`, one
+`ai_usage` row per UTC day, read before any provider call); a session budget
+(`AI_SESSION_BUDGET_TOKENS`) is a courtesy estimate over the history the client
+itself sends, so it is **not** a security control — an empty history resets it.
+The enforced per-turn message cap is 12. `AI_MAX_TURNS` was removed in 4.0.3:
+it was parsed and tested but no code ever read it, and a knob with no consumer
+is a lie with a default. If a `.env` still sets it, the value is ignored.
+
 ## Limits
 
 Defaults, enforced per client IP and visible on every response:
