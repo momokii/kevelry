@@ -71,6 +71,18 @@ failing silently.
 | **Screenshot intake**         | PNG/JPEG/WebP up to 1.5 MB: the prompt allows CVE ids read from an image and requires each to be resolved through `get_cve` before it is described; an id that does not resolve is stated as not in the dataset. |
 | **Nothing to jailbreak into** | No shell, filesystem, host, query language or write capability exists in the tool layer. Web fetch is optional, `https`-only and host-allowlisted.                                                               |
 
+### A screenshot the desk can read
+
+![An advisory panel in the app's own palette, 720×360: a header strip reading “SECURITY ADVISORY · ADV-2026-0114” dated 2026-01-14 above the title “Edge and gateway patch round”, then three rows. CVE-2021-44228, Apache Log4j 2, CVSS 10.0, fixed in 2.17.1. CVE-2023-44487, HTTP/2 request flood, CVSS 7.5, fixed in 1.25.3. CVE-2026-0001, Acme Gateway session token exposure, CVSS 8.1, fixed in 4.2.1. The first two ids are in every snapshot; the third is deliberately absent, so the answer reports it as not in the dataset.](docs/images/attach-example.png)
+
+Attach something with a CVE id in it. This panel is the shape that works — a
+vendor advisory or NVD/CVE record page, a scanner report or a ticket listing
+CVEs, a PDF page carrying an id — and the desk's own **What works** disclosure
+beside the attach control says the same in two lists. A photo, a game scoreboard
+or a dashboard with no id leaves nothing to resolve. The ids above are read from
+the image, then each one is checked against this dataset: the third row is there
+to show the path where an id does not resolve and the answer says so.
+
 The id rule is enforced in code, not only asked for in the prompt. Every citation
 is an id a tool returned, and the turn scans the prose for ids that no tool
 payload contained; a non-empty list is sent as an `unverified` event, shown above

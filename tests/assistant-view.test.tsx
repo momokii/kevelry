@@ -624,3 +624,49 @@ describe("the working row counts on its own", () => {
     act(() => root.unmount());
   });
 });
+
+describe("what a screenshot is good for", () => {
+  it("is a closed native disclosure with a 44px summary", () => {
+    const host = document.createElement("div");
+    host.innerHTML = render();
+    const guide = host.querySelector('[data-testid="assistant-image-guide"]');
+    expect(guide?.tagName).toBe("DETAILS");
+    expect(guide?.hasAttribute("open")).toBe(false);
+    expect(guide?.querySelector("summary")?.textContent).toBe("What works");
+    // Beneath the attach control and above the format note: the guidance is one
+    // line under the thing it explains.
+    const pick = host.querySelector(".assistant-image-pick");
+    const note = host.querySelector("#assistant-image-note");
+    if (guide === null || pick === null || note === null) throw new Error("missing attach markup");
+    expect(pick.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(guide.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("names four sources that work and two that do not", () => {
+    const html = render();
+    const works = [
+      "A vendor advisory page showing a CVE id",
+      "An NVD or CVE record page",
+      "A scanner report or ticket listing CVEs",
+      "A PDF page screenshot that carries a CVE id",
+    ];
+    const useless = [
+      "A game scoreboard or a photo",
+      "A dashboard with no CVE id, vendor or product name",
+    ];
+    for (const text of [...works, ...useless]) expect(html).toContain(text);
+    // Counted, so the copy cannot quietly shrink to one line later.
+    expect(html.match(/<li>/g)?.length).toBeGreaterThanOrEqual(works.length + useless.length);
+  });
+
+  it("says the ids are checked against the dataset, and that a refusal is correct", () => {
+    const html = render();
+    expect(html).toContain(
+      "The image is only used to find CVE ids. Each id is then checked against this dataset, and an id that does not resolve is reported as not here.",
+    );
+    expect(html).toContain(
+      "If the image has no CVE id in it, the answer says so. That is the desk working, not a failure.",
+    );
+    expect(html).toContain("Does not work");
+  });
+});

@@ -6264,6 +6264,85 @@ a.badge:hover {
   max-width: 68ch;
 }
 
+/* ---------- what a screenshot is good for ---------- */
+
+.assistant-image-guide {
+  flex: 0 1 auto;
+  border: 0;
+}
+
+/* Opened, the panel takes its own line under the control instead of squeezing a
+   paragraph into the space left beside it. Closed, it adds no height: the
+   composer is sticky on a phone. */
+.assistant-image-guide[open] {
+  flex-basis: 100%;
+}
+
+.assistant-image-guide-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ui-cite);
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.assistant-image-guide-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The same `+` this app uses on every other folded count, so one more detail
+   reads as the same kind of control. */
+.assistant-image-guide-summary::after {
+  content: "+";
+  font-family: var(--ui-font-mono);
+  font-size: 13px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-image-guide[open] .assistant-image-guide-summary::after {
+  content: "−";
+}
+
+.assistant-image-guide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 var(--ui-sp-1);
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--ui-rule);
+  max-width: 68ch;
+}
+
+.assistant-image-guide-purpose,
+.assistant-image-guide-refusal {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ui-ink-2);
+}
+
+.assistant-image-guide-heading {
+  margin: 2px 0 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-3);
+}
+
+.assistant-image-guide-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-2);
+}
+
 .assistant-image-preview {
   display: flex;
   align-items: center;

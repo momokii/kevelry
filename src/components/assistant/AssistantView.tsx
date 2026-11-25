@@ -389,6 +389,45 @@ function WorkingRow({ stage, onStop }: { stage: string; onStop: () => void }) {
   );
 }
 
+/**
+ * What a screenshot is good for, one native disclosure beside the attach control.
+ *
+ * A `<details>` is the whole interaction: focusable, opened by Enter or Space,
+ * no JavaScript, no focus trap. Closed by default, because the reader who knows
+ * what to attach should not have to read a list to find the button.
+ */
+function ImageGuide() {
+  return (
+    <details className="assistant-image-guide" data-testid="assistant-image-guide">
+      <summary className="assistant-image-guide-summary">What works</summary>
+      <div className="assistant-image-guide-body">
+        <p className="assistant-image-guide-purpose">
+          The image is only used to find CVE ids. Each id is then checked against this dataset, and
+          an id that does not resolve is reported as not here.
+        </p>
+        <p className="assistant-image-guide-heading">Works</p>
+        <ul className="assistant-image-guide-list">
+          <li>A vendor advisory page showing a CVE id</li>
+          <li>An NVD or CVE record page</li>
+          <li>A scanner report or ticket listing CVEs</li>
+          <li>A PDF page screenshot that carries a CVE id</li>
+        </ul>
+        <p className="assistant-image-guide-heading">Does not work</p>
+        <ul className="assistant-image-guide-list">
+          <li>A game scoreboard or a photo</li>
+          <li>A dashboard with no CVE id, vendor or product name</li>
+        </ul>
+        {/* Stated as behaviour, not as a caveat: a refusal is the desk doing its
+            job, and a reader who expects an error will read it as one. */}
+        <p className="assistant-image-guide-refusal">
+          If the image has no CVE id in it, the answer says so. That is the desk working, not a
+          failure.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function Composer({
   draft,
   status,
@@ -463,10 +502,10 @@ function Composer({
       }}
     >
       <div className="assistant-image" data-testid="assistant-image-intake">
-        {image === null ? (
-          <div className="assistant-image-row">
-            {/* The input fills the visible label: the target is 44px, and the
-                native control keeps its own keyboard behaviour. */}
+        <div className="assistant-image-row">
+          {image === null ? (
+            // The input fills the visible label: the target is 44px, and the
+            // native control keeps its own keyboard behaviour.
             <label className="assistant-image-pick">
               <input
                 id="assistant-image-input"
@@ -485,28 +524,36 @@ function Composer({
               />
               <span>Attach a screenshot</span>
             </label>
-          </div>
-        ) : (
-          <div className="assistant-image-preview" data-testid="assistant-image-preview">
-            <img className="assistant-image-thumb" src={image.dataUrl} alt="" aria-hidden="true" />
-            <div className="assistant-image-meta">
-              <p className="assistant-image-name">{image.name}</p>
-              <p className="assistant-image-size">
-                {formatImageSize(image.size)} · {image.mime.replace("image/", "").toUpperCase()}
-              </p>
+          ) : (
+            <div className="assistant-image-preview" data-testid="assistant-image-preview">
+              <img
+                className="assistant-image-thumb"
+                src={image.dataUrl}
+                alt=""
+                aria-hidden="true"
+              />
+              <div className="assistant-image-meta">
+                <p className="assistant-image-name">{image.name}</p>
+                <p className="assistant-image-size">
+                  {formatImageSize(image.size)} · {image.mime.replace("image/", "").toUpperCase()}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="assistant-image-remove"
+                aria-label={`Remove ${image.name}`}
+                data-testid="assistant-image-remove"
+                disabled={busy}
+                onClick={onImageRemove}
+              >
+                Remove
+              </button>
             </div>
-            <button
-              type="button"
-              className="assistant-image-remove"
-              aria-label={`Remove ${image.name}`}
-              data-testid="assistant-image-remove"
-              disabled={busy}
-              onClick={onImageRemove}
-            >
-              Remove
-            </button>
-          </div>
-        )}
+          )}
+          {/* Beside the control, not under it: the guidance adds no height to a
+              sticky composer until it is opened. */}
+          <ImageGuide />
+        </div>
         <p className="assistant-image-note" id="assistant-image-note">
           PNG, JPEG or WebP, up to 1.5 MB. The image is only used to find CVE ids, and every id is
           checked against the dataset before it is used.

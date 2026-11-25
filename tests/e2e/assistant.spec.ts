@@ -41,6 +41,7 @@ const MIDSTREAM_SHOT = "/tmp/assistant-midstream-1440.png";
 const RAIL_COLLAPSED_SHOT = "/tmp/assistant-rail-collapsed-1440.png";
 const RAIL_EXPANDED_SHOT = "/tmp/assistant-rail-expanded-1440.png";
 const PROGRESS_SHOT = "/tmp/progress-streaming.png";
+const ATTACH_GUIDE_SHOT = "/tmp/attach-guide.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
 
@@ -564,6 +565,77 @@ test("a screenshot is picked, previewed, sent with the question, and removable",
   await page.locator('[data-testid="assistant-image-remove"]').click();
   await expect(preview).toHaveCount(0);
   await expect(input).toHaveCount(1);
+});
+
+test("the attach guide opens from the keyboard and names what works", async ({ page }) => {
+  // Its own rate-limit identity, like every other journey that sends a turn.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.94" });
+  await gotoDesk(page);
+  const guide = page.locator('[data-testid="assistant-image-guide"]');
+  const summary = guide.locator("summary");
+  await expect(summary).toHaveText("What works");
+  await expect(guide).not.toHaveAttribute("open", "");
+
+  // Keyboard alone: the attach control is the stop before it, and Enter opens a
+  // native details without a line of JavaScript.
+  await page.locator('[data-testid="assistant-image-input"]').focus();
+  await page.keyboard.press("Tab");
+  await expect(summary).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(guide).toHaveAttribute("open", "");
+
+  // At least three sources that work and two that do not, all in reader words.
+  const useful = [
+    "A vendor advisory page showing a CVE id",
+    "An NVD or CVE record page",
+    "A scanner report or ticket listing CVEs",
+    "A PDF page screenshot that carries a CVE id",
+  ];
+  const useless = [
+    "A game scoreboard or a photo",
+    "A dashboard with no CVE id, vendor or product name",
+  ];
+  for (const text of [...useful, ...useless]) await expect(guide).toContainText(text);
+  // The pipeline in one sentence: ids are extracted, then checked.
+  await expect(guide).toContainText("Each id is then checked against this dataset");
+  await expect(guide).toContainText("reported as not here");
+
+  // Space closes it, still without a pointer.
+  await page.keyboard.press("Space");
+  await expect(guide).not.toHaveAttribute("open", "");
+});
+
+test("the attach guide is audited open and fits a phone", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  await auditRoute(page, {
+    route: "/assistant",
+    name: "assistant attach guide",
+    maxLiveRegions: 2,
+    beforeAudit: async (current) => {
+      await current.waitForLoadState("networkidle");
+      await current.locator('[data-testid="assistant-image-guide"] > summary').focus();
+      await current.keyboard.press("Enter");
+      await expect(current.locator('[data-testid="assistant-image-guide"]')).toHaveAttribute(
+        "open",
+        "",
+      );
+    },
+  });
+  // The open panel is what the frame shows: guidance is only useful when read.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => {
+    document
+      .querySelector('[data-testid="assistant-image-guide"]')
+      ?.scrollIntoView({ block: "center" });
+  });
+  await page.screenshot({ path: ATTACH_GUIDE_SHOT });
+
+  // A phone wraps the lists instead of scrolling the page sideways.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await auditNoHorizontalOverflow(page, "assistant attach guide at 390px");
+  await expect(page.locator('[data-testid="assistant-image-guide"]')).toHaveAttribute("open", "");
+  const box = await page.locator('[data-testid="assistant-image-guide"] summary').boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
 });
 
 test("the compare disclosure validates two ids and sends one comparison question", async ({
