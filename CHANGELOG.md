@@ -3,6 +3,56 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.5 — 2026-11-25
+
+The v4 assistant stops looking stopped, says what a screenshot is good for, and
+keeps an attached image in the conversation. No migration and no config change;
+the image and the test suite carry it.
+
+### Added
+
+- **Assistant progress that visibly moves.** The answer's placeholder is an
+  indeterminate 2px sweep, not a computed percentage, and the composer's working
+  row names the current lookup in the turn's own words (`reading 25 records…`,
+  `writing…`) beside an elapsed counter that ticks four times a second — `0.4s`
+  below ten seconds, whole seconds after. The counter is state, so it keeps
+  ticking under `prefers-reduced-motion: reduce`, where the bar becomes a static
+  hatched track; liveness no longer depends on motion. The form itself carries
+  `is-working`, and one `role="status"` region holds the stage, the counter and
+  Stop — so a long answer no longer looks stopped.
+- **Attachment guidance beside Attach.** A native, keyboard-operable **What
+  works** `<details>` names the sources that work — a vendor advisory page with
+  CVE ids, an NVD or CVE record page, a scanner report or ticket listing CVEs, a
+  PDF page screenshot carrying an id — and the ones that do not: a game
+  scoreboard or a photo, a dashboard with no CVE id, vendor or product name. It
+  also states that an image with no id is answered as such, which is the desk
+  working rather than a failure. `docs/images/attach-example.png` is the pictured
+  example, referenced from the README.
+- **An attached screenshot stays in the conversation.** The image renders inside
+  the question block as a `<details>` thumbnail, expanding in place — the turn
+  keeps a ≤480px copy, never the payload. A `screenshot in context · <file> · ×`
+  row above the composer re-sends it on every turn while it is there, so
+  "explain that screenshot" works on a follow-up. Removing the chip stops it
+  being sent and greys every historical thumbnail with a one-line note; the
+  privacy line now names the screenshot as well as the transcript.
+
+### Fixed
+
+- **Replay and bench pins no longer rot with the wall clock.** The
+  `/api/v1/replay` route has no injectable as-of date and evaluates its 30-day
+  retention window against real time, so the benchmark's pinned 2026-10-24
+  checkpoint aged into `404 REPLAY_UNAVAILABLE` "expired". The retained-history
+  anchor now follows the current UTC day and records it as `radarAnchorDay`; the
+  `200` assertion is unchanged.
+- **The fake transport concatenates array content.** A user message carrying an
+  image is an array of parts, and reading only the string form dropped the
+  question — every marker (`as a table`, `with a heading`, the unsupported id)
+  died on the turn after an attach. It now joins the `text` parts, so the browser
+  suite exercises the journey it names.
+
+**Upgrade notes:** no migration, no config change. Recreate the container to pick
+up 4.0.5 (`docker compose up -d --force-recreate`).
+
 ## 4.0.4 — 2026-11-23
 
 Four fixes in the v4 assistant, all found on the live 4.0.3 instance. No

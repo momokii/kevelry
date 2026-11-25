@@ -1,10 +1,19 @@
 # v4 Attach Guidance & Progress States — Plan
 
-**Target release:** 4.0.5 · **Status:** planned; nothing here is shipped · **Scope:** three assistant
+**Target release:** 4.0.5 · **Status:** P1–P4 shipped on `main`; release pending · **Scope:** three assistant
 UX defects — a streaming state that reads as stopped, no guidance on what a screenshot is good for,
 and an attachment that vanishes from the record · **Predecessor:**
 `docs/plans/v4-ux-hardening.md` (4.0.3–4.0.4) · **Design owner:** `DESIGN.md` §6 Assistant. P1–P3 are
 **decisions, not options**, and Part A is measured rather than assumed.
+
+**Shipped:** P1 `210b155` · P2 `34617ad` · P3 `994ca50` · P4 `ce47df8`, on `main`. P5 is in flight —
+`package.json`/`package-lock.json` (version only), `CHANGELOG.md`, `README.md` and `CLAUDE.md` are at
+4.0.5, and the image, tag and deploy follow this plan's own release step. Gates on 2026-11-25: lint,
+typecheck and build clean; `npm test` 1106 passed / 3 skipped (network-gated); `npx playwright test`
+161 passed / 0 skipped; `npm audit --omit=dev` clean. One deviation from P2 item 3:
+`docs/images/attach-example.png` shipped with the guidance in `34617ad`, and
+`docs/images/assistant-attached.png` was not captured — the turn thumbnail, the context chip and the
+removal path are asserted by the e2e suite rather than shown as a frame.
 
 ## Measured evidence
 
@@ -39,7 +48,7 @@ the 1,500-token threshold, so the referential heuristic ("screenshot", "this", "
 one sentence of behaviour, no silent loss on a follow-up, and no new worst-case request — the attach
 turn already sends exactly that payload once.
 
-## P1 — progress that visibly moves
+## P1 — progress that visibly moves — **done** (`210b155`)
 
 1. **The bar animates instead of advancing by a fake percentage.** Delete the computed width
    (`AssistantView.tsx:205`, `22 + tools*18`); `.assistant-progress` (`app/ui.css:5637`) becomes a 2px
@@ -72,7 +81,7 @@ differ; the bar carries `is-running` and a computed `animation-name` other than 
 counter still changes. Unit: the region's accessible text equals the stage string with the counter
 stripped, and the counter is `aria-hidden`.
 
-## P2 — tell people what to attach
+## P2 — tell people what to attach — **done** (`34617ad`)
 
 1. **A "What works" disclosure under the attach control**, inside `.assistant-image` beside the
    existing format note (`AssistantView.tsx:437-478`). A native `<details>` with a 44px `<summary>` —
@@ -97,7 +106,7 @@ stripped, and the counter is `aria-hidden`.
 visible, Escape/Enter closes), and its copy names ≥3 useful sources and ≥2 useless ones, asserted as
 strings in `tests/assistant-view.test.tsx`. axe clean with it open at 390px.
 
-## P3 — the image stays visible and in context
+## P3 — the image stays visible and in context — **done** (`994ca50`)
 
 1. **The turn keeps a thumbnail, not the payload.** `AssistantTurn` gains
    `image: { name, mime, size, thumb } | null`, where `thumb` is a downscaled data URL (≤480 px wide,
@@ -136,7 +145,7 @@ a follow-up request's body contains an `image_url` part (`body.image.dataUrl` ma
 with an image renders the summary and alt text, a turn without one renders nothing, and no `data:image`
 substring appears in `alt`/`title`.
 
-## P4 — tests
+## P4 — tests — **done** (`ce47df8`)
 
 | Layer | File                                                 | New assertions                                                                    |
 | ----- | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -144,7 +153,7 @@ substring appears in `alt`/`title`.
 | e2e   | `tests/e2e/assistant.spec.ts`                        | counter increases, bar animates, reduced motion ticks, retention, keyboard        |
 | axe   | `tests/e2e/a11y-mark-targets.spec.ts`                | disclosure open at 390px, thumbnail expanded, mid-stream state captured           |
 
-## P5 — docs, screenshots, release 4.0.5
+## P5 — docs, screenshots, release 4.0.5 — **in progress**, release pending
 
 `README.md` (intake row, the example image, the context sentence), `CHANGELOG.md` (`## 4.0.5`),
 `DESIGN.md` §6 (the working state and the attachment rule), `docs/api/README.md` (one line: the image

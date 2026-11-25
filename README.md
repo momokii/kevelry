@@ -17,16 +17,23 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.4` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.3`, `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> **Status:** `4.0.5` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.4`, `4.0.3`, `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`,
+> `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.4` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the assistant-fixes release: the web fallback negotiates JSON (it sent a
-> text-only `accept`, so NVD API 2.0 answered `406` and the fallback returned no
-> content), the rail's id sample is 25 so a full 25-row call reads `25 rows`, an
-> answer's lines keep a word boundary in the copied or announced text, and a
-> time-window table is pinned to `CVE | Date | EPSS`. Everything is still escaped
-> first and rendered with no HTML injection. From 4.0.3: the assistant-hardening
+> available as previous releases. The `4.0.5` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the assistant-attachment release: the working state proves itself (an
+> indeterminate sweep, the current lookup named, an elapsed counter that keeps
+> ticking under reduced motion, a composer that reads as busy), a keyboard-operable
+> **What works** disclosure beside Attach says what a screenshot is good for and
+> what it is not (with an example image in the docs), and an attached screenshot
+> stays in the conversation — rendered inside the question, re-sent on later turns
+> while a `screenshot in context` chip is present, greying its thumbnail when the
+> chip is removed. Everything is still escaped first and rendered with no HTML
+> injection. From 4.0.4: the web fallback negotiates JSON, the rail's id sample is
+> 25 so a full 25-row call reads `25 rows`, an answer's lines keep a word boundary
+> in the copied or announced text, and a time-window table is pinned to
+> `CVE | Date | EPSS`. From 4.0.3: the assistant-hardening
 > release — answers render as structure (real tables with scoped headers in a
 > scrollable wrapper, headings, rules, quotes, lists, code), the
 > evidence rail is capped by calls and records instead of by a scrollbar, one legend
@@ -37,7 +44,8 @@ risk score.
 > v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
 > automatically on boot against an existing volume, no manual step, and no
 > `/api/v1` route or response shape changed. The assistant is off on this image
-> unless the operator sets `AI_ENABLED=true` and supplies a gateway key.
+> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.0.5
+> needs no migration and no config change.
 
 ## What v4 adds
 
@@ -82,6 +90,13 @@ beside the attach control says the same in two lists. A photo, a game scoreboard
 or a dashboard with no id leaves nothing to resolve. The ids above are read from
 the image, then each one is checked against this dataset: the third row is there
 to show the path where an id does not resolve and the answer says so.
+
+The screenshot then stays in the conversation: it renders inside your question as
+an expandable thumbnail, and a `screenshot in context` row above the composer
+keeps it attached to every later question — so "explain that screenshot" works.
+Removing that row stops it being sent, and each turn that carried it greys its
+thumbnail and says so. The desk keeps a downscaled copy per turn, never the
+payload, and nothing is written to browser storage.
 
 The id rule is enforced in code, not only asked for in the prompt. Every citation
 is an id a tool returned, and the turn scans the prose for ids that no tool
@@ -236,7 +251,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.4
+  docker.io/kelanach/kevelry:4.0.5
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -518,7 +533,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.4 \
+  --image docker.io/kelanach/kevelry:4.0.5 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -727,8 +742,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1082 passing, 3 skipped (network-gated)
-npx playwright test     # browser suite: 155 passing, 0 skipped
+npm test                # vitest: 1106 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 161 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
 
