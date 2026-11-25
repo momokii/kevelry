@@ -36,6 +36,54 @@ export interface AssistantImage {
   mime: AssistantImageMime;
 }
 
+/**
+ * An image the desk is holding for the next turn.
+ *
+ * `id` is monotonic per session, and the turn's record carries the same one, so
+ * a turn can say whether *its* screenshot is still the one being sent — after a
+ * removal, or after a second attach, it is not, and the record says so instead
+ * of implying the image is still in play.
+ */
+export interface AssistantAttachment extends AssistantImage {
+  id: number;
+  /** A downscaled copy (≤480px wide) for the turn's record, never the payload. */
+  thumb: string;
+}
+
+/** The width cap for the record's copy: recognisable, not re-sendable. */
+export const ASSISTANT_THUMBNAIL_WIDTH = 480;
+
+/**
+ * A downscaled copy of an attached image, for the turn's record.
+ *
+ * The turn keeps this and not the payload: ten turns × 2.1 MB of base64 is 21 MB
+ * of retained string for a record that needs to be recognisable. Decoding is
+ * `createImageBitmap`, which is absent under jsdom and in any environment without
+ * a decoder — there the source is returned unchanged, so the record still shows
+ * the picture and nothing has to branch on capability.
+ */
+export async function toThumbnail(dataUrl: string): Promise<string> {
+  if (typeof createImageBitmap !== "function" || typeof document === "undefined") {
+    return dataUrl;
+  }
+  try {
+    const response = await fetch(dataUrl);
+    const bitmap = await createImageBitmap(await response.blob());
+    const scale = Math.min(1, ASSISTANT_THUMBNAIL_WIDTH / bitmap.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (context === null) return dataUrl;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const thumb = canvas.toDataURL("image/webp", 0.75);
+    return thumb.startsWith("data:image/") ? thumb : dataUrl;
+  } catch {
+    return dataUrl;
+  }
+}
+
 export const IMAGE_EMPTY_MESSAGE = "That file is empty, so there is nothing to read.";
 export const IMAGE_MAGIC_MISMATCH_MESSAGE =
   "That file's bytes are not a PNG, JPEG or WebP image. Save the screenshot again instead of renaming the file.";

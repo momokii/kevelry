@@ -150,6 +150,32 @@ function answerRound(unsupportedId: boolean, table: boolean, heading: boolean): 
 }
 
 /**
+ * One message's text, whether the provider was sent a string or content parts.
+ *
+ * A user message carrying an image is an array of parts (`{ type: "text" }` plus
+ * `{ type: "image_url" }`), and reading only the string form silently drops the
+ * question — which would disable this fake's markers on every turn after an
+ * attach for a reason that has nothing to do with images.
+ */
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push(part);
+      continue;
+    }
+    if (typeof part !== "object" || part === null) continue;
+    const candidate = part as { type?: unknown; text?: unknown };
+    if (candidate.type === "text" && typeof candidate.text === "string") {
+      parts.push(candidate.text);
+    }
+  }
+  return parts.join("");
+}
+
+/**
  * The latest user message in the body the route built. Round two's body ends with
  * a tool result, so the last *user* message is the one to read.
  */
@@ -160,7 +186,7 @@ function latestUserMessage(body: string): string {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
       if (message?.role !== "user") continue;
-      return typeof message.content === "string" ? message.content : "";
+      return messageText(message.content);
     }
     return "";
   } catch {

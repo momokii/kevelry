@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AssistantView, type AssistantViewProps } from "../src/components/assistant/AssistantView";
+import type { AssistantAttachment } from "../src/components/assistant/assistant-image";
 import {
   budgetFault,
   disabledFault,
@@ -58,6 +59,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
       },
     ],
     aboutCve: null,
+    image: null,
     ...overrides,
   };
 }
@@ -117,7 +119,11 @@ describe("state 1 — empty", () => {
 
   it("states the privacy note and the key contract next to the composer", () => {
     const html = render();
-    expect(html).toContain("a reload starts clean");
+    // The privacy line names the image as well as the transcript, because the
+    // image is now held for the session: a reload clears both.
+    expect(html).toContain(
+      "The transcript and any screenshot live in this tab and nowhere else — a reload starts clean, and neither is written to this browser",
+    );
     expect(html).toContain("Enter sends");
     // The counter is a near-limit warning, not a permanent rubric.
     expect(html).not.toContain('data-testid="assistant-counter"');
@@ -426,6 +432,8 @@ describe("screenshot intake", () => {
         name: "shot.png",
         size: 62_000,
         mime: "image/png",
+        id: 1,
+        thumb: "data:image/png;base64,iVBORw0KGgo=",
       },
     });
     expect(html).toContain('data-testid="assistant-image-preview"');
@@ -440,6 +448,132 @@ describe("screenshot intake", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain('data-testid="assistant-image-fault"');
     expect(html).toContain("The limit is 1.5 MB");
+  });
+});
+
+/** A retained attachment, shaped exactly as the desk holds it. */
+function attachment(overrides: Partial<AssistantAttachment> = {}): AssistantAttachment {
+  return {
+    id: 1,
+    dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    thumb: "data:image/webp;base64,UklGRg==",
+    name: "advisory.png",
+    size: 41_000,
+    mime: "image/png",
+    ...overrides,
+  };
+}
+
+describe("the screenshot in the turn", () => {
+  const sent = turn({
+    image: {
+      id: 1,
+      name: "advisory.png",
+      mime: "image/png",
+      size: 41_000,
+      thumb: "data:image/webp;base64,UklGRg==",
+    },
+  });
+
+  it("renders the record's thumbnail inside the question, named in words", () => {
+    const host = document.createElement("div");
+    host.innerHTML = render({ turns: [sent], image: attachment() });
+    const article = host.querySelector('[data-testid="assistant-turn"]');
+    // The thumbnail is part of the question block: after the words, before the
+    // answer, and not floating anywhere else on the page.
+    const shot = article?.querySelector('[data-testid="assistant-shot"]') ?? null;
+    const question = article?.querySelector(".assistant-question") ?? null;
+    const answer = article?.querySelector(".assistant-answer") ?? null;
+    if (shot === null || question === null || answer === null) {
+      throw new Error("missing turn markup");
+    }
+    expect(question.compareDocumentPosition(shot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(shot.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // The expand affordance is a native disclosure, and the picture carries the
+    // one alt text the reader needs.
+    expect(shot.querySelector("details")).not.toBeNull();
+    const thumb = shot.querySelector(".assistant-shot-thumb");
+    expect(thumb?.getAttribute("alt")).toBe("Attached screenshot");
+    expect(thumb?.getAttribute("src")).toBe("data:image/webp;base64,UklGRg==");
+    expect(shot.querySelector("summary")?.textContent).toContain("advisory.png");
+    expect(shot.querySelector("summary")?.textContent).toContain("PNG");
+    // The expanded copy is decoration: the summary already named it.
+    expect(shot.querySelector(".assistant-shot-full-image")?.getAttribute("alt")).toBe("");
+    expect(shot.getAttribute("data-in-context")).toBe("true");
+  });
+
+  it("puts no data URL in a label, a title or an alt except the image source", () => {
+    const host = document.createElement("div");
+    host.innerHTML = render({ turns: [sent], image: attachment() });
+    for (const attribute of ["alt", "title", "aria-label"]) {
+      for (const node of host.querySelectorAll(`[${attribute}]`)) {
+        expect(node.getAttribute(attribute) ?? "").not.toContain("data:");
+      }
+    }
+  });
+
+  it("renders nothing for a turn that carried no image", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).not.toContain('data-testid="assistant-shot"');
+    expect(html).not.toContain("Attached screenshot");
+  });
+
+  it("keeps the thumbnail and says so once the image leaves context", () => {
+    const host = document.createElement("div");
+    host.innerHTML = render({ turns: [sent], image: null });
+    const shot = host.querySelector('[data-testid="assistant-shot"]');
+    expect(shot).not.toBeNull();
+    expect(shot?.getAttribute("data-in-context")).toBe("false");
+    expect(host.querySelector('[data-testid="assistant-shot-detached"]')?.textContent).toBe(
+      "No longer in context — this screenshot is not sent with later questions.",
+    );
+  });
+
+  it("also marks it out of context once a different image is in context", () => {
+    const html = render({ turns: [sent], image: attachment({ id: 2, name: "other.png" }) });
+    expect(html).toContain('data-in-context="false"');
+    expect(html).toContain('data-testid="assistant-shot-detached"');
+  });
+});
+
+describe("the context chip above the composer", () => {
+  const sent = turn({
+    image: {
+      id: 1,
+      name: "advisory.png",
+      mime: "image/png",
+      size: 41_000,
+      thumb: "data:image/webp;base64,UklGRg==",
+    },
+  });
+
+  it("names the retained file and offers a remove control with a real name", () => {
+    const host = document.createElement("div");
+    host.innerHTML = render({ turns: [sent], image: attachment() });
+    const chip = host.querySelector('[data-testid="assistant-image-context"]');
+    expect(chip).not.toBeNull();
+    expect(chip?.textContent).toContain("screenshot in context");
+    expect(chip?.textContent).toContain("advisory.png");
+    const remove = chip?.querySelector('[data-testid="assistant-image-context-remove"]');
+    expect(remove?.getAttribute("aria-label")).toBe("Remove advisory.png from context");
+    // Above the field the next question is typed into, not below the fold.
+    const field = host.querySelector("#assistant-question");
+    if (chip === null || field === null) throw new Error("missing composer markup");
+    expect(chip.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("appears only once a turn has carried the attachment", () => {
+    // Staged but not sent: the intake preview already names and removes it.
+    expect(render({ image: attachment() })).not.toContain('data-testid="assistant-image-context"');
+  });
+
+  it("takes the intake's place instead of duplicating it", () => {
+    // One screenshot is shown once: retained in the chip, the intake is empty
+    // again and ready for the next one.
+    const html = render({ turns: [sent], image: attachment() });
+    expect(html).not.toContain('data-testid="assistant-image-preview"');
+    expect(html).toContain('data-testid="assistant-image-input"');
   });
 });
 

@@ -16,6 +16,7 @@
 //     send the reset instant or the disabled reason, the desk says what it knows
 //     and stops there.
 
+import type { AssistantImageMime } from "./assistant-image";
 import type { AssistantStreamErrorCode } from "@/lib/ai/turn";
 
 /** Longest question the route accepts; the composer enforces the same number. */
@@ -67,6 +68,22 @@ export interface AssistantToolLine {
   ids: string[];
 }
 
+/**
+ * The screenshot a turn was asked about, as the turn's record keeps it.
+ *
+ * No `dataUrl`: the payload lives in the composer's context state and nowhere
+ * else, so a transcript of ten attached turns is ten small pictures rather than
+ * ten megabytes of base64.
+ */
+export interface AssistantTurnImage {
+  /** The attachment's session id; equal to the in-context image's id while it is sent. */
+  id: number;
+  name: string;
+  mime: AssistantImageMime;
+  size: number;
+  thumb: string;
+}
+
 export interface AssistantTurn {
   id: string;
   question: string;
@@ -85,6 +102,8 @@ export interface AssistantTurn {
   tools: AssistantToolLine[];
   /** The pinned record this question was asked about. */
   aboutCve: string | null;
+  /** The screenshot sent with this question, or null when it carried none. */
+  image: AssistantTurnImage | null;
 }
 
 /** The feature gate as the page found it, rendered, never re-evaluated client-side. */

@@ -15,7 +15,7 @@
 
 import { readFile } from "node:fs/promises";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 
 import {
   A11Y_EVIDENCE_DIR,
@@ -41,6 +41,8 @@ const MIDSTREAM_SHOT = "/tmp/assistant-midstream-1440.png";
 const RAIL_COLLAPSED_SHOT = "/tmp/assistant-rail-collapsed-1440.png";
 const RAIL_EXPANDED_SHOT = "/tmp/assistant-rail-expanded-1440.png";
 const PROGRESS_SHOT = "/tmp/progress-streaming.png";
+const RETAINED_SHOT = "/tmp/assistant-retained-1440.png";
+const DETACHED_SHOT = "/tmp/assistant-out-of-context-1440.png";
 const ATTACH_GUIDE_SHOT = "/tmp/attach-guide.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
@@ -482,6 +484,17 @@ test("captures the rail collapsed and expanded at 1440x900", async ({ page }) =>
   await page.screenshot({ path: RAIL_EXPANDED_SHOT });
 });
 
+/**
+ * A 240×120 PNG with a header strip and three colour bands: the shape of an
+ * advisory panel. The 1×1 fixture below proves the plumbing; this one is what the
+ * retained turn is photographed with, because a single pixel says nothing about
+ * `object-fit: cover` or about an expanded copy at its natural size.
+ */
+const ADVISORY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAPAAAAB4CAIAAABD1OhwAAACB0lEQVR4nO3SwQmEQAAEwY1vI/JxwRiTKfjxfRiASYgLTUEHMAw1ruuUMo3lC6QXA1qpgFYqoJUKaKUCWqmAViqglQpopQJaqYBWKqCVCmilAlqpgFYqoJUKaKUCWqmAViqglQpopQJaqYBWqnHMuaT5O9a0b0vy8zcBDXTqZ6CBTv0MNNCpn4EGOvUz0ECnfgYa6NTPQAOd+hlooFM/Aw106meggU79DDTQqZ+BBjr1M9BAp34GGujUz0ADnfoZaKBTPwMNdOpnoIFO/Qw00KmfgQY69TPQQKd+Bhro1M9AA536GWigUz8DDXTqZ6CBTv0MNNCpn4EGOvUz0ECnfgYa6NTPQAOd+hlooFM/Aw106meggU79DDTQqZ+BBjr1M9BAp34GGujUz0ADnfoZaKBTPwMNdOpnoIFO/Qw00KmfgQY69TPQQKd+Bhro1M9AA536GWigUz8DDXTqZ6CBTv0MNNCpn4EGOvUz0ECnfgYa6NTPQAOd+hlooFM/Aw106meggU79DDTQqZ+BBjr1M9BAp34GGujUz0ADnfoZaKBTPwMNdOpnoIFO/Qw00KmfgQY69TPQQKd+Bhro1M9AA536edz3X8oEtFIBrVRAKxXQSgW0UgGtVEArFdBKBbRSAa1UQCsV0EoFtFIBrVRAKxXQSgW0UgGtVEArFdBKBbRSAa1UQCvVA99gYZLTBgd8AAAAAElFTkSuQmCC",
+  "base64",
+);
+
 /** A 1x1 PNG: real magic bytes, so the client sniffer and the route agree. */
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -537,8 +550,14 @@ test("a screenshot is picked, previewed, sent with the question, and removable",
   );
   await page.locator('[data-testid="assistant-citations"] summary').click();
   await expect(page.locator('[data-testid="assistant-citation"]').first()).toBeVisible();
-  // One image per turn: the composer is clean again for the next question.
+  // The composer's intake is clean again, and the image is retained instead: a
+  // chip above the field says what is still in context for the next question.
+  // (Before retention this assertion meant "the image is gone"; it now means
+  // "the intake is empty", which is what the composer owning one image implies.)
   await expect(preview).toHaveCount(0);
+  const contextChip = page.locator('[data-testid="assistant-image-context"]');
+  await expect(contextChip).toContainText("screenshot in context");
+  await expect(contextChip).toContainText("advisory.png");
 
   // An oversized file is refused in plain language, before it is read.
   await page.setInputFiles('[data-testid="assistant-image-input"]', {
@@ -565,6 +584,151 @@ test("a screenshot is picked, previewed, sent with the question, and removable",
   await page.locator('[data-testid="assistant-image-remove"]').click();
   await expect(preview).toHaveCount(0);
   await expect(input).toHaveCount(1);
+  // Removing the retained image leaves the turn's record where it was, marked.
+  await expect(contextChip).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveAttribute(
+    "data-in-context",
+    "false",
+  );
+});
+
+test("the screenshot stays in the turn and in context until it is taken back", async ({ page }) => {
+  // Its own rate-limit identity: this journey sends three turns.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.96" });
+  await gotoDesk(page);
+  const chatPost = (candidate: Request): boolean =>
+    candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST";
+
+  await page.setInputFiles('[data-testid="assistant-image-input"]', {
+    name: "advisory.png",
+    mimeType: "image/png",
+    buffer: ADVISORY_PNG,
+  });
+  await expect(page.locator('[data-testid="assistant-image-preview"]')).toBeVisible();
+  // Staged only: nothing is in context until a turn has carried it.
+  await expect(page.locator('[data-testid="assistant-image-context"]')).toHaveCount(0);
+
+  await page.locator("#assistant-question").fill("Which CVE ids are in this screenshot?");
+  const [first] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
+  const firstBody = first.postDataJSON() as { image?: { dataUrl: string } };
+  expect(firstBody.image?.dataUrl).toMatch(/^data:image\/png;base64,/);
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+
+  // The thumbnail is part of the question block: inside the turn, under the
+  // words it was attached to, and named in reader words rather than base64.
+  const turn = page.locator('[data-testid="assistant-turn"]').first();
+  const shot = turn.locator('[data-testid="assistant-shot"]');
+  await expect(shot).toBeVisible();
+  await expect(shot.locator(".assistant-shot-summary img")).toHaveAttribute(
+    "alt",
+    "Attached screenshot",
+  );
+  await expect(shot.locator("summary")).toContainText("advisory.png");
+  await expect(shot.locator("summary")).toContainText("PNG");
+  await expect(shot).toHaveAttribute("data-in-context", "true");
+  await expect(turn.locator(".assistant-question")).toBeVisible();
+  // The picture is the turn's record, not the payload: nothing on screen carries
+  // the full-size data URL as text.
+  await expect(shot.locator("summary")).not.toContainText("base64");
+
+  // The expand affordance is keyboard operable and opens in place.
+  await shot.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(shot.locator('[data-testid="assistant-shot-details"]')).toHaveAttribute("open", "");
+  await expect(shot.locator(".assistant-shot-full-image")).toBeVisible();
+  // The state the change report shows: the picture in the turn, the chip naming
+  // it above the composer, and nothing duplicated between them.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: RETAINED_SHOT });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.keyboard.press("Enter");
+  await expect(shot.locator('[data-testid="assistant-shot-details"]')).not.toHaveAttribute(
+    "open",
+    "",
+  );
+
+  // The chip names what is still in context, and its control names what it does.
+  const chip = page.locator('[data-testid="assistant-image-context"]');
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("screenshot in context");
+  await expect(page.locator('[data-testid="assistant-image-context-remove"]')).toHaveAttribute(
+    "aria-label",
+    "Remove advisory.png from context",
+  );
+
+  // Retention, measured on the wire: the follow-up carries the same image.
+  await page.locator("#assistant-question").fill("And which of those are in KEV?");
+  const [second] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
+  const secondBody = second.postDataJSON() as { image?: { dataUrl: string } };
+  expect(secondBody.image?.dataUrl).toBe(firstBody.image?.dataUrl);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveCount(2);
+
+  // Removing it stops the send and marks the historical thumbnail, which stays.
+  await page.locator('[data-testid="assistant-image-context-remove"]').click();
+  await expect(chip).toHaveCount(0);
+  await expect(shot).toHaveAttribute("data-in-context", "false");
+  await expect(shot.locator('[data-testid="assistant-shot-detached"]')).toContainText(
+    "No longer in context",
+  );
+  // Greyed, kept, and explained: the record does not pretend the image is gone,
+  // and it does not pretend it is still being sent.
+  await expect(shot.locator(".assistant-shot-thumb")).toHaveCSS("filter", /grayscale/);
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="assistant-shot"]')?.scrollIntoView({ block: "center" });
+  });
+  await page.screenshot({ path: DETACHED_SHOT });
+
+  await page.locator("#assistant-question").fill("Anything else in the window?");
+  const [third] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
+  const thirdBody = third.postDataJSON() as Record<string, unknown>;
+  expect(Object.hasOwn(thirdBody, "image")).toBe(false);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(3);
+});
+
+test("the retained screenshot is audited open and fits a phone", async ({ page }) => {
+  ensureA11yEvidenceDir();
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.97" });
+  await auditRoute(page, {
+    route: "/assistant",
+    name: "assistant retained screenshot",
+    maxLiveRegions: 2,
+    beforeAudit: async (current) => {
+      await current.waitForLoadState("networkidle");
+      await current.setInputFiles('[data-testid="assistant-image-input"]', {
+        name: "advisory.png",
+        mimeType: "image/png",
+        buffer: ADVISORY_PNG,
+      });
+      await current
+        .locator("#assistant-question")
+        .fill("Which CVE ids does this screenshot carry?");
+      await current.keyboard.press("Enter");
+      await expect(current.locator('[data-testid="assistant-answer"]')).toContainText(
+        "canned answer of the test transport",
+      );
+      // Expanded: the picture, its name and the context chip are what is audited,
+      // not a page that happens to contain them while folded.
+      await current.locator('[data-testid="assistant-shot"] summary').click();
+      await expect(current.locator('[data-testid="assistant-shot-details"]')).toHaveAttribute(
+        "open",
+        "",
+      );
+      await expect(current.locator('[data-testid="assistant-image-context"]')).toBeVisible();
+    },
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await auditNoHorizontalOverflow(page, "assistant retained screenshot at 390px");
+  const thumb = await page
+    .locator('[data-testid="assistant-shot"] .assistant-shot-thumb')
+    .boundingBox();
+  // A thumbnail, not a hero: the picture sits in the question at a readable size
+  // without pushing the composer off a phone screen.
+  expect(thumb?.height ?? 0).toBeGreaterThanOrEqual(96);
+  expect(thumb?.height ?? 0).toBeLessThanOrEqual(140);
 });
 
 test("the attach guide opens from the keyboard and names what works", async ({ page }) => {

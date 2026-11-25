@@ -15,13 +15,19 @@
 //    in one line rather than leaving the reader to guess.
 //  - no second parser. `assistant-sse.ts` handles frame boundaries; this file
 //    only decides what each complete frame means.
+//
+// One image is held for the session rather than for one turn. The measurement in
+// `docs/plans/v4-attach-and-progress.md` priced that at ≤912 prompt tokens a turn,
+// so a follow-up genuinely re-sends the screenshot it is still about; removing it
+// is the reader's one control over that, and each turn keeps only a thumbnail so a
+// long transcript never holds ten copies of a two-megabyte payload.
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 import { AssistantView } from "./AssistantView";
 import { createAssistantSseParser, parseAssistantEvent } from "./assistant-sse";
 import { briefFileName, buildBriefMarkdown } from "./assistant-brief";
-import { readImageFile, type AssistantImage } from "./assistant-image";
+import { readImageFile, toThumbnail, type AssistantAttachment } from "./assistant-image";
 import {
   MAX_QUESTION_CHARS,
   faultFromCode,
@@ -114,7 +120,7 @@ export function AssistantDesk({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [aboutCve, setAboutCve] = useState<string | null>(initialCveContext);
   const [ledgerOpen, setLedgerOpen] = useState(true);
-  const [image, setImage] = useState<AssistantImage | null>(null);
+  const [image, setImage] = useState<AssistantAttachment | null>(null);
   const [imageFault, setImageFault] = useState<string | null>(null);
 
   const inputRef: RefObject<HTMLTextAreaElement | null> = useRef<HTMLTextAreaElement>(null);
@@ -250,6 +256,8 @@ export function AssistantDesk({
       turnSeq.current += 1;
       const id = `turn-${String(turnSeq.current)}`;
       const scoped = aboutCve;
+      // The image stays in context after the send: every later turn re-sends it
+      // while it is here, and the turn keeps only its id and a thumbnail.
       const attached = image;
       lastQuestion.current = question;
       const turn: AssistantTurn = {
@@ -262,10 +270,19 @@ export function AssistantDesk({
         unverified: [],
         tools: [],
         aboutCve: scoped,
+        image:
+          attached === null
+            ? null
+            : {
+                id: attached.id,
+                name: attached.name,
+                mime: attached.mime,
+                size: attached.size,
+                thumb: attached.thumb,
+              },
       };
       setTurns((current) => [...current, turn]);
       setDraft("");
-      setImage(null);
       setImageFault(null);
       setFaultState(null);
       setActivity(null);
@@ -360,14 +377,18 @@ export function AssistantDesk({
   const pickImage = useCallback((file: File) => {
     imageSeq.current += 1;
     const seq = imageSeq.current;
-    void readImageFile(file).then((result) => {
+    void readImageFile(file).then(async (result) => {
       // A slower earlier read never overwrites a later choice.
       if (seq !== imageSeq.current) return;
       if (!result.ok) {
         setImageFault(result.message);
         return;
       }
-      setImage(result.image);
+      // The record's downscaled copy is made once, here, so a transcript never
+      // has to hold two megabytes to show a picture it already sent.
+      const thumb = await toThumbnail(result.image.dataUrl);
+      if (seq !== imageSeq.current) return;
+      setImage({ ...result.image, id: seq, thumb });
       setImageFault(null);
     });
   }, []);

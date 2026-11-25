@@ -78,6 +78,7 @@ function turn(tools: AssistantToolLine[], overrides: Partial<AssistantTurn> = {}
     unverified: [],
     tools,
     aboutCve: null,
+    image: null,
     ...overrides,
   };
 }

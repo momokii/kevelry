@@ -17,7 +17,7 @@ import { HelpTip } from "../ledger/HelpTip";
 import { AssistantCompare } from "./AssistantCompare";
 import { AssistantLedger } from "./AssistantLedger";
 import { buildFollowUps } from "./assistant-followups";
-import { formatImageSize, type AssistantImage } from "./assistant-image";
+import { formatImageSize, type AssistantAttachment } from "./assistant-image";
 import { renderAnswer } from "./render-answer";
 import {
   ELAPSED_TICK_MS,
@@ -51,7 +51,7 @@ export interface AssistantViewProps {
   /** The pinned record the next question is asked about. */
   aboutCve: string | null;
   /** The screenshot attached to the next question, already validated. */
-  image: AssistantImage | null;
+  image: AssistantAttachment | null;
   /** Why the last attach attempt was refused, in plain language. */
   imageFault: string | null;
   /** Live seconds remaining for a timed fault (rate limit, budget reset). */
@@ -192,15 +192,19 @@ function EmptyDesk({
 function TurnBlock({
   turn,
   streaming,
+  contextImageId,
   onFollowUp,
   onBrief,
 }: {
   turn: AssistantTurn;
   streaming: boolean;
+  /** The attachment still in context; a turn whose image id differs is greyed. */
+  contextImageId: number | null;
   onFollowUp: (question: string) => void;
   onBrief: (turn: AssistantTurn) => void;
 }) {
   const live = turn.settled;
+  const imageInContext = turn.image !== null && turn.image.id === contextImageId;
   // Derived from the ledger, never from the prose: a chip that names an id the
   // turn never read would be a hallucination with a button on it.
   const followUps = turn.settled && !turn.stopped ? buildFollowUps(turn) : [];
@@ -210,6 +214,49 @@ function TurnBlock({
         You asked{turn.aboutCve !== null ? ` about ${turn.aboutCve}` : ""}
       </p>
       <p className="assistant-question">{turn.question}</p>
+      {turn.image === null ? null : (
+        // The screenshot is part of the question, not a gallery beside it: it
+        // sits directly under the words it was attached to. `<details>` is the
+        // whole viewer — no dialog, no focus trap, no scroll lock — and the
+        // expanded copy is the retained thumbnail at full width, because the
+        // turn deliberately does not keep the payload.
+        <figure
+          className="assistant-shot"
+          data-testid="assistant-shot"
+          data-in-context={imageInContext ? "true" : "false"}
+        >
+          <details className="assistant-shot-details" data-testid="assistant-shot-details">
+            <summary className="assistant-shot-summary">
+              <img
+                className="assistant-shot-thumb"
+                src={turn.image.thumb}
+                alt="Attached screenshot"
+              />
+              <span className="assistant-shot-meta">
+                <span className="assistant-shot-name">{turn.image.name}</span>
+                <span className="assistant-shot-size">
+                  {formatImageSize(turn.image.size)} ·{" "}
+                  {turn.image.mime.replace("image/", "").toUpperCase()}
+                </span>
+              </span>
+            </summary>
+            <div className="assistant-shot-full">
+              {/* The summary already names it; a second reading is noise. */}
+              <img
+                className="assistant-shot-full-image"
+                src={turn.image.thumb}
+                alt=""
+                aria-hidden="true"
+              />
+            </div>
+          </details>
+          {imageInContext ? null : (
+            <figcaption className="assistant-shot-note" data-testid="assistant-shot-detached">
+              No longer in context — this screenshot is not sent with later questions.
+            </figcaption>
+          )}
+        </figure>
+      )}
       <div className="assistant-answer" aria-live={live ? "polite" : "off"}>
         {!live && turn.answer === "" ? (
           // An indeterminate sweep, not a percentage: the desk cannot know how
@@ -435,6 +482,7 @@ function Composer({
   disabled,
   aboutCve,
   image,
+  imageInContext,
   imageFault,
   inputRef,
   onDraftChange,
@@ -451,7 +499,13 @@ function Composer({
   stage: string;
   disabled: boolean;
   aboutCve: string | null;
-  image: AssistantImage | null;
+  image: AssistantAttachment | null;
+  /**
+   * True once a turn in the transcript carries this attachment: only then is
+   * there something retained to show, name and revoke. Before the first send the
+   * intake preview is the whole story and a second chip would be a duplicate.
+   */
+  imageInContext: boolean;
   imageFault: string | null;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   onDraftChange: (value: string) => void;
@@ -503,7 +557,7 @@ function Composer({
     >
       <div className="assistant-image" data-testid="assistant-image-intake">
         <div className="assistant-image-row">
-          {image === null ? (
+          {image === null || imageInContext ? (
             // The input fills the visible label: the target is 44px, and the
             // native control keeps its own keyboard behaviour.
             <label className="assistant-image-pick">
@@ -525,6 +579,10 @@ function Composer({
               <span>Attach a screenshot</span>
             </label>
           ) : (
+            // Staged, not yet sent. Once a turn carries it the intake goes back
+            // to its empty state — the chip above the field owns what is in
+            // context — so one screenshot is never shown twice, and the picker is
+            // ready for the next one.
             <div className="assistant-image-preview" data-testid="assistant-image-preview">
               <img
                 className="assistant-image-thumb"
@@ -575,6 +633,26 @@ function Composer({
             className="assistant-context-clear"
             aria-label={`Stop scoping questions to ${aboutCve}`}
             onClick={onClearContext}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+      {image !== null && imageInContext ? (
+        // What is being re-sent on every turn, stated where the next turn is
+        // written. Removing it is the only way to take it out of context, so the
+        // control and the fact sit on one line.
+        <div className="assistant-context" data-testid="assistant-image-context">
+          <span className="assistant-context-label">screenshot in context</span>
+          {/* Plain text, not a chip: nothing here navigates, and a pill would
+              offer a click that does not exist. */}
+          <span className="assistant-context-file">{image.name}</span>
+          <button
+            type="button"
+            className="assistant-context-clear"
+            aria-label={`Remove ${image.name} from context`}
+            data-testid="assistant-image-context-remove"
+            onClick={onImageRemove}
           >
             ×
           </button>
@@ -638,8 +716,8 @@ function Composer({
       </div>
       <AssistantCompare disabled={busy} onCompare={onCompare} />
       <p className="assistant-composer-privacy" id="assistant-composer-privacy">
-        The transcript lives in this tab and nowhere else — a reload starts clean, and neither the
-        question nor the answer is written to this browser's storage.
+        The transcript and any screenshot live in this tab and nowhere else — a reload starts clean,
+        and neither is written to this browser's storage.
       </p>
     </form>
   );
@@ -702,6 +780,11 @@ export function AssistantView(props: AssistantViewProps) {
   const lastTurn = turns.at(-1) ?? null;
   const stage =
     lastTurn === null ? "the model is deciding what to look up…" : workingStage(lastTurn, activity);
+  // Derived from the transcript, not stored: the chip exists because a turn
+  // actually sent this attachment, which is the only reason it is in context.
+  const imageInContext =
+    image !== null && turns.some((turn) => turn.image !== null && turn.image.id === image.id);
+  const contextImageId = image === null ? null : image.id;
   return (
     <div className="assistant-desk">
       <div className="assistant-main">
@@ -730,6 +813,7 @@ export function AssistantView(props: AssistantViewProps) {
                 key={turn.id}
                 turn={turn}
                 streaming={status === "streaming"}
+                contextImageId={contextImageId}
                 onFollowUp={onFollowUp}
                 onBrief={onBrief}
               />
@@ -748,6 +832,7 @@ export function AssistantView(props: AssistantViewProps) {
           disabled={disabled}
           aboutCve={aboutCve}
           image={image}
+          imageInContext={imageInContext}
           imageFault={imageFault}
           inputRef={inputRef}
           onDraftChange={onDraftChange}
