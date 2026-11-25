@@ -1,19 +1,20 @@
 # v4 Attach Guidance & Progress States — Plan
 
-**Target release:** 4.0.5 · **Status:** P1–P4 shipped on `main`; release pending · **Scope:** three assistant
+**Target release:** 4.0.5 · **Status:** shipped on `main` — P1–P5 done, tagged `v4.0.5` · **Scope:** three assistant
 UX defects — a streaming state that reads as stopped, no guidance on what a screenshot is good for,
 and an attachment that vanishes from the record · **Predecessor:**
 `docs/plans/v4-ux-hardening.md` (4.0.3–4.0.4) · **Design owner:** `DESIGN.md` §6 Assistant. P1–P3 are
 **decisions, not options**, and Part A is measured rather than assumed.
 
-**Shipped:** P1 `210b155` · P2 `34617ad` · P3 `994ca50` · P4 `ce47df8`, on `main`. P5 is in flight —
-`package.json`/`package-lock.json` (version only), `CHANGELOG.md`, `README.md` and `CLAUDE.md` are at
-4.0.5, and the image, tag and deploy follow this plan's own release step. Gates on 2026-11-25: lint,
-typecheck and build clean; `npm test` 1106 passed / 3 skipped (network-gated); `npx playwright test`
-161 passed / 0 skipped; `npm audit --omit=dev` clean. One deviation from P2 item 3:
-`docs/images/attach-example.png` shipped with the guidance in `34617ad`, and
-`docs/images/assistant-attached.png` was not captured — the turn thumbnail, the context chip and the
-removal path are asserted by the e2e suite rather than shown as a frame.
+**Shipped:** P1 `210b155` · P2 `34617ad` · P3 `994ca50` · P4 `ce47df8` · P5 release `4bcafb6`
+(tag `v4.0.5`), on `main`. `package.json`/`package-lock.json` (version only), `CHANGELOG.md`,
+`README.md` and `CLAUDE.md` are at 4.0.5. Gates on 2026-11-25: lint, typecheck and build clean;
+`npm test` 1106 passed / 3 skipped (network-gated); `npx playwright test` 161 passed / 0 skipped;
+`npm audit --omit=dev` clean. One deviation from P2 item 3: `docs/images/attach-example.png` shipped
+with the guidance in `34617ad`, and `docs/images/assistant-attached.png` was not captured as its own
+frame: the turn thumbnail and the context chip are shown in `docs/images/assistant.png`, the working
+state in `docs/images/assistant-progress.png`, and only the removal path stays asserted by the e2e
+suite rather than photographed.
 
 ## Measured evidence
 
@@ -153,15 +154,27 @@ substring appears in `alt`/`title`.
 | e2e   | `tests/e2e/assistant.spec.ts`                        | counter increases, bar animates, reduced motion ticks, retention, keyboard        |
 | axe   | `tests/e2e/a11y-mark-targets.spec.ts`                | disclosure open at 390px, thumbnail expanded, mid-stream state captured           |
 
-## P5 — docs, screenshots, release 4.0.5 — **in progress**, release pending
+## P5 — docs, screenshots, release 4.0.5 — **done** (`4bcafb6`, tag `v4.0.5`)
 
-`README.md` (intake row, the example image, the context sentence), `CHANGELOG.md` (`## 4.0.5`),
-`DESIGN.md` §6 (the working state and the attachment rule), `docs/api/README.md` (one line: the image
-is a content part of the last user message and may be re-sent), `package.json` `4.0.5`. Screenshots:
-`docs/images/assistant.png` re-captured with the working row, new `docs/images/attach-example.png` and
-`docs/images/assistant-attached.png` (turn thumbnail + context chip). Gate: `lint`, `typecheck`,
-`build`, `npm test`, `npx playwright test`, `format:check`. Commit:
-`docs: document attach guidance, the working state and release 4.0.5`
+`README.md` (intake row, the example image, the context sentence, then three assistant frames),
+`CHANGELOG.md` (`## 4.0.5`), `DESIGN.md` §6 (the working state and the attachment rule),
+`docs/api/README.md` (one line: the image is a content part of the last user message and may be
+re-sent), `package.json` `4.0.5`. Screenshots, all 1440×900 dark frames from a local 4.0.5 e2e server
+with `AI_FAKE_TRANSPORT=1` against the dense twelve-record fixture: `docs/images/assistant.png`
+re-captured with the attached thumbnail inside the turn and the `screenshot in context` row
+(119,487 bytes), new `docs/images/assistant-progress.png` (mid-stream sweep, stage and elapsed
+counter, 111,823 bytes), and `docs/images/assistant-compare.png` refreshed for the `What works`
+disclosure (123,522 bytes). Their captions state exactly what each frame shows. Release commit
+`4bcafb6`, tag `v4.0.5`; the frames, their README captions and this plan's closure landed in the
+follow-up docs commit. Docs gate: `npx prettier --check README.md
+docs/plans/v4-attach-and-progress.md` clean, `npm run lint` unchanged.
+
+**Live verification passed with three measured facts.** Under `prefers-reduced-motion: reduce` the
+bar's segment still declares `animation: assistant-sweep` at `1.1s` while the global reduced-motion
+rule collapses its duration to `0s`, and the elapsed counter changed between two samples 400 ms apart
+— liveness does not depend on the sweep. A follow-up request body carried a 49,748-byte `dataUrl`
+while the context chip was present, and carried no `image` key once it was removed — retention is on
+the wire, not just in the markup. `/assistant` at 390px had 0 horizontal overflow.
 
 ## Risks
 

@@ -137,26 +137,45 @@ fetch the API endpoint instead of describing an empty page.
 
 ### A grounded answer, with its evidence ledger
 
-![Assistant at 1440×900 in dark theme: the question “Which KEV entries were added in the last 30 days? Answer as a table.” settled with a two-row table, the citation union folded to one line reading “12 records cited”, and the Evidence column showing its legend, “1 tool call”, “kev_window”, “days=30”, “12 rows”, six chips and a “+6 more” control](docs/images/assistant.png)
+![Assistant at 1440×900 in dark theme, scrolled to the answer: the question “Which KEV entries were added in the last 30 days? Answer as a table.” with the attached advisory.png rendered as a thumbnail inside the turn under the words, named “advisory.png · 576 B · PNG” with an expand control; the settled two-row table; the citation union folded to one line reading “12 records cited”; a “screenshot in context · advisory.png · ×” row above the composer; and the Evidence column showing its legend, “1 tool call”, “kev_window”, “days=30”, “12 rows”, six chips and a “+6 more” control](docs/images/assistant.png)
 
 A settled turn. The question, answer, follow-up, brief action and composer share
 one left edge (no bubbles, no speaker indentation), and the answer is rendered —
 the table with its metric/value/note header is the desk's own, never a model's
-markup. The turn's citation union is **folded to one line** (`12 records cited`);
-opening it lists chips that link to `/explore?q=<id>`. The **Evidence** column on
-the right states its legend — each line is one server-side lookup, `Rows` is how
-many records it returned, the chips are what the answer can cite — then names
-the one tool call behind the answer, `kev_window` with `days=30` and `12 rows`,
-and shows six of its ids plus a `+6 more` disclosure: density is a hierarchy of
-calls and records, never an inner scrollbar. The frame is a local production
-build of 4.0.4 driven through the browser suite's offline **fake transport**
-(`AI_FAKE_TRANSPORT=1`) against the suite's dense twelve-record fixture, so the
-prose is canned and says so; the tool call, its row count and the citations are
-real.
+markup. The attached screenshot is part of the question, not a gallery beside
+it: the **thumbnail sits inside the turn** under the words it was sent with,
+named by file, size and format, and opens in place. The **`screenshot in
+context`** row above the composer says the image is still what a follow-up turn
+will send, and its `×` takes it back. The turn's citation union is **folded to
+one line** (`12 records cited`); opening it lists chips that link to
+`/explore?q=<id>`. The **Evidence** column on the right states its legend — each
+line is one server-side lookup, `Rows` is how many records it returned, the
+chips are what the answer can cite — then names the one tool call behind the
+answer, `kev_window` with `days=30` and `12 rows`, and shows six of its ids plus
+a `+6 more` disclosure: density is a hierarchy of calls and records, never an
+inner scrollbar. The frame is a local 4.0.5 e2e server driven through the
+browser suite's offline **fake transport** (`AI_FAKE_TRANSPORT=1`) against the
+suite's dense twelve-record fixture, so the prose is canned and says so; the
+attachment, the tool call, its row count and the citations are real.
+
+### While a turn is working
+
+![Assistant mid-turn at 1440×900 in dark theme: the question “Which KEV entries were added in the last 30 days?” just sent, a thin blue sweep segment part-way across a 2px track above the Attach control, the composer foot reading “checking the KEV window · 12 records… · 0.5s” with Stop beside it, the Attach control with its “What works +” disclosure, and the Evidence column already naming “kev_window”, “days=30”, “12 rows”, six chips and a “+6 more” control](docs/images/assistant-progress.png)
+
+The working state, before the first word of prose. There is no invented
+percentage: a 2px track carries a 30%-wide segment under the `assistant-sweep`
+animation, the stage text names the lookup that has run (`checking the KEV
+window · 12 records…`), and the elapsed counter reads `0.5s` here and keeps
+ticking four times a second — it is `aria-hidden`, so a tick is never announced.
+The bar and the working row leave the moment prose arrives; the prose is the
+movement then. In a still frame the sweep is one position on that path, and
+under `prefers-reduced-motion: reduce` the track is a static filled bar and the
+counter carries liveness alone. The same offline transport and dense fixture
+supply this frame.
 
 ### Compare two records, field by field
 
-![Assistant compare mode at 1440×900 in dark theme: the “Compare two records” disclosure open with CVE-2099-0001 and CVE-2099-0002 filled, its note about status, dates, CVSS, KEV, ransomware, EPSS and CWE, and the Compare button; the Evidence column reads “no tool calls yet” above its legend and “Nothing has run yet. The first question fills this column.”](docs/images/assistant-compare.png)
+![Assistant compare mode at 1440×900 in dark theme: the “Compare two records” disclosure open with CVE-2099-0001 and CVE-2099-0002 filled, its note about status, dates, CVSS, KEV, ransomware, EPSS and CWE, and the Compare button; above it the Attach control with its “What works +” disclosure; the Evidence column reads “no tool calls yet” above its legend and “Nothing has run yet. The first question fills this column.”](docs/images/assistant-compare.png)
 
 The compare disclosure beside the composer: two labelled id fields with the same
 shape rules as the API, the fixed question it will send (status, dates, CVSS,
@@ -189,10 +208,10 @@ All four are 1440×900 captures of a production build against a **seeded demo
 corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations —
 not the live instance, so the numbers in the frames are reproducible rather than
 current. For the deployment's own figures, read `/methodology`, which counts the
-accepted snapshot. The two assistant captures live under
-[What v4 adds](#what-v4-adds); they are a local production build of 4.0.4 served
-against the browser suite's dense twelve-record fixture with its offline
-transport, which their captions state.
+accepted snapshot. The three assistant captures live under
+[What v4 adds](#what-v4-adds); they are a local 4.0.5 e2e server driven through
+the browser suite's offline transport against its dense twelve-record fixture,
+which their captions state.
 
 ### Overview — the KEV rhythm, one month hovered
 
