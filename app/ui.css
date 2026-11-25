@@ -5632,29 +5632,45 @@ a.badge:hover {
   }
 }
 
-/* The progress rule advances at tool boundaries and is replaced by the text:
-   it reports activity without promising a speed. */
+/* The progress rule moves without promising a speed: an indeterminate sweep,
+   not a percentage the desk cannot know. It renders only while the answer is
+   empty — once prose arrives, the prose is the movement. */
+@keyframes assistant-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
 .assistant-progress {
   width: 100%;
   max-width: 240px;
   height: 2px;
   margin: 4px 0 0;
-  background: var(--ui-rule-soft);
+  background: var(--ui-ask-well);
+  border-radius: 2px;
   overflow: hidden;
 }
 
 .assistant-progress > span {
   display: block;
+  width: 30%;
   height: 2px;
-  background: var(--ui-ink-3);
-  transition: width var(--ui-fast) ease-out;
+  border-radius: 2px;
+  background: var(--ui-cite);
+  animation: assistant-sweep 1.1s ease-in-out infinite;
 }
 
-.assistant-activity {
-  margin: 0 0 2px;
-  font-family: var(--ui-font-mono);
-  font-size: 11.5px;
-  color: var(--ui-ink-3);
+/* Reduced motion keeps the liveness in the counter, not in the sweep: the
+   segment holds a filled bar at full width instead of freezing off-screen. */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-progress > span {
+    animation: none;
+    width: 100%;
+    transform: none;
+  }
 }
 
 .assistant-turn-note {
@@ -6117,6 +6133,39 @@ a.badge:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--ui-sp-2) var(--ui-sp-3);
+}
+
+/* The working row is the foot's whole content while a turn streams: stage,
+   elapsed, Stop. Same 44px control as the idle row, so nothing shifts. */
+.assistant-working {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-sp-1) var(--ui-sp-3);
+  padding-left: 10px;
+  border-left: 2px solid var(--ui-cite);
+}
+
+.assistant-working-stage {
+  font-family: var(--ui-font-mono);
+  font-size: 12.5px;
+  color: var(--ui-ink-2);
+}
+
+.assistant-working-elapsed {
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+  color: var(--ui-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The well says the desk is busy with a rule that steps one shade darker. No
+   size changes: the field must not move under the reader's hands. */
+.assistant-composer.is-working .assistant-well {
+  border-color: var(--ui-ink-3);
+  color: var(--ui-ink-2);
+  cursor: progress;
 }
 
 .assistant-composer-hint {

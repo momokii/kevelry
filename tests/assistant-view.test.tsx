@@ -9,7 +9,9 @@
 // @vitest-environment jsdom
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AssistantView, type AssistantViewProps } from "../src/components/assistant/AssistantView";
 import {
@@ -144,18 +146,69 @@ describe("state 2 — streaming", () => {
     expect(html).toContain('aria-readonly="true"');
   });
 
-  it("shows the 2px progress rule only before any text arrives", () => {
+  it("keeps the stage and the counter in one polite region, with the counter hidden", () => {
+    const html = render({
+      turns: [turn({ settled: false, answer: "" })],
+      status: "streaming",
+      activity: "reading the record · 1 record…",
+    });
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const region = host.querySelector('[data-testid="assistant-working"]');
+    expect(region?.getAttribute("role")).toBe("status");
+    expect(region?.getAttribute("aria-live")).toBe("polite");
+    const stage = region?.querySelector('[data-testid="assistant-working-stage"]');
+    const elapsed = region?.querySelector('[data-testid="assistant-working-elapsed"]');
+    expect(stage?.textContent).toBe("reading the record · 1 record…");
+    // The accessible text of the region is the stage alone: a tick every quarter
+    // second must not be announced.
+    expect(elapsed?.getAttribute("aria-hidden")).toBe("true");
+    expect(region?.textContent).toBe("reading the record · 1 record…0.0sStop");
+    // Stop keeps its own accessible name, inside the region and beside the counter.
+    const stop = region?.querySelector('[data-testid="assistant-stop"]');
+    expect(stop?.textContent).toBe("Stop");
+    expect(stage?.compareDocumentPosition(elapsed as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("changes the stage on the first delta and has no second activity line in the turn", () => {
+    const toolStage = render({
+      turns: [turn({ settled: false, answer: "" })],
+      status: "streaming",
+      activity: "reading the record · 1 record…",
+    });
+    expect(toolStage).toContain("reading the record · 1 record…");
+    const proseStage = render({
+      turns: [turn({ settled: false, answer: "Four" })],
+      status: "streaming",
+    });
+    expect(proseStage).toContain("writing…");
+    // One working region on the screen: the turn's own activity line is gone.
+    expect(toolStage).not.toContain('data-testid="assistant-activity"');
+  });
+
+  it("shows the moving progress rule only before any text arrives", () => {
     const withRule = render({
       turns: [turn({ settled: false, answer: "", citations: [] })],
       status: "streaming",
       activity: "reading the record · 1 record…",
     });
     expect(withRule).toContain('data-testid="assistant-progress"');
+    expect(withRule).toContain('class="assistant-progress is-running"');
     const withText = render({
       turns: [turn({ settled: false, answer: "Four" })],
       status: "streaming",
     });
     expect(withText).not.toContain('data-testid="assistant-progress"');
+  });
+
+  it("marks the composer as working while a turn streams", () => {
+    const streaming = render({
+      turns: [turn({ settled: false, answer: "" })],
+      status: "streaming",
+      activity: "reading the record · 1 record…",
+    });
+    expect(streaming).toContain("assistant-composer is-working");
+    expect(render()).not.toContain("is-working");
   });
 
   it("keeps the streaming answer out of the live region and the settled one in it", () => {
@@ -507,5 +560,67 @@ describe("comprehension — the empty state", () => {
     expect(html).toContain('data-testid="assistant-suggestions-empty"');
     expect(html).toContain("nothing to suggest");
     expect(html).toContain("It will not write exploit code or give targeting advice.");
+  });
+});
+
+describe("the working row counts on its own", () => {
+  beforeAll(() => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  /**
+   * The counter is state, not markup, so it is mounted rather than rendered as a
+   * string: a static render can only ever show its first value. Fake timers make
+   * the interval deterministic, and `Date.now` is faked with them.
+   */
+  it("increments with the interval from send, and dies with the row on settle", () => {
+    vi.useFakeTimers();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const counter = (): string | null =>
+      host.querySelector('[data-testid="assistant-working-elapsed"]')?.textContent ?? null;
+
+    act(() => {
+      root.render(
+        <AssistantView
+          {...baseProps({
+            turns: [turn({ settled: false, answer: "" })],
+            status: "streaming",
+            activity: "reading the record · 1 record…",
+          })}
+        />,
+      );
+    });
+    expect(counter()).toBe("0.0s");
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(counter()).toBe("0.2s");
+    act(() => {
+      vi.advanceTimersByTime(750);
+    });
+    expect(counter()).toBe("1.0s");
+    // Past ten seconds the readout drops to whole seconds: an obviously long
+    // wait does not need a digit that moves four times a second.
+    act(() => {
+      vi.advanceTimersByTime(11_000);
+    });
+    expect(counter()).toBe("12s");
+
+    // Settling unmounts the row, and the interval with it: nothing ticks behind
+    // an idle composer.
+    act(() => {
+      root.render(<AssistantView {...baseProps({ turns: [turn()] })} />);
+    });
+    expect(host.querySelector('[data-testid="assistant-working"]')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => root.unmount());
   });
 });

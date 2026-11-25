@@ -11,7 +11,7 @@
 // only rule, and it sits outside the text column so every line still starts at
 // the same x.
 
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 import { HelpTip } from "../ledger/HelpTip";
 import { AssistantCompare } from "./AssistantCompare";
@@ -20,13 +20,16 @@ import { buildFollowUps } from "./assistant-followups";
 import { formatImageSize, type AssistantImage } from "./assistant-image";
 import { renderAnswer } from "./render-answer";
 import {
+  ELAPSED_TICK_MS,
   MAX_QUESTION_CHARS,
   counterVisible,
   disabledFault,
   formatCount,
+  formatElapsed,
   formatRemaining,
   formatResetInstant,
   unverifiedNote,
+  workingStage,
   type AssistantFault,
   type AssistantGate,
   type AssistantTurn,
@@ -189,20 +192,15 @@ function EmptyDesk({
 function TurnBlock({
   turn,
   streaming,
-  isLast,
-  activity,
   onFollowUp,
   onBrief,
 }: {
   turn: AssistantTurn;
   streaming: boolean;
-  isLast: boolean;
-  activity: string | null;
   onFollowUp: (question: string) => void;
   onBrief: (turn: AssistantTurn) => void;
 }) {
   const live = turn.settled;
-  const progress = Math.min(86, 22 + turn.tools.length * 18);
   // Derived from the ledger, never from the prose: a chip that names an id the
   // turn never read would be a hallucination with a button on it.
   const followUps = turn.settled && !turn.stopped ? buildFollowUps(turn) : [];
@@ -212,15 +210,17 @@ function TurnBlock({
         You asked{turn.aboutCve !== null ? ` about ${turn.aboutCve}` : ""}
       </p>
       <p className="assistant-question">{turn.question}</p>
-      {streaming && isLast ? (
-        <p className="assistant-activity" role="status" data-testid="assistant-activity">
-          {streamingWord(turn, activity)}
-        </p>
-      ) : null}
       <div className="assistant-answer" aria-live={live ? "polite" : "off"}>
         {!live && turn.answer === "" ? (
-          <div className="assistant-progress" aria-hidden="true" data-testid="assistant-progress">
-            <span style={{ width: `${String(progress)}%` }} />
+          // An indeterminate sweep, not a percentage: the desk cannot know how
+          // far a turn is, and a bar that invents progress is a number with a
+          // lie behind it. It goes once prose arrives — the prose is movement.
+          <div
+            className="assistant-progress is-running"
+            aria-hidden="true"
+            data-testid="assistant-progress"
+          >
+            <span />
           </div>
         ) : null}
         {turn.answer === "" ? null : (
@@ -338,17 +338,61 @@ function TurnBlock({
   );
 }
 
-/** The current activity, or a word that says what the stream is doing right now. */
-function streamingWord(turn: AssistantTurn, activity: string | null): string {
-  if (activity !== null) return activity;
-  if (turn.answer !== "") return "writing the answer…";
-  if (turn.tools.length > 0) return "reading what the last call returned…";
-  return "the model is deciding what to look up…";
+/**
+ * The working row: one polite live region that names the stage, proves the turn
+ * is alive and offers Stop, in that order.
+ *
+ * The counter is mounted with the row, so it starts at zero on send and its
+ * interval dies on settle or Stop — no reset logic, no tick running behind an
+ * idle desk. The counter is hidden from assistive technology because a quarter-
+ * second tick is noise; the region's accessible text then changes only when the
+ * stage does. Stop keeps its name, and its 44px box keeps the row's height
+ * identical to the idle footnote, so nothing shifts when a turn starts.
+ */
+function WorkingRow({ stage, onStop }: { stage: string; onStop: () => void }) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const startedAt = Date.now();
+    const id = window.setInterval(() => {
+      setElapsedMs(Date.now() - startedAt);
+    }, ELAPSED_TICK_MS);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, []);
+  return (
+    <div
+      className="assistant-working"
+      role="status"
+      aria-live="polite"
+      data-testid="assistant-working"
+    >
+      <span className="assistant-working-stage" data-testid="assistant-working-stage">
+        {stage}
+      </span>
+      <span
+        className="assistant-working-elapsed"
+        aria-hidden="true"
+        data-testid="assistant-working-elapsed"
+      >
+        {formatElapsed(elapsedMs)}
+      </span>
+      <button
+        type="button"
+        className="btn assistant-stop"
+        data-testid="assistant-stop"
+        onClick={onStop}
+      >
+        Stop
+      </button>
+    </div>
+  );
 }
 
 function Composer({
   draft,
   status,
+  stage,
   disabled,
   aboutCve,
   image,
@@ -364,6 +408,8 @@ function Composer({
 }: {
   draft: string;
   status: AssistantStatus;
+  /** What the running turn is doing, already worded. */
+  stage: string;
   disabled: boolean;
   aboutCve: string | null;
   image: AssistantImage | null;
@@ -384,7 +430,7 @@ function Composer({
   const sendBlocked = busy || draft.trim() === "" || tooLong;
   return (
     <form
-      className={`assistant-composer${dragging ? " is-dragging" : ""}`}
+      className={`assistant-composer${dragging ? " is-dragging" : ""}${streaming ? " is-working" : ""}`}
       data-testid="assistant-composer"
       onSubmit={(event) => {
         event.preventDefault();
@@ -502,7 +548,11 @@ function Composer({
         disabled={disabled}
         readOnly={streaming}
         aria-readonly={streaming ? true : undefined}
-        aria-describedby="assistant-composer-hint assistant-composer-privacy"
+        aria-describedby={
+          streaming
+            ? "assistant-composer-privacy"
+            : "assistant-composer-hint assistant-composer-privacy"
+        }
         onChange={(event) => {
           onDraftChange(event.target.value);
         }}
@@ -516,32 +566,27 @@ function Composer({
         }}
       />
       <div className="assistant-composer-foot">
-        <p className="assistant-composer-hint" id="assistant-composer-hint">
-          {streaming ? "Answering — Stop ends it and keeps what arrived." : SUBMIT_KEY_HINT}
-        </p>
-        {counterVisible(draft.length) ? (
-          <p className="assistant-counter" data-testid="assistant-counter">
-            {draft.length} / {MAX_QUESTION_CHARS}
-          </p>
-        ) : null}
         {streaming ? (
-          <button
-            type="button"
-            className="btn assistant-stop"
-            data-testid="assistant-stop"
-            onClick={onStop}
-          >
-            Stop
-          </button>
+          <WorkingRow stage={stage} onStop={onStop} />
         ) : (
-          <button
-            type="submit"
-            className="btn btn-primary assistant-send"
-            data-testid="assistant-send"
-            disabled={sendBlocked}
-          >
-            Send
-          </button>
+          <>
+            <p className="assistant-composer-hint" id="assistant-composer-hint">
+              {SUBMIT_KEY_HINT}
+            </p>
+            {counterVisible(draft.length) ? (
+              <p className="assistant-counter" data-testid="assistant-counter">
+                {draft.length} / {MAX_QUESTION_CHARS}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              className="btn btn-primary assistant-send"
+              data-testid="assistant-send"
+              disabled={sendBlocked}
+            >
+              Send
+            </button>
+          </>
         )}
       </div>
       <AssistantCompare disabled={busy} onCompare={onCompare} />
@@ -606,6 +651,10 @@ export function AssistantView(props: AssistantViewProps) {
   }
 
   const disabled = fault !== null && (fault.kind === "disabled" || fault.kind === "budget");
+  // The last turn is the one being streamed: the working row describes it.
+  const lastTurn = turns.at(-1) ?? null;
+  const stage =
+    lastTurn === null ? "the model is deciding what to look up…" : workingStage(lastTurn, activity);
   return (
     <div className="assistant-desk">
       <div className="assistant-main">
@@ -629,13 +678,11 @@ export function AssistantView(props: AssistantViewProps) {
               <EmptyDesk suggestions={suggestions} onSuggestion={onSuggestion} />
             )
           ) : (
-            turns.map((turn, index) => (
+            turns.map((turn) => (
               <TurnBlock
                 key={turn.id}
                 turn={turn}
                 streaming={status === "streaming"}
-                isLast={index === turns.length - 1}
-                activity={activity}
                 onFollowUp={onFollowUp}
                 onBrief={onBrief}
               />
@@ -650,6 +697,7 @@ export function AssistantView(props: AssistantViewProps) {
         <Composer
           draft={draft}
           status={status}
+          stage={stage}
           disabled={disabled}
           aboutCve={aboutCve}
           image={image}

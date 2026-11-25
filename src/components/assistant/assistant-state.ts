@@ -402,6 +402,31 @@ export function formatCount(count: number): string {
   return COUNT_FORMAT.format(count);
 }
 
+/**
+ * The stage line of the working row: what the turn is doing, never how long it
+ * will take. The tool's own words win; otherwise the state of the answer does.
+ */
+export function workingStage(turn: AssistantTurn, activity: string | null): string {
+  if (activity !== null) return activity;
+  if (turn.answer !== "") return "writing…";
+  if (turn.tools.length > 0) return "reading what the last call returned…";
+  return "the model is deciding what to look up…";
+}
+
+/** How often the elapsed counter ticks. Four a second: tenths move visibly. */
+export const ELAPSED_TICK_MS = 250;
+
+/**
+ * The elapsed readout: tenths under ten seconds, whole seconds after. A wait
+ * that feels static gets a digit that moves; a wait that is obviously long does
+ * not need one. Always inside a fixed-width, tabular span, so it cannot jitter.
+ */
+export function formatElapsed(elapsedMs: number): string {
+  const ms = Number.isFinite(elapsedMs) && elapsedMs > 0 ? elapsedMs : 0;
+  if (ms < 10_000) return `${(Math.floor(ms / 100) / 10).toFixed(1)}s`;
+  return `${String(Math.floor(ms / 1000))}s`;
+}
+
 /** `43 s`, `2 m 05 s`, `5 h 41 m` — coarse above a minute, exact below it. */
 export function formatRemaining(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));

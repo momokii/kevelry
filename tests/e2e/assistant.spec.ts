@@ -40,6 +40,7 @@ const EMPTY_SHOT = "/tmp/assistant-empty-1440.png";
 const MIDSTREAM_SHOT = "/tmp/assistant-midstream-1440.png";
 const RAIL_COLLAPSED_SHOT = "/tmp/assistant-rail-collapsed-1440.png";
 const RAIL_EXPANDED_SHOT = "/tmp/assistant-rail-expanded-1440.png";
+const PROGRESS_SHOT = "/tmp/progress-streaming.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
 
@@ -121,15 +122,17 @@ test("a question streams tool activity, then text, then server citations", async
   await page.locator('[data-testid="assistant-suggestion-kev-additions"]').click();
 
   // Activity in words, before any prose: the reader is told what is running.
-  const activity = page.locator('[data-testid="assistant-activity"]');
-  await expect(activity).toBeVisible();
-  await expect(activity).toContainText("checking the KEV window");
-  await expect(activity).toContainText("records");
+  const working = page.locator('[data-testid="assistant-working"]');
+  await expect(working).toBeVisible();
+  await expect(working.locator('[data-testid="assistant-working-stage"]')).toContainText(
+    "checking the KEV window",
+  );
+  await expect(working).toContainText("records");
   await expect(page.locator('[data-testid="assistant-stop"]')).toBeVisible();
 
   const answer = page.locator('[data-testid="assistant-answer"]');
   await expect(answer).toContainText("canned answer of the test transport");
-  await expect(activity).toHaveCount(0);
+  await expect(working).toHaveCount(0);
   await expect(page.locator('[data-testid="assistant-stop"]')).toHaveCount(0);
 
   // Citations come from the server's event, never from the prose. The turn's
@@ -165,13 +168,83 @@ test("Stop aborts the turn and keeps what arrived", async ({ page }) => {
   await gotoDesk(page);
   await page.locator("#assistant-question").fill(QUESTION);
   await page.keyboard.press("Enter");
-  await expect(page.locator('[data-testid="assistant-activity"]')).toBeVisible();
+  await expect(page.locator('[data-testid="assistant-working"]')).toBeVisible();
 
   await page.locator('[data-testid="assistant-stop"]').click();
   await expect(page.locator('[data-testid="assistant-stopped"]')).toBeVisible();
   // The composer is usable again and the partial turn stays on screen.
   await expect(page.locator('[data-testid="assistant-send"]')).toBeVisible();
   await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(1);
+});
+
+test("the working state shows a swept bar, a stage and an elapsed counter", async ({ page }) => {
+  // Its own rate-limit identity: this file spends the ten turns a client gets
+  // per minute across the journeys above.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.92" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoDesk(page);
+  await page.locator('[data-testid="assistant-suggestion-kev-additions"]').click();
+
+  const working = page.locator('[data-testid="assistant-working"]');
+  await expect(working).toBeVisible();
+  // One polite region, in the composer foot, where Stop already lives.
+  await expect(working).toHaveAttribute("role", "status");
+  await expect(working).toHaveAttribute("aria-live", "polite");
+  await expect(page.locator('[data-testid="assistant-working-stage"]')).toContainText(
+    "checking the KEV window",
+  );
+  await expect(page.locator('[data-testid="assistant-stop"]')).toHaveText("Stop");
+
+  // The bar animates: the running class is on the track, the sweep is a real
+  // keyframes name on the segment inside it.
+  const bar = page.locator('[data-testid="assistant-progress"]');
+  await expect(bar).toHaveClass(/is-running/);
+  expect(await bar.locator("span").evaluate((el) => getComputedStyle(el).animationName)).not.toBe(
+    "none",
+  );
+
+  // The counter ticks four times a second, so two samples 400ms apart differ.
+  const counter = page.locator('[data-testid="assistant-working-elapsed"]');
+  await expect(counter).toHaveAttribute("aria-hidden", "true");
+  const first = await counter.innerText();
+  expect(first).toMatch(/^(\d+\.\d|\d+)s$/);
+  // Photographed mid-stream, counter visible, before the prose replaces it.
+  await page.screenshot({ path: PROGRESS_SHOT });
+  await page.waitForTimeout(400);
+  expect(await counter.innerText()).not.toBe(first);
+
+  // The prose is the movement once it arrives: the bar and the row go.
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+  await expect(working).toHaveCount(0);
+  await expect(bar).toHaveCount(0);
+});
+
+test("reduced motion holds the bar filled and lets the counter carry liveness", async ({
+  page,
+}) => {
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.93" });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await gotoDesk(page);
+  await page.locator('[data-testid="assistant-suggestion-kev-additions"]').click();
+
+  const bar = page.locator('[data-testid="assistant-progress"]');
+  await expect(bar).toBeVisible();
+  const segment = bar.locator("span");
+  // The global reduced-motion rule collapses every duration to zero, so the
+  // sweep would freeze off-screen; the explicit rule leaves a filled bar instead.
+  expect(await segment.evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
+  expect(await segment.evaluate((el) => getComputedStyle(el).width)).toBe(
+    await bar.evaluate((el) => getComputedStyle(el).width),
+  );
+
+  // Liveness is the counter's job now, and it still moves.
+  const counter = page.locator('[data-testid="assistant-working-elapsed"]');
+  const first = await counter.innerText();
+  await page.waitForTimeout(400);
+  expect(await counter.innerText()).not.toBe(first);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
 });
 
 test("a keyboard-only run asks, streams and stops without a pointer", async ({ page }) => {
@@ -185,7 +258,7 @@ test("a keyboard-only run asks, streams and stops without a pointer", async ({ p
 
   await page.keyboard.type(QUESTION);
   await page.keyboard.press("Enter");
-  await expect(page.locator('[data-testid="assistant-activity"]')).toBeVisible();
+  await expect(page.locator('[data-testid="assistant-working"]')).toBeVisible();
 
   // Stop is the very next stop after the composer, and Enter operates it.
   await page.keyboard.press("Tab");
@@ -365,7 +438,7 @@ test("captures the empty and mid-stream states at 1440x900", async ({ page }) =>
   await page.locator('[data-testid="assistant-suggestion-kev-additions"]').click();
   // Mid-stream means: the tool has run (its ledger line is there) and the prose
   // has not started. The fake holds that window open on purpose.
-  await expect(page.locator('[data-testid="assistant-activity"]')).toContainText(
+  await expect(page.locator('[data-testid="assistant-working-stage"]')).toContainText(
     "checking the KEV window",
   );
   await expect(page.locator('[data-testid="assistant-ledger-entry"]').first()).toBeVisible();

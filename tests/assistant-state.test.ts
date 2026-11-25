@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ELAPSED_TICK_MS,
   MAX_QUESTION_CHARS,
   QUESTION_COUNTER_VISIBLE_AT,
   budgetFault,
@@ -17,12 +18,14 @@ import {
   faultFromHttp,
   faultFromStreamError,
   formatCount,
+  formatElapsed,
   formatRemaining,
   formatResetInstant,
   formatToolArgs,
   rateLimitedFault,
   secondsUntil,
   toolActivity,
+  workingStage,
 } from "../src/components/assistant/assistant-state";
 import { buildHistory } from "../src/components/assistant/AssistantDesk";
 import type { AssistantTurn } from "../src/components/assistant/assistant-state";
@@ -204,6 +207,51 @@ describe("wording helpers", () => {
   it("groups a count and never prints a bare one", () => {
     expect(formatCount(4)).toBe("4");
     expect(formatCount(12045)).toBe("12,045");
+  });
+
+  it("states the stage from the tool, then from the answer, then from the wait", () => {
+    // The server's own words win while a call is running.
+    expect(workingStage(turn({ answer: "", tools: [] }), "reading the record · 1 record…")).toBe(
+      "reading the record · 1 record…",
+    );
+    // First delta: the activity is cleared, the prose is the stage.
+    expect(workingStage(turn({ answer: "Four records " }), null)).toBe("writing…");
+    // Between calls: the ledger says what just came back.
+    expect(
+      workingStage(
+        turn({
+          answer: "",
+          tools: [
+            {
+              id: "tool-1",
+              name: "kev_window",
+              args: "days=30",
+              rows: 4,
+              ok: true,
+              ids: [],
+            },
+          ],
+        }),
+        null,
+      ),
+    ).toBe("reading what the last call returned…");
+    // Before anything has arrived, the wait is named rather than left blank.
+    expect(workingStage(turn({ answer: "", tools: [] }), null)).toBe(
+      "the model is deciding what to look up…",
+    );
+  });
+
+  it("counts elapsed seconds in tenths under ten and whole seconds after", () => {
+    expect(ELAPSED_TICK_MS).toBe(250);
+    expect(formatElapsed(0)).toBe("0.0s");
+    expect(formatElapsed(250)).toBe("0.2s");
+    expect(formatElapsed(400)).toBe("0.4s");
+    expect(formatElapsed(9999)).toBe("9.9s");
+    expect(formatElapsed(10_000)).toBe("10s");
+    expect(formatElapsed(12_000)).toBe("12s");
+    // A clock that goes backwards never prints a negative wait.
+    expect(formatElapsed(-20)).toBe("0.0s");
+    expect(formatElapsed(Number.NaN)).toBe("0.0s");
   });
 });
 
