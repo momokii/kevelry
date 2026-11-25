@@ -4,7 +4,10 @@
 // corpus (no network), times the real full-import and incremental-import
 // paths, times the real KEV/EPSS importers, reports join/metric coverage,
 // times a recorded 50-query search mix at concurrency 1 and 10, pins the
-// /api/v1/cves and /api/v1/replay endpoints with live handler calls, measures
+// /api/v1/cves and /api/v1/replay endpoints with live handler calls (the
+// replay anchor tracks the current UTC day because the route has no injectable
+// as-of date and evaluates its 30-day retention window against real time),
+// measures
 // WAL/storage growth and the 30-checkpoint retained-history cost, reruns the
 // mix on a reopened handle for the cold-cache variance check, writes the raw
 // numbers to .omo/evidence/task-30-cve-change-radar.results.json, and asserts
@@ -69,6 +72,16 @@ const EPSS_SCORE_DATE = "2026-10-23";
 const EPSS_MODEL = "v2026.06.15";
 const KEV_CATALOG_DATE = "2026-10-24T00:00:00.000Z";
 const KEV_CATALOG_VERSION = "2026.10.24-bench";
+// The replay route exposes no as-of override, so it evaluates the 30-day
+// retention window (RADAR_RETENTION_DAYS) against the real wall clock. A
+// pinned calendar anchor drifts out of that window and the endpoint then
+// correctly answers 404 REPLAY_UNAVAILABLE "expired", so the retained-history
+// anchor follows the current UTC day instead of a frozen date.
+const RADAR_ANCHOR_DAY = new Date().toISOString().slice(0, 10);
+const radarDay = (offsetDays: number): string =>
+  new Date(Date.parse(`${RADAR_ANCHOR_DAY}T00:00:00.000Z`) + offsetDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 // The evidence file is a committed receipt. Only rewrite it on demand
 // (BENCH_WRITE_EVIDENCE=1); otherwise the suite would churn a tracked file on
 // every run and make every commit look like it touched the benchmark.
@@ -560,8 +573,7 @@ describe("cve change radar benchmarks (todo 30)", () => {
       const startedHistory = performance.now();
       const checkpointDates: string[] = [];
       for (let ago = 29; ago >= 0; ago -= 1) {
-        const day = new Date(Date.parse("2026-10-24T00:00:00.000Z") - ago * 24 * 60 * 60 * 1000);
-        checkpointDates.push(day.toISOString().slice(0, 10));
+        checkpointDates.push(radarDay(-ago));
       }
       for (const checkpointDate of checkpointDates) {
         writeCheckpoint(db, {
@@ -590,7 +602,7 @@ describe("cve change radar benchmarks (todo 30)", () => {
           ["search", "https://radar.test/api/v1/search?q=buffer%20overflow&limit=5"],
           [
             "replay",
-            `https://radar.test/api/v1/replay?date=2026-10-24&view=known-exploited&limit=5`,
+            `https://radar.test/api/v1/replay?date=${RADAR_ANCHOR_DAY}&view=known-exploited&limit=5`,
           ],
           ["checkpoints", "https://radar.test/api/v1/replay/checkpoints"],
         ];
@@ -674,8 +686,9 @@ describe("cve change radar benchmarks (todo 30)", () => {
           radarPolicyVersion: RADAR_POLICY_VERSION,
           endpointsPinned: ["/api/v1/cves", "/api/v1/replay"],
           apiPins,
+          radarAnchorDay: RADAR_ANCHOR_DAY,
           reproducibility:
-            "deterministic synthetic fixture (index-derived IDs, dates, scores); no network; no Math.random",
+            "deterministic synthetic fixture (index-derived IDs, dates, scores); no network; no Math.random; replay anchor tracks the current UTC day because the route evaluates retention against real time",
         },
         measurements: {
           fullImportMs,
