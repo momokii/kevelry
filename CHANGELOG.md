@@ -3,6 +3,49 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.7 — 2026-11-26
+
+Three bugs one four-turn session on the shipped 4.0.6 build made visible — a
+thumbnail that rendered broken, a `400` on the fourth question, and a turn that
+settled empty. All three are client-side. No migration and no config change; the
+assistant carries it.
+
+### Fixed
+
+- **The attached thumbnail renders.** The downscaler `fetch`ed its own `data:`
+  URL to decode the image, and the page policy keeps `connect-src 'self'`, so
+  Chrome refused the connection — twice per attach, four console errors in a
+  two-attach session — and the catch fell back to the full payload. The data URL
+  is decoded locally now, with no connection for the policy to police, so the
+  downscale happens and the thumbnail draws. `img-src` stays
+  `'self' data: blob:` and is **not** widened: a unit test pins the exact
+  directive (no `*`, no `https:`) and an e2e test pins the header the browser is
+  served.
+- **A long transcript no longer answers `400`.** The client re-sent the whole
+  transcript against the route's 12,000-character cap, so after two or three
+  answers the next question was refused. The history is now bounded on the
+  client: the newest question is kept whole, the oldest turns are dropped first,
+  the suffix stays contiguous and a message is never split — and the turn says
+  `Earlier turns were trimmed from context to stay within limits.` when anything
+  was dropped. The route keeps its strict validation, and a refusal now names the
+  limit it crossed:
+
+  `Message 4 of 12 is 2,431 characters; a single message is limited to 2,000.`
+
+- **A round with neither text nor a tool call is retried once.** It used to
+  settle as an empty answer (`The turn ended before it wrote an answer.`). The
+  round is re-run once at the answer budget behind the existing `retry` event, so
+  the escalation is on the stream rather than silent; a second empty round is an
+  `AI_UPSTREAM_ERROR` the reader can see instead of a quietly empty turn. The
+  truncated-round retry keeps its one-retry bound and shares the same flag.
+
+**Upgrade notes:** no migration, no config change — recreate the container to
+pick up 4.0.7 (`docker compose up -d --force-recreate`). Trimming can drop an
+over-long earlier answer: a single message over 2,000 characters is dropped whole
+and takes the older turns with it, so a turn that trips the cap carries the newest
+question alone and the model may answer from that question without the earlier
+context. The turn's note states when that happened.
+
 ## 4.0.6 — 2026-11-26
 
 A screenshot is sent with the question that asks for it instead of forever,

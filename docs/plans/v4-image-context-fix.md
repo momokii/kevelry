@@ -2,7 +2,8 @@
 
 **Status:** implemented and verified — R1–R6 shipped in `441009f`, AC1–AC7 pass, and the
 audit's four close-now journeys followed in `5bd2961` (`0e4ba58` re-arms the abort); released
-as 4.0.6 · **Scope:** the screenshot contract between composer,
+as 4.0.6, and the three follow-ups a session on that build exposed are closed in `57458b0`
+(released as 4.0.7) · **Scope:** the screenshot contract between composer,
 transcript and request body · **Supersedes:** the retention decision in
 `docs/plans/v4-attach-and-progress.md` §Measured evidence ("re-send the image on every turn"),
 which 4.0.5 (`994ca50`) shipped without revisiting the label derived from it · **Evidence:** code at
@@ -129,3 +130,25 @@ now — error then retry, double-send prevention, refresh mid-stream, and the 39
 ship with the fix. `0e4ba58` re-arms the fake transport's one-shot abort after a round answers in
 full, so the error journey behaves the same under `--repeat-each` or a Playwright retry instead of
 depending on how many turns the process has already served.
+
+## Part D — follow-ups closed in `57458b0`
+
+A four-turn session on the shipped 4.0.6 build found three defects the audits above never
+covered — none in the image-consent contract itself, all client-side. All three are fixed in
+`57458b0`, released as 4.0.7.
+
+| Follow-up                                   | Symptom on the shipped build                                                                                                        | Verdict        |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Thumbnail decoded through `fetch(dataUrl)`  | 4 console CSP refusals in two attaches (`connect-src 'self'` refuses the `data:` URL), the downscale never ran, the thumbnail broke | done `57458b0` |
+| History bounded by neither message nor turn | the fourth question answered `400` — the whole transcript was re-sent against the route's 12,000-character cap                      | done `57458b0` |
+| A round with no text and no tool call       | settled as an empty answer reading `The turn ended before it wrote an answer.`                                                      | done `57458b0` |
+
+What changed: the data URL is decoded locally, so `img-src` stays exactly
+`'self' data: blob:` and the decode needs no connection the policy would police; the client
+trims the oldest turns first, never splits a message and keeps the newest question whole,
+saying `Earlier turns were trimmed from context to stay within limits.` when it dropped
+anything, while the route keeps its strict validation and names the limit it crossed; and an
+empty round is retried once behind the existing `retry` event, a second one an
+`AI_UPSTREAM_ERROR` the reader can see. The revision that matters for this plan: a turn whose
+answer exceeds 2,000 characters is dropped whole under trimming — taking older turns with it —
+so the model answers from the newest question alone, visibly.
