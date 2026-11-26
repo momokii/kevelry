@@ -19,6 +19,10 @@ test("pages ship a nonce-scoped CSP and nothing is blocked", async ({ page }) =>
   expect(policy).toContain("default-src 'self'");
   expect(policy).toContain("frame-ancestors 'none'");
   expect(policy).toContain("object-src 'none'");
+  // The desk's thumbnail is a `data:` URL it generated itself, and the viewer
+  // reads it back through a `blob:` object URL: both must survive the policy the
+  // browser is actually handed, not just the builder's unit test.
+  expect(policy).toContain("img-src 'self' data: blob:");
 
   const nonce = /'nonce-([^']+)'/.exec(policy)?.[1] ?? "";
   expect(nonce).not.toBe("");

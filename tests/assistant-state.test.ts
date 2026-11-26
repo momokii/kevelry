@@ -27,8 +27,20 @@ import {
   toolActivity,
   workingStage,
 } from "../src/components/assistant/assistant-state";
-import { buildHistory } from "../src/components/assistant/AssistantDesk";
+import {
+  buildHistory,
+  buildHistoryForTurn,
+  MAX_HISTORY_CHARS,
+  MAX_HISTORY_MESSAGES,
+  MAX_HISTORY_MESSAGE_CHARS,
+} from "../src/components/assistant/AssistantDesk";
 import type { AssistantTurn } from "../src/components/assistant/assistant-state";
+import { HISTORY_TRIMMED_NOTE } from "../src/components/assistant/assistant-state";
+import {
+  ASSISTANT_MAX_MESSAGE_CHARS,
+  ASSISTANT_MAX_MESSAGES,
+  ASSISTANT_MAX_TOTAL_CHARS,
+} from "../app/api/assistant/_lib/body";
 
 function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
   return {
@@ -44,6 +56,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     aboutCve: null,
     sendImage: false,
     image: null,
+    contextTrimmed: false,
     ...overrides,
   };
 }
@@ -299,5 +312,89 @@ describe("request history", () => {
       { role: "assistant", content: "Three." },
       { role: "user", content: "Which are listed?" },
     ]);
+  });
+});
+
+describe("request history limits", () => {
+  /** Twenty messages: ten settled turns, each one short question + long answer. */
+  function twentyMessages(): AssistantTurn[] {
+    return Array.from({ length: 10 }, (_, index) =>
+      turn({
+        id: `turn-${String(index)}`,
+        question: `Question ${String(index)}: ${"q".repeat(180)}`,
+        answer: `Answer ${String(index)}: ${"a".repeat(980)}`,
+      }),
+    );
+  }
+
+  const NEXT_QUESTION = "Which of those are also on the KEV list?";
+
+  it("keeps the newest question intact and sends the newest turns that fit", () => {
+    const turns = twentyMessages();
+    const { messages, droppedTurns } = buildHistoryForTurn(turns, NEXT_QUESTION);
+    const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
+
+    // The one message that must never be trimmed: the question being answered.
+    expect(messages[messages.length - 1]).toEqual({ role: "user", content: NEXT_QUESTION });
+    // Inside every cap the route enforces, with room to spare.
+    expect(totalChars).toBeLessThanOrEqual(MAX_HISTORY_CHARS);
+    expect(totalChars).toBeLessThanOrEqual(12_000);
+    expect(messages.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    for (const message of messages) {
+      expect(message.content.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGE_CHARS);
+    }
+    // The oldest went first, and what is left is a contiguous tail: a gap in the
+    // middle of a transcript is worse than one that simply starts later.
+    const keptTurns = (messages.length - 1) / 2;
+    expect(droppedTurns).toBe(turns.length - keptTurns);
+    expect(messages.slice(0, keptTurns * 2)).toEqual(
+      turns.slice(droppedTurns).flatMap((entry) => [
+        { role: "user", content: entry.question },
+        { role: "assistant", content: entry.answer },
+      ]),
+    );
+  });
+
+  it("drops a turn whose answer is over the per-message cap instead of splitting it", () => {
+    // This was the production 400: the total fit, one answer did not, and the
+    // old code kept re-sending it. Half an answer was never an option, so the
+    // turn goes whole.
+    const { messages, droppedTurns } = buildHistoryForTurn(
+      [
+        turn({ id: "turn-1", question: "First?", answer: "b".repeat(2_400) }),
+        turn({ id: "turn-2", question: "Second?", answer: "Two." }),
+      ],
+      NEXT_QUESTION,
+    );
+
+    expect(messages).toEqual([
+      { role: "user", content: "Second?" },
+      { role: "assistant", content: "Two." },
+      { role: "user", content: NEXT_QUESTION },
+    ]);
+    expect(droppedTurns).toBe(1);
+  });
+
+  it("reports no drop when the whole transcript fits", () => {
+    const { messages, droppedTurns } = buildHistoryForTurn(
+      [turn({ id: "turn-1", question: "First?" }), turn({ id: "turn-2", question: "Second?" })],
+      NEXT_QUESTION,
+    );
+    expect(droppedTurns).toBe(0);
+    expect(messages).toHaveLength(5);
+  });
+
+  it("keeps the client's caps strictly inside the route's", () => {
+    // The client's only job is to build a body the route accepts; a cap that
+    // drifts upward here makes every later turn a 400 that no reader can fix.
+    expect(MAX_HISTORY_MESSAGE_CHARS).toBe(ASSISTANT_MAX_MESSAGE_CHARS);
+    expect(MAX_HISTORY_MESSAGES).toBeLessThan(ASSISTANT_MAX_MESSAGES);
+    expect(MAX_HISTORY_CHARS).toBeLessThan(ASSISTANT_MAX_TOTAL_CHARS);
+  });
+
+  it("says it trimmed in one quiet line", () => {
+    expect(HISTORY_TRIMMED_NOTE).toBe(
+      "Earlier turns were trimmed from context to stay within limits.",
+    );
   });
 });

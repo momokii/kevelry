@@ -21,6 +21,7 @@ import { formatImageSize, type AssistantAttachment } from "./assistant-image";
 import { renderAnswer } from "./render-answer";
 import {
   ELAPSED_TICK_MS,
+  HISTORY_TRIMMED_NOTE,
   MAX_QUESTION_CHARS,
   counterVisible,
   disabledFault,
@@ -222,6 +223,14 @@ function TurnBlock({
         You asked{turn.aboutCve !== null ? ` about ${turn.aboutCve}` : ""}
       </p>
       <p className="assistant-question">{turn.question}</p>
+      {turn.contextTrimmed ? (
+        // What the request carried, stated once and quietly: the answer stands on
+        // its own, but a follow-up that stopped referring to the start of the
+        // conversation now has a visible reason.
+        <p className="assistant-turn-note" data-testid="assistant-context-trimmed">
+          {HISTORY_TRIMMED_NOTE}
+        </p>
+      ) : null}
       {turn.image === null ? null : (
         // The screenshot is part of the question, not a gallery beside it: it
         // sits directly under the words it was attached to. `<details>` is the

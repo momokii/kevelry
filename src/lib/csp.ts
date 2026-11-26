@@ -8,6 +8,13 @@
 //
 // `style-src` keeps `'unsafe-inline'` on purpose: React writes inline `style`
 // attributes for chart geometry, and style attributes cannot be nonce-scoped.
+//
+// `img-src` allows `data:` and `blob:` because both are sources this app generates
+// itself and never a remote host: the attached screenshot is staged as a `data:`
+// URL and the turn's record keeps a downscaled copy of it, also `data:`. `blob:`
+// is kept for an image held as an object URL, which is the same local picture by
+// another route. Nothing wider is allowed — no `*`, no bare `https:` — so an image
+// from anywhere else is still refused.
 
 export interface CspOptions {
   /** True when serving `next dev`; production never sets this. */

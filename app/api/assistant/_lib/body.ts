@@ -83,6 +83,17 @@ function formatByteLimit(bytes: number): string {
   return `${String(mb)} MB`;
 }
 
+/**
+ * A character count as the refusal states it: `2,000`, not `2000`.
+ *
+ * A limit a reader has to count digits to understand is a limit they will read as
+ * machine output. The thousands separator is the whole difference between "the
+ * conversation is limited to 12000 characters" and a sentence a person parses.
+ */
+function formatChars(count: number): string {
+  return count.toLocaleString("en-US");
+}
+
 /** The body cap's refusal. Both read paths share it so the two cannot drift. */
 function payloadTooLarge(maxBytes: number): ReadBodyResult {
   return {
@@ -265,7 +276,7 @@ export function validateAssistantBody(raw: unknown): BodyResult {
     return {
       ok: false,
       code: "BAD_REQUEST",
-      message: `At most ${String(ASSISTANT_MAX_MESSAGES)} messages per turn.`,
+      message: `The transcript has ${formatChars(rawMessages.length)} messages; one turn accepts at most ${String(ASSISTANT_MAX_MESSAGES)}.`,
       details: { max: ASSISTANT_MAX_MESSAGES, received: rawMessages.length },
     };
   }
@@ -313,7 +324,7 @@ export function validateAssistantBody(raw: unknown): BodyResult {
       return {
         ok: false,
         code: "BAD_REQUEST",
-        message: `Each message is limited to ${String(ASSISTANT_MAX_MESSAGE_CHARS)} characters.`,
+        message: `Message ${String(index + 1)} of ${String(rawMessages.length)} is ${formatChars(content.length)} characters; a single message is limited to ${formatChars(ASSISTANT_MAX_MESSAGE_CHARS)}.`,
         details: { index, max: ASSISTANT_MAX_MESSAGE_CHARS, received: content.length },
       };
     }
@@ -324,7 +335,7 @@ export function validateAssistantBody(raw: unknown): BodyResult {
     return {
       ok: false,
       code: "BAD_REQUEST",
-      message: `The conversation is limited to ${String(ASSISTANT_MAX_TOTAL_CHARS)} characters.`,
+      message: `The transcript is ${formatChars(totalChars)} characters; one turn is limited to ${formatChars(ASSISTANT_MAX_TOTAL_CHARS)}.`,
       details: { max: ASSISTANT_MAX_TOTAL_CHARS, received: totalChars },
     };
   }

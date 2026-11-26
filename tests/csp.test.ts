@@ -25,6 +25,22 @@ describe("content security policy", () => {
     expect(policy).toContain("'nonce-abc123'");
   });
 
+  it("allows data: and blob: images and nothing wider", () => {
+    const policy = buildContentSecurityPolicy("abc123", { development: false });
+    const imgSrc = /img-src([^;]*)/.exec(policy)?.[1]?.trim() ?? "";
+    // The exact list: the two schemes this app generates its own images with, and
+    // its own origin. A thumbnail is a base64 `data:` URL; a downloaded brief is
+    // read back through an object URL.
+    expect(imgSrc).toBe("'self' data: blob:");
+    // Nothing wider: no wildcard, no scheme-wide source, no remote host.
+    expect(imgSrc).not.toContain("*");
+    expect(imgSrc).not.toMatch(/https?:/);
+    expect(policy).not.toContain("*");
+    // `data:` is an image source only — never a script, a frame or a connection.
+    expect(/script-src([^;]*)/.exec(policy)?.[1] ?? "").not.toContain("data:");
+    expect(/connect-src([^;]*)/.exec(policy)?.[1] ?? "").not.toContain("data:");
+  });
+
   it("generates a distinct hex nonce per response", () => {
     const first = createCspNonce();
     const second = createCspNonce();

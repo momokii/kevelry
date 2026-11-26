@@ -50,9 +50,22 @@ import {
 import type { AssistantSuggestion } from "@/lib/ai/suggestions";
 import type { AssistantEvent } from "@/lib/ai/turn";
 
-/** The route's own message cap; nine history messages fit inside its limit too. */
-const MAX_HISTORY_MESSAGES = 10;
-const MAX_HISTORY_CHARS = 11_000;
+/**
+ * The route's body caps, mirrored here so the client never builds a request the
+ * server refuses.
+ *
+ * The numbers are the ones in `app/api/assistant/_lib/body.ts`; `buildHistory` is
+ * the only place that decides how much of the transcript to send, so a cap that
+ * drifts there would make every later turn a 400. Each stays strictly under the
+ * route's limit: ten messages of twelve, 2 000 characters per message, and 11 000
+ * of the 12 000 allowed — the margin is for the question the reader is typing,
+ * which is already counted, and for anything the route adds later.
+ *
+ * `tests/assistant-state.test.ts` asserts these against the server's constants.
+ */
+export const MAX_HISTORY_MESSAGES = 10;
+export const MAX_HISTORY_MESSAGE_CHARS = 2_000;
+export const MAX_HISTORY_CHARS = 11_000;
 
 export interface AssistantDeskProps {
   gate: AssistantGate;
@@ -86,23 +99,68 @@ interface WireMessage {
 
 /** The stateless server takes the history the client holds, so the client sends it. */
 export function buildHistory(turns: readonly AssistantTurn[], question: string): WireMessage[] {
-  const history: WireMessage[] = [];
-  for (const turn of turns) {
-    // A failed turn is not history: its half-answer was never made as a claim,
-    // and replaying it would put words in the conversation the reader only ever
-    // saw marked incomplete.
-    if (!turn.settled || turn.failed || turn.answer === "") continue;
-    history.push({ role: "user", content: turn.question });
-    history.push({ role: "assistant", content: turn.answer });
+  return buildHistoryForTurn(turns, question).messages;
+}
+
+export interface BuiltHistory {
+  /** The body's `messages`: the newest question, plus the newest turns that fit. */
+  messages: WireMessage[];
+  /** How many settled turns were dropped to fit the caps; 0 means nothing was. */
+  droppedTurns: number;
+}
+
+/**
+ * The history a turn sends, bounded before it is sent rather than after it fails.
+ *
+ * Three rules, and the order between them is the whole design:
+ *
+ *  1. **The newest question is kept in full, always.** It is what the turn is
+ *     answering; a request that trimmed it would answer a different question.
+ *  2. **The oldest turns go first.** A contiguous suffix is the only shape a
+ *     reader can reason about: "the last few exchanges, then this question".
+ *  3. **A message is never split.** Half an answer, replayed as though the model
+ *     had said it, is a claim nobody made — so a turn whose answer is longer than
+ *     the per-message cap is dropped whole, taking the older turns with it.
+ *
+ * Rule 3 is the one that bit production. The caps were enforced on the total but
+ * not per message, so an answer longer than 2 000 characters made every later
+ * turn a `400` — the transcript kept re-sending the same oversized answer.
+ */
+export function buildHistoryForTurn(
+  turns: readonly AssistantTurn[],
+  question: string,
+): BuiltHistory {
+  const settled = turns.filter((turn) => turn.settled && !turn.failed && turn.answer !== "");
+  const kept: WireMessage[][] = [];
+  let chars = question.length;
+  let messages = 1;
+  let droppedTurns = 0;
+  // Newest first, so what survives is the most recent end of the transcript: the
+  // loop adds pairs from the back and stops at the first one that does not fit.
+  for (const [offset, turn] of [...settled].reverse().entries()) {
+    const pair: WireMessage[] = [
+      { role: "user", content: turn.question },
+      { role: "assistant", content: turn.answer },
+    ];
+    const pairChars = turn.question.length + turn.answer.length;
+    const fits =
+      messages + pair.length <= MAX_HISTORY_MESSAGES &&
+      turn.question.length <= MAX_HISTORY_MESSAGE_CHARS &&
+      turn.answer.length <= MAX_HISTORY_MESSAGE_CHARS &&
+      chars + pairChars <= MAX_HISTORY_CHARS;
+    if (!fits) {
+      // Everything older is dropped too: a gap in the middle of a transcript is
+      // worse than a transcript that simply starts later.
+      droppedTurns = settled.length - offset;
+      break;
+    }
+    kept.unshift(pair);
+    chars += pairChars;
+    messages += pair.length;
   }
+  const history = kept.flat();
   history.push({ role: "user", content: question });
-  const bounded = history.slice(-MAX_HISTORY_MESSAGES);
-  let chars = bounded.reduce((total, message) => total + message.content.length, 0);
-  while (bounded.length > 1 && chars > MAX_HISTORY_CHARS) {
-    const removed = bounded.shift();
-    chars -= removed?.content.length ?? 0;
-  }
-  return bounded;
+  return { messages: history, droppedTurns };
 }
 
 function deadlineFor(fault: AssistantFault, nowMs: number): number | null {
@@ -320,6 +378,10 @@ export function AssistantDesk({
           (imageConsent === "send" || (imageConsent === "ask" && refersToAttachment(question))));
       lastQuestion.current = question;
       lastSendImage.current = sendImage;
+      // Built before the turn exists: the request and the turn's own record of it
+      // have to agree about whether the model saw the earlier turns, and the only
+      // way to be sure is to decide once.
+      const history = buildHistoryForTurn(turnsRef.current, question);
       const turn: AssistantTurn = {
         id,
         question,
@@ -344,6 +406,7 @@ export function AssistantDesk({
                 thumb: attached.thumb,
               }
             : null,
+        contextTrimmed: history.droppedTurns > 0,
       };
       setTurns((current) =>
         retryTurnId === null
@@ -366,7 +429,7 @@ export function AssistantDesk({
       const controller = new AbortController();
       abortRef.current = controller;
       const body: Record<string, unknown> = {
-        messages: buildHistory(turnsRef.current, question),
+        messages: history.messages,
       };
       if (scoped !== null) body.cveContext = scoped;
       // R1: the payload rides only on the questions that asked for it. The body

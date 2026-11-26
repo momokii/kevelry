@@ -11,10 +11,11 @@
 //              terminal `citations` event is the whole turn and cannot be
 //              attributed back to one call.
 //   delta      assistant text, in arrival order.
-//   retry      a round ended on its completion cap with no text and no tool
-//              calls, so it is re-run once at the answer budget. Emitted before
-//              the second attempt, so the stream states the escalation instead
-//              of silently billing a second round.
+//   retry      a round ended with no text and no tool calls — cut by its
+//              completion cap, or stopped with nothing in it at all — so it is
+//              re-run once at the answer budget. Emitted before the second
+//              attempt, so the stream states the escalation instead of silently
+//              billing a second round.
 //   citations  ids the *server* read from tool payloads this turn — never ids
 //              the model claimed. A model-hallucinated id cannot become a chip.
 //   unverified ids the *prose* named that no tool payload contained. Emitted
@@ -336,8 +337,8 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   let usageSeen = false;
   let rounds = 0;
   let answered = false;
-  /** One empty truncated round may be re-run at the answer budget, never two. */
-  let retriedTruncatedRound = false;
+  /** One empty round may be re-run at the answer budget, never two. */
+  let retriedEmptyRound = false;
   let activeStream: ChatStreamReader | null = null;
 
   const toolCtx: ToolContext = {
@@ -397,7 +398,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       // claim, so its completion is a call and 1024 tokens cover it. From then
       // on the model is writing prose, and a table needs the larger budget.
       const roundMaxTokens =
-        rounds === 0 && !retriedTruncatedRound ? AI_MAX_TOKENS_DEFAULT : answerMaxTokens;
+        rounds === 0 && !retriedEmptyRound ? AI_MAX_TOKENS_DEFAULT : answerMaxTokens;
       const completion = input.client.streamChatCompletion({
         messages: conversation,
         tools,
@@ -445,8 +446,8 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // stream. Bounded by the flag: a provider that truncates twice still
         // ends with an honest error rather than a retry loop.
         const silent = round.toolCalls.length === 0 && (round.content ?? "").trim() === "";
-        if (silent && !retriedTruncatedRound && roundMaxTokens < answerMaxTokens) {
-          retriedTruncatedRound = true;
+        if (silent && !retriedEmptyRound && roundMaxTokens < answerMaxTokens) {
+          retriedEmptyRound = true;
           yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens };
           continue;
         }
@@ -455,6 +456,28 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
           code: "AI_TRUNCATED",
           message:
             "The AI response hit its token limit and was discarded. Ask a narrower question.",
+        };
+        return;
+      }
+
+      if (round.toolCalls.length === 0 && (round.content ?? "").trim() === "") {
+        // A round that ends cleanly with nothing in it — no prose, no tool call,
+        // no truncation — is a provider that stopped without saying anything.
+        // It is not an answer, so it is not settled as one: the same round is
+        // re-run once at the answer budget, announced on the stream, and a
+        // second empty round is reported as the failure it is. Before this, the
+        // turn settled empty and the reader was told it "ended before it wrote
+        // an answer" — true, but silent about a retry that would have worked.
+        if (!retriedEmptyRound && roundMaxTokens < answerMaxTokens) {
+          retriedEmptyRound = true;
+          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens };
+          continue;
+        }
+        yield {
+          type: "error",
+          code: "AI_UPSTREAM_ERROR",
+          message:
+            "The AI provider returned no answer and asked for no tools. Ask again, or narrow the question.",
         };
         return;
       }

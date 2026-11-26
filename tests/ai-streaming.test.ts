@@ -663,4 +663,45 @@ describe("streaming turn: completion budget per round", () => {
     expect(events.some((event) => event.type === "retry")).toBe(false);
     expect(errorCodes(events)).toEqual(["AI_TRUNCATED"]);
   });
+
+  // An empty round is the failure the reader met as "The turn ended before it
+  // wrote an answer": a provider that stops, cleanly, with nothing in it. It is
+  // the same retry the truncated case gets, and the same one-retry bound.
+  const EMPTY = [stopFrame("stop"), frame(USAGE_FRAME), DONE].join("");
+
+  it("retries a round that ends with no text and no tool calls", async () => {
+    const { transport, sent } = scripted([EMPTY, answerBody("Four records are due.")]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.map((event) => event.type)).toEqual(["retry", "delta", "citations", "done"]);
+    const retries = events.filter((event) => event.type === "retry");
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({ code: "AI_TRUNCATED", maxTokens: 4096 });
+  });
+
+  it("reports a second empty round as an error instead of settling empty", async () => {
+    const { transport, sent } = scripted([EMPTY, EMPTY]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.filter((event) => event.type === "retry")).toHaveLength(1);
+    // Never a `done` with no answer: an empty turn is a failure, not a reply.
+    expect(events.some((event) => event.type === "done")).toBe(false);
+    expect(errorCodes(events)).toEqual(["AI_UPSTREAM_ERROR"]);
+    expect(events[events.length - 1]).toMatchObject({ type: "error" });
+  });
+
+  it("does not retry an empty round that already used the answer budget", async () => {
+    // The tool round succeeded, so the answer round is already at the larger
+    // budget: there is nothing to escalate to, and a second identical request
+    // would only bill the reader twice.
+    const { transport, sent } = scripted([toolCallBody(), EMPTY]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.some((event) => event.type === "retry")).toBe(false);
+    expect(events.some((event) => event.type === "done")).toBe(false);
+    expect(errorCodes(events)).toEqual(["AI_UPSTREAM_ERROR"]);
+  });
 });

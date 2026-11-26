@@ -54,6 +54,34 @@ export interface AssistantAttachment extends AssistantImage {
 export const ASSISTANT_THUMBNAIL_WIDTH = 480;
 
 /**
+ * The bytes of a base64 `data:` URL, decoded locally.
+ *
+ * Deliberately not `fetch(dataUrl)`: the page's CSP keeps `connect-src 'self'`, so a
+ * `fetch` of a `data:` URL is refused by the browser. The old code caught that
+ * refusal and fell back to the full payload, which meant every attach logged two
+ * CSP errors and the turn's record kept the whole image — the one thing the
+ * downscale exists to prevent. Decoding the base64 is the same work with no
+ * connection for the policy to police.
+ */
+function dataUrlBytes(dataUrl: string): { mime: string; bytes: Uint8Array<ArrayBuffer> } | null {
+  if (!dataUrl.startsWith("data:")) return null;
+  const comma = dataUrl.indexOf(",");
+  if (comma === -1) return null;
+  const header = dataUrl.slice("data:".length, comma);
+  if (!header.endsWith(";base64")) return null;
+  try {
+    const binary = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return { mime: header.slice(0, -";base64".length), bytes };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A downscaled copy of an attached image, for the turn's record.
  *
  * The turn keeps this and not the payload: ten turns × 2.1 MB of base64 is 21 MB
@@ -66,9 +94,10 @@ export async function toThumbnail(dataUrl: string): Promise<string> {
   if (typeof createImageBitmap !== "function" || typeof document === "undefined") {
     return dataUrl;
   }
+  const decoded = dataUrlBytes(dataUrl);
+  if (decoded === null) return dataUrl;
   try {
-    const response = await fetch(dataUrl);
-    const bitmap = await createImageBitmap(await response.blob());
+    const bitmap = await createImageBitmap(new Blob([decoded.bytes], { type: decoded.mime }));
     const scale = Math.min(1, ASSISTANT_THUMBNAIL_WIDTH / bitmap.width);
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));

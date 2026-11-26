@@ -617,6 +617,15 @@ test("the screenshot is sent only when the question asks for it", async ({ page 
   // Its own rate-limit identity: this journey sends five turns.
   await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.96" });
   await gotoDesk(page);
+  // The page ships `connect-src 'self'`, so a thumbnail decoded through `fetch`
+  // of its own `data:` URL is refused twice per attach. This journey fails if a
+  // single CSP refusal reaches the console.
+  const cspRefusals: string[] = [];
+  page.on("console", (message) => {
+    if (/Content Security Policy|Refused to/i.test(message.text())) {
+      cspRefusals.push(message.text().slice(0, 240));
+    }
+  });
   const chatPost = (candidate: Request): boolean =>
     candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST";
   const chatBodies: Array<Record<string, unknown>> = [];
@@ -666,6 +675,15 @@ test("the screenshot is sent only when the question asks for it", async ({ page 
     "alt",
     "Attached screenshot",
   );
+  // Present is not decoded: `naturalWidth > 0` is the browser having really
+  // painted the thumbnail, which is what the CSP refusal used to prevent.
+  await expect
+    .poll(async () =>
+      shot
+        .locator(".assistant-shot-summary img")
+        .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0);
   await expect(shot.locator("summary")).toContainText("advisory.png");
   await expect(shot.locator("summary")).toContainText("PNG");
   await expect(shot.locator('[data-testid="assistant-shot-note"]')).toHaveText(
@@ -783,6 +801,10 @@ test("the screenshot is sent only when the question asks for it", async ({ page 
     sentBytes,
     0,
   ]);
+
+  // Five turns and two attaches: not one CSP refusal, and no uncaught error from
+  // the decode path either.
+  expect(cspRefusals).toEqual([]);
 });
 
 test("the retained screenshot is audited open and fits a phone", async ({ page }) => {

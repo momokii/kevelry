@@ -81,6 +81,7 @@ function turn(tools: AssistantToolLine[], overrides: Partial<AssistantTurn> = {}
     aboutCve: null,
     sendImage: false,
     image: null,
+    contextTrimmed: false,
     ...overrides,
   };
 }

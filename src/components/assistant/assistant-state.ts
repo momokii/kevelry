@@ -123,7 +123,27 @@ export interface AssistantTurn {
   sendImage: boolean;
   /** The screenshot this question sent, or null when it carried none. */
   image: AssistantTurnImage | null;
+  /**
+   * True when this question's request had to drop earlier turns to fit the
+   * route's limits.
+   *
+   * Stored on the turn rather than derived at render time: the transcript keeps
+   * growing, so "would this request have been trimmed?" has a different answer
+   * every time it is asked. The turn is the only record of what that request
+   * actually carried.
+   */
+  contextTrimmed: boolean;
 }
+
+/**
+ * The one-line note a turn shows when its request dropped earlier turns.
+ *
+ * Quiet by design: the answer is unaffected, but the model did not see the start
+ * of the conversation, and a reader who asked a follow-up deserves to know why
+ * the answer stopped referring to it.
+ */
+export const HISTORY_TRIMMED_NOTE =
+  "Earlier turns were trimmed from context to stay within limits.";
 
 /** The feature gate as the page found it, rendered, never re-evaluated client-side. */
 export type AssistantGate = { enabled: true } | { enabled: false; reason: AssistantDisabledReason };

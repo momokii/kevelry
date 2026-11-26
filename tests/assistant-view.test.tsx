@@ -62,6 +62,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     aboutCve: null,
     sendImage: false,
     image: null,
+    contextTrimmed: false,
     ...overrides,
   };
 }
@@ -249,6 +250,21 @@ describe("state 2 — streaming", () => {
     expect(html).toContain("Four records ");
     expect(html).not.toContain('data-testid="assistant-brief"');
     expect(html).not.toContain('data-testid="assistant-followups"');
+  });
+
+  it("says when the turn's request had to drop earlier turns, once and quietly", () => {
+    const html = render({ turns: [turn({ contextTrimmed: true })] });
+    expect(html).toContain('data-testid="assistant-context-trimmed"');
+    expect(html).toContain("Earlier turns were trimmed from context to stay within limits.");
+    // Not a fault and not a second reading of the same sentence.
+    expect(html.match(/Earlier turns were trimmed/g) ?? []).toHaveLength(1);
+    expect(html).not.toContain('data-testid="assistant-fault"');
+  });
+
+  it("says nothing about trimming when nothing was dropped", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).not.toContain('data-testid="assistant-context-trimmed"');
+    expect(html).not.toContain("trimmed from context");
   });
 });
 

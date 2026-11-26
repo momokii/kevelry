@@ -18,7 +18,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AssistantDesk } from "../src/components/assistant/AssistantDesk";
+import {
+  AssistantDesk,
+  MAX_HISTORY_MESSAGES,
+  MAX_HISTORY_MESSAGE_CHARS,
+} from "../src/components/assistant/AssistantDesk";
+import { HISTORY_TRIMMED_NOTE } from "../src/components/assistant/assistant-state";
 
 /** A 1x1 PNG: real magic bytes, so the client sniffer accepts it. */
 const PNG_1X1 = Uint8Array.from(
@@ -388,5 +393,72 @@ describe("the screenshot is sent only when the question asks for it", () => {
     );
     // A bare `×` is not a name; the control says what it removes.
     expect(remove?.getAttribute("aria-label")).toBe("Remove shot.png from context");
+  });
+});
+
+describe("a transcript that outgrew the caps", () => {
+  /** Longer than one message may be, so it can never be sent back whole. */
+  const LONG_ANSWER = "A".repeat(2_400);
+
+  /** Every reply this test's desk hears is the same over-long one. */
+  function stubLongAnswers(): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return streamResponse([{ type: "delta", text: LONG_ANSWER }, ANSWER_FRAMES[1]]);
+      }),
+    );
+  }
+
+  function trimNotes(): HTMLElement[] {
+    return [...host.querySelectorAll<HTMLElement>('[data-testid="assistant-context-trimmed"]')];
+  }
+
+  it("drops a turn whose answer is over the cap and says so in the turn", async () => {
+    stubLongAnswers();
+    await ask("Which records are due?");
+    // Nothing was left behind yet, so the first turn says nothing about it.
+    expect(trimNotes()).toHaveLength(0);
+
+    await ask("And which of those are on the KEV list?");
+
+    // One quiet line, on the turn whose request it applies to.
+    expect(trimNotes()).toHaveLength(1);
+    expect(trimNotes()[0]?.textContent).toBe(HISTORY_TRIMMED_NOTE);
+    expect(trimNotes()[0]?.closest('[data-testid="assistant-turn"]')).toBe(
+      host.querySelectorAll('[data-testid="assistant-turn"]')[1],
+    );
+
+    const sent = bodies[1]?.messages as Array<{ role: string; content: string }>;
+    // The over-long answer went whole, not cut: half a claim the model never
+    // finished saying is worse than no history at all.
+    expect(sent).toEqual([{ role: "user", content: "And which of those are on the KEV list?" }]);
+    for (const message of sent) {
+      expect(message.content.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGE_CHARS);
+    }
+  });
+
+  it("keeps the newest turns and drops the oldest, never a gap in the middle", async () => {
+    for (let index = 1; index <= 6; index += 1) {
+      await ask(`Question number ${String(index)}?`);
+    }
+
+    const sent = bodies[5]?.messages as Array<{ role: string; content: string }>;
+    // Six questions is one turn past what the route accepts: the first goes.
+    expect(sent).toHaveLength(MAX_HISTORY_MESSAGES - 1);
+    expect(sent[0]).toEqual({ role: "user", content: "Question number 2?" });
+    expect(sent[sent.length - 1]).toEqual({ role: "user", content: "Question number 6?" });
+    // Only the turn that was trimmed mentions it.
+    expect(trimNotes()).toHaveLength(1);
+    expect(trimNotes()[0]?.textContent).toBe(HISTORY_TRIMMED_NOTE);
+  });
+
+  it("sends the whole transcript, and no note, while it still fits", async () => {
+    await ask("Question number 1?");
+    await ask("Question number 2?");
+
+    expect(bodies[1]?.messages).toHaveLength(3);
+    expect(trimNotes()).toHaveLength(0);
   });
 });

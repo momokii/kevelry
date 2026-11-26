@@ -24,7 +24,11 @@ import { POST } from "../app/api/assistant/chat/route";
 import {
   ASSISTANT_MAX_BODY_BYTES,
   ASSISTANT_MAX_IMAGE_BYTES,
+  ASSISTANT_MAX_MESSAGE_CHARS,
+  ASSISTANT_MAX_TOTAL_CHARS,
 } from "../app/api/assistant/_lib/body";
+import { buildHistoryForTurn } from "../src/components/assistant/AssistantDesk";
+import type { AssistantTurn } from "../src/components/assistant/assistant-state";
 import {
   resetAssistantRateLimitState,
   setAssistantRateLimitClock,
@@ -842,5 +846,113 @@ describe("assistant route: request body", () => {
     );
     expect(response.status).toBe(400);
     expect(((await response.json()) as Record<string, any>).code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("assistant route: a transcript the desk built", () => {
+  const NEXT_QUESTION = "Which of those are on the KEV list?";
+
+  /** Twenty messages — ten settled turns — each with an answer near the cap. */
+  function longTranscript(): AssistantTurn[] {
+    return Array.from({ length: 10 }, (_, index) => ({
+      id: `turn-${String(index)}`,
+      question: `Question ${String(index)}: ${"q".repeat(180)}`,
+      answer: `Answer ${String(index)}: ${"a".repeat(980)}`,
+      settled: true,
+      stopped: false,
+      failed: false,
+      citations: [],
+      unverified: [],
+      tools: [],
+      aboutCve: null,
+      sendImage: false,
+      image: null,
+      contextTrimmed: false,
+    }));
+  }
+
+  it("accepts the transcript the desk trimmed from twenty messages, with 200", async () => {
+    const built = buildHistoryForTurn(longTranscript(), NEXT_QUESTION);
+    const totalChars = built.messages.reduce((sum, message) => sum + message.content.length, 0);
+
+    // What the client promises before it sends: a body inside every cap, with the
+    // question being answered untouched.
+    expect(built.droppedTurns).toBeGreaterThan(0);
+    expect(totalChars).toBeLessThanOrEqual(ASSISTANT_MAX_TOTAL_CHARS);
+    for (const message of built.messages) {
+      expect(message.content.length).toBeLessThanOrEqual(ASSISTANT_MAX_MESSAGE_CHARS);
+    }
+    expect(built.messages[built.messages.length - 1]).toEqual({
+      role: "user",
+      content: NEXT_QUESTION,
+    });
+
+    // The real route, the real guards, a canned provider: the body a reader's
+    // fourth question actually produces.
+    const { transport, calls } = fakeTransport(async () => ({
+      status: 200,
+      body: textStream("Four records are on the list."),
+    }));
+    setAssistantTransport(transport);
+
+    const response = await POST(request({ messages: built.messages }));
+    expect(response.status).toBe(200);
+    const frames = framesOf(await response.text());
+    expect(frames[frames.length - 1]).toMatchObject({ type: "done" });
+
+    // The provider received that list, not a longer one, ending on the question.
+    const sent = calls[0]?.body["messages"] as Array<Record<string, unknown>>;
+    expect(sent[sent.length - 1]).toEqual({ role: "user", content: NEXT_QUESTION });
+    expect(sent.filter((message) => message.role !== "system")).toHaveLength(built.messages.length);
+  });
+
+  it("still refuses the untrimmed transcript, naming the limit it crossed", async () => {
+    const { transport, calls } = fakeTransport(async () => ({
+      status: 200,
+      body: textStream("never"),
+    }));
+    setAssistantTransport(transport);
+
+    const untrimmed = longTranscript().flatMap((turn) => [
+      { role: "user", content: turn.question },
+      { role: "assistant", content: turn.answer },
+    ]);
+    const tooMany = await POST(request({ messages: untrimmed }));
+    const tooManyBody = (await tooMany.json()) as Record<string, any>;
+    expect(tooMany.status).toBe(400);
+    expect(tooManyBody.message).toBe(
+      "The transcript has 20 messages; one turn accepts at most 12.",
+    );
+
+    // Twelve messages is allowed; one answer over the per-message cap is not.
+    // This is the 400 the fourth question hit in production, in plain language.
+    const oneLongAnswer = Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: index === 3 ? "b".repeat(2_431) : "short",
+    }));
+    const longResponse = await POST(request({ messages: oneLongAnswer }));
+    const longBody = (await longResponse.json()) as Record<string, any>;
+    expect(longResponse.status).toBe(400);
+    expect(longBody.code).toBe("BAD_REQUEST");
+    expect(longBody.message).toBe(
+      "Message 4 of 12 is 2,431 characters; a single message is limited to 2,000.",
+    );
+    expect(longBody.details).toMatchObject({ index: 3, max: 2_000, received: 2_431 });
+
+    // And the other cap, named the same way: twelve messages that each fit, and
+    // still add up to more than one turn accepts.
+    const tooLong = Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: "c".repeat(1_500),
+    }));
+    const longTotal = await POST(request({ messages: tooLong }));
+    const longTotalBody = (await longTotal.json()) as Record<string, any>;
+    expect(longTotal.status).toBe(400);
+    expect(longTotalBody.message).toBe(
+      "The transcript is 18,000 characters; one turn is limited to 12,000.",
+    );
+
+    // Strictness kept: nothing reached a provider.
+    expect(calls).toHaveLength(0);
   });
 });
