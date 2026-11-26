@@ -54,12 +54,22 @@ export interface AssistantViewProps {
   image: AssistantAttachment | null;
   /** Why the last attach attempt was refused, in plain language. */
   imageFault: string | null;
+  /**
+   * Whether the next question will carry the screenshot.
+   *
+   * The reader's consent, not a consequence: `×` is removal of the file, and this
+   * is the answer to "use it for this one?".
+   */
+  sendImage: boolean;
+  /** True once `×` has removed the file, so the composer can say what that meant. */
+  imageRemoved: boolean;
   /** Live seconds remaining for a timed fault (rate limit, budget reset). */
   remainingSeconds: number | null;
   ledgerOpen: boolean;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   onDraftChange: (value: string) => void;
   onImagePick: (file: File) => void;
+  onImageConsentChange: (next: boolean) => void;
   onImageRemove: () => void;
   onCompare: (question: string) => void;
   onFollowUp: (question: string) => void;
@@ -192,19 +202,15 @@ function EmptyDesk({
 function TurnBlock({
   turn,
   streaming,
-  contextImageId,
   onFollowUp,
   onBrief,
 }: {
   turn: AssistantTurn;
   streaming: boolean;
-  /** The attachment still in context; a turn whose image id differs is greyed. */
-  contextImageId: number | null;
   onFollowUp: (question: string) => void;
   onBrief: (turn: AssistantTurn) => void;
 }) {
   const live = turn.settled;
-  const imageInContext = turn.image !== null && turn.image.id === contextImageId;
   // Derived from the ledger, never from the prose: a chip that names an id the
   // turn never read would be a hallucination with a button on it.
   const followUps = turn.settled && !turn.stopped ? buildFollowUps(turn) : [];
@@ -220,11 +226,7 @@ function TurnBlock({
         // whole viewer — no dialog, no focus trap, no scroll lock — and the
         // expanded copy is the retained thumbnail at full width, because the
         // turn deliberately does not keep the payload.
-        <figure
-          className="assistant-shot"
-          data-testid="assistant-shot"
-          data-in-context={imageInContext ? "true" : "false"}
-        >
+        <figure className="assistant-shot" data-testid="assistant-shot">
           <details className="assistant-shot-details" data-testid="assistant-shot-details">
             <summary className="assistant-shot-summary">
               <img
@@ -250,11 +252,11 @@ function TurnBlock({
               />
             </div>
           </details>
-          {imageInContext ? null : (
-            <figcaption className="assistant-shot-note" data-testid="assistant-shot-detached">
-              No longer in context — this screenshot is not sent with later questions.
+          {turn.sendImage ? (
+            <figcaption className="assistant-shot-note" data-testid="assistant-shot-note">
+              Attached with this question
             </figcaption>
-          )}
+          ) : null}
         </figure>
       )}
       <div className="assistant-answer" aria-live={live ? "polite" : "off"}>
@@ -484,9 +486,12 @@ function Composer({
   image,
   imageInContext,
   imageFault,
+  imageRemoved,
+  sendImage,
   inputRef,
   onDraftChange,
   onImagePick,
+  onImageConsentChange,
   onImageRemove,
   onCompare,
   onSubmit,
@@ -507,9 +512,14 @@ function Composer({
    */
   imageInContext: boolean;
   imageFault: string | null;
+  /** What `×` meant, said once where the chip used to be. */
+  imageRemoved: boolean;
+  /** Whether the next question carries the screenshot — the chip's checkbox. */
+  sendImage: boolean;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   onDraftChange: (value: string) => void;
   onImagePick: (file: File) => void;
+  onImageConsentChange: (next: boolean) => void;
   onImageRemove: () => void;
   onCompare: (question: string) => void;
   onSubmit: () => void;
@@ -639,11 +649,22 @@ function Composer({
         </div>
       ) : null}
       {image !== null && imageInContext ? (
-        // What is being re-sent on every turn, stated where the next turn is
-        // written. Removing it is the only way to take it out of context, so the
-        // control and the fact sit on one line.
+        // The attachment, and the one question it is for. The checkbox is the
+        // consent: checked when this picture was just attached, or when the
+        // question typed below points at it, and unticked by the reader to send
+        // this one without it. `×` is not that — it removes the file.
         <div className="assistant-context" data-testid="assistant-image-context">
-          <span className="assistant-context-label">screenshot in context</span>
+          <label className="assistant-image-consent">
+            <input
+              type="checkbox"
+              checked={sendImage}
+              data-testid="assistant-image-consent"
+              onChange={(event) => {
+                onImageConsentChange(event.target.checked);
+              }}
+            />
+            <span>use screenshot in this question</span>
+          </label>
           {/* Plain text, not a chip: nothing here navigates, and a pill would
               offer a click that does not exist. */}
           <span className="assistant-context-file">{image.name}</span>
@@ -657,6 +678,13 @@ function Composer({
             ×
           </button>
         </div>
+      ) : null}
+      {imageRemoved && image === null ? (
+        // One sentence, once, where the chip was: `×` deleted the payload, so
+        // nothing will carry it again until something is attached again.
+        <p className="assistant-image-removed" data-testid="assistant-image-removed">
+          Screenshot removed — it will not be sent again.
+        </p>
       ) : null}
       <label className="sr-only" htmlFor="assistant-question">
         Your question about this corpus
@@ -754,11 +782,14 @@ export function AssistantView(props: AssistantViewProps) {
     aboutCve,
     image,
     imageFault,
+    imageRemoved,
+    sendImage,
     remainingSeconds,
     ledgerOpen,
     inputRef,
     onDraftChange,
     onImagePick,
+    onImageConsentChange,
     onImageRemove,
     onCompare,
     onFollowUp,
@@ -781,10 +812,9 @@ export function AssistantView(props: AssistantViewProps) {
   const stage =
     lastTurn === null ? "the model is deciding what to look up…" : workingStage(lastTurn, activity);
   // Derived from the transcript, not stored: the chip exists because a turn
-  // actually sent this attachment, which is the only reason it is in context.
+  // actually carried this attachment, which is the only reason it is in context.
   const imageInContext =
     image !== null && turns.some((turn) => turn.image !== null && turn.image.id === image.id);
-  const contextImageId = image === null ? null : image.id;
   return (
     <div className="assistant-desk">
       <div className="assistant-main">
@@ -813,7 +843,6 @@ export function AssistantView(props: AssistantViewProps) {
                 key={turn.id}
                 turn={turn}
                 streaming={status === "streaming"}
-                contextImageId={contextImageId}
                 onFollowUp={onFollowUp}
                 onBrief={onBrief}
               />
@@ -834,9 +863,12 @@ export function AssistantView(props: AssistantViewProps) {
           image={image}
           imageInContext={imageInContext}
           imageFault={imageFault}
+          imageRemoved={imageRemoved}
+          sendImage={sendImage}
           inputRef={inputRef}
           onDraftChange={onDraftChange}
           onImagePick={onImagePick}
+          onImageConsentChange={onImageConsentChange}
           onImageRemove={onImageRemove}
           onCompare={onCompare}
           onSubmit={onSubmit}

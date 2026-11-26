@@ -16,18 +16,25 @@
 //  - no second parser. `assistant-sse.ts` handles frame boundaries; this file
 //    only decides what each complete frame means.
 //
-// One image is held for the session rather than for one turn. The measurement in
-// `docs/plans/v4-attach-and-progress.md` priced that at ≤912 prompt tokens a turn,
-// so a follow-up genuinely re-sends the screenshot it is still about; removing it
-// is the reader's one control over that, and each turn keeps only a thumbnail so a
-// long transcript never holds ten copies of a two-megabyte payload.
+// One image is held for the session, and each question decides whether to send
+// it. `docs/plans/v4-image-context-fix.md` priced the payload at ≤912 prompt
+// tokens, but price was never the question: the reader's consent was. So the
+// payload is staged, a per-question `sendImage` decides, and every turn stores
+// the answer it was given — a follow-up that says "explain that screenshot"
+// carries the picture, and a plain policy question does not. The turn keeps only
+// a thumbnail, so a long transcript never holds ten copies of two megabytes.
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 import { AssistantView } from "./AssistantView";
 import { createAssistantSseParser, parseAssistantEvent } from "./assistant-sse";
 import { briefFileName, buildBriefMarkdown } from "./assistant-brief";
-import { readImageFile, toThumbnail, type AssistantAttachment } from "./assistant-image";
+import {
+  readImageFile,
+  refersToAttachment,
+  toThumbnail,
+  type AssistantAttachment,
+} from "./assistant-image";
 import {
   MAX_QUESTION_CHARS,
   faultFromCode,
@@ -61,6 +68,16 @@ interface FaultState {
   /** When a timed fault lifts; null for faults that need a reload or an operator. */
   deadlineMs: number | null;
 }
+
+/**
+ * The reader's answer to "use screenshot in this question", until the next send.
+ *
+ * `ask` is the absence of an answer, and is deliberately the reset value: after a
+ * send the desk has no opinion about a question that has not been typed yet, and
+ * the next question decides on its own words (`refersToAttachment`). `send` and
+ * `skip` are the reader overriding that, in either direction.
+ */
+type ImageConsent = "ask" | "send" | "skip";
 
 interface WireMessage {
   role: "user" | "assistant";
@@ -122,15 +139,25 @@ export function AssistantDesk({
   const [ledgerOpen, setLedgerOpen] = useState(true);
   const [image, setImage] = useState<AssistantAttachment | null>(null);
   const [imageFault, setImageFault] = useState<string | null>(null);
+  /** Consent for the *next* question; see `ImageConsent`. */
+  const [imageConsent, setImageConsent] = useState<ImageConsent>("ask");
+  /** True once `×` has been pressed, so the composer can say what it meant. */
+  const [imageRemoved, setImageRemoved] = useState(false);
 
   const inputRef: RefObject<HTMLTextAreaElement | null> = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const turnSeq = useRef(0);
   const toolSeq = useRef(0);
   const lastQuestion = useRef<string | null>(null);
+  /** The consent the failed turn was sent with, so a retry re-sends the same one. */
+  const lastSendImage = useRef(false);
   const turnsRef = useRef<AssistantTurn[]>([]);
   const imageSeq = useRef(0);
   turnsRef.current = turns;
+  /** Whether the next question will carry the screenshot, as the chip shows it. */
+  const pendingSendImage =
+    image !== null &&
+    (imageConsent === "send" || (imageConsent === "ask" && refersToAttachment(draft)));
 
   // One polite ticker, only while a timed fault is counting down.
   useEffect(() => {
@@ -248,7 +275,7 @@ export function AssistantDesk({
   );
 
   const ask = useCallback(
-    async (rawQuestion: string) => {
+    async (rawQuestion: string, resendImage: boolean | null = null) => {
       const question = rawQuestion.trim().slice(0, MAX_QUESTION_CHARS);
       if (question === "") return;
       if (abortRef.current !== null) return;
@@ -256,10 +283,17 @@ export function AssistantDesk({
       turnSeq.current += 1;
       const id = `turn-${String(turnSeq.current)}`;
       const scoped = aboutCve;
-      // The image stays in context after the send: every later turn re-sends it
-      // while it is here, and the turn keeps only its id and a thumbnail.
+      // Consent is decided here, once, and stored on the turn: the attach
+      // question sends it by default, a question that points at it ("explain
+      // that screenshot") sends it again, and the reader's checkbox overrides
+      // both. Every other question sends no payload at all.
       const attached = image;
+      const sendImage =
+        attached !== null &&
+        (resendImage ??
+          (imageConsent === "send" || (imageConsent === "ask" && refersToAttachment(question))));
       lastQuestion.current = question;
+      lastSendImage.current = sendImage;
       const turn: AssistantTurn = {
         id,
         question,
@@ -270,20 +304,27 @@ export function AssistantDesk({
         unverified: [],
         tools: [],
         aboutCve: scoped,
+        sendImage,
+        // Only a question that sent the picture keeps a record of it: a turn
+        // has a thumbnail because its request carried one, never otherwise.
         image:
-          attached === null
-            ? null
-            : {
+          sendImage && attached !== null
+            ? {
                 id: attached.id,
                 name: attached.name,
                 mime: attached.mime,
                 size: attached.size,
                 thumb: attached.thumb,
-              },
+              }
+            : null,
       };
       setTurns((current) => [...current, turn]);
       setDraft("");
       setImageFault(null);
+      // The next question starts with no opinion: its own words decide, and the
+      // reader ticks the box to override that. `×` is the only thing that
+      // removes the payload itself.
+      setImageConsent("ask");
       setFaultState(null);
       setActivity(null);
       setStatus("streaming");
@@ -297,7 +338,10 @@ export function AssistantDesk({
         messages: buildHistory(turnsRef.current, question),
       };
       if (scoped !== null) body.cveContext = scoped;
-      if (attached !== null) body.image = { dataUrl: attached.dataUrl };
+      // R1: the payload rides only on the questions that asked for it. The body
+      // is the one place this can be wrong, so the condition is `sendImage` and
+      // nothing else — not `attached !== null`.
+      if (sendImage && attached !== null) body.image = { dataUrl: attached.dataUrl };
 
       try {
         const response = await fetch("/api/assistant/chat", {
@@ -366,7 +410,7 @@ export function AssistantDesk({
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [aboutCve, applyEvent, finishTurn, updateTurn, image],
+    [aboutCve, applyEvent, finishTurn, updateTurn, image, imageConsent],
   );
 
   const stop = useCallback(() => {
@@ -390,6 +434,10 @@ export function AssistantDesk({
       if (seq !== imageSeq.current) return;
       setImage({ ...result.image, id: seq, thumb });
       setImageFault(null);
+      // R2/R4: the question this picture was attached for sends it. The reader
+      // can still untick that before pressing Enter; × removes the file itself.
+      setImageConsent("send");
+      setImageRemoved(false);
     });
   }, []);
 
@@ -420,7 +468,9 @@ export function AssistantDesk({
   const retry = useCallback(() => {
     const previous = lastQuestion.current;
     setFaultState(null);
-    if (previous !== null) void ask(previous);
+    // The failed turn's own consent, not the composer's current state: a retry
+    // is the same question, so it sends what that question sent.
+    if (previous !== null) void ask(previous, lastSendImage.current);
   }, [ask]);
 
   const disabled =
@@ -442,14 +492,23 @@ export function AssistantDesk({
       aboutCve={aboutCve}
       image={image}
       imageFault={imageFault}
+      imageRemoved={imageRemoved}
+      sendImage={pendingSendImage}
       remainingSeconds={remainingSeconds}
       ledgerOpen={ledgerOpen}
       inputRef={inputRef}
       onDraftChange={setDraft}
       onImagePick={pickImage}
+      onImageConsentChange={(next) => {
+        setImageConsent(next ? "send" : "skip");
+      }}
       onImageRemove={() => {
+        // R5: the payload, the staged image and the consent all go, at once and
+        // for good. Nothing here can re-arm it — only a fresh attach can.
         setImage(null);
         setImageFault(null);
+        setImageConsent("ask");
+        setImageRemoved(true);
       }}
       onCompare={(question) => {
         if (disabled) return;

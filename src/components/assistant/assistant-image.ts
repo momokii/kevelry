@@ -37,12 +37,12 @@ export interface AssistantImage {
 }
 
 /**
- * An image the desk is holding for the next turn.
+ * An image the desk is holding for the next question.
  *
- * `id` is monotonic per session, and the turn's record carries the same one, so
- * a turn can say whether *its* screenshot is still the one being sent — after a
- * removal, or after a second attach, it is not, and the record says so instead
- * of implying the image is still in play.
+ * `id` is monotonic per session, so a turn's record can be compared with the
+ * attachment still held: the transcript says which picture a question sent, and
+ * the composer says which one is staged now. Removal drops the attachment
+ * itself — nothing holds the payload once `×` is pressed.
  */
 export interface AssistantAttachment extends AssistantImage {
   id: number;
@@ -185,6 +185,26 @@ function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk));
   }
   return btoa(binary);
+}
+
+/**
+ * The words that point at the picture, not at the corpus.
+ *
+ * Word-boundary and case-insensitive because this runs on a typed question: the
+ * `\b` keeps `it` out of `digital`, which is the difference between sending the
+ * screenshot and not.
+ */
+export const ATTACHMENT_REFERENCE = /\b(screenshot|image|picture|photo|attached|this|that|it)\b/i;
+
+/**
+ * Does this question point at the attached screenshot?
+ *
+ * The asymmetry decides it: a false positive costs ≤912 prompt tokens, a false
+ * negative costs an answer about a picture the model cannot see. So the test is
+ * generous, and the reader's own checkbox is the one thing that overrides it.
+ */
+export function refersToAttachment(question: string): boolean {
+  return ATTACHMENT_REFERENCE.test(question);
 }
 
 export type ImageReadResult = { ok: true; image: AssistantImage } | { ok: false; message: string };

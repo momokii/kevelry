@@ -15,6 +15,7 @@ import {
   formatImageSize,
   imageTooLargeMessage,
   imageWrongTypeMessage,
+  refersToAttachment,
   sniffImageMime,
   validateImageBytes,
   validateImageMetadata,
@@ -104,5 +105,51 @@ describe("image size copy", () => {
     expect(formatImageSize(512)).toBe("512 B");
     expect(formatImageSize(62 * 1024)).toBe("62 KB");
     expect(formatImageSize(ASSISTANT_IMAGE_MAX_BYTES)).toBe("1.5 MB");
+  });
+});
+
+describe("does the question point at the screenshot", () => {
+  it("[CODE] matches the words a reader uses for the picture they attached", () => {
+    for (const question of [
+      "Which CVE ids are in this screenshot?",
+      "Explain that screenshot again.",
+      "What does the image say about severity?",
+      "Is this in KEV?",
+      "Which of those is it?",
+      "Does the attached file name a vendor?",
+      "Compare this picture to the corpus.",
+      "Can you read the photo?",
+    ]) {
+      expect(refersToAttachment(question), question).toBe(true);
+    }
+  });
+
+  it("[CODE] leaves a question about the corpus alone", () => {
+    for (const question of [
+      "What is the KEV deadline for federal agencies?",
+      "List the ransomware-linked entries.",
+      "Show records published in the last 30 days.",
+      // Word boundaries: no match inside a longer word.
+      "Which digital forensics techniques are trending?",
+    ]) {
+      expect(refersToAttachment(question), question).toBe(false);
+    }
+  });
+
+  it("[CODE] accepts its own false positives, because the cost runs the other way", () => {
+    // "this" is a reference word *and* a common determiner, so "this week" is
+    // read as pointing at the picture. That is the documented trade: a wasted
+    // ≤912 prompt tokens against an answer about a picture the model cannot see.
+    // The reader's checkbox is the way out, which is why it overrides this.
+    expect(refersToAttachment("Which KEV additions this week are also above 10% EPSS?")).toBe(true);
+  });
+
+  it("[CODE] is case-insensitive and safe to call repeatedly", () => {
+    expect(refersToAttachment("EXPLAIN THE SCREENSHOT")).toBe(true);
+    // No `g` flag, so the last match cannot leak into the next call.
+    for (let index = 0; index < 3; index += 1) {
+      expect(refersToAttachment("Explain that screenshot")).toBe(true);
+      expect(refersToAttachment("And the KEV deadline?")).toBe(false);
+    }
   });
 });

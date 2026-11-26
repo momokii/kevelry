@@ -59,6 +59,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
       },
     ],
     aboutCve: null,
+    sendImage: false,
     image: null,
     ...overrides,
   };
@@ -76,10 +77,13 @@ function baseProps(overrides: Partial<AssistantViewProps> = {}): AssistantViewPr
     aboutCve: null,
     image: null,
     imageFault: null,
+    imageRemoved: false,
+    sendImage: false,
     remainingSeconds: null,
     ledgerOpen: true,
     onDraftChange: () => undefined,
     onImagePick: () => undefined,
+    onImageConsentChange: () => undefined,
     onImageRemove: () => undefined,
     onCompare: () => undefined,
     onFollowUp: () => undefined,
@@ -466,6 +470,7 @@ function attachment(overrides: Partial<AssistantAttachment> = {}): AssistantAtta
 
 describe("the screenshot in the turn", () => {
   const sent = turn({
+    sendImage: true,
     image: {
       id: 1,
       name: "advisory.png",
@@ -500,7 +505,11 @@ describe("the screenshot in the turn", () => {
     expect(shot.querySelector("summary")?.textContent).toContain("PNG");
     // The expanded copy is decoration: the summary already named it.
     expect(shot.querySelector(".assistant-shot-full-image")?.getAttribute("alt")).toBe("");
-    expect(shot.getAttribute("data-in-context")).toBe("true");
+    // A thumbnail exists because this question's request carried the picture, so
+    // the note states what happened rather than what is in context now.
+    expect(shot.querySelector('[data-testid="assistant-shot-note"]')?.textContent).toBe(
+      "Attached with this question",
+    );
   });
 
   it("puts no data URL in a label, a title or an alt except the image source", () => {
@@ -519,26 +528,36 @@ describe("the screenshot in the turn", () => {
     expect(html).not.toContain("Attached screenshot");
   });
 
-  it("keeps the thumbnail and says so once the image leaves context", () => {
+  it("keeps its label after the image is removed, and never says it was not sent", () => {
+    // The composer no longer holds the picture: that is a fact about the next
+    // question, and it must not be projected backwards onto this one.
     const host = document.createElement("div");
-    host.innerHTML = render({ turns: [sent], image: null });
+    host.innerHTML = render({ turns: [sent], image: null, imageRemoved: true });
     const shot = host.querySelector('[data-testid="assistant-shot"]');
     expect(shot).not.toBeNull();
-    expect(shot?.getAttribute("data-in-context")).toBe("false");
-    expect(host.querySelector('[data-testid="assistant-shot-detached"]')?.textContent).toBe(
-      "No longer in context — this screenshot is not sent with later questions.",
+    expect(shot?.querySelector('[data-testid="assistant-shot-note"]')?.textContent).toBe(
+      "Attached with this question",
     );
+    expect(host.textContent ?? "").not.toContain("No longer in context");
+    // The removal is said once, at the composer, where it changes a decision.
+    expect(host.querySelectorAll('[data-testid="assistant-image-removed"]')).toHaveLength(1);
   });
 
-  it("also marks it out of context once a different image is in context", () => {
-    const html = render({ turns: [sent], image: attachment({ id: 2, name: "other.png" }) });
-    expect(html).toContain('data-in-context="false"');
-    expect(html).toContain('data-testid="assistant-shot-detached"');
+  it("says nothing on a turn that did not carry it", () => {
+    // A different image in context does not rewrite an earlier turn's record.
+    const host = document.createElement("div");
+    host.innerHTML = render({
+      turns: [turn()],
+      image: attachment({ id: 2, name: "other.png" }),
+    });
+    expect(host.querySelector('[data-testid="assistant-shot"]')).toBeNull();
+    expect(host.querySelector('[data-testid="assistant-shot-note"]')).toBeNull();
   });
 });
 
 describe("the context chip above the composer", () => {
   const sent = turn({
+    sendImage: true,
     image: {
       id: 1,
       name: "advisory.png",
@@ -548,19 +567,33 @@ describe("the context chip above the composer", () => {
     },
   });
 
-  it("names the retained file and offers a remove control with a real name", () => {
+  it("names the file, carries the consent checkbox, and offers a remove with a real name", () => {
     const host = document.createElement("div");
-    host.innerHTML = render({ turns: [sent], image: attachment() });
+    host.innerHTML = render({ turns: [sent], image: attachment(), sendImage: true });
     const chip = host.querySelector('[data-testid="assistant-image-context"]');
     expect(chip).not.toBeNull();
-    expect(chip?.textContent).toContain("screenshot in context");
+    expect(chip?.textContent).toContain("use screenshot in this question");
     expect(chip?.textContent).toContain("advisory.png");
+    // The control is a native checkbox, and its label is the sentence beside it.
+    const consent = chip?.querySelector<HTMLInputElement>(
+      '[data-testid="assistant-image-consent"]',
+    );
+    expect(consent?.getAttribute("type")).toBe("checkbox");
+    expect(consent?.checked).toBe(true);
+    expect(chip?.querySelector("label")?.textContent).toBe("use screenshot in this question");
     const remove = chip?.querySelector('[data-testid="assistant-image-context-remove"]');
     expect(remove?.getAttribute("aria-label")).toBe("Remove advisory.png from context");
     // Above the field the next question is typed into, not below the fold.
     const field = host.querySelector("#assistant-question");
     if (chip === null || field === null) throw new Error("missing composer markup");
     expect(chip.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the checkbox unticked when the next question will not carry it", () => {
+    const host = document.createElement("div");
+    host.innerHTML = render({ turns: [sent], image: attachment(), sendImage: false });
+    const consent = host.querySelector<HTMLInputElement>('[data-testid="assistant-image-consent"]');
+    expect(consent?.checked).toBe(false);
   });
 
   it("appears only once a turn has carried the attachment", () => {

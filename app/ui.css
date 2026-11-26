@@ -5545,17 +5545,12 @@ a.badge:hover {
   background: var(--ui-surface-raised);
 }
 
-/* Out of context is a fact about the send, not a failure: the picture stays
-   readable at reduced presence, and the note under it says why. */
-.assistant-shot[data-in-context="false"] .assistant-shot-thumb,
-.assistant-shot[data-in-context="false"] .assistant-shot-full-image {
-  filter: grayscale(1);
-  opacity: 0.5;
-}
-
+/* The send is a fact recorded on the turn, so this line states it and nothing
+   else: no greying, no "no longer" — a picture that was sent stays readable. */
 .assistant-shot-note {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
   line-height: 1.5;
   color: var(--ui-ink-3);
   max-width: 58ch;
@@ -6180,6 +6175,35 @@ a.badge:hover {
   font-size: 12px;
   color: var(--ui-ink-2);
   overflow-wrap: anywhere;
+}
+
+/* The chip's checkbox: one question's consent, at a 44px target so a thumb can
+   reach it. Lowercase on purpose — it reads as an instruction, not a label. */
+.assistant-image-consent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  color: var(--ui-ink-2);
+  cursor: pointer;
+}
+
+.assistant-image-consent input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ui-accent);
+  cursor: pointer;
+}
+
+.assistant-image-removed {
+  margin: 0;
+  font-family: var(--ui-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ui-ink-3);
 }
 
 .assistant-context-clear {

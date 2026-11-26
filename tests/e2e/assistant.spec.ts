@@ -42,7 +42,7 @@ const RAIL_COLLAPSED_SHOT = "/tmp/assistant-rail-collapsed-1440.png";
 const RAIL_EXPANDED_SHOT = "/tmp/assistant-rail-expanded-1440.png";
 const PROGRESS_SHOT = "/tmp/progress-streaming.png";
 const RETAINED_SHOT = "/tmp/assistant-retained-1440.png";
-const DETACHED_SHOT = "/tmp/assistant-out-of-context-1440.png";
+const REMOVED_SHOT = "/tmp/assistant-screenshot-removed-1440.png";
 const ATTACH_GUIDE_SHOT = "/tmp/attach-guide.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
@@ -550,14 +550,20 @@ test("a screenshot is picked, previewed, sent with the question, and removable",
   );
   await page.locator('[data-testid="assistant-citations"] summary').click();
   await expect(page.locator('[data-testid="assistant-citation"]').first()).toBeVisible();
-  // The composer's intake is clean again, and the image is retained instead: a
-  // chip above the field says what is still in context for the next question.
-  // (Before retention this assertion meant "the image is gone"; it now means
-  // "the intake is empty", which is what the composer owning one image implies.)
+  // The composer's intake is clean again, and the image is held instead: the
+  // chip above the field names the file and asks whether the next question
+  // wants it. (Before retention this assertion meant "the image is gone"; it now
+  // means "the intake is empty", which is what the composer holding one image
+  // implies.)
   await expect(preview).toHaveCount(0);
   const contextChip = page.locator('[data-testid="assistant-image-context"]');
-  await expect(contextChip).toContainText("screenshot in context");
+  await expect(contextChip).toContainText("use screenshot in this question");
   await expect(contextChip).toContainText("advisory.png");
+  // The turn that carried it says so, and nothing on the page claims otherwise.
+  await expect(page.locator('[data-testid="assistant-shot-note"]')).toHaveText(
+    "Attached with this question",
+  );
+  await expect(page.locator("body")).not.toContainText("No longer in context");
 
   // An oversized file is refused in plain language, before it is read.
   await page.setInputFiles('[data-testid="assistant-image-input"]', {
@@ -584,20 +590,52 @@ test("a screenshot is picked, previewed, sent with the question, and removable",
   await page.locator('[data-testid="assistant-image-remove"]').click();
   await expect(preview).toHaveCount(0);
   await expect(input).toHaveCount(1);
-  // Removing the retained image leaves the turn's record where it was, marked.
+  // Removing it deletes the payload: the chip goes, one sentence says what that
+  // meant, and the turn that was already sent keeps its own record and label.
   await expect(contextChip).toHaveCount(0);
-  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveAttribute(
-    "data-in-context",
-    "false",
+  await expect(page.locator('[data-testid="assistant-image-removed"]')).toHaveText(
+    "Screenshot removed — it will not be sent again.",
+  );
+  await expect(page.locator('[data-testid="assistant-shot-note"]')).toHaveText(
+    "Attached with this question",
   );
 });
 
-test("the screenshot stays in the turn and in context until it is taken back", async ({ page }) => {
-  // Its own rate-limit identity: this journey sends three turns.
+/**
+ * AC7 — the user's own journey, and the four wire assertions in one place.
+ *
+ * Attach, ask about it, ask something else, point back at it, remove it, then
+ * remove it *mid-stream* — which is the reported repro. The claim under test is
+ * narrow and checkable: the payload rides on the questions that asked for it,
+ * a turn's label never flips when the composer changes, and `×` ends the picture
+ * for good. Byte counts are read off the bodies that actually went out.
+ */
+test("the screenshot is sent only when the question asks for it", async ({ page }) => {
+  // Its own rate-limit identity: this journey sends five turns.
   await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.96" });
   await gotoDesk(page);
   const chatPost = (candidate: Request): boolean =>
     candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST";
+  const chatBodies: Array<Record<string, unknown>> = [];
+  page.on("request", (candidate) => {
+    if (chatPost(candidate)) chatBodies.push(candidate.postDataJSON() as Record<string, unknown>);
+  });
+  /** The payload, in UTF-8 bytes of the data URL the route received. */
+  const imageBytes = (body: Record<string, unknown> | undefined): number => {
+    const image = body?.image as { dataUrl?: string } | undefined;
+    return image?.dataUrl === undefined ? 0 : Buffer.byteLength(image.dataUrl, "utf8");
+  };
+  const ask = async (question: string): Promise<Request> => {
+    await page.locator("#assistant-question").fill(question);
+    const [request] = await Promise.all([
+      page.waitForRequest(chatPost),
+      page.keyboard.press("Enter"),
+    ]);
+    await expect(page.locator('[data-testid="assistant-answer"]').last()).toContainText(
+      "canned answer of the test transport",
+    );
+    return request;
+  };
 
   await page.setInputFiles('[data-testid="assistant-image-input"]', {
     name: "advisory.png",
@@ -608,18 +646,18 @@ test("the screenshot stays in the turn and in context until it is taken back", a
   // Staged only: nothing is in context until a turn has carried it.
   await expect(page.locator('[data-testid="assistant-image-context"]')).toHaveCount(0);
 
-  await page.locator("#assistant-question").fill("Which CVE ids are in this screenshot?");
-  const [first] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
+  // AC1 — the question the picture was attached for carries it, once.
+  const first = await ask("Which CVE ids are in this screenshot?");
   const firstBody = first.postDataJSON() as { image?: { dataUrl: string } };
+  expect(Object.hasOwn(firstBody, "image")).toBe(true);
   expect(firstBody.image?.dataUrl).toMatch(/^data:image\/png;base64,/);
-  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
-    "canned answer of the test transport",
-  );
+  const sentBytes = Buffer.byteLength(firstBody.image?.dataUrl ?? "", "utf8");
+  expect(sentBytes).toBe(790);
 
-  // The thumbnail is part of the question block: inside the turn, under the
-  // words it was attached to, and named in reader words rather than base64.
-  const turn = page.locator('[data-testid="assistant-turn"]').first();
-  const shot = turn.locator('[data-testid="assistant-shot"]');
+  // The thumbnail is part of the question block, and the note is the record of
+  // the send — not a comment on what the composer is holding now.
+  const firstTurn = page.locator('[data-testid="assistant-turn"]').first();
+  const shot = firstTurn.locator('[data-testid="assistant-shot"]');
   await expect(shot).toBeVisible();
   await expect(shot.locator(".assistant-shot-summary img")).toHaveAttribute(
     "alt",
@@ -627,8 +665,10 @@ test("the screenshot stays in the turn and in context until it is taken back", a
   );
   await expect(shot.locator("summary")).toContainText("advisory.png");
   await expect(shot.locator("summary")).toContainText("PNG");
-  await expect(shot).toHaveAttribute("data-in-context", "true");
-  await expect(turn.locator(".assistant-question")).toBeVisible();
+  await expect(shot.locator('[data-testid="assistant-shot-note"]')).toHaveText(
+    "Attached with this question",
+  );
+  await expect(firstTurn.locator(".assistant-question")).toBeVisible();
   // The picture is the turn's record, not the payload: nothing on screen carries
   // the full-size data URL as text.
   await expect(shot.locator("summary")).not.toContainText("base64");
@@ -638,8 +678,8 @@ test("the screenshot stays in the turn and in context until it is taken back", a
   await page.keyboard.press("Enter");
   await expect(shot.locator('[data-testid="assistant-shot-details"]')).toHaveAttribute("open", "");
   await expect(shot.locator(".assistant-shot-full-image")).toBeVisible();
-  // The state the change report shows: the picture in the turn, the chip naming
-  // it above the composer, and nothing duplicated between them.
+  // The state the change report shows: the picture in the turn, the chip above
+  // the composer, and nothing duplicated between them.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: RETAINED_SHOT });
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -649,43 +689,97 @@ test("the screenshot stays in the turn and in context until it is taken back", a
     "",
   );
 
-  // The chip names what is still in context, and its control names what it does.
+  // The chip is the consent: a labelled native checkbox, the file, and `×`.
   const chip = page.locator('[data-testid="assistant-image-context"]');
   await expect(chip).toBeVisible();
-  await expect(chip).toContainText("screenshot in context");
+  const consent = page.locator('[data-testid="assistant-image-consent"]');
+  await expect(chip.locator("label")).toHaveText("use screenshot in this question");
+  // After the send it is unticked again: the next question decides on its words.
+  await expect(consent).not.toBeChecked();
   await expect(page.locator('[data-testid="assistant-image-context-remove"]')).toHaveAttribute(
     "aria-label",
     "Remove advisory.png from context",
   );
 
-  // Retention, measured on the wire: the follow-up carries the same image.
-  await page.locator("#assistant-question").fill("And which of those are in KEV?");
-  const [second] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
-  const secondBody = second.postDataJSON() as { image?: { dataUrl: string } };
-  expect(secondBody.image?.dataUrl).toBe(firstBody.image?.dataUrl);
+  // AC2 — a plain policy question sends no payload at all. This is the measured
+  // defect: 4.0.5 shipped the same 41,538 bytes here.
+  const second = await ask("What is the KEV deadline for federal agencies?");
+  const secondBody = second.postDataJSON() as Record<string, unknown>;
+  expect(Object.hasOwn(secondBody, "image")).toBe(false);
+  expect(imageBytes(secondBody)).toBe(0);
+  // The picture is still held — it just was not sent — and the second turn
+  // carries no record of it.
+  await expect(chip).toBeVisible();
   await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(2);
-  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="assistant-shot-note"]')).toHaveCount(1);
 
-  // Removing it stops the send and marks the historical thumbnail, which stays.
+  // AC3 — a question that points at it sends it again, byte for byte. The
+  // checkbox says so before the send, because it is the decision.
+  await page.locator("#assistant-question").fill("Explain that screenshot again.");
+  await expect(consent).toBeChecked();
+  const third = await ask("Explain that screenshot again.");
+  const thirdBody = third.postDataJSON() as { image?: { dataUrl: string } };
+  expect(Object.hasOwn(thirdBody, "image")).toBe(true);
+  expect(thirdBody.image?.dataUrl).toBe(firstBody.image?.dataUrl);
+  expect(imageBytes(thirdBody)).toBe(sentBytes);
+  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="assistant-shot-note"]')).toHaveCount(2);
+
+  // AC5 — every turn that sent it says so; the retroactive note is gone.
+  for (const note of await page.locator('[data-testid="assistant-shot-note"]').allTextContents()) {
+    expect(note).toBe("Attached with this question");
+  }
+  await expect(page.locator("body")).not.toContainText("No longer in context");
+
+  // AC4 + the reported repro: remove it while a turn is streaming. The request
+  // already left with the picture; the label on that in-flight turn must not
+  // flip when the composer changes underneath it.
+  await page.locator("#assistant-question").fill("Explain that screenshot again.");
+  await expect(consent).toBeChecked();
+  const [fourth] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
+  await expect(page.locator('[data-testid="assistant-working"]')).toBeVisible();
   await page.locator('[data-testid="assistant-image-context-remove"]').click();
   await expect(chip).toHaveCount(0);
-  await expect(shot).toHaveAttribute("data-in-context", "false");
-  await expect(shot.locator('[data-testid="assistant-shot-detached"]')).toContainText(
-    "No longer in context",
+  // One sentence, above the composer, saying what `×` meant.
+  await expect(page.locator('[data-testid="assistant-image-removed"]')).toHaveText(
+    "Screenshot removed — it will not be sent again.",
   );
-  // Greyed, kept, and explained: the record does not pretend the image is gone,
-  // and it does not pretend it is still being sent.
-  await expect(shot.locator(".assistant-shot-thumb")).toHaveCSS("filter", /grayscale/);
+  await expect(page.locator('[data-testid="assistant-image-removed"]')).toHaveCount(1);
+  // The in-flight turn carried it, and its label still says so.
+  const fourthBody = fourth.postDataJSON() as { image?: { dataUrl: string } };
+  expect(Object.hasOwn(fourthBody, "image")).toBe(true);
+  expect(fourthBody.image?.dataUrl).toBe(firstBody.image?.dataUrl);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(4);
+  const inFlight = page.locator('[data-testid="assistant-turn"]').nth(3);
+  await expect(inFlight.locator('[data-testid="assistant-shot-note"]')).toHaveText(
+    "Attached with this question",
+  );
+  await expect(page.locator('[data-testid="assistant-shot-note"]')).toHaveCount(3);
   await page.evaluate(() => {
     document.querySelector('[data-testid="assistant-shot"]')?.scrollIntoView({ block: "center" });
   });
-  await page.screenshot({ path: DETACHED_SHOT });
+  await page.screenshot({ path: REMOVED_SHOT });
 
-  await page.locator("#assistant-question").fill("Anything else in the window?");
-  const [third] = await Promise.all([page.waitForRequest(chatPost), page.keyboard.press("Enter")]);
-  const thirdBody = third.postDataJSON() as Record<string, unknown>;
-  expect(Object.hasOwn(thirdBody, "image")).toBe(false);
-  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(3);
+  // AC4 — after `×`, even a question that names the screenshot sends nothing:
+  // removal is the reader's decision, and the words are only a guess.
+  const fifth = await ask("And what does the screenshot say the severity is?");
+  const fifthBody = fifth.postDataJSON() as Record<string, unknown>;
+  expect(Object.hasOwn(fifthBody, "image")).toBe(false);
+  expect(imageBytes(fifthBody)).toBe(0);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(5);
+  // History keeps its three labels; the composer keeps its one sentence.
+  await expect(page.locator('[data-testid="assistant-shot-note"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="assistant-image-removed"]')).toHaveCount(1);
+
+  // The bodies, in order, as the four assertions above claim.
+  expect(chatBodies.map((body) => imageBytes(body))).toEqual([
+    sentBytes,
+    0,
+    sentBytes,
+    sentBytes,
+    0,
+  ]);
 });
 
 test("the retained screenshot is audited open and fits a phone", async ({ page }) => {

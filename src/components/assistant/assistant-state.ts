@@ -102,7 +102,17 @@ export interface AssistantTurn {
   tools: AssistantToolLine[];
   /** The pinned record this question was asked about. */
   aboutCve: string | null;
-  /** The screenshot sent with this question, or null when it carried none. */
+  /**
+   * Whether *this* question's request carried the screenshot.
+   *
+   * Consent is per turn, decided once at send time and then stored, because the
+   * composer's state moves on: a reader who removes the chip is telling the desk
+   * what to do next, not what happened three questions ago. The turn is the only
+   * place the answer to "did this question send the picture?" can be read, and
+   * the label under the thumbnail is that answer — never a re-derivation.
+   */
+  sendImage: boolean;
+  /** The screenshot this question sent, or null when it carried none. */
   image: AssistantTurnImage | null;
 }
 

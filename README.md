@@ -92,11 +92,16 @@ the image, then each one is checked against this dataset: the third row is there
 to show the path where an id does not resolve and the answer says so.
 
 The screenshot then stays in the conversation: it renders inside your question as
-an expandable thumbnail, and a `screenshot in context` row above the composer
-keeps it attached to every later question — so "explain that screenshot" works.
-Removing that row stops it being sent, and each turn that carried it greys its
-thumbnail and says so. The desk keeps a downscaled copy per turn, never the
-payload, and nothing is written to browser storage.
+an expandable thumbnail, and a row above the composer names the file and asks
+`use screenshot in this question`. It is sent with the question it was attached
+for, and again with any later question that points at it — "explain that
+screenshot" carries it, "what is the KEV deadline for federal agencies?" does
+not. Unticking the box sends one question without it; `×` removes the file
+outright and says so (`Screenshot removed — it will not be sent again.`), and no
+later question can bring it back. Each turn that sent it says `Attached with this
+question` under its thumbnail, and a turn that did not send it says nothing at
+all. The desk keeps a downscaled copy per turn, never the payload, and nothing is
+written to browser storage.
 
 The id rule is enforced in code, not only asked for in the prompt. Every citation
 is an id a tool returned, and the turn scans the prose for ids that no tool
@@ -137,16 +142,16 @@ fetch the API endpoint instead of describing an empty page.
 
 ### A grounded answer, with its evidence ledger
 
-![Assistant at 1440×900 in dark theme, scrolled to the answer: the question “Which KEV entries were added in the last 30 days? Answer as a table.” with the attached advisory.png rendered as a thumbnail inside the turn under the words, named “advisory.png · 576 B · PNG” with an expand control; the settled two-row table; the citation union folded to one line reading “12 records cited”; a “screenshot in context · advisory.png · ×” row above the composer; and the Evidence column showing its legend, “1 tool call”, “kev_window”, “days=30”, “12 rows”, six chips and a “+6 more” control](docs/images/assistant.png)
+![Assistant at 1440×900 in dark theme, scrolled to the answer: the question “Which KEV entries were added in the last 30 days? Answer as a table.” with the attached advisory.png rendered as a thumbnail inside the turn under the words, named “advisory.png · 576 B · PNG” with an expand control; the settled two-row table; the citation union folded to one line reading “12 records cited”; the screenshot row above the composer naming advisory.png with its consent box and ×; and the Evidence column showing its legend, “1 tool call”, “kev_window”, “days=30”, “12 rows”, six chips and a “+6 more” control](docs/images/assistant.png)
 
 A settled turn. The question, answer, follow-up, brief action and composer share
 one left edge (no bubbles, no speaker indentation), and the answer is rendered —
 the table with its metric/value/note header is the desk's own, never a model's
 markup. The attached screenshot is part of the question, not a gallery beside
 it: the **thumbnail sits inside the turn** under the words it was sent with,
-named by file, size and format, and opens in place. The **`screenshot in
-context`** row above the composer says the image is still what a follow-up turn
-will send, and its `×` takes it back. The turn's citation union is **folded to
+named by file, size and format, and opens in place. The **screenshot row** above
+the composer names the file, carries the `use screenshot in this question` box,
+and takes it back with `×`. The turn's citation union is **folded to
 one line** (`12 records cited`); opening it lists chips that link to
 `/explore?q=<id>`. The **Evidence** column on the right states its legend — each
 line is one server-side lookup, `Rows` is how many records it returned, the

@@ -1,17 +1,16 @@
-// The desk's retention behaviour, driven the way a reader drives it.
+// The consent rule, driven the way a reader drives it.
 //
-// The rule under test is one sentence: a screenshot sent with a question stays
-// in context until it is removed. That is state — a thumbnail in the turn, a
-// chip above the composer, and an `image` key on *every* request while it is
-// held — so it is asserted against a mounted `AssistantDesk` with a stubbed
-// `fetch`, not against a static render. The stream is a real SSE body parsed by
-// the production parser; only the socket is replaced.
+// The rule under test is one sentence: the screenshot rides only on the question
+// that asked for it. That is state — a per-turn `sendImage`, decided at send time
+// and stored on the turn — so it is asserted against a mounted `AssistantDesk`
+// with a stubbed `fetch`: on the bodies that actually went out, and on the label
+// each turn renders. The stream is a real SSE body parsed by the production
+// parser; only the socket is replaced.
 //
-// What this file proves: the turn keeps a picture and never the payload, the
-// chip appears only once a turn has carried the attachment, a follow-up request
-// re-sends the same image, and removing the chip both stops the send and greys
-// the historical thumbnail with a note. What it does not prove: that a live
-// model reads the image. No test can prove that.
+// What this file proves, measured rather than inferred: the attach turn sends it,
+// the next plain question does not, a question that points at it does, and `×`
+// ends it permanently. What it does not prove: that a live model reads the image.
+// No test can prove that.
 //
 // @vitest-environment jsdom
 
@@ -140,6 +139,27 @@ function chip(): HTMLElement | null {
   return host.querySelector<HTMLElement>('[data-testid="assistant-image-context"]');
 }
 
+function consent(): HTMLInputElement | null {
+  return host.querySelector<HTMLInputElement>('[data-testid="assistant-image-consent"]');
+}
+
+function removedNote(): HTMLElement | null {
+  return host.querySelector<HTMLElement>('[data-testid="assistant-image-removed"]');
+}
+
+/** Each turn's label, in order. */
+function shotNotes(): string[] {
+  return [...host.querySelectorAll('[data-testid="assistant-shot-note"]')].map(
+    (node) => node.textContent ?? "",
+  );
+}
+
+/** The payload a request carried, as the UTF-8 bytes the route receives. */
+function imageBytes(body: Record<string, unknown> | undefined): number | null {
+  const image = body?.image as { dataUrl?: string } | undefined;
+  return image?.dataUrl === undefined ? null : new TextEncoder().encode(image.dataUrl).length;
+}
+
 async function attach(file: File): Promise<void> {
   const input = host.querySelector<HTMLInputElement>('[data-testid="assistant-image-input"]');
   if (input === null) throw new Error("no file input");
@@ -169,8 +189,20 @@ async function ask(question: string): Promise<void> {
   await flush();
 }
 
-describe("the screenshot stays in the turn and in context", () => {
-  it("renders the attached image inside the question block, with alt text", async () => {
+/** `×` on the chip: the payload goes, immediately and for good. */
+async function removeImage(): Promise<void> {
+  const remove = chip()?.querySelector<HTMLButtonElement>(
+    '[data-testid="assistant-image-context-remove"]',
+  );
+  if (remove === null || remove === undefined) throw new Error("no remove control");
+  await act(async () => {
+    remove.click();
+  });
+  await flush();
+}
+
+describe("the screenshot is sent only when the question asks for it", () => {
+  it("AC1 — the attach turn carries it, measured on the wire", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     await attach(pngFile());
     await ask("Which CVE ids are in this screenshot?");
@@ -186,9 +218,10 @@ describe("the screenshot stays in the turn and in context", () => {
     // attachment carried, and the file is named in the summary beside it.
     expect(thumb?.getAttribute("src")?.startsWith("data:image/png;base64,")).toBe(true);
     expect(shot?.querySelector(".assistant-shot-name")?.textContent).toBe("advisory.png");
-    expect(shot?.getAttribute("data-in-context")).toBe("true");
-    // Still in context, so there is nothing to explain away.
-    expect(shot?.querySelector('[data-testid="assistant-shot-detached"]')).toBeNull();
+    // The turn that sent it says so, in those words and no others.
+    expect(shot?.querySelector('[data-testid="assistant-shot-note"]')?.textContent).toBe(
+      "Attached with this question",
+    );
 
     // The summary names the file, and the name is text — never a data URL.
     const summary = shot?.querySelector("summary");
@@ -199,10 +232,15 @@ describe("the screenshot stays in the turn and in context", () => {
       }
     }
 
-    // The request that carried it did carry it, once.
+    // The request that carried it did carry it, once, and the payload is the
+    // same picture the turn shows.
     expect(bodies).toHaveLength(1);
     const image = bodies[0]?.image as { dataUrl?: string } | undefined;
     expect(image?.dataUrl).toBe(thumb?.getAttribute("src"));
+    expect(imageBytes(bodies[0])).toBe(
+      new TextEncoder().encode(`data:image/png;base64,${btoa(String.fromCharCode(...PNG_1X1))}`)
+        .length,
+    );
     // Nothing about the image reaches a log: not the payload, not the base64.
     for (const call of consoleSpy.mock.calls) {
       expect(call.join(" ")).not.toContain("data:");
@@ -210,7 +248,128 @@ describe("the screenshot stays in the turn and in context", () => {
     consoleSpy.mockRestore();
   });
 
-  it("shows the context chip only once a turn has carried the attachment", async () => {
+  it("AC2 — the next question, which is not about the picture, sends no image at all", async () => {
+    await attach(pngFile());
+    await ask("Which CVE ids are in this screenshot?");
+    // Plain policy words: none of the reference words, so no payload.
+    await ask("What is the KEV deadline for federal agencies?");
+
+    expect(bodies).toHaveLength(2);
+    expect(imageBytes(bodies[0])).toBeGreaterThan(0);
+    expect(Object.hasOwn(bodies[1] ?? {}, "image")).toBe(false);
+    // The chip is still there — the picture is still held, it just was not sent
+    // — and the second turn carries no record of it.
+    expect(chip()).not.toBeNull();
+    expect(host.querySelectorAll('[data-testid="assistant-shot"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-testid="assistant-turn"]')).toHaveLength(2);
+    expect(shotNotes()).toEqual(["Attached with this question"]);
+  });
+
+  it("AC3 — a question that points at it sends it again, byte for byte", async () => {
+    await attach(pngFile());
+    await ask("Which CVE ids are in this screenshot?");
+    await ask("Explain that screenshot again.");
+
+    expect(bodies).toHaveLength(2);
+    const first = (bodies[0]?.image as { dataUrl?: string } | undefined)?.dataUrl;
+    const second = (bodies[1]?.image as { dataUrl?: string } | undefined)?.dataUrl;
+    expect(first?.startsWith("data:image/png;base64,")).toBe(true);
+    expect(second).toBe(first);
+    expect(imageBytes(bodies[1])).toBe(imageBytes(bodies[0]));
+    // Two turns, two records: each says what *its* request carried.
+    expect(host.querySelectorAll('[data-testid="assistant-shot"]')).toHaveLength(2);
+    expect(shotNotes()).toEqual(["Attached with this question", "Attached with this question"]);
+  });
+
+  it("AC4 — after ×, even a question that points at it sends nothing", async () => {
+    await attach(pngFile());
+    await ask("Which CVE ids are in this screenshot?");
+    await removeImage();
+
+    expect(chip()).toBeNull();
+    // The question names the screenshot and is still sent without it: R5 beats
+    // R3, because removal is the reader's decision and the words are a guess.
+    await ask("And what does the screenshot say the severity is?");
+    expect(bodies).toHaveLength(2);
+    expect(Object.hasOwn(bodies[1] ?? {}, "image")).toBe(false);
+  });
+
+  it("AC5 — a turn that sent it says so, and nothing ever says 'No longer in context'", async () => {
+    await attach(pngFile());
+    await ask("Which CVE ids are in this screenshot?");
+    expect(shotNotes()).toEqual(["Attached with this question"]);
+
+    // The old note was derived from composer state and applied to history; it is
+    // gone, along with the greyscale that read as "not sent".
+    await removeImage();
+    expect(host.textContent ?? "").not.toContain("No longer in context");
+    expect(shotNotes()).toEqual(["Attached with this question"]);
+    expect(host.querySelector('[data-testid="assistant-shot"]')?.getAttribute("style")).toBeNull();
+  });
+
+  it("AC6 — after ×, the composer says what that meant, exactly once", async () => {
+    await attach(pngFile("shot.png"));
+    await ask("Which CVE ids are in this screenshot?");
+    // Nothing is announced before the removal: the chip is the state.
+    expect(removedNote()).toBeNull();
+
+    await removeImage();
+    expect(removedNote()?.textContent).toBe("Screenshot removed — it will not be sent again.");
+    expect(host.querySelectorAll('[data-testid="assistant-image-removed"]')).toHaveLength(1);
+
+    // The chip is replaced by the note, not joined by it, and the note survives
+    // the next question: nothing carries the picture again.
+    expect(chip()).toBeNull();
+    await ask("And which of those are in KEV?");
+    expect(host.querySelectorAll('[data-testid="assistant-image-removed"]')).toHaveLength(1);
+    // History keeps its own label.
+    expect(shotNotes()).toEqual(["Attached with this question"]);
+  });
+
+  it("unticks the consent for one question without removing the file", async () => {
+    await attach(pngFile("shot.png"));
+    await ask("Which CVE ids are in this screenshot?");
+
+    // Staged for the next question, ticked because a picture is held and the
+    // words are still about it.
+    expect(consent()?.checked).toBe(false);
+    await act(async () => {
+      consent()?.click();
+    });
+    await flush();
+    expect(consent()?.checked).toBe(true);
+
+    // Unticked: this question is sent without the image, and the file stays.
+    await act(async () => {
+      consent()?.click();
+    });
+    await flush();
+    expect(consent()?.checked).toBe(false);
+    await ask("Explain that screenshot again.");
+    expect(Object.hasOwn(bodies[1] ?? {}, "image")).toBe(false);
+    expect(chip()).not.toBeNull();
+    expect(removedNote()).toBeNull();
+  });
+
+  it("sends the image for a plain question the reader ticked it for", async () => {
+    await attach(pngFile("shot.png"));
+    await ask("Which CVE ids are in this screenshot?");
+
+    await act(async () => {
+      consent()?.click();
+    });
+    await flush();
+    await ask("What is the KEV deadline for federal agencies?");
+
+    expect(bodies).toHaveLength(2);
+    // The reader said yes; the words were not asked to agree.
+    expect(imageBytes(bodies[1])).toBeGreaterThan(0);
+    expect(shotNotes()).toEqual(["Attached with this question", "Attached with this question"]);
+    // Ticked for one question only: the send resets it to the question's words.
+    expect(consent()?.checked).toBe(false);
+  });
+
+  it("shows the chip only once a turn has carried the attachment", async () => {
     await attach(pngFile("shot.png"));
     // Staged, not sent: the intake preview is the whole story, no second chip.
     expect(chip()).toBeNull();
@@ -218,7 +377,7 @@ describe("the screenshot stays in the turn and in context", () => {
     await ask("Which CVE ids are in this screenshot?");
     const row = chip();
     expect(row).not.toBeNull();
-    expect(row?.textContent).toContain("screenshot in context");
+    expect(row?.textContent).toContain("use screenshot in this question");
     expect(row?.textContent).toContain("shot.png");
     // The intake went back to its empty state: the chip is now the one place the
     // retained image is shown, and a second screenshot can be attached.
@@ -229,50 +388,5 @@ describe("the screenshot stays in the turn and in context", () => {
     );
     // A bare `×` is not a name; the control says what it removes.
     expect(remove?.getAttribute("aria-label")).toBe("Remove shot.png from context");
-  });
-
-  it("re-sends the same image on every later turn while it is in context", async () => {
-    await attach(pngFile());
-    await ask("Which CVE ids are in this screenshot?");
-    await ask("And which of those are in KEV?");
-
-    expect(bodies).toHaveLength(2);
-    const first = (bodies[0]?.image as { dataUrl?: string } | undefined)?.dataUrl;
-    const second = (bodies[1]?.image as { dataUrl?: string } | undefined)?.dataUrl;
-    expect(first?.startsWith("data:image/png;base64,")).toBe(true);
-    // Retention, stated as the request it produces: the follow-up carries it.
-    expect(second).toBe(first);
-    // Both turns keep their own record of it.
-    expect(host.querySelectorAll('[data-testid="assistant-shot"]')).toHaveLength(2);
-    expect(chip()).not.toBeNull();
-  });
-
-  it("removing the chip stops the send and marks the thumbnail out of context", async () => {
-    await attach(pngFile());
-    await ask("Which CVE ids are in this screenshot?");
-
-    const remove = chip()?.querySelector<HTMLButtonElement>(
-      '[data-testid="assistant-image-context-remove"]',
-    );
-    await act(async () => {
-      remove?.click();
-    });
-    await flush();
-
-    // (a) the send stops.
-    expect(chip()).toBeNull();
-    await ask("And which of those are in KEV?");
-    expect(bodies).toHaveLength(2);
-    expect(Object.hasOwn(bodies[1] ?? {}, "image")).toBe(false);
-
-    // (b) the historical thumbnail stays, greyed, with the reason in words.
-    const shot = host.querySelector('[data-testid="assistant-shot"]');
-    expect(shot).not.toBeNull();
-    expect(shot?.getAttribute("data-in-context")).toBe("false");
-    expect(shot?.querySelector('[data-testid="assistant-shot-detached"]')?.textContent).toBe(
-      "No longer in context — this screenshot is not sent with later questions.",
-    );
-    // The turn that never carried one renders no thumbnail at all.
-    expect(host.querySelectorAll('[data-testid="assistant-shot"]')).toHaveLength(1);
   });
 });
