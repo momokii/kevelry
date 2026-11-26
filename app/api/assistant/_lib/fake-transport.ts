@@ -63,12 +63,13 @@ export const AI_FAKE_HEADING_MARKER = "with a heading";
 export const AI_FAKE_ABORT_MARKER = "drop the connection";
 
 /**
- * How many times the marker above may break a stream in this process.
+ * How many times the marker above may break a stream before it is re-armed.
  *
  * One, deliberately. A retry re-sends the same question, so a marker that broke
  * every attempt could never prove the half of the journey that matters most —
- * that asking again works. The first attempt dies; every later one is answered
- * in full.
+ * that asking again works. The first attempt dies, the next answer that arrives
+ * in full re-arms it, so a repeated run of the same journey behaves the same
+ * way instead of depending on how many turns the process has already served.
  */
 let abortBudget = 1;
 
@@ -253,11 +254,12 @@ export function createFakeAssistantTransport(
     const answering = round > 0;
     const question = answering ? latestUserMessage(request.body) : "";
     // Only an answering round can die: the tool round has to run for the desk to
-    // have anything to show, and the one-shot budget is spent by the first
-    // answer that asks for it.
+    // have anything to show. A round that answers in full re-arms the one-shot
+    // budget, so the next run of the same journey starts where this one did.
     const aborts =
       answering && abortBudget > 0 && question.toLowerCase().includes(AI_FAKE_ABORT_MARKER);
     if (aborts) abortBudget -= 1;
+    else if (answering) abortBudget = 1;
     const body = answering
       ? answerRound(
           question.includes(AI_FAKE_UNSUPPORTED_ID),
