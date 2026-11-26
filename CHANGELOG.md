@@ -3,6 +3,49 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.6 — 2026-11-26
+
+A screenshot is sent with the question that asks for it instead of forever,
+turn labels state what happened rather than what is true now, and a turn that
+died mid-stream stops claiming it finished. No migration and no config change;
+the assistant and the test suite carry it.
+
+### Fixed
+
+- **A screenshot goes with one question, not every question after it.** The send
+  condition was "an image exists", so an attached picture rode along on every
+  later turn — a plain follow-up about policy shipped 41,538 bytes of image it
+  had nothing to do with. Consent is now per question: the image goes with the
+  question that attached it, and after that only when that question's own wording
+  refers to it (`screenshot`, `this image`, …) or the reader ticks
+  `use screenshot in this question`. Measured before and after: the same plain
+  follow-up carried 41,538 bytes of image before, zero now.
+- **A turn's label states what that turn did.** Labels were derived from live
+  state and applied to history, so the moment the payload was cleared, a turn
+  whose request _did_ carry the image was told `No longer in context` — a
+  statement about the composer, sitting under a turn it was never true of. The
+  label is now a fact recorded at send time: `Attached with this question`, or
+  nothing at all. Removing the image leaves one note above the composer
+  (`Screenshot removed — it will not be sent again.`) and changes nothing already
+  said.
+- **A failed turn no longer looks finished.** A stream that broke mid-answer kept
+  its partial text, offered _Download brief_ and follow-ups, and was replayed to
+  the model as history, so a half-sentence read as a whole answer and then sat in
+  the context of the next turn. It is now marked incomplete
+  (`Incomplete: the answer stopped before it finished.`), excluded from model
+  history and the exported brief, and **Retry** continues the attempt that failed
+  instead of posting the question a second time.
+
+### Tests
+
+- Four browser journeys close the gaps the audit named: an error mid-stream then
+  retry, double-Enter cannot double-send, a refresh mid-stream starts clean, and
+  the attach-plus-consent layout at 390px. The suite is 165 e2e tests and 1119
+  unit tests (3 skipped, network-gated).
+
+**Upgrade notes:** no migration, no config change. Recreate the container to pick
+up 4.0.6 (`docker compose up -d --force-recreate`).
+
 ## 4.0.5 — 2026-11-25
 
 The v4 assistant stops looking stopped, says what a screenshot is good for, and

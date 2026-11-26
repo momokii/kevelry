@@ -1,6 +1,8 @@
 # v4 Image Context Truth — Plan
 
-**Status:** researched, not implemented · **Scope:** the screenshot contract between composer,
+**Status:** implemented and verified — R1–R6 shipped in `441009f`, AC1–AC7 pass, and the
+audit's four close-now journeys followed in `5bd2961` (`0e4ba58` re-arms the abort); released
+as 4.0.6 · **Scope:** the screenshot contract between composer,
 transcript and request body · **Supersedes:** the retention decision in
 `docs/plans/v4-attach-and-progress.md` §Measured evidence ("re-send the image on every turn"),
 which 4.0.5 (`994ca50`) shipped without revisiting the label derived from it · **Evidence:** code at
@@ -52,42 +54,47 @@ attach turn, carries the same false note. Both thumbnails go grayscale.
 
 ## Part B — the fix
 
-**R1 — consent is per turn.** `image` becomes a staged payload plus a `sendImage` boolean; `body.image`
+**R1 — consent is per turn.** _Implemented in `441009f`._ `image` becomes a staged payload plus a `sendImage` boolean; `body.image`
 is set only when `sendImage` is true at send time. Replaces `AssistantDesk.tsx:300`.
 
-**R2 — the attach turn sends it.** The first question after an attach defaults `sendImage` to true:
+**R2 — the attach turn sends it.** _Implemented in `441009f`._ The first question after an attach defaults `sendImage` to true:
 the user attached a picture to ask about it.
 
-**R3 — a referential question re-sends it.** `refersToAttachment(question)`, case-insensitive,
+**R3 — a referential question re-sends it.** _Implemented in `441009f`._ `refersToAttachment(question)`, case-insensitive,
 word-boundary: `/\b(screenshot|image|picture|photo|attached|this|that|it)\b/i`. A false positive costs
 ≤912 prompt tokens (measured in `v4-attach-and-progress.md`); a false negative costs an answer about a
 picture the model cannot see. That asymmetry, not the cost, decides it.
 
-**R4 — the chip is the control.** `use screenshot in this question` — a real checkbox, the file name,
+**R4 — the chip is the control.** _Implemented in `441009f`._ `use screenshot in this question` — a real checkbox, the file name,
 and ×. Checked for the question immediately after the attach only; reset to unchecked after every
 send; the user ticks it to opt in later. Un-ticking is a choice about one question; × is removal of
 the file.
 
-**R5 — × is immediate and permanent.** It discards the payload, clears the staged image, and R3 may not
+**R5 — × is immediate and permanent.** _Implemented in `441009f`._ It discards the payload, clears the staged image, and R3 may not
 resurrect it: the only way back is re-attaching.
 
-**R6 — labels state what happened.** The label is stored on the turn at send time, never derived from
+**R6 — labels state what happened.** _Implemented in `441009f`._ The label is stored on the turn at send time, never derived from
 composer state. A turn has a thumbnail only because its request carried the image, so it reads
-`Attached with this question`. `Removed from context` is a composer-level note, shown once, after ×.
+`Attached with this question`. `Screenshot removed — it will not be sent again.` is a composer-level note, shown once, after ×.
 Delete the retroactive note (`AssistantView.tsx:253-256`), the `contextImageId` plumbing (`:786-787`,
 `:207`) and the grayscale `data-in-context` styling, which reads as "not sent".
 
 **Not changed:** the route, the transport, the body cap, and `refersToAttachment`'s home in `assistant-image.ts` (pure, unit-testable). Tests pinning today's behaviour move with it: `tests/assistant-desk.test.tsx:234`, `:250`, and `tests/e2e/assistant.spec.ts:663`.
 
-### Acceptance checks
+### Acceptance checks — all seven verified against `441009f`
 
 1. **AC1** attach turn → `Object.hasOwn(body, "image") === true`, `dataUrl` equals the rendered thumbnail.
 2. **AC2** next turn, plain question → `Object.hasOwn(body, "image") === false`.
 3. **AC3** "explain that screenshot" → present, byte-identical to AC1.
 4. **AC4** after ×, "and what does the screenshot say?" → absent (R3 must not re-arm a removed payload).
 5. **AC5** a sent turn reads `Attached with this question`; `No longer in context` appears nowhere.
-6. **AC6** after ×: `Removed from context` exactly once, above the composer; history keeps its label.
+6. **AC6** after ×: `Screenshot removed — it will not be sent again.` exactly once, above the composer; history keeps its label.
 7. **AC7** one journey, `the screenshot is sent only when the question asks for it`: attach → plain → referential → remove → ask, then a mid-stream × that asserts the in-flight turn's label does not flip.
+
+AC1–AC6 are asserted in order by that one journey in `tests/e2e/assistant.spec.ts`, and its second
+half is AC7: the turn that sent the image keeps `Attached with this question` after × while the
+composer gains `Screenshot removed — it will not be sent again.` `No longer in context` no longer
+exists in the tree.
 
 ## Part C — e2e coverage audit
 
@@ -105,14 +112,20 @@ Delete the retroactive note (`AssistantView.tsx:253-256`), the `contextImageId` 
 | Screenshots: pick/preview/send, retained, phone audit, guide | `:504`, `:595`, `:691`, `:734`, `:772` |
 | Compare, brief, follow-up, entry points                      | `:805`, `:888`, `:940`                 |
 
-| Gap                                      | Today                                           | Verdict   | Why                                                                                      |
-| ---------------------------------------- | ----------------------------------------------- | --------- | ---------------------------------------------------------------------------------------- |
-| Image truth across turns (this bug)      | none — `:595` asserts the sticky re-send        | close now | The reported defect; AC1–AC6 land here                                                   |
-| × mid-stream: label on a sent turn       | none                                            | close now | The exact screenshot; needs no app change, only AC7's second half                        |
-| Error mid-stream, then retry             | none                                            | close now | `networkFault` (`AssistantDesk.tsx:96`) is unproven; abort the SSE body via `page.route` |
-| Double-send prevention                   | none                                            | close now | One POST under double Enter is an invariant, and one assertion                           |
-| Refresh mid-stream                       | none — copy claims "a reload starts clean"      | close now | Also proves the image is never persisted; cheapest privacy proof                         |
-| 390px attach + chip compose flow         | `:309` layout, `:691` retained shot only        | close now | R4 adds the widest control on the narrowest screen                                       |
-| Rate-limit countdown in a browser        | unit only (`tests/assistant-view.test.tsx:262`) | later     | 11 streamed turns for a state already asserted at unit level                             |
-| Daily / session budget state             | unit only (`:274`, `:287`)                      | later     | Needs a seeded ledger fixture; no new client claim                                       |
-| Compare through to a rendered comparison | `:805` stops at the request                     | later     | The answer path is the same stream journey                                               |
+| Gap                                      | Today                                           | Verdict        | Why                                                                                         |
+| ---------------------------------------- | ----------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------- |
+| Image truth across turns (this bug)      | none — `:595` asserted the sticky re-send       | done `441009f` | The reported defect; AC1–AC6 landed here                                                    |
+| × mid-stream: label on a sent turn       | none                                            | done `441009f` | The exact screenshot; needed no app change, only AC7's second half                          |
+| Error mid-stream, then retry             | none                                            | done `5bd2961` | `networkFault` (`AssistantDesk.tsx:96`) is now proven; the SSE body aborts via `page.route` |
+| Double-send prevention                   | none                                            | done `5bd2961` | One POST under double Enter is an invariant, and one assertion                              |
+| Refresh mid-stream                       | none — copy claimed "a reload starts clean"     | done `5bd2961` | Also proves the image is never persisted; cheapest privacy proof                            |
+| 390px attach + chip compose flow         | `:309` layout, `:691` retained shot only        | done `5bd2961` | R4 adds the widest control on the narrowest screen                                          |
+| Rate-limit countdown in a browser        | unit only (`tests/assistant-view.test.tsx:262`) | later          | 11 streamed turns for a state already asserted at unit level                                |
+| Daily / session budget state             | unit only (`:274`, `:287`)                      | later          | Needs a seeded ledger fixture; no new client claim                                          |
+| Compare through to a rendered comparison | `:805` stops at the request                     | later          | The answer path is the same stream journey                                                  |
+
+**Closed by `5bd2961`, kept repeatable by `0e4ba58`:** the four journeys the audit marked close
+now — error then retry, double-send prevention, refresh mid-stream, and the 390px attach flow —
+ship with the fix. `0e4ba58` re-arms the fake transport's one-shot abort after a round answers in
+full, so the error journey behaves the same under `--repeat-each` or a Playwright retry instead of
+depending on how many turns the process has already served.

@@ -17,20 +17,29 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.5` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.4`, `4.0.3`, `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`,
-> `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> **Status:** `4.0.6` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.5`, `4.0.4`, `4.0.3`, `4.0.2`, `4.0.1`, `4.0.0`,
+> `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.5` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the assistant-attachment release: the working state proves itself (an
-> indeterminate sweep, the current lookup named, an elapsed counter that keeps
-> ticking under reduced motion, a composer that reads as busy), a keyboard-operable
-> **What works** disclosure beside Attach says what a screenshot is good for and
-> what it is not (with an example image in the docs), and an attached screenshot
-> stays in the conversation — rendered inside the question, re-sent on later turns
-> while a `screenshot in context` chip is present, greying its thumbnail when the
-> chip is removed. Everything is still escaped first and rendered with no HTML
-> injection. From 4.0.4: the web fallback negotiates JSON, the rail's id sample is
+> available as previous releases. The `4.0.6` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the screenshot-consent release: an attached image goes with the question that
+> attached it, and after that only when that question's wording refers to it or
+> the reader ticks `use screenshot in this question` — a plain follow-up carried
+> 41,538 bytes of image on every turn before, none now; a turn's label is a fact
+> recorded at send time (`Attached with this question`, or nothing) instead of the
+> live chip's state applied backwards to history; and a turn that failed
+> mid-stream is marked incomplete, kept out of model history and the exported
+> brief, with **Retry** continuing that attempt rather than re-posting the
+> question. Everything is still escaped first and rendered with no HTML
+> injection. From 4.0.5: the assistant-attachment release — the working state
+> proves itself (an indeterminate sweep, the current lookup named, an elapsed
+> counter that keeps ticking under reduced motion, a composer that reads as busy),
+> a keyboard-operable **What works** disclosure beside Attach says what a
+> screenshot is good for and what it is not (with an example image in the docs),
+> and an attached screenshot stays in the conversation — rendered inside the
+> question with its thumbnail, re-sent on later turns while a
+> `screenshot in context` row is present, greying its thumbnail when the row is
+> removed. From 4.0.4: the web fallback negotiates JSON, the rail's id sample is
 > 25 so a full 25-row call reads `25 rows`, an answer's lines keep a word boundary
 > in the copied or announced text, and a time-window table is pinned to
 > `CVE | Date | EPSS`. From 4.0.3: the assistant-hardening
@@ -44,7 +53,7 @@ risk score.
 > v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
 > automatically on boot against an existing volume, no manual step, and no
 > `/api/v1` route or response shape changed. The assistant is off on this image
-> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.0.5
+> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.0.6
 > needs no migration and no config change.
 
 ## What v4 adds
@@ -158,7 +167,7 @@ line is one server-side lookup, `Rows` is how many records it returned, the
 chips are what the answer can cite — then names the one tool call behind the
 answer, `kev_window` with `days=30` and `12 rows`, and shows six of its ids plus
 a `+6 more` disclosure: density is a hierarchy of calls and records, never an
-inner scrollbar. The frame is a local 4.0.5 e2e server driven through the
+inner scrollbar. The frame is a local 4.0.6 e2e server driven through the
 browser suite's offline **fake transport** (`AI_FAKE_TRANSPORT=1`) against the
 suite's dense twelve-record fixture, so the prose is canned and says so; the
 attachment, the tool call, its row count and the citations are real.
@@ -214,7 +223,7 @@ corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations
 not the live instance, so the numbers in the frames are reproducible rather than
 current. For the deployment's own figures, read `/methodology`, which counts the
 accepted snapshot. The three assistant captures live under
-[What v4 adds](#what-v4-adds); they are a local 4.0.5 e2e server driven through
+[What v4 adds](#what-v4-adds); they are a local 4.0.6 e2e server driven through
 the browser suite's offline transport against its dense twelve-record fixture,
 which their captions state.
 
@@ -275,7 +284,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.5
+  docker.io/kelanach/kevelry:4.0.6
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -557,7 +566,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.5 \
+  --image docker.io/kelanach/kevelry:4.0.6 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -766,8 +775,8 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1106 passing, 3 skipped (network-gated)
-npx playwright test     # browser suite: 161 passing, 0 skipped
+npm test                # vitest: 1119 passing, 3 skipped (network-gated)
+npx playwright test     # browser suite: 165 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
 
