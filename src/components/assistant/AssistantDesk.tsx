@@ -88,7 +88,10 @@ interface WireMessage {
 export function buildHistory(turns: readonly AssistantTurn[], question: string): WireMessage[] {
   const history: WireMessage[] = [];
   for (const turn of turns) {
-    if (!turn.settled || turn.answer === "") continue;
+    // A failed turn is not history: its half-answer was never made as a claim,
+    // and replaying it would put words in the conversation the reader only ever
+    // saw marked incomplete.
+    if (!turn.settled || turn.failed || turn.answer === "") continue;
     history.push({ role: "user", content: turn.question });
     history.push({ role: "assistant", content: turn.answer });
   }
@@ -215,6 +218,22 @@ export function AssistantDesk({
     [updateTurn],
   );
 
+  /**
+   * Ends a turn the desk did not end: the connection, or the provider.
+   *
+   * The prose that arrived stays, because it is what the reader saw, but it is
+   * marked failed so the turn cannot pass for a finished answer — no export, no
+   * "explain that" follow-up, no place in the next request's history.
+   */
+  const failTurn = useCallback(
+    (id: string) => {
+      setStatus("idle");
+      setActivity(null);
+      updateTurn(id, (turn) => ({ ...turn, settled: true, failed: true }));
+    },
+    [updateTurn],
+  );
+
   const applyEvent = useCallback(
     (id: string, event: AssistantEvent) => {
       if (event.type === "tool") {
@@ -268,20 +287,27 @@ export function AssistantDesk({
       }
       if (event.type === "error") {
         setFaultState({ fault: faultFromStreamError(event.code), deadlineMs: null });
-        finishTurn(id);
+        failTurn(id);
       }
     },
-    [finishTurn, updateTurn],
+    [failTurn, updateTurn],
   );
 
   const ask = useCallback(
-    async (rawQuestion: string, resendImage: boolean | null = null) => {
+    async (
+      rawQuestion: string,
+      resendImage: boolean | null = null,
+      retryTurnId: string | null = null,
+    ) => {
       const question = rawQuestion.trim().slice(0, MAX_QUESTION_CHARS);
       if (question === "") return;
       if (abortRef.current !== null) return;
 
-      turnSeq.current += 1;
-      const id = `turn-${String(turnSeq.current)}`;
+      // A retry lands in the attempt that failed rather than stacking a second
+      // copy of the same question under it: one question, one turn. A new turn
+      // gets the next id; a retried one keeps the id it already has.
+      if (retryTurnId === null) turnSeq.current += 1;
+      const id = retryTurnId ?? `turn-${String(turnSeq.current)}`;
       const scoped = aboutCve;
       // Consent is decided here, once, and stored on the turn: the attach
       // question sends it by default, a question that points at it ("explain
@@ -300,6 +326,7 @@ export function AssistantDesk({
         answer: "",
         settled: false,
         stopped: false,
+        failed: false,
         citations: [],
         unverified: [],
         tools: [],
@@ -318,7 +345,11 @@ export function AssistantDesk({
               }
             : null,
       };
-      setTurns((current) => [...current, turn]);
+      setTurns((current) =>
+        retryTurnId === null
+          ? [...current, turn]
+          : current.map((existing) => (existing.id === retryTurnId ? turn : existing)),
+      );
       setDraft("");
       setImageFault(null);
       // The next question starts with no opinion: its own words decide, and the
@@ -369,13 +400,13 @@ export function AssistantDesk({
             fault,
             deadlineMs: deadlineFor(fault, Date.now()),
           });
-          finishTurn(id);
+          failTurn(id);
           return;
         }
 
         if (response.body === null) {
           setFaultState({ fault: networkFault(), deadlineMs: null });
-          finishTurn(id);
+          failTurn(id);
           return;
         }
 
@@ -405,12 +436,12 @@ export function AssistantDesk({
           return;
         }
         setFaultState({ fault: networkFault(), deadlineMs: null });
-        finishTurn(id);
+        failTurn(id);
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [aboutCve, applyEvent, finishTurn, updateTurn, image, imageConsent],
+    [aboutCve, applyEvent, failTurn, finishTurn, updateTurn, image, imageConsent],
   );
 
   const stop = useCallback(() => {
@@ -467,10 +498,15 @@ export function AssistantDesk({
 
   const retry = useCallback(() => {
     const previous = lastQuestion.current;
+    const last = turnsRef.current[turnsRef.current.length - 1];
     setFaultState(null);
     // The failed turn's own consent, not the composer's current state: a retry
-    // is the same question, so it sends what that question sent.
-    if (previous !== null) void ask(previous, lastSendImage.current);
+    // is the same question, so it sends what that question sent. It also goes
+    // back into that turn, because a second turn carrying the same words is a
+    // duplicate the reader has to read twice.
+    if (previous !== null) {
+      void ask(previous, lastSendImage.current, last?.failed === true ? last.id : null);
+    }
   }, [ask]);
 
   const disabled =

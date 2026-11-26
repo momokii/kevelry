@@ -49,6 +49,29 @@ export const AI_FAKE_TABLE_MARKER = "as a table";
  */
 export const AI_FAKE_HEADING_MARKER = "with a heading";
 
+/**
+ * A question naming this phrase gets an answer whose stream dies mid-sentence.
+ *
+ * Same trigger shape as the markers above, and for the same reason: the browser
+ * suite has no provider that can fail on demand, and "the connection dropped"
+ * is the failure a reader meets most often. The body carries one delta and then
+ * the source errors — no finish reason, no usage block, no `[DONE]`, exactly the
+ * shape of a socket that dies while the model is still writing. The route's own
+ * turn loop turns that into an `error` frame, so everything under test from the
+ * provider inwards is the production path.
+ */
+export const AI_FAKE_ABORT_MARKER = "drop the connection";
+
+/**
+ * How many times the marker above may break a stream in this process.
+ *
+ * One, deliberately. A retry re-sends the same question, so a marker that broke
+ * every attempt could never prove the half of the journey that matters most —
+ * that asking again works. The first attempt dies; every later one is answered
+ * in full.
+ */
+let abortBudget = 1;
+
 /** One pause between frames; long enough to paint, short enough for a suite. */
 export const AI_FAKE_FRAME_DELAY_MS = 45;
 
@@ -129,8 +152,18 @@ const TABLE_LINES = [
   "| Answer | canned | a live deployment never reaches this text |\n",
 ];
 
-/** Round two: prose, then the terminal usage frame. */
-function answerRound(unsupportedId: boolean, table: boolean, heading: boolean): string {
+/**
+ * Round two: prose, then the terminal usage frame.
+ *
+ * `abortAfterFirstDelta` cuts the body down to its opening delta, for the
+ * journey that has to survive a provider dying mid-answer.
+ */
+function answerRound(
+  unsupportedId: boolean,
+  table: boolean,
+  heading: boolean,
+  abortAfterFirstDelta: boolean,
+): string {
   const lines = unsupportedId
     ? [
         ...ANSWER_LINES,
@@ -142,6 +175,12 @@ function answerRound(unsupportedId: boolean, table: boolean, heading: boolean): 
   const frames: string[] = [];
   for (const line of lines) {
     frames.push(frame({ choices: [{ delta: { content: line }, finish_reason: null }] }));
+  }
+  if (abortAfterFirstDelta) {
+    // One delta, and then the source dies: the body ends without the frames
+    // that would make it a complete round. The pause before this frame is the
+    // answer delay, so the reader sees prose on screen before it breaks.
+    return frames[0] ?? "";
   }
   frames.push(frame({ choices: [{ delta: {}, finish_reason: "stop" }] }));
   frames.push(frame({ choices: [], usage: USAGE }));
@@ -213,11 +252,18 @@ export function createFakeAssistantTransport(
   const transport: AiTransport = async (request): Promise<AiTransportResponse> => {
     const answering = round > 0;
     const question = answering ? latestUserMessage(request.body) : "";
+    // Only an answering round can die: the tool round has to run for the desk to
+    // have anything to show, and the one-shot budget is spent by the first
+    // answer that asks for it.
+    const aborts =
+      answering && abortBudget > 0 && question.toLowerCase().includes(AI_FAKE_ABORT_MARKER);
+    if (aborts) abortBudget -= 1;
     const body = answering
       ? answerRound(
           question.includes(AI_FAKE_UNSUPPORTED_ID),
           question.toLowerCase().includes(AI_FAKE_TABLE_MARKER),
           question.toLowerCase().includes(AI_FAKE_HEADING_MARKER),
+          aborts,
         )
       : toolRound();
     round += 1;
@@ -226,14 +272,25 @@ export function createFakeAssistantTransport(
     // Slice mid-frame on purpose: a parser that only works on whole frames is
     // the bug the real SSE parser is written to survive.
     const step = Math.max(1, Math.ceil(bytes.byteLength / 6));
+    let cursor = 0;
+    // A pull source, not a start-loop: the error below must arrive *after* the
+    // delta has been consumed, and a stream that queues ahead would drop queued
+    // chunks when it errored — the reader would lose the very frame the abort
+    // journey asserts on. One chunk in flight at a time fixes the order.
     const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        for (let offset = 0; offset < bytes.byteLength; offset += step) {
-          if (offset === 0 && answering) await pause(answerDelayMs);
-          else if (offset > 0) await pause(delayMs);
-          controller.enqueue(bytes.slice(offset, Math.min(offset + step, bytes.byteLength)));
+      async pull(controller) {
+        if (cursor >= bytes.byteLength) {
+          if (aborts) {
+            controller.error(new Error("The provider's connection dropped mid-answer."));
+            return;
+          }
+          controller.close();
+          return;
         }
-        controller.close();
+        if (cursor === 0 && answering) await pause(answerDelayMs);
+        else if (cursor > 0) await pause(delayMs);
+        controller.enqueue(bytes.slice(cursor, Math.min(cursor + step, bytes.byteLength)));
+        cursor += step;
       },
     });
     return { status: 200, body: "", contentType: "text/event-stream", stream };

@@ -37,6 +37,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     answer: "Two.",
     settled: true,
     stopped: false,
+    failed: false,
     citations: [],
     unverified: [],
     tools: [],
@@ -281,5 +282,22 @@ describe("request history", () => {
     const messages = buildHistory(many, "last");
     expect(messages.length).toBeLessThanOrEqual(10);
     expect(messages[messages.length - 1]).toEqual({ role: "user", content: "last" });
+  });
+
+  it("never replays a failed turn as a claim the answer made", () => {
+    // The prose of a failed turn is what the reader saw, not something the model
+    // finished saying. Sending it back would present half an answer as history.
+    const messages = buildHistory(
+      [
+        turn({ id: "turn-1", question: "Which are due?", answer: "Two records ", failed: true }),
+        turn({ id: "turn-2", question: "And EPSS?", answer: "Three." }),
+      ],
+      "Which are listed?",
+    );
+    expect(messages).toEqual([
+      { role: "user", content: "And EPSS?" },
+      { role: "assistant", content: "Three." },
+      { role: "user", content: "Which are listed?" },
+    ]);
   });
 });

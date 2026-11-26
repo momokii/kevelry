@@ -74,6 +74,7 @@ function turn(tools: AssistantToolLine[], overrides: Partial<AssistantTurn> = {}
     answer: "Four records entered the catalog.",
     settled: true,
     stopped: false,
+    failed: false,
     citations: tools.flatMap((tool) => tool.ids),
     unverified: [],
     tools,

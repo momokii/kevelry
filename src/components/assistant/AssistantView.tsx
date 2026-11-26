@@ -212,8 +212,10 @@ function TurnBlock({
 }) {
   const live = turn.settled;
   // Derived from the ledger, never from the prose: a chip that names an id the
-  // turn never read would be a hallucination with a button on it.
-  const followUps = turn.settled && !turn.stopped ? buildFollowUps(turn) : [];
+  // turn never read would be a hallucination with a button on it. A failed turn
+  // is not finished, so it offers neither a follow-up nor an export.
+  const complete = turn.settled && !turn.stopped && !turn.failed;
+  const followUps = complete ? buildFollowUps(turn) : [];
   return (
     <article className="assistant-turn" data-testid="assistant-turn">
       <p className="assistant-question-label">
@@ -361,7 +363,7 @@ function TurnBlock({
           </ul>
         </div>
       ) : null}
-      {turn.settled && !turn.stopped && turn.answer !== "" ? (
+      {complete && turn.answer !== "" ? (
         <div className="assistant-turn-actions">
           <button
             type="button"
@@ -378,6 +380,14 @@ function TurnBlock({
       {turn.stopped ? (
         <p className="assistant-turn-note" data-testid="assistant-stopped">
           Stopped before the answer finished. What is above is what arrived.
+        </p>
+      ) : null}
+      {turn.failed && turn.answer !== "" ? (
+        // The mark on a partial answer: the fault panel names what went wrong,
+        // and this says what that means for the text above it. Without it a
+        // half-sentence reads as a finished thought that stopped early.
+        <p className="assistant-turn-note" data-testid="assistant-incomplete">
+          Incomplete: the answer stopped before it finished. What is above is what arrived.
         </p>
       ) : null}
       {turn.settled && !turn.stopped && turn.answer === "" ? (

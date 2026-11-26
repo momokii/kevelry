@@ -27,6 +27,7 @@ import {
 } from "./a11y-audit";
 import { resetToBaseline } from "./corpus";
 import {
+  AI_FAKE_ABORT_MARKER,
   AI_FAKE_HEADING_MARKER,
   AI_FAKE_TABLE_MARKER,
   AI_FAKE_UNSUPPORTED_ID,
@@ -44,6 +45,8 @@ const PROGRESS_SHOT = "/tmp/progress-streaming.png";
 const RETAINED_SHOT = "/tmp/assistant-retained-1440.png";
 const REMOVED_SHOT = "/tmp/assistant-screenshot-removed-1440.png";
 const ATTACH_GUIDE_SHOT = "/tmp/attach-guide.png";
+const ERROR_RETRY_SHOT = "/tmp/error-retry.png";
+const PHONE_ATTACH_SHOT = "/tmp/390-attach.png";
 
 const QUESTION = "Which KEV entries were added in the last 30 days?";
 
@@ -1076,4 +1079,261 @@ test("the priority and graph entry points pin the record in the desk", async ({ 
   const graphId = new URL(`http://localhost${graphHref ?? ""}`).searchParams.get("cve");
   await expect(page).toHaveURL(new RegExp(`/assistant\\?cve=${graphId ?? ""}$`));
   await expect(page.locator('[data-testid="assistant-context"]')).toContainText(graphId ?? "");
+});
+
+/**
+ * The four failures a reader actually meets, in the browser.
+ *
+ * Everything here is one POST and one transcript: a provider that dies
+ * mid-answer, Enter pressed while a turn is streaming, a reload mid-stream, and
+ * the widest control the desk owns on the narrowest screen. Each journey asserts
+ * behaviour — what is on screen, how many requests went out — never the shape of
+ * the code behind it.
+ */
+
+test("a stream that dies mid-answer is named, marked incomplete and retried in place", async ({
+  page,
+}) => {
+  // Its own rate-limit identity: this journey sends two attempts for one question.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.101" });
+  await gotoDesk(page);
+
+  const posts: Request[] = [];
+  page.on("request", (candidate) => {
+    if (candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST") {
+      posts.push(candidate);
+    }
+  });
+
+  const question = `${QUESTION} ${AI_FAKE_ABORT_MARKER}.`;
+  await page.locator("#assistant-question").fill(question);
+  await page.keyboard.press("Enter");
+
+  // The inline fault, in the app's voice: a sentence saying what happened, with
+  // the code as metadata beside it rather than as the explanation.
+  const fault = page.locator('[data-testid="assistant-fault"]');
+  await expect(fault).toBeVisible();
+  await expect(fault).toHaveAttribute("role", "alert");
+  await expect(fault.locator(".assistant-fault-headline")).toHaveText(
+    "The provider failed before the answer finished.",
+  );
+  await expect(fault.locator(".assistant-fault-next")).toContainText("Ask again");
+  await expect(fault.locator(".assistant-fault-meta")).toContainText("AI_UPSTREAM_ERROR");
+
+  // What arrived is still on screen — preserved, not discarded — and it is
+  // marked as a partial answer rather than passing for a finished one.
+  const turn = page.locator('[data-testid="assistant-turn"]').first();
+  await expect(turn.locator('[data-testid="assistant-answer"]')).toContainText(
+    "This is the canned answer of the test transport",
+  );
+  await expect(turn.locator('[data-testid="assistant-incomplete"]')).toHaveText(
+    "Incomplete: the answer stopped before it finished. What is above is what arrived.",
+  );
+  // A half-answer is not exported and offers no follow-up built on it.
+  await expect(page.locator('[data-testid="assistant-brief"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-followups"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="assistant-fault"]')?.scrollIntoView({ block: "center" });
+  });
+  await page.screenshot({ path: ERROR_RETRY_SHOT });
+
+  // The retry re-sends the same question and the second attempt finishes.
+  const retry = page.getByRole("button", { name: "Ask again" });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "A live deployment never reaches this text.",
+  );
+  await expect(page.locator('[data-testid="assistant-incomplete"]')).toHaveCount(0);
+  await expect(fault).toHaveCount(0);
+
+  // No duplicate turn: one question is one turn, whichever attempt finished it.
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(1);
+  expect(posts).toHaveLength(2);
+  const bodies = posts.map(
+    (post) => post.postDataJSON() as { messages: Array<{ role: string; content: string }> },
+  );
+  const asked = bodies.map((body) => body.messages[body.messages.length - 1]?.content);
+  expect(asked[0]).toBe(question);
+  expect(asked[1]).toBe(question);
+  // And the retry did not replay the dead half-answer as conversation history.
+  expect(bodies[1]?.messages.filter((message) => message.role === "assistant")).toHaveLength(0);
+});
+
+test("Enter during a stream sends nothing, and Stop is the only action", async ({ page }) => {
+  // Its own rate-limit identity, like every journey that spends a turn.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.102" });
+  await gotoDesk(page);
+
+  let posts = 0;
+  page.on("request", (candidate) => {
+    if (candidate.url().includes("/api/assistant/chat") && candidate.method() === "POST") {
+      posts += 1;
+    }
+  });
+
+  await page.locator("#assistant-question").fill(QUESTION);
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-testid="assistant-working"]')).toBeVisible();
+
+  // While a turn streams, the composer's only action is Stop: the send button is
+  // gone, the attach control is disabled, and the field is read-only.
+  await expect(page.locator('[data-testid="assistant-send"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-stop"]')).toBeVisible();
+  await expect(page.locator('[data-testid="assistant-image-input"]')).toBeDisabled();
+  await expect(page.locator("#assistant-question")).toHaveAttribute("aria-readonly", "true");
+
+  // Three Enters during the stream: still one request, still one turn.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.keyboard.press("Enter");
+  }
+  expect(posts).toBe(1);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(1);
+
+  // The turn it did send finishes normally, and the desk is idle again.
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+  await expect(page.locator('[data-testid="assistant-send"]')).toBeVisible();
+  expect(posts).toBe(1);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(1);
+});
+
+test("a reload mid-stream starts clean, with no fault and no console error", async ({ page }) => {
+  // Its own rate-limit identity: this journey sends two turns, one per document.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.103" });
+  await gotoDesk(page);
+
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    consoleErrors.push(error.message);
+  });
+
+  await page.locator("#assistant-question").fill(QUESTION);
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-testid="assistant-working"]')).toBeVisible();
+  // Reload while the body is still streaming.
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  // A reload is not a failure: no dialog, no fault, and nothing pretending the
+  // interrupted turn is still there. Scoped to the page's own content: the dev
+  // server's toolbar is its own live region and not part of the desk.
+  await expect(page.locator('[data-testid="assistant-fault"]')).toHaveCount(0);
+  await expect(page.locator('#main-content [role="alert"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-empty"]')).toBeVisible();
+  // The transcript cleared, as the composer's note promises. That is the privacy
+  // half: the question and the answer were never written anywhere that survives,
+  // and the field does not keep the words either.
+  await expect(page.locator(".assistant-question")).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-answer"]')).toHaveCount(0);
+  await expect(page.locator("#assistant-question")).toHaveValue("");
+
+  // The composer is usable and the desk answers the next question normally.
+  const input = page.locator("#assistant-question");
+  await expect(input).toBeEnabled();
+  await expect(page.locator('[data-testid="assistant-send"]')).toBeDisabled();
+  await input.fill("Which KEV entries are due soon?");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(1);
+
+  // Nothing was thrown or logged while the interrupted turn was dropped.
+  expect(consoleErrors).toEqual([]);
+});
+
+test("390px: the attach, its thumbnail, the consent chip and its × all stay usable", async ({
+  page,
+}) => {
+  // Its own rate-limit identity: this journey spends one turn.
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.104" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await gotoDesk(page);
+  await auditNoHorizontalOverflow(page, "phone attach: empty desk");
+
+  // The attach control is a 44px target before it holds anything.
+  const pick = await page.locator(".assistant-image-pick").boundingBox();
+  expect(pick?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await page.setInputFiles('[data-testid="assistant-image-input"]', {
+    name: "advisory.png",
+    mimeType: "image/png",
+    buffer: ADVISORY_PNG,
+  });
+  const preview = page.locator('[data-testid="assistant-image-preview"]');
+  await expect(preview).toBeVisible();
+  await expect(preview.locator("img")).toBeVisible();
+  // Removing a staged file is a 44px target too.
+  const stagedRemove = await page.locator('[data-testid="assistant-image-remove"]').boundingBox();
+  expect(stagedRemove?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await auditNoHorizontalOverflow(page, "phone attach: staged");
+
+  await page.locator("#assistant-question").fill("Which CVE ids are in this screenshot?");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-testid="assistant-answer"]')).toContainText(
+    "canned answer of the test transport",
+  );
+  await auditNoHorizontalOverflow(page, "phone attach: sent");
+
+  // The picture is inside the turn it was sent with, not a gallery beside it.
+  const shot = page
+    .locator('[data-testid="assistant-turn"]')
+    .first()
+    .locator('[data-testid="assistant-shot"]');
+  await expect(shot).toBeVisible();
+  const thumb = await shot.locator(".assistant-shot-thumb").boundingBox();
+  expect(thumb?.height ?? 0).toBeGreaterThanOrEqual(96);
+  await expect(shot.locator('[data-testid="assistant-shot-note"]')).toHaveText(
+    "Attached with this question",
+  );
+
+  // The chip under the transcript: a labelled consent toggle and `×`. Both are
+  // 44px boxes, which is the whole reason this journey exists.
+  const chip = page.locator('[data-testid="assistant-image-context"]');
+  await expect(chip).toBeVisible();
+  const consent = page.locator('[data-testid="assistant-image-consent"]');
+  await expect(consent).toBeVisible();
+  // Unticked after a send: the next question decides on its own words.
+  await expect(consent).not.toBeChecked();
+  const consentBox = await chip.locator("label").boundingBox();
+  expect(consentBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  const remove = page.locator('[data-testid="assistant-image-context-remove"]');
+  const removeBox = await remove.boundingBox();
+  expect(removeBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(removeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await auditNoHorizontalOverflow(page, "phone attach: chip");
+
+  // The state the report shows: the thumbnail in the turn, the chip and the
+  // composer under it, on one 390px screen.
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="assistant-turn"]')?.scrollIntoView({ block: "start" });
+  });
+  await page.screenshot({ path: PHONE_ATTACH_SHOT });
+
+  // Both are thumb-sized targets, not just boxes that measure well: tapping the
+  // label flips the consent, twice, and tapping `×` ends the picture.
+  await chip.locator("label").click();
+  await expect(consent).toBeChecked();
+  await chip.locator("label").click();
+  await expect(consent).not.toBeChecked();
+  await auditNoHorizontalOverflow(page, "phone attach: consent off");
+  await remove.click();
+  await expect(chip).toHaveCount(0);
+  await expect(page.locator('[data-testid="assistant-image-removed"]')).toHaveText(
+    "Screenshot removed — it will not be sent again.",
+  );
+  await expect(shot).toBeVisible();
+  await auditNoHorizontalOverflow(page, "phone attach: removed");
+
+  // The turn that carried it keeps its record; the next question carries nothing.
+  await page.locator("#assistant-question").fill("What is the KEV deadline for agencies?");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-testid="assistant-turn"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="assistant-shot"]')).toHaveCount(1);
+  await auditNoHorizontalOverflow(page, "phone attach: next question");
 });

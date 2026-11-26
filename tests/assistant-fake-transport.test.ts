@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AI_FAKE_ABORT_MARKER,
   AI_FAKE_HEADING_MARKER,
   AI_FAKE_TABLE_MARKER,
   createFakeAssistantTransport,
@@ -79,5 +80,58 @@ describe("the fake transport reads the latest user message", () => {
     expect(body).toContain("canned answer of the test transport");
     expect(body).not.toContain("| Metric | Value | Note |");
     expect(body).not.toContain("### Canned answer");
+  });
+
+  it("[CODE] aborts after the first delta when the question asks it to", async () => {
+    const transport = createFakeAssistantTransport(0, 0);
+    await transport({
+      url: "https://gateway.invalid/chat/completions",
+      headers: {},
+      body: JSON.stringify({ messages: [{ role: "user", content: "Warm the round." }] }),
+      signal: SIGNAL,
+    });
+    const answer = await transport({
+      url: "https://gateway.invalid/chat/completions",
+      headers: {},
+      body: JSON.stringify({
+        messages: [
+          { role: "user", content: `Which KEV entries are new? ${AI_FAKE_ABORT_MARKER}.` },
+        ],
+      }),
+      signal: SIGNAL,
+    });
+    if (answer.stream === null || answer.stream === undefined) {
+      throw new Error("the fake answers with a stream");
+    }
+
+    // One delta arrives — a whole frame, so the prose is on screen — and the
+    // read after it rejects, which is what a dropped provider socket looks like.
+    const reader = answer.stream.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    let failure: unknown = null;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value !== undefined) text += decoder.decode(value, { stream: true });
+      }
+    } catch (caught) {
+      failure = caught;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("connection dropped");
+    expect(text).toBe(
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: {
+              content: "This is the canned answer of the test transport, not a model's reply. ",
+            },
+            finish_reason: null,
+          },
+        ],
+      })}\n\n`,
+    );
   });
 });

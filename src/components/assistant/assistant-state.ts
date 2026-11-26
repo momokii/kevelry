@@ -92,6 +92,15 @@ export interface AssistantTurn {
   settled: boolean;
   /** True when the reader pressed Stop before the answer finished. */
   stopped: boolean;
+  /**
+   * True when a fault ended this turn before it finished.
+   *
+   * Distinct from `stopped`: the reader did not do this, the provider or the
+   * connection did. A failed turn keeps whatever prose arrived, says on screen
+   * that it stopped there, and is never sent back as conversation history —
+   * half an answer replayed to a model reads as a claim that was made.
+   */
+  failed: boolean;
   /** Record ids from the server's `citations` event — never parsed from prose. */
   citations: string[];
   /**

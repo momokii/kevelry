@@ -46,6 +46,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     answer: "Four records entered the catalog in the last 30 days.",
     settled: true,
     stopped: false,
+    failed: false,
     citations: ["CVE-2099-0001", "CVE-2099-0002"],
     unverified: [],
     tools: [
@@ -236,6 +237,18 @@ describe("state 2 — streaming", () => {
     expect(html).toContain('data-testid="assistant-stopped"');
     expect(html).toContain("Stopped before the answer finished.");
     expect(html).toContain("Four records ");
+  });
+
+  it("marks a failed turn's partial answer as incomplete, not as an answer", () => {
+    // A dropped stream leaves prose on screen. It must not pass for a finished
+    // thought: no export of a half-answer, no follow-up built on it, and one
+    // sentence saying where it stopped.
+    const html = render({ turns: [turn({ failed: true, answer: "Four records " })] });
+    expect(html).toContain('data-testid="assistant-incomplete"');
+    expect(html).toContain("Incomplete: the answer stopped before it finished.");
+    expect(html).toContain("Four records ");
+    expect(html).not.toContain('data-testid="assistant-brief"');
+    expect(html).not.toContain('data-testid="assistant-followups"');
   });
 });
 
