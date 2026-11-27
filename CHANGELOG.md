@@ -3,6 +3,42 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.8 — 2026-11-27
+
+A plain question could end with no answer at all: measured **2 of 8** runs of
+`Which KEV entries are due in the next 30 days?` settled `done` with an empty
+answer — and 3 of 6 attempts while recording the demo. No error, no truncation,
+nothing on the stream to say anything had gone wrong.
+
+### Fixed
+
+- **A turn that spends every round asking for tools no longer ends unanswered.**
+  The tool-round cap (4) ended the turn the moment `rounds` reached it: the
+  settle path emitted `citations` and `done` without ever reading `answerText`,
+  then billed the turn as answered. The desk maps `done` to `settled: true`, so
+  round-cap exhaustion rendered as a quiet note rather than a fault — a model
+  that ran out of rounds read exactly like a model with nothing to say. Both
+  empty runs (2 of 8) were still calling tools when the cap fired, and neither
+  had a single `finish_reason: length` round, so the token budget was never the
+  cause; the retry only ever applied to the first round, because every later
+  round already ran at the answer budget.
+
+  Three changes. The **last permitted round is now the answer round**: it is sent
+  with `tools: []` and a final-round rule in that round's system prompt, so the
+  cap can no longer end a turn that never wrote prose, and a tool call returned
+  on it is ignored rather than executed. If that round still yields no text it is
+  **retried once** with a compact evidence index — tool name, bounded args, row
+  count, up to five ids — instead of the whole transcript: an untrimmed re-send
+  was measured at 42.7 s of the 45 s deadline, which turns an empty turn into a
+  timeout. And `settle()` **refuses to settle empty**: an empty turn is reported
+  as `AI_EMPTY_ANSWER`, a visible fault with its own copy, never a settled
+  answer — so a failed turn leaves no brief and nothing in the next request's
+  history.
+
+**Upgrade notes:** no migration, no config change — recreate the container to
+pick up 4.0.8 (`docker compose up -d --force-recreate`). Round budget and token
+limits are unchanged.
+
 ## 4.0.7 — 2026-11-26
 
 Three bugs one four-turn session on the shipped 4.0.6 build made visible — a

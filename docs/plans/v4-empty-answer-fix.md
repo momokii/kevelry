@@ -1,6 +1,6 @@
 # Empty-answer fix — the tool-round cap ends turns before any answer round
 
-**Status:** diagnosis + plan only, no code changed · **Against:** 4.0.7 at `http://100.124.184.116:3100/assistant` · **Probe:** `Which KEV entries are due in the next 30 days?` · **Model:** `deepseek-v4.1-flash` (reasoning-first), `AI_MAX_ANSWER_TOKENS` unset → 4096.
+**Status:** implemented in `685a04c`, released as 4.0.8 — no code changed by this document · **Against:** 4.0.7 at `http://100.124.184.116:3100/assistant` · **Probe:** `Which KEV entries are due in the next 30 days?` · **Model:** `deepseek-v4.1-flash` (reasoning-first), `AI_MAX_ANSWER_TOKENS` unset → 4096.
 
 ## Measured: 2 of 8 runs (25 %) settled with no answer text
 
@@ -55,3 +55,22 @@ Rejected: raising the answer budget (0/8 truncations), and tool-result caps as t
 - Any turn that still cannot answer ends with `error` carrying code and reason; `done` with `answer === ""` is unreachable and the `AssistantView` note becomes dead copy.
 - Tests: the cap path asserts the last round is sent without `tools`; an empty final round asserts `error`, not `done`; the retry asserts a trimmed message count.
 - Cost ≤ $0.006 per turn, p95 latency ≤ 40 s of the 45 s deadline.
+
+## Implemented — `685a04c`, shipped as 4.0.8
+
+All three steps landed as planned. The last permitted round (`rounds ===
+ASSISTANT_MAX_TOOL_ROUNDS - 1`) is sent with `tools: []` and the final-round rule
+appended to that round's system prompt only; the one retry rebuilds history as
+the base prompt plus an index of the tool calls (name, bounded args, row count,
+up to five ids — never a payload) plus the last user message; and `settle()`
+emits `{ type: "error", code: "AI_EMPTY_ANSWER" }` with no `done` when no text
+was written, so the turn is a fault panel with no brief and nothing in the next
+request's history. The `retry` event carries `code: "AI_EMPTY_ANSWER" |
+"AI_TRUNCATED"` and `trimmed: boolean`.
+
+Pinned by tests rather than by the probe: the wire bodies assert `tools` on
+rounds 1–3 and absent on round 4, a tool call returned on the answer round is
+ignored, the retry sends 2 messages from 8 in with no `tool`/`assistant` message
+and no `tool_call_id`, and a cap spent with no text ends `AI_EMPTY_ANSWER`
+billed once. Acceptance criteria 2–4 are covered by those tests; the 8-run live
+probe (criterion 1) is the remaining verification against the deployed 4.0.8.
