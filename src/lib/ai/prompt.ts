@@ -182,6 +182,26 @@ export function renderVisionInstruction(): string {
 }
 
 /**
+ * The rule appended to the system prompt on the last permitted round only.
+ *
+ * The turn loop sends that round with no tools at all, and this is what tells
+ * the model why: a turn that spent every round asking for tools had no round
+ * left to write the answer, and settled with nothing to show (2 of 8 measured
+ * plain questions). "Say what is missing" is the honest exit when the evidence
+ * gathered is not enough — a silent empty turn is not.
+ */
+export const ANSWER_ROUND_INSTRUCTION = [
+  "This is the final round of the turn, and no tools are available in it.",
+  "Answer now, in prose, from the evidence the tools have already returned.",
+  "If that evidence is not enough to answer, say plainly what you found and what is missing — do not ask for another tool.",
+].join(" ");
+
+/** Renders the final-round rule for the round that has to write the answer. */
+export function renderAnswerRoundInstruction(): string {
+  return `[final round] ${ANSWER_ROUND_INSTRUCTION}`;
+}
+
+/**
  * The record-scoped note for `/assistant?cve=<id>`: the first call must read the
  * record the reader came from, so the answer is about that record and not a
  * neighbourhood of it.

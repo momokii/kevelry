@@ -399,7 +399,11 @@ function TurnBlock({
           Incomplete: the answer stopped before it finished. What is above is what arrived.
         </p>
       ) : null}
-      {turn.settled && !turn.stopped && turn.answer === "" ? (
+      {turn.settled && !turn.failed && !turn.stopped && turn.answer === "" ? (
+        // A settled turn with no text and no fault. The server no longer emits
+        // this — `settle()` turns an empty answer into `AI_EMPTY_ANSWER` — so
+        // the sentence is a fallback for a turn whose `done` frame outran its
+        // error, never the reading of a failure the fault panel already names.
         <p className="assistant-turn-note">The turn ended before it wrote an answer.</p>
       ) : null}
     </article>

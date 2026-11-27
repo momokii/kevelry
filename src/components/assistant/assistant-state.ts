@@ -164,6 +164,15 @@ const ERROR_COPY: Record<string, { headline: string; next: string; retryable: bo
     next: "Ask about one record, or one list, at a time.",
     retryable: true,
   },
+  AI_EMPTY_ANSWER: {
+    // The model spent every round of the turn on tools and never wrote prose.
+    // The turn is a fault, not a settled reply with nothing in it, so the
+    // desk says what went wrong and offers the one thing that can help: a
+    // smaller question.
+    headline: "The model used every round of the turn without writing an answer.",
+    next: "Ask again, or narrow the question to one record so it needs fewer lookups.",
+    retryable: true,
+  },
   AI_REFUSED: {
     headline: "That question is outside what this desk answers.",
     next: "Ask about a CVE record, a priority list, or the shape of this corpus.",

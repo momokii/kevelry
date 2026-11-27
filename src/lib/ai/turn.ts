@@ -12,10 +12,12 @@
 //              attributed back to one call.
 //   delta      assistant text, in arrival order.
 //   retry      a round ended with no text and no tool calls — cut by its
-//              completion cap, or stopped with nothing in it at all — so it is
-//              re-run once at the answer budget. Emitted before the second
-//              attempt, so the stream states the escalation instead of silently
-//              billing a second round.
+//              completion cap, stopped with nothing in it at all, or the final
+//              answer round came back empty — so it is re-run once. Emitted
+//              before the second attempt, so the stream states the escalation
+//              instead of silently billing a second round. The retry of an
+//              empty answer round re-sends trimmed history, never the whole
+//              transcript: a full re-send cost 42.7 s of a 45 s deadline.
 //   citations  ids the *server* read from tool payloads this turn — never ids
 //              the model claimed. A model-hallucinated id cannot become a chip.
 //   unverified ids the *prose* named that no tool payload contained. Emitted
@@ -30,6 +32,10 @@
 // turn's wall-clock deadline, and one ledger write per turn (including a turn
 // that failed after the provider reported usage). Nothing here logs or stores
 // prompt or answer text.
+//
+// The cap is spent on prose, not on tools: the last permitted round is sent
+// with no tool definitions at all, so a provider that keeps calling tools
+// cannot end the turn with an empty answer. See `answerOnlyRound` below.
 
 import type { CveDatabase } from "../db";
 import type {
@@ -40,15 +46,21 @@ import type {
   ChatToolCall,
 } from "./client";
 import { AI_MAX_TOKENS_DEFAULT, type AiConfig } from "./config";
-import { renderRecordContext, renderSystemPrompt, renderVisionInstruction } from "./prompt";
+import {
+  renderAnswerRoundInstruction,
+  renderRecordContext,
+  renderSystemPrompt,
+  renderVisionInstruction,
+} from "./prompt";
 import { executeTool, toolDefinitions, type ToolContext, type ToolOutcome } from "./tools";
 import type { AiUsage, AiUsageLedger } from "./usage";
 
 /**
- * Hard cap on tool rounds in one turn. The plan allowed six; four is what this
- * phase ships because each round re-bills eight tool definitions and a turn
- * that needs six is a question that should be split. Reaching the cap ends the
- * turn with `done` — it never loops, and it never pretends the answer is whole.
+ * Hard cap on rounds in one turn. The plan allowed six; four is what this phase
+ * ships because each round re-bills eight tool definitions and a turn that
+ * needs six is a question that should be split. The last permitted round is
+ * reserved for the answer — it is sent with no tools at all — so the cap can no
+ * longer end a turn that never wrote one.
  */
 export const ASSISTANT_MAX_TOOL_ROUNDS = 4;
 
@@ -92,7 +104,12 @@ export interface AssistantUsageFrame {
 
 /** Error codes an SSE `error` event may carry. */
 export type AssistantStreamErrorCode =
-  "AI_TIMEOUT" | "AI_UPSTREAM_ERROR" | "AI_TRUNCATED" | "AI_BUDGET_EXHAUSTED" | "AI_DISABLED";
+  | "AI_TIMEOUT"
+  | "AI_UPSTREAM_ERROR"
+  | "AI_TRUNCATED"
+  | "AI_EMPTY_ANSWER"
+  | "AI_BUDGET_EXHAUSTED"
+  | "AI_DISABLED";
 
 export type AssistantEvent =
   | {
@@ -107,10 +124,21 @@ export type AssistantEvent =
   | { type: "delta"; text: string }
   | {
       type: "retry";
-      /** The round that is being re-run was cut by its completion cap. */
-      code: "AI_TRUNCATED";
+      /**
+       * Why the round is being re-run: cut by its completion cap
+       * (`AI_TRUNCATED`), or it came back with nothing to show
+       * (`AI_EMPTY_ANSWER`).
+       */
+      code: "AI_TRUNCATED" | "AI_EMPTY_ANSWER";
       /** Completion budget the retried round is given. */
       maxTokens: number;
+      /**
+       * True when the retry re-sends a trimmed conversation — base system
+       * prompt, the last question, an index of the tool results — instead of
+       * the whole history. A full re-send of a 37k-token turn took 42.7 s of a
+       * 45 s deadline, so the trimmed shape is the only one that fits.
+       */
+      trimmed: boolean;
     }
   | { type: "citations"; records: string[] }
   | { type: "unverified"; ids: string[] }
@@ -295,6 +323,106 @@ function toolMessage(call: ChatToolCall, outcome: ToolOutcome): ChatMessage {
   };
 }
 
+/**
+ * One completed tool call, kept compact for the trimmed retry.
+ *
+ * Ids, a row count and the arguments that asked for them — never the payload.
+ * The answer is written from the evidence, so the retry needs an index of it,
+ * not a second copy of it.
+ */
+interface GatheredCall {
+  name: string;
+  args: string;
+  ok: boolean;
+  rows: number;
+  ids: string[];
+}
+
+/** Caps that keep the trimmed retry an index of the evidence, not a payload. */
+const SUMMARY_ARGS_CHARS = 120;
+const SUMMARY_IDS_PER_CALL = 5;
+const SUMMARY_MAX_CALLS = 12;
+
+/** Bounded JSON, for one call's arguments in the compact summary. */
+function compactJson(value: unknown, limit: number): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? "";
+  } catch {
+    // A value that cannot be serialised contributes no arguments, not a throw.
+    text = "";
+  }
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+/**
+ * The compact index of what the tools returned, sent with the trimmed retry.
+ *
+ * Bounded on every axis — calls, ids per call, argument length — because the
+ * retry exists to be cheap: the measured turn spent 42.7 s of its 45 s deadline
+ * re-sending a 37k-token transcript, so a retry that is merely "smaller" would
+ * turn an empty turn into a timeout.
+ */
+function summariseGathered(calls: readonly GatheredCall[]): string {
+  const header =
+    "[tool evidence] The tools already ran this turn. Their full results are not repeated here; this is what they returned:";
+  if (calls.length === 0) return `${header} nothing.`;
+  const lines = calls.slice(0, SUMMARY_MAX_CALLS).map((call, index) => {
+    const shown = call.ids.slice(0, SUMMARY_IDS_PER_CALL);
+    const rest = call.ids.length - shown.length;
+    const outcome = call.ok ? `${String(call.rows)} row(s)` : "failed";
+    const ids =
+      shown.length === 0
+        ? ""
+        : `; ids ${shown.join(", ")}${rest > 0 ? ` (+${String(rest)} more)` : ""}`;
+    return `${String(index + 1)}. ${call.name}(${call.args}) → ${outcome}${ids}`;
+  });
+  const omitted = calls.length - lines.length;
+  if (omitted > 0) lines.push(`(${String(omitted)} further call(s) omitted.)`);
+  return [header, ...lines].join("\n");
+}
+
+/**
+ * The conversation as the answer round sends it: the same messages, with the
+ * final-round rule appended to the leading system prompt.
+ *
+ * A copy, not a mutation: the rule belongs to that one round, and a transcript
+ * that carries it would keep telling a later turn that no tools exist.
+ */
+function withAnswerRoundRule(conversation: readonly ChatMessage[]): ChatMessage[] {
+  const [first, ...rest] = conversation;
+  if (first === undefined || first.role !== "system" || typeof first.content !== "string") {
+    return [{ role: "system", content: renderAnswerRoundInstruction() }, ...conversation];
+  }
+  return [{ ...first, content: `${first.content}\n\n${renderAnswerRoundInstruction()}` }, ...rest];
+}
+
+/**
+ * The one retry of an empty answer round: base prompt, last question, and the
+ * compact index of what the tools returned.
+ *
+ * Everything else — assistant tool-call turns, tool messages, the record-scope
+ * note that asks for a call this round cannot make — is dropped. The reader's
+ * question keeps its content parts, so an image turn still carries its image.
+ */
+function buildTrimmedConversation(
+  conversation: readonly ChatMessage[],
+  calls: readonly GatheredCall[],
+): ChatMessage[] {
+  const [first] = conversation;
+  const lastUser = [...conversation].reverse().find((message) => message.role === "user");
+  const head: ChatMessage = {
+    role: "system",
+    content: [
+      first !== undefined && typeof first.content === "string" ? first.content : "",
+      summariseGathered(calls),
+    ]
+      .filter((part) => part !== "")
+      .join("\n\n"),
+  };
+  return lastUser === undefined ? [head] : [head, lastUser];
+}
+
 /** Maps a client failure to a stream event. Never echoes an upstream body. */
 function failureEvent(error: unknown): AssistantEvent {
   if (error instanceof Error && "code" in error) {
@@ -348,7 +476,9 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
     ...input.toolContext,
   };
   const tools = toolDefinitions(input.config.webFetchEnabled);
-  const conversation = buildConversation(input);
+  let conversation = buildConversation(input);
+  // Every tool call this turn ran, as the compact index the retry re-sends.
+  const gathered: GatheredCall[] = [];
   // The answer round gets the larger budget; a tool round does not need it.
   const answerMaxTokens = Math.max(1, Math.trunc(input.config.maxAnswerTokens));
 
@@ -356,8 +486,21 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
    * The terminal frames. `citations` stays the tool-backed set, unchanged; the
    * `unverified` frame exists only when the prose named something that set does
    * not hold, and `done` carries the same list for the brief's export.
+   *
+   * A turn with no prose is a failure, never a settled turn. `done` with an empty
+   * answer is what told the reader "the turn ended before it wrote an answer"
+   * while the ledger billed a success, so this returns whether it really
+   * settled: `false` means only the error frame went out.
    */
-  function* settle(totals: Totals, rounds: number): Generator<AssistantEvent> {
+  function* settle(totals: Totals, rounds: number): Generator<AssistantEvent, boolean> {
+    if (answerText.trim() === "") {
+      yield {
+        type: "error",
+        code: "AI_EMPTY_ANSWER",
+        message: `The model used all ${String(ASSISTANT_MAX_TOOL_ROUNDS)} rounds of this turn without writing an answer.`,
+      };
+      return false;
+    }
     const unverified = unverifiedAnswerIds(answerText, citationIds);
     yield { type: "citations", records: [...citationIds] };
     if (unverified.length > 0) yield { type: "unverified", ids: unverified };
@@ -368,6 +511,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       rounds,
       unverified,
     };
+    return true;
   }
 
   try {
@@ -385,14 +529,12 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         };
         return;
       }
-      if (rounds >= ASSISTANT_MAX_TOOL_ROUNDS) {
-        // The cap is a budget, not a failure: the turn ends with the evidence
-        // it gathered and says so, instead of looping on a model that keeps
-        // asking for tools.
-        yield* settle(totals, rounds);
-        answered = true;
-        return;
-      }
+      // The last permitted round is the answer round. It is sent with no tools
+      // at all and with the final-round rule, so no tool call can be requested
+      // in it and the turn always ends with prose or an honest error. Before
+      // this, a model that was still calling tools when the cap fired settled
+      // `done` with no text — the measured failure, 2 of 8 plain questions.
+      const answerOnlyRound = rounds >= ASSISTANT_MAX_TOOL_ROUNDS - 1;
 
       // Round one is tool discovery: the prompt requires a call before any
       // claim, so its completion is a call and 1024 tokens cover it. From then
@@ -400,8 +542,8 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       const roundMaxTokens =
         rounds === 0 && !retriedEmptyRound ? AI_MAX_TOKENS_DEFAULT : answerMaxTokens;
       const completion = input.client.streamChatCompletion({
-        messages: conversation,
-        tools,
+        messages: answerOnlyRound ? withAnswerRoundRule(conversation) : conversation,
+        tools: answerOnlyRound ? [] : tools,
         maxTokens: roundMaxTokens,
         timeoutMs: remaining,
         signal: input.signal,
@@ -439,16 +581,18 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         return;
       }
 
+      const wroteText = (round.content ?? "").trim() !== "";
+
       if (round.finishReason === "length") {
         // A round that produced nothing — no tool call, no text — is the cap
         // being too small for the reasoning preamble, not an answer that was
         // cut. Re-run that round once at the answer budget, and say so in the
         // stream. Bounded by the flag: a provider that truncates twice still
         // ends with an honest error rather than a retry loop.
-        const silent = round.toolCalls.length === 0 && (round.content ?? "").trim() === "";
+        const silent = round.toolCalls.length === 0 && !wroteText;
         if (silent && !retriedEmptyRound && roundMaxTokens < answerMaxTokens) {
           retriedEmptyRound = true;
-          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens };
+          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens, trimmed: false };
           continue;
         }
         yield {
@@ -460,7 +604,31 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         return;
       }
 
-      if (round.toolCalls.length === 0 && (round.content ?? "").trim() === "") {
+      if (answerOnlyRound) {
+        // No tools were offered, so a tool call here is ignored rather than run:
+        // there is no round left to feed its result back into. What matters is
+        // whether the round wrote the answer.
+        if (!wroteText && answerText.trim() === "" && !retriedEmptyRound) {
+          // The answer round came back with nothing, on a turn that has no prose
+          // at all. Retry it exactly once, trimmed: the base prompt, the last
+          // question and an index of what the tools returned. Never a second
+          // retry — the flag is shared with the truncated path, so a turn can
+          // escalate once and then has to fail honestly.
+          retriedEmptyRound = true;
+          yield {
+            type: "retry",
+            code: "AI_EMPTY_ANSWER",
+            maxTokens: answerMaxTokens,
+            trimmed: true,
+          };
+          conversation = buildTrimmedConversation(conversation, gathered);
+          continue;
+        }
+        answered = yield* settle(totals, rounds);
+        return;
+      }
+
+      if (round.toolCalls.length === 0 && !wroteText) {
         // A round that ends cleanly with nothing in it — no prose, no tool call,
         // no truncation — is a provider that stopped without saying anything.
         // It is not an answer, so it is not settled as one: the same round is
@@ -470,7 +638,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // an answer" — true, but silent about a retry that would have worked.
         if (!retriedEmptyRound && roundMaxTokens < answerMaxTokens) {
           retriedEmptyRound = true;
-          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens };
+          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens, trimmed: false };
           continue;
         }
         yield {
@@ -483,8 +651,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       }
 
       if (round.toolCalls.length === 0) {
-        yield* settle(totals, rounds);
-        answered = true;
+        answered = yield* settle(totals, rounds);
         return;
       }
 
@@ -502,6 +669,13 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // its row count while the model is still reading.
         const returnedIds = outcome.ok ? collectRecordIds(outcome.data) : [];
         for (const id of returnedIds) citationIds.add(id);
+        gathered.push({
+          name: call.function.name,
+          args: compactJson(args.ok ? args.value : null, SUMMARY_ARGS_CHARS),
+          ok: outcome.ok,
+          rows: outcome.ok ? outcome.rows : 0,
+          ids: returnedIds,
+        });
         yield {
           type: "tool",
           name: call.function.name,

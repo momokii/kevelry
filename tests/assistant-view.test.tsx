@@ -252,6 +252,20 @@ describe("state 2 — streaming", () => {
     expect(html).not.toContain('data-testid="assistant-followups"');
   });
 
+  it("says nothing about an ended turn when the turn failed instead", () => {
+    // The fault panel names what went wrong. "The turn ended before it wrote an
+    // answer" on top of it is not a second explanation, it is the sentence the
+    // empty-settle bug used to hide behind.
+    const html = render({
+      turns: [turn({ failed: true, answer: "" })],
+      fault: faultFromCode("AI_EMPTY_ANSWER"),
+    });
+    expect(html).toContain('data-testid="assistant-fault"');
+    expect(html).toContain("The model used every round of the turn without writing an answer.");
+    expect(html).not.toContain("The turn ended before it wrote an answer.");
+    expect(html).not.toContain('data-testid="assistant-brief"');
+  });
+
   it("says when the turn's request had to drop earlier turns, once and quietly", () => {
     const html = render({ turns: [turn({ contextTrimmed: true })] });
     expect(html).toContain('data-testid="assistant-context-trimmed"');
@@ -274,6 +288,7 @@ describe("state 3 — typed errors", () => {
       ["AI_TIMEOUT", "The model took too long; the question was not answered."],
       ["AI_UPSTREAM_ERROR", "The provider failed before the answer finished."],
       ["AI_TRUNCATED", "The answer was cut off; ask a narrower question."],
+      ["AI_EMPTY_ANSWER", "The model used every round of the turn without writing an answer."],
     ] as const;
     for (const [code, headline] of cases) {
       const html = render({ fault: faultFromCode(code) });

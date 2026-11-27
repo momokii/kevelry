@@ -586,7 +586,37 @@ describe("assistant route: the streaming turn", () => {
     });
   });
 
-  it("caps tool rounds at four and still ends with done", async () => {
+  it("reserves the last of the four rounds for the answer and settles with its text", async () => {
+    // The cap is spent on prose: the fourth round is sent with no tool
+    // definitions at all, so a provider that would keep calling tools cannot
+    // end the turn without an answer.
+    const { transport, calls } = fakeTransport(async (_call, index) =>
+      index < 3
+        ? { status: 200, body: toolStream("get_cve", { id: CVE_ID }, USAGE_ROUND_1) }
+        : { status: 200, body: textStream(`Only ${CVE_ID} matches.`, USAGE_ROUND_2) },
+    );
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    const frames = framesOf(await response.text());
+
+    expect(calls).toHaveLength(4);
+    expect(calls[0]?.body).toHaveProperty("tools");
+    // The answer round carries no tools and the final-round rule; earlier
+    // rounds carry both tools and no rule.
+    expect(calls[3]?.body).not.toHaveProperty("tools");
+    const messages = calls[3]?.body["messages"] as Array<{ role: string; content: string }>;
+    expect(messages[0]?.content).toContain("[final round]");
+    expect(frames.filter((frame) => frame.type === "tool")).toHaveLength(3);
+    expect(frames.filter((frame) => frame.type === "delta")).toHaveLength(1);
+    expect(frames[frames.length - 1]).toMatchObject({ type: "done", rounds: 3 });
+    expect(frames.some((frame) => frame.type === "error")).toBe(false);
+  });
+
+  it("fails with AI_EMPTY_ANSWER when the cap is spent and no round writes anything", async () => {
+    // Every request asks for a tool, including the answer round that cannot call
+    // one. That turn used to settle `done` with no text; it is now a fault, and
+    // the retry it gets is trimmed to the prompt, the question and an index.
     const { transport, calls } = fakeTransport(async () => ({
       status: 200,
       body: toolStream("get_cve", { id: CVE_ID }, USAGE_ROUND_1),
@@ -596,12 +626,14 @@ describe("assistant route: the streaming turn", () => {
     const response = await POST(request(ONE_QUESTION));
     const frames = framesOf(await response.text());
 
-    expect(calls).toHaveLength(4);
-    expect(frames.filter((frame) => frame.type === "tool")).toHaveLength(4);
-    expect(frames.filter((frame) => frame.type === "delta")).toHaveLength(0);
-    const done = frames[frames.length - 1];
-    expect(done).toMatchObject({ type: "done", rounds: 4 });
-    expect(frames.some((frame) => frame.type === "error")).toBe(false);
+    expect(calls).toHaveLength(5);
+    expect(calls[3]?.body).not.toHaveProperty("tools");
+    expect(calls[4]?.body).not.toHaveProperty("tools");
+    expect(calls[4]?.body["messages"]).toHaveLength(2);
+    expect(frames.filter((frame) => frame.type === "tool")).toHaveLength(3);
+    expect(frames.filter((frame) => frame.type === "retry")).toHaveLength(1);
+    expect(frames.some((frame) => frame.type === "done")).toBe(false);
+    expect(frames[frames.length - 1]).toMatchObject({ type: "error", code: "AI_EMPTY_ANSWER" });
   });
 
   it("sends the image as one part on the last user message with the vision rule", async () => {

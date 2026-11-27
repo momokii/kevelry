@@ -704,4 +704,146 @@ describe("streaming turn: completion budget per round", () => {
     expect(events.some((event) => event.type === "done")).toBe(false);
     expect(errorCodes(events)).toEqual(["AI_UPSTREAM_ERROR"]);
   });
+
+  // The cap used to end the turn: a model that was still calling tools when
+  // `rounds` reached 4 settled `done` with no answer text (2 of 8 measured plain
+  // KEV questions). The last permitted round is now the answer round — no tools
+  // at all, and a rule that says so — and the round after it is the failure.
+  const AT_CAP = [toolCallBody(), toolCallBody(), toolCallBody()] as const;
+
+  function toolCallWithTextBody(text: string): string {
+    return [
+      contentFrame(text),
+      frame({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_9",
+                  type: "function",
+                  function: { name: "get_cve", arguments: '{"id":42}' },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      stopFrame("tool_calls"),
+      frame(USAGE_FRAME),
+      DONE,
+    ].join("");
+  }
+
+  function messagesOf(body: Record<string, unknown> | undefined): Array<{
+    role: string;
+    content: string;
+  }> {
+    return body?.["messages"] as Array<{ role: string; content: string }>;
+  }
+
+  it("sends the last permitted round without tools, and its text settles the turn", async () => {
+    const { transport, sent } = scripted([
+      ...AT_CAP,
+      answerBody("Three calls later, one record matched."),
+    ]);
+    const { events } = await runTurn(transport);
+
+    // The budget per round is unchanged: round one is tool discovery at 1024,
+    // every later round gets the answer budget.
+    expect(maxTokensOf(sent)).toEqual([1024, 4096, 4096, 4096]);
+    // Rounds one to three may call tools; the fourth is sent with none at all.
+    expect(sent.slice(0, 3).map((body) => Array.isArray(body["tools"]))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(sent[3]).not.toHaveProperty("tools");
+    // The final-round rule is on that round's system prompt and nowhere else.
+    expect(messagesOf(sent[3])[0]?.content).toContain("[final round]");
+    expect(messagesOf(sent[0])[0]?.content).not.toContain("[final round]");
+    // The response that follows becomes the answer, and the turn settles once.
+    expect(events.flatMap((event) => (event.type === "delta" ? [event.text] : []))).toEqual([
+      "Three calls later, one record matched.",
+    ]);
+    expect(events.filter((event) => event.type === "done")).toHaveLength(1);
+    expect(errorCodes(events)).toEqual([]);
+  });
+
+  it("ignores a tool call returned on the answer round and keeps its prose", async () => {
+    // The provider was offered no tools, so a call here cannot be run: there is
+    // no round left to feed the result back into. The prose is the answer.
+    const { transport } = scripted([...AT_CAP, toolCallWithTextBody("One record matched.")]);
+    const { events } = await runTurn(transport);
+
+    expect(events.filter((event) => event.type === "tool")).toHaveLength(3);
+    expect(events.flatMap((event) => (event.type === "delta" ? [event.text] : []))).toEqual([
+      "One record matched.",
+    ]);
+    expect(events[events.length - 1]).toMatchObject({ type: "done" });
+  });
+
+  it("retries an empty answer round once, trimmed, and never with tools", async () => {
+    const { transport, sent } = scripted([...AT_CAP, EMPTY, answerBody("Four records are due.")]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096, 4096, 4096, 4096]);
+    // The escalation is on the stream, and it is the one retry this turn gets.
+    expect(events.filter((event) => event.type === "retry")).toHaveLength(1);
+    expect(events.find((event) => event.type === "retry")).toMatchObject({
+      code: "AI_EMPTY_ANSWER",
+      maxTokens: 4096,
+      trimmed: true,
+    });
+
+    // Eight messages went into the answer round; the retry sends two — the base
+    // prompt with the final-round rule and the compact tool index, then the
+    // reader's question. A full re-send cost 42.7 s of a 45 s deadline.
+    expect(messagesOf(sent[3])).toHaveLength(8);
+    const retryBody = sent[4];
+    expect(retryBody).not.toHaveProperty("tools");
+    const retry = messagesOf(retryBody);
+    expect(retry).toHaveLength(2);
+    expect(retry[1]).toMatchObject({ role: "user", content: MESSAGES[0]?.content });
+    expect(retry.some((message) => message.role === "tool" || message.role === "assistant")).toBe(
+      false,
+    );
+    // The index names the calls and their outcome, not the payloads.
+    expect(retry[0]?.content).toContain("[final round]");
+    expect(retry[0]?.content).toContain('1. get_cve({"id":42}) → failed');
+    expect(JSON.stringify(retryBody)).not.toContain("tool_call_id");
+    // The retried round's text is the answer.
+    expect(events.flatMap((event) => (event.type === "delta" ? [event.text] : []))).toEqual([
+      "Four records are due.",
+    ]);
+    expect(events.filter((event) => event.type === "done")).toHaveLength(1);
+  });
+
+  it("reports an answer round that stays empty as AI_EMPTY_ANSWER, never as settled", async () => {
+    const { transport, sent } = scripted([...AT_CAP, EMPTY, EMPTY]);
+    const { events, recorded } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096, 4096, 4096, 4096]);
+    expect(events.filter((event) => event.type === "retry")).toHaveLength(1);
+    // No `done` without text: the turn is a fault, not a reply with nothing in it.
+    expect(events.some((event) => event.type === "done")).toBe(false);
+    expect(errorCodes(events)).toEqual(["AI_EMPTY_ANSWER"]);
+    expect(events[events.length - 1]).toMatchObject({ type: "error", code: "AI_EMPTY_ANSWER" });
+    // It still billed what the provider reported.
+    expect(recorded).toHaveLength(1);
+  });
+
+  it("still streams a normal two-round answer and settles once", async () => {
+    const { transport, sent } = scripted([toolCallBody(), answerBody("One record matched.")]);
+    const { events } = await runTurn(transport);
+
+    expect(maxTokensOf(sent)).toEqual([1024, 4096]);
+    expect(events.map((event) => event.type)).toEqual(["tool", "delta", "citations", "done"]);
+    expect(events.filter((event) => event.type === "done")).toHaveLength(1);
+    // A turn that answers in two rounds never reaches the final-round rule, and
+    // its answer round still carries the tool definitions it did not use.
+    expect(sent[1]).toHaveProperty("tools");
+    expect(messagesOf(sent[1])[0]?.content).not.toContain("[final round]");
+  });
 });

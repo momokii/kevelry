@@ -462,3 +462,41 @@ describe("a transcript that outgrew the caps", () => {
     expect(trimNotes()).toHaveLength(0);
   });
 });
+
+// An empty turn is a fault, not a settled reply with nothing in it.
+//
+// The bug this replaces: the server settled `done` with no text, the desk
+// called the turn finished, and the page read "The turn ended before it wrote
+// an answer" — a note, never a fault, so a model that ran out of rounds looked
+// exactly like a model that had nothing to say. The server now sends `error`
+// with `AI_EMPTY_ANSWER`; this drives that frame through the production parser
+// and asserts what the reader is left with.
+describe("an empty answer lands as a fault, not as a settled turn", () => {
+  it("shows the fault panel and not the ended-before-it-wrote-a-line note", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamResponse([
+          {
+            type: "error",
+            code: "AI_EMPTY_ANSWER",
+            message: "The model used all 4 rounds of this turn without writing an answer.",
+          },
+        ]),
+      ),
+    );
+    await ask("Which KEV entries are due in the next 30 days?");
+
+    const fault = host.querySelector<HTMLElement>('[data-testid="assistant-fault"]');
+    expect(fault).not.toBeNull();
+    expect(fault?.getAttribute("data-code")).toBe("AI_EMPTY_ANSWER");
+    expect(fault?.querySelector(".assistant-fault-headline")?.textContent).toBe(
+      "The model used every round of the turn without writing an answer.",
+    );
+    // The quiet sentence is gone: a fault is not an ending.
+    expect(host.textContent).not.toContain("The turn ended before it wrote an answer.");
+    // Nothing to export and nothing to build a follow-up on.
+    expect(host.querySelector('[data-testid="assistant-brief"]')).toBeNull();
+    expect(host.querySelector('[data-testid="assistant-followups"]')).toBeNull();
+  });
+});
