@@ -40,7 +40,6 @@
 // with no tool definitions at all, so a provider that keeps calling tools
 // cannot end the turn with an empty answer. See `answerOnlyRound` below.
 
-import { CVE_ID_RE } from "../cve-id";
 import type { CveDatabase } from "../db";
 import type {
   AiClient,
@@ -50,15 +49,24 @@ import type {
   ChatToolCall,
 } from "./client";
 import { AI_MAX_TOKENS_DEFAULT, type AiConfig } from "./config";
-import { unverifiedAnswerNumbers } from "./numbers";
+import { collectEvidence, collectRecordIds, webEvidence, type ToolReading } from "./evidence";
 import {
   renderAnswerRoundInstruction,
   renderRecordContext,
   renderSystemPrompt,
   renderVisionInstruction,
 } from "./prompt";
+import { settle, type AssistantDoneEvent, type SettledUsage } from "./settle";
 import { executeTool, toolDefinitions, type ToolContext, type ToolOutcome } from "./tools";
 import type { AiUsage, AiUsageLedger } from "./usage";
+
+// The evidence rules — what a payload may cite, what the prose named, what a
+// figure needs — live in `evidence.ts`, and the terminal `done` payload is built
+// in `settle.ts`. These names stay exported from here because this module's
+// existing importers name them (`tests/cve-id.test.ts` pins the id shape a
+// payload may cite); a re-export keeps one home for the rule instead of a second
+// copy of it.
+export { ASSISTANT_CITATION_CAP, collectRecordIds } from "./evidence";
 
 /**
  * Hard cap on rounds in one turn. The plan allowed six; four is what this phase
@@ -68,9 +76,6 @@ import type { AiUsage, AiUsageLedger } from "./usage";
  * longer end a turn that never wrote one.
  */
 export const ASSISTANT_MAX_TOOL_ROUNDS = 4;
-
-/** Upper bound on citation ids one turn may report. */
-export const ASSISTANT_CITATION_CAP = 200;
 
 /**
  * Record ids a single `tool` frame carries for the provenance ledger.
@@ -86,23 +91,16 @@ export const ASSISTANT_CITATION_CAP = 200;
  */
 export const ASSISTANT_TOOL_ID_SAMPLE = 25;
 
-/**
- * CVE ids as they appear in prose: case-insensitive, so a model that writes
- * `cve-2021-44228` is still checked rather than slipping past the classifier.
- */
-const ANSWER_ID_PATTERN = /\bCVE-\d{4}-\d{4,}\b/gi;
-
 export interface AssistantMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-export interface AssistantUsageFrame {
-  prompt: number;
-  completion: number;
-  reasoning: number;
-  cacheRead: number;
-}
+/**
+ * The `done` frame's token totals. The shape is `settle.ts`'s, because that is
+ * what writes it; the name stays here for the callers that already use it.
+ */
+export type AssistantUsageFrame = SettledUsage;
 
 /** Error codes an SSE `error` event may carry. */
 export type AssistantStreamErrorCode =
@@ -151,28 +149,7 @@ export type AssistantEvent =
     }
   | { type: "citations"; records: string[] }
   | { type: "unverified"; ids: string[] }
-  | {
-      type: "done";
-      /**
-       * What kind of answer this was. `refusal` is set by the pre-inference
-       * scope filter: the desk prints a quiet label and offers no brief or
-       * follow-ups, because the question was declined, not answered and not
-       * failed. Absent means an ordinary answer.
-       */
-      kind?: "refusal";
-      usage: AssistantUsageFrame;
-      costUsd: number;
-      rounds: number;
-      /** Ids the prose named without a tool behind them; empty when none. */
-      unverified: string[];
-      /**
-       * Figures the prose printed that no tool payload in this turn supports,
-       * as printed. Omitted when the list is empty, and omitted entirely on a
-       * turn that collected no payload: with nothing to compare against, a
-       * number is not doubtful, it is unchecked.
-       */
-      unverifiedNumbers?: string[];
-    }
+  | AssistantDoneEvent
   | { type: "error"; code: AssistantStreamErrorCode; message: string };
 
 export interface AssistantTurnInput {
@@ -196,83 +173,6 @@ export interface AssistantTurnInput {
 /** One SSE frame. `data:`-only, so any SSE client or a plain text reader works. */
 export function encodeAssistantEvent(event: AssistantEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
-}
-
-/**
- * Payload keys whose ids are not evidence: `get_cves` reports the ids this
- * dataset holds no record for in `missing`, and an id that was asked for and
- * not found must never be cited as a record the turn read.
- */
-const NON_EVIDENCE_KEYS = new Set(["missing"]);
-
-/**
- * Ids the server actually read, from any tool payload shape.
- *
- * Deliberately generic: every tool nests ids differently (`items[].cveId`,
- * `record.cveId`, `points[]` for history), and a per-tool extractor would be a
- * second place to forget when a tool is added. Only strings matching the id
- * shape are collected, depth- and count-bounded so a hostile payload cannot
- * turn this into a walk of a huge object graph. A key named `missing` is
- * skipped whole: an id that was asked for and not found is not a citation.
- */
-export function collectRecordIds(value: unknown): string[] {
-  const found: string[] = [];
-  const seen = new Set<string>();
-  const walk = (node: unknown, depth: number): void => {
-    if (found.length >= ASSISTANT_CITATION_CAP || depth > 6) return;
-    if (typeof node === "string") {
-      if (CVE_ID_RE.test(node) && !seen.has(node)) {
-        seen.add(node);
-        found.push(node);
-      }
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const entry of node) walk(entry, depth + 1);
-      return;
-    }
-    if (typeof node === "object" && node !== null) {
-      for (const [key, entry] of Object.entries(node)) {
-        if (NON_EVIDENCE_KEYS.has(key)) continue;
-        walk(entry, depth + 1);
-      }
-    }
-  };
-  walk(value, 0);
-  return found;
-}
-
-/**
- * Every record id the answer text names, deduplicated and case-normalised.
- *
- * This is the prose side of the provenance rule: `collectRecordIds` walks what a
- * tool returned, this walks what the reader was told. It is a separate walk on
- * purpose — the answer is a string, not a payload, and a single regex is the
- * whole extraction rule.
- */
-export function extractAnswerIds(text: string): string[] {
-  const found: string[] = [];
-  const seen = new Set<string>();
-  for (const match of text.matchAll(ANSWER_ID_PATTERN)) {
-    const id = match[0].toUpperCase();
-    if (seen.has(id)) continue;
-    seen.add(id);
-    found.push(id);
-  }
-  return found;
-}
-
-/**
- * Ids in the prose that no tool payload in this turn contained.
- *
- * `verified` is the set the turn already collected from tool results — the same
- * set `citations` reports — so a citation and a verified id cannot disagree.
- * The list is complete rather than sampled: the answer is bounded by the model's
- * token cap, and a dropped id would be exactly the silent omission this check
- * exists to prevent.
- */
-export function unverifiedAnswerIds(text: string, verified: ReadonlySet<string>): string[] {
-  return extractAnswerIds(text).filter((id) => !verified.has(id));
 }
 
 /** `{ ok: true, value }` or `{ ok: false }`: the model's JSON was not an object. */
@@ -321,7 +221,7 @@ export function buildConversation(input: AssistantTurnInput): ChatMessage[] {
   return conversation;
 }
 
-interface Totals extends AssistantUsageFrame {
+interface Totals extends SettledUsage {
   costUsd: number;
   /**
    * True once any round of this turn reported no cost. A turn is priced only if
@@ -353,23 +253,6 @@ function malformedArguments(name: string): ToolOutcome {
     reason: "BAD_ARGUMENT",
     error: "Tool arguments were not a JSON object.",
   };
-}
-
-/**
- * The host a successful web fetch read, for the citation area's chip.
- *
- * The server, not the client, is the authority on which host answered: the URL
- * the model asked for can differ from the one that was read when a single
- * allow-listed redirect was followed. Anything but a successful fetch yields
- * nothing, so a refused URL never becomes a chip.
- */
-function webEvidence(name: string, outcome: ToolOutcome): { url: string; host: string } | null {
-  if (name !== "fetch_authoritative" || !outcome.ok) return null;
-  const data: unknown = outcome.data;
-  if (typeof data !== "object" || data === null) return null;
-  const { url, host } = data as { url?: unknown; host?: unknown };
-  if (typeof url !== "string" || typeof host !== "string") return null;
-  return { url, host };
 }
 
 function toolMessage(call: ChatToolCall, outcome: ToolOutcome): ChatMessage {
@@ -522,11 +405,10 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
     costUsd: 0,
     costUnmetered: false,
   };
-  const citationIds = new Set<string>();
-  // Every successful tool result this turn, kept whole for the numeric check:
-  // the id pass only needs the ids, but a figure has to be compared with the
-  // payload's own value and precision, not with a summary of it.
-  const toolPayloads: unknown[] = [];
+  // Every call this turn executed, in order: the evidence pass reads them once,
+  // after the loop, and reports what may be cited, what the prose named that no
+  // payload held, and which hosts a fetch actually read.
+  const readings: ToolReading[] = [];
   // The prose exactly as the reader received it: every delta, in order. The
   // answer the model wrote in an earlier round that ended in tool calls is on
   // screen too, so it is classified too.
@@ -557,18 +439,18 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   const answerMaxTokens = Math.max(1, Math.trunc(input.config.maxAnswerTokens));
 
   /**
-   * The terminal frames. `citations` stays the tool-backed set, unchanged; the
-   * `unverified` frame exists only when the prose named something that set does
-   * not hold, and `done` carries the same list for the brief's export. The
-   * numeric check rides along in `done` only — it is a caution line, not a step
-   * in the transcript — and only when a payload existed to compare against.
+   * The terminal frames. `citations` is the id set the evidence pass read from
+   * this turn's payloads — never an id the model claimed; the `unverified` frame
+   * exists only when the prose named something that set does not hold, and
+   * `done` carries the same list for the brief's export. The frames are
+   * sequenced here; what they say is `collectEvidence`'s and `settle`'s.
    *
    * A turn with no prose is a failure, never a settled turn. `done` with an empty
    * answer is what told the reader "the turn ended before it wrote an answer"
    * while the ledger billed a success, so this returns whether it really
    * settled: `false` means only the error frame went out.
    */
-  function* settle(totals: Totals, rounds: number): Generator<AssistantEvent, boolean> {
+  function* settleTurn(totals: Totals, rounds: number): Generator<AssistantEvent, boolean> {
     if (answerText.trim() === "") {
       yield {
         type: "error",
@@ -577,18 +459,16 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       };
       return false;
     }
-    const unverified = unverifiedAnswerIds(answerText, citationIds);
-    const unverifiedNumbers = unverifiedAnswerNumbers(answerText, toolPayloads);
-    yield { type: "citations", records: [...citationIds] };
-    if (unverified.length > 0) yield { type: "unverified", ids: unverified };
-    yield {
-      type: "done",
-      usage: usageFrame(totals),
-      costUsd: totals.costUsd,
-      rounds,
-      unverified,
-      ...(unverifiedNumbers.length === 0 ? {} : { unverifiedNumbers }),
-    };
+    const evidence = collectEvidence({
+      toolCalls: readings,
+      answerText,
+      webBudget: webFetchBudget,
+    });
+    yield { type: "citations", records: evidence.citationIds };
+    if (evidence.unverifiedIds.length > 0) {
+      yield { type: "unverified", ids: evidence.unverifiedIds };
+    }
+    yield settle({ usage: { ...usageFrame(totals), costUsd: totals.costUsd }, rounds, evidence });
     return true;
   }
 
@@ -702,7 +582,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
           conversation = buildTrimmedConversation(conversation, gathered);
           continue;
         }
-        answered = yield* settle(totals, rounds);
+        answered = yield* settleTurn(totals, rounds);
         return;
       }
 
@@ -737,7 +617,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       }
 
       if (round.toolCalls.length === 0) {
-        answered = yield* settle(totals, rounds);
+        answered = yield* settleTurn(totals, rounds);
         return;
       }
 
@@ -754,10 +634,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // Emitted before the result is appended: the UI can name the tool and
         // its row count while the model is still reading.
         const returnedIds = outcome.ok ? collectRecordIds(outcome.data) : [];
-        for (const id of returnedIds) citationIds.add(id);
-        // Only a successful result is evidence. A failure's reason names no
-        // figure, so it is not offered to the numeric check as a haystack.
-        if (outcome.ok) toolPayloads.push(outcome.data);
+        readings.push({ name: call.function.name, outcome });
         gathered.push({
           name: call.function.name,
           args: compactJson(args.ok ? args.value : null, SUMMARY_ARGS_CHARS),
