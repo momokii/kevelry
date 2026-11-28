@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
   // directory is overridable; production leaves it at the default. Nothing else
   // reads this variable.
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // Never send `X-Powered-By: Next.js`. The exact framework and major version
+  // is free reconnaissance for nobody's benefit; nothing in the app reads it.
+  poweredByHeader: false,
   async headers() {
     return [
       {
