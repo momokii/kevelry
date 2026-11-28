@@ -28,6 +28,7 @@
 // only marks the parse `malformed` (an upstream failure the loop reports as a
 // typed error event).
 
+import { asRecord } from "../json";
 import type { ChatToolCall } from "./client";
 import { parseUsage, type AiUsage } from "./usage";
 
@@ -64,12 +65,6 @@ interface PartialToolCall {
 interface AccumulatorState {
   result: GatewayStreamParse;
   toolCalls: Map<number, PartialToolCall>;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function mergeToolCalls(raw: unknown, into: Map<number, PartialToolCall>): void {

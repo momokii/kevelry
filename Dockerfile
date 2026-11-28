@@ -36,11 +36,25 @@ RUN npm ci
 # header". Assert the glibc binding, repair it if missing, then hard-fail if it
 # still will not load. Do not delete this step: without it a musl-only install
 # only surfaces one cached layer later, at `npm run build`.
-RUN NEXT_SWC_VERSION="$(node -p "require('./package.json').dependencies.next")" \
+#
+# Reproducibility trade-off: the repair install runs *outside* `npm ci`'s
+# lockfile integrity check, so it is pinned to the exact version resolved in
+# package-lock.json — read here, at build time, and asserted to match both
+# `next` and the lock's own swc entry. A floating range (or package.json's
+# range) would let a rebuild resolve a different, unverified tarball. The
+# clean alternative is listing @next/swc-linux-x64-gnu as an explicit
+# optionalDependency so `npm ci` installs it under the lock; that changes
+# package.json for every platform, which is why the pinned install stays.
+RUN NEXT_VERSION="$(node -p "require('./package-lock.json').packages['node_modules/next'].version")" \
+  && LOCKED_SWC="$(node -p "require('./package-lock.json').packages['node_modules/@next/swc-linux-x64-gnu'].version")" \
+  && if [ "${NEXT_VERSION}" != "${LOCKED_SWC}" ]; then \
+       echo "FATAL: package-lock.json has next ${NEXT_VERSION} but @next/swc-linux-x64-gnu ${LOCKED_SWC}; the lock is inconsistent" >&2; \
+       exit 1; \
+     fi \
   && if ! node -e "require('@next/swc-linux-x64-gnu')" >/dev/null 2>&1; then \
-       echo "==> @next/swc-linux-x64-gnu is not loadable on this glibc base; installing ${NEXT_SWC_VERSION}"; \
+       echo "==> @next/swc-linux-x64-gnu is not loadable on this glibc base; installing ${LOCKED_SWC}"; \
        npm install --no-save --include=optional --ignore-scripts --no-audit --no-fund \
-         "@next/swc-linux-x64-gnu@${NEXT_SWC_VERSION}"; \
+         "@next/swc-linux-x64-gnu@${LOCKED_SWC}"; \
      fi \
   && node -e "try{const p=require.resolve('@next/swc-linux-x64-gnu');require('@next/swc-linux-x64-gnu');console.log('Next SWC glibc binding OK:',p)}catch(e){console.error('FATAL: @next/swc-linux-x64-gnu is not loadable on this glibc image ('+e.message+').');console.error('Cause: only the musl variant was installed; next build would fall back to WASM and Turbopack would abort.');process.exit(1)}"
 

@@ -23,6 +23,7 @@
 //    (single row, 25 rows, a 90-day KEV catalog window, one 256 KB page).
 
 import { readCoverageTotals, readCurrentAggregates, readEpssDayRange } from "../aggregates";
+import { CVE_ID_RE } from "../cve-id";
 import { getCweCatalogMeta, normalizeCweId, resolveCweRefs, type CweRef } from "../cwe-catalog";
 import type { CveDatabase } from "../db";
 import { EPSS_HISTORY_CAP, loadEpssHistory } from "../epss-history";
@@ -367,7 +368,6 @@ function validateArgs(tool: ToolName, raw: unknown, schema: ToolSchema): ArgVali
 // the prompt's tool list, so a cap cannot drift between them.
 // ---------------------------------------------------------------------------
 
-const CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
 const DAY_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const CWE_ID_PATTERN = /^CWE-[0-9]{1,5}$/;
 
@@ -441,7 +441,7 @@ const TOOL_SPECS: Record<ToolName, ToolSpec> = {
       id: {
         type: "string",
         required: true,
-        pattern: CVE_ID_PATTERN,
+        pattern: CVE_ID_RE,
         description: "A CVE id, CVE-YYYY-NNNN.",
       },
     },
@@ -453,7 +453,7 @@ const TOOL_SPECS: Record<ToolName, ToolSpec> = {
       id: {
         type: "string",
         required: true,
-        pattern: CVE_ID_PATTERN,
+        pattern: CVE_ID_RE,
         description: "A CVE id, CVE-YYYY-NNNN.",
       },
       days: {
@@ -736,10 +736,6 @@ async function runSearchCves(
   return success("search_cves", data, items.length, retrievedAt);
 }
 
-function wrapped(text: string, source: string): string {
-  return wrapUntrusted(source, text);
-}
-
 function cwePayload(ref: CweRef): Record<string, unknown> {
   return {
     cweId: ref.id,
@@ -747,15 +743,15 @@ function cwePayload(ref: CweRef): Record<string, unknown> {
     url: ref.url,
     // A taxonomy label is catalog prose too: same envelope as the rest of the
     // untrusted text, so no field is a quiet exception to the rule.
-    name: ref.name === undefined ? null : wrapped(ref.name, `dataset:cwe:${ref.id}`),
+    name: ref.name === undefined ? null : wrapUntrusted(`dataset:cwe:${ref.id}`, ref.name),
     summary:
       ref.summary === undefined
         ? null
-        : wrapped(truncateProse(ref.summary, CWE_TEXT_CAP), `dataset:cwe:${ref.id}`),
+        : wrapUntrusted(`dataset:cwe:${ref.id}`, truncateProse(ref.summary, CWE_TEXT_CAP)),
     mitigation:
       ref.mitigation === undefined
         ? null
-        : wrapped(truncateProse(ref.mitigation, CWE_TEXT_CAP), `dataset:cwe:${ref.id}`),
+        : wrapUntrusted(`dataset:cwe:${ref.id}`, truncateProse(ref.mitigation, CWE_TEXT_CAP)),
   };
 }
 
@@ -777,7 +773,7 @@ async function runGetCve(
   const excerpt =
     shaped.excerpt === DESCRIPTION_MISSING_LABEL
       ? null
-      : wrapped(shaped.excerpt, `dataset:cve-record:${id}`);
+      : wrapUntrusted(`dataset:cve-record:${id}`, shaped.excerpt);
   const cwes = resolveCweRefs(ctx.db, record.kevCwes).map(cwePayload);
 
   const data = {
@@ -789,7 +785,7 @@ async function runGetCve(
       title:
         record.title === null || record.title.trim() === ""
           ? null
-          : wrapped(record.title, `dataset:cve-record:${id}`),
+          : wrapUntrusted(`dataset:cve-record:${id}`, record.title),
       descriptionExcerpt: excerpt,
       descriptionTruncated: shaped.truncated,
       descriptionLanguage: shaped.langLabel,
@@ -827,11 +823,11 @@ async function runGetCve(
       requiredAction:
         record.kevRequiredAction === null
           ? null
-          : wrapped(record.kevRequiredAction, `dataset:kev:${id}`),
+          : wrapUntrusted(`dataset:kev:${id}`, record.kevRequiredAction),
       vulnerabilityName:
         record.kevVulnerabilityName === null
           ? null
-          : wrapped(record.kevVulnerabilityName, `dataset:kev:${id}`),
+          : wrapUntrusted(`dataset:kev:${id}`, record.kevVulnerabilityName),
       // Catalog-stated tri-state. `unknown` is the catalog's own value;
       // `unstated` means the field was absent. Neither means "safe".
       ransomwareUse: record.kevRansomwareUse,
@@ -1304,9 +1300,9 @@ async function runFetchAuthoritative(
         // reporting the heading as the record. JSON and plain text are never
         // "client-rendered" — they carry no client to render them.
         mayBeClientRendered: isHtml && extracted.length < WEB_FETCH_SHORT_BODY_CHARS,
-        title: title === null ? null : wrapped(title, `web:${target.host}`),
+        title: title === null ? null : wrapUntrusted(`web:${target.host}`, title),
         jsonParsed: json === null ? null : json.parsed,
-        text: wrapped(text, `web:${target.host}`),
+        text: wrapUntrusted(`web:${target.host}`, text),
       };
       return success("fetch_authoritative", data, 1, retrievedAt);
     }

@@ -9,9 +9,12 @@
 // once, in the order the rule names them, because the two must not drift: the
 // question is what the model is asked, and the rule is what it is told to do
 // with every field.
+//
+// The id shape is not restated here: it is `CVE_ID_RE`, the one pattern every
+// path, query and chip validates, so a shape the field accepts is a shape the
+// route accepts.
 
-/** The route's own id shape, restated so the field refuses before a POST. */
-export const COMPARE_CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
+import { CVE_ID_RE } from "../../lib/cve-id";
 
 /** The comparison's field order. One list, used by the question and by tests. */
 export const COMPARE_FIELDS = [
@@ -50,7 +53,7 @@ export function normalizeCveId(raw: string): string {
 /** One field, for the inline message under its input. */
 export function validateCompareField(raw: string): string | null {
   if (raw.trim() === "") return COMPARE_EMPTY_MESSAGE;
-  if (!COMPARE_CVE_ID_PATTERN.test(normalizeCveId(raw))) return COMPARE_SHAPE_MESSAGE;
+  if (!CVE_ID_RE.test(normalizeCveId(raw))) return COMPARE_SHAPE_MESSAGE;
   return null;
 }
 

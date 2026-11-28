@@ -18,7 +18,7 @@
 
 import { AssistantDesk } from "@/components/assistant/AssistantDesk";
 import { AssistantHowThisWorks } from "@/components/assistant/AssistantHowThisWorks";
-import { ASSISTANT_CVE_CONTEXT_PATTERN } from "@/app/api/assistant/_lib/body";
+import { CVE_ID_RE } from "@/lib/cve-id";
 import { AI_MODEL_DEFAULT, aiGate, loadAiConfig, type AiDisabledReason } from "@/lib/ai/config";
 import { readSuggestionCounts, buildAssistantSuggestions } from "@/lib/ai/suggestions";
 import { createAiUsageLedger } from "@/lib/ai/usage";
@@ -148,7 +148,7 @@ export default async function AssistantPage({
   const params = await searchParams;
   const rawCve = Array.isArray(params.cve) ? params.cve[0] : params.cve;
   const cveContext =
-    typeof rawCve === "string" && ASSISTANT_CVE_CONTEXT_PATTERN.test(rawCve.toUpperCase())
+    typeof rawCve === "string" && CVE_ID_RE.test(rawCve.toUpperCase())
       ? rawCve.toUpperCase()
       : null;
 

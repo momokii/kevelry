@@ -11,6 +11,8 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
+import { CVE_ID_RE } from "../../lib/cve-id";
+
 export const SUPPORTED_TIME_ZONES = [
   "Asia/Jakarta",
   "Asia/Singapore",
@@ -48,13 +50,11 @@ export const WATCH_STORAGE_KEY = "ui-watch";
  * storage only — never a cookie (200 IDs would ride on every request). */
 export const WATCH_MAX_IDS = 200;
 
-const WATCH_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
-
 export function sanitizeWatchIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
   for (const entry of value) {
-    if (typeof entry === "string" && WATCH_ID_PATTERN.test(entry) && !out.includes(entry)) {
+    if (typeof entry === "string" && CVE_ID_RE.test(entry) && !out.includes(entry)) {
       out.push(entry);
       if (out.length >= WATCH_MAX_IDS) break;
     }
@@ -158,7 +158,7 @@ export function DisplayPrefsProvider({
   }, [watchedIds]);
 
   const toggleWatch = useCallback((cveId: string) => {
-    if (!WATCH_ID_PATTERN.test(cveId)) return;
+    if (!CVE_ID_RE.test(cveId)) return;
     const current = watchedIdsRef.current;
     const next: readonly string[] = current.includes(cveId)
       ? current.filter((id) => id !== cveId)

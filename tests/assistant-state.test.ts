@@ -9,14 +9,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ELAPSED_TICK_MS,
-  MAX_QUESTION_CHARS,
   QUESTION_COUNTER_VISIBLE_AT,
   budgetFault,
   counterVisible,
   disabledFault,
   faultFromCode,
   faultFromHttp,
-  faultFromStreamError,
   formatCount,
   formatElapsed,
   formatRemaining,
@@ -29,19 +27,21 @@ import {
   webSources,
   workingStage,
 } from "../src/components/assistant/assistant-state";
-import {
-  buildHistory,
-  buildHistoryForTurn,
-  MAX_HISTORY_CHARS,
-  MAX_HISTORY_MESSAGES,
-  MAX_HISTORY_MESSAGE_CHARS,
-} from "../src/components/assistant/AssistantDesk";
+import { buildHistory, buildHistoryForTurn } from "../src/components/assistant/AssistantDesk";
 import type { AssistantTurn } from "../src/components/assistant/assistant-state";
 import { HISTORY_TRIMMED_NOTE } from "../src/components/assistant/assistant-state";
+// The caps come from their one home; the route's body module re-exports the
+// same bindings, so importing both is how "no second literal" is observed.
 import {
   ASSISTANT_MAX_MESSAGE_CHARS,
   ASSISTANT_MAX_MESSAGES,
   ASSISTANT_MAX_TOTAL_CHARS,
+  MAX_QUESTION_CHARS,
+} from "../src/lib/ai/limits";
+import {
+  ASSISTANT_MAX_MESSAGE_CHARS as BODY_MAX_MESSAGE_CHARS,
+  ASSISTANT_MAX_MESSAGES as BODY_MAX_MESSAGES,
+  ASSISTANT_MAX_TOTAL_CHARS as BODY_MAX_TOTAL_CHARS,
 } from "../app/api/assistant/_lib/body";
 
 function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
@@ -91,8 +91,10 @@ describe("fault: the three provider failures", () => {
   });
 
   it("a stream error maps through the same table", () => {
-    expect(faultFromStreamError("AI_TRUNCATED").headline).toBe(
-      faultFromCode("AI_TRUNCATED").headline,
+    // An in-stream error event is mapped by `faultFromCode` itself: the desk no
+    // longer keeps a forwarder that only restated the call.
+    expect(faultFromCode("AI_TRUNCATED").headline).toBe(
+      "The answer was cut off; ask a narrower question.",
     );
   });
 });
@@ -147,6 +149,33 @@ describe("fault: budgets", () => {
     expect(fault.headline).toBe("This transcript has reached its token budget.");
     expect(fault.envVar).toBe("AI_SESSION_BUDGET_TOKENS");
     expect(fault.resetAt).toBeNull();
+  });
+
+  it("the unmetered case is not a spend claim, and says what it is", () => {
+    // The gateway stopped reporting cost: the budget cannot be totalled, so the
+    // copy must not claim the money was spent. The server's own sentence (with
+    // its count) rides in `detail`, so the desk never invents the number.
+    const fault = faultFromHttp({
+      status: 429,
+      snapshot: {
+        code: "AI_BUDGET_EXHAUSTED",
+        message:
+          "The gateway reported no cost for 10 AI turns today, so the daily budget cannot be measured. It resets at 00:00 UTC.",
+        details: {
+          reason: "unmetered",
+          unmeteredTurns: 10,
+          resetAt: "2026-11-23T00:00:00.000Z",
+        },
+      },
+      retryAfterSeconds: 3600,
+    });
+    expect(fault.kind).toBe("budget");
+    expect(fault.budgetReason).toBe("unmetered");
+    expect(fault.headline).toContain("cannot measure");
+    expect(fault.envVar).toBe("AI_DAILY_BUDGET_USD");
+    expect(fault.resetAt).toBe("2026-11-23T00:00:00.000Z");
+    expect(fault.detail).toContain("10 AI turns");
+    expect(fault.retryable).toBe(false);
   });
 
   it("a 429 budget body keeps its reason and reset", () => {
@@ -347,7 +376,7 @@ describe("request history", () => {
       }),
     );
     const messages = buildHistory(many, "last");
-    expect(messages.length).toBeLessThanOrEqual(10);
+    expect(messages.length).toBeLessThanOrEqual(ASSISTANT_MAX_MESSAGES);
     expect(messages[messages.length - 1]).toEqual({ role: "user", content: "last" });
   });
 
@@ -402,11 +431,10 @@ describe("request history limits", () => {
     // The one message that must never be trimmed: the question being answered.
     expect(messages[messages.length - 1]).toEqual({ role: "user", content: NEXT_QUESTION });
     // Inside every cap the route enforces, with room to spare.
-    expect(totalChars).toBeLessThanOrEqual(MAX_HISTORY_CHARS);
-    expect(totalChars).toBeLessThanOrEqual(12_000);
-    expect(messages.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    expect(totalChars).toBeLessThanOrEqual(ASSISTANT_MAX_TOTAL_CHARS);
+    expect(messages.length).toBeLessThanOrEqual(ASSISTANT_MAX_MESSAGES);
     for (const message of messages) {
-      expect(message.content.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGE_CHARS);
+      expect(message.content.length).toBeLessThanOrEqual(ASSISTANT_MAX_MESSAGE_CHARS);
     }
     // The oldest went first, and what is left is a contiguous tail: a gap in the
     // middle of a transcript is worse than one that simply starts later.
@@ -449,12 +477,17 @@ describe("request history limits", () => {
     expect(messages).toHaveLength(5);
   });
 
-  it("keeps the client's caps strictly inside the route's", () => {
-    // The client's only job is to build a body the route accepts; a cap that
-    // drifts upward here makes every later turn a 400 that no reader can fix.
-    expect(MAX_HISTORY_MESSAGE_CHARS).toBe(ASSISTANT_MAX_MESSAGE_CHARS);
-    expect(MAX_HISTORY_MESSAGES).toBeLessThan(ASSISTANT_MAX_MESSAGES);
-    expect(MAX_HISTORY_CHARS).toBeLessThan(ASSISTANT_MAX_TOTAL_CHARS);
+  it("reads the route's caps rather than keeping a second copy of them", () => {
+    // The client's only job is to build a body the route accepts. A cap that
+    // drifts upward here makes every later turn a 400 that no reader can fix,
+    // and a stricter one silently withholds history the route would have taken —
+    // so the desk and the route read the same three numbers, and the route's
+    // body module re-exports those very bindings rather than restating them.
+    expect(ASSISTANT_MAX_MESSAGE_CHARS).toBe(BODY_MAX_MESSAGE_CHARS);
+    expect(ASSISTANT_MAX_MESSAGES).toBe(BODY_MAX_MESSAGES);
+    expect(ASSISTANT_MAX_TOTAL_CHARS).toBe(BODY_MAX_TOTAL_CHARS);
+    // A question is one message, so its cap is the per-message cap.
+    expect(MAX_QUESTION_CHARS).toBe(ASSISTANT_MAX_MESSAGE_CHARS);
   });
 
   it("says it trimmed in one quiet line", () => {

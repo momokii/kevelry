@@ -14,6 +14,9 @@
 -- `list_cost` is USD from the gateway's `usage.opencode.list_cost`. A gateway
 -- that omits the field records 0 rather than failing the turn; the plan's
 -- "unknown cost" column is deliberately not part of this phase's schema.
+-- (Superseded by 012: an omitted `list_cost` is now counted as unmetered, so an
+-- unpriced turn can never read as a free one. This file is immutable history;
+-- the correction lives in the later migration.)
 --
 -- Additive: no backfill, no fact-table change, no read-contract change.
 

@@ -5,8 +5,13 @@ import { ApiError } from "./errors";
 export const API_DEFAULT_LIMIT = 50;
 export const API_MAX_LIMIT = 200;
 
-/** Validated CVE ID shape shared by path and query params. */
-export const CVE_ID_RE = /^CVE-[0-9]{4}-[0-9]{4,}$/;
+/**
+ * Validated CVE ID shape shared by path and query params. Stated once in
+ * `src/lib/cve-id.ts`, because the UI validates the same ids (a watch list, a
+ * compare field, a follow-up chip) and two copies of a shape is two chances to
+ * disagree. Behaviour is unchanged: same anchors, same case sensitivity.
+ */
+export { CVE_ID_RE } from "../../../../src/lib/cve-id";
 
 export const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 

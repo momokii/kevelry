@@ -25,6 +25,7 @@ import {
   ASSISTANT_MAX_BODY_BYTES,
   ASSISTANT_MAX_IMAGE_BYTES,
   ASSISTANT_MAX_MESSAGE_CHARS,
+  ASSISTANT_MAX_MESSAGES,
   ASSISTANT_MAX_TOTAL_CHARS,
 } from "../app/api/assistant/_lib/body";
 import { buildHistoryForTurn } from "../src/components/assistant/AssistantDesk";
@@ -373,6 +374,34 @@ describe("assistant route: budgets", () => {
     expect(upstream).not.toHaveBeenCalled();
     // Nor is the spent day written to: a refused turn is not a billed one.
     expect(ledgerRows()).toHaveLength(1);
+  });
+
+  it("refuses a day it could not price with the unmetered reason, not a spend claim", async () => {
+    // Ten turns whose gateway usage block had no `list_cost`. Spend is 0, so a
+    // ledger that coerced the missing field to 0 would report headroom forever;
+    // instead the day fails closed, and the details say which fact it is.
+    db.runBoundedWrite(() => {
+      db.handle
+        .prepare(
+          "INSERT INTO ai_usage (day, requests, prompt_tokens, completion_tokens, " +
+            "reasoning_tokens, cache_read_tokens, list_cost, unmetered_requests, created_at) " +
+            "VALUES (?, 10, 100, 100, 0, 0, 0, 10, ?)",
+        )
+        .run(utcDay(), STAMP);
+    });
+    const upstream = vi.fn(async () => ({ status: 200, body: textStream("never") }));
+    setAssistantTransport(upstream);
+
+    const response = await POST(request(ONE_QUESTION));
+    const body = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(429);
+    expect(body.code).toBe("AI_BUDGET_EXHAUSTED");
+    expect(body.details.reason).toBe("unmetered");
+    expect(body.details.unmeteredTurns).toBe(10);
+    expect(body.message).toContain("no cost for 10 AI turns today");
+    expect(Date.parse(body.details.resetAt as string)).toBeGreaterThan(Date.now());
+    expect(upstream).not.toHaveBeenCalled();
   });
 
   it("refuses a history past the session token budget without calling the provider", async () => {
@@ -1000,6 +1029,61 @@ describe("assistant route: a transcript the desk built", () => {
     const sent = calls[0]?.body["messages"] as Array<Record<string, unknown>>;
     expect(sent[sent.length - 1]).toEqual({ role: "user", content: NEXT_QUESTION });
     expect(sent.filter((message) => message.role !== "system")).toHaveLength(built.messages.length);
+  });
+
+  it("accepts a body the desk built at the cap and refuses one character over it", async () => {
+    // The caps are read from their one home, so this is the client's own ceiling
+    // — not a number the test chose — and the route must agree with it: at the
+    // limit a `200`, one character past it a `400` that names the limit.
+    const question = NEXT_QUESTION;
+    // Five pairs plus the question is the most the message cap allows, so the
+    // character cap can be spent exactly.
+    const pairs = Math.floor((ASSISTANT_MAX_MESSAGES - 1) / 2);
+    const pairChars = ASSISTANT_MAX_TOTAL_CHARS - question.length;
+    const perTurn = Math.floor(pairChars / pairs);
+    const turns = longTranscript()
+      .slice(0, pairs)
+      .map((turn, index) => ({
+        ...turn,
+        question: "q".repeat(Math.floor(perTurn / 2)),
+        answer: "a".repeat(
+          perTurn - Math.floor(perTurn / 2) + (index === 0 ? pairChars - perTurn * pairs : 0),
+        ),
+      }));
+    const built = buildHistoryForTurn(turns, question);
+    const total = built.messages.reduce((sum, message) => sum + message.content.length, 0);
+
+    expect(built.droppedTurns).toBe(0);
+    expect(built.messages).toHaveLength(ASSISTANT_MAX_MESSAGES - 1);
+    expect(total).toBe(ASSISTANT_MAX_TOTAL_CHARS);
+
+    const { transport, calls } = fakeTransport(async () => ({
+      status: 200,
+      body: textStream("Every record matches."),
+    }));
+    setAssistantTransport(transport);
+
+    const accepted = await POST(request({ messages: built.messages }));
+    expect(accepted.status).toBe(200);
+    expect(framesOf(await accepted.text()).at(-1)).toMatchObject({ type: "done" });
+    expect(calls).toHaveLength(1);
+
+    // One character more than the client is allowed to build.
+    const over = built.messages.map((message, index) =>
+      index === 0 ? { ...message, content: `${message.content}x` } : message,
+    );
+    const refused = await POST(request({ messages: over }));
+    const refusedBody = (await refused.json()) as Record<string, any>;
+    const limit = ASSISTANT_MAX_TOTAL_CHARS.toLocaleString("en-US");
+    expect(refused.status).toBe(400);
+    expect(refusedBody.code).toBe("BAD_REQUEST");
+    expect(refusedBody.message).toContain(limit);
+    expect(refusedBody.details).toMatchObject({
+      max: ASSISTANT_MAX_TOTAL_CHARS,
+      received: ASSISTANT_MAX_TOTAL_CHARS + 1,
+    });
+    // Nothing over the cap reached the provider.
+    expect(calls).toHaveLength(1);
   });
 
   it("still refuses the untrimmed transcript, naming the limit it crossed", async () => {

@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { PageHeader } from "@/components/shell/PageHeader";
 import { GraphView } from "@/components/graph/GraphView";
+import { CVE_ID_RE } from "@/lib/cve-id";
 import { openReadDatabase } from "@/lib/db";
 import {
   buildKevGraph,
@@ -41,15 +42,13 @@ type GraphOutcome =
   | { kind: "invalid"; message: string }
   | { kind: "graph"; cohort: GraphCohort };
 
-const CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
-
 export default async function GraphPage({ searchParams }: { searchParams?: Promise<RawParams> }) {
   const params: RawParams = (await searchParams) ?? {};
   const focusRaw = firstValue(params.focus);
   const focus =
     focusRaw === undefined || focusRaw.trim() === ""
       ? null
-      : CVE_ID_PATTERN.test(focusRaw.trim())
+      : CVE_ID_RE.test(focusRaw.trim())
         ? focusRaw.trim()
         : null;
   const focusInvalid = focusRaw !== undefined && focusRaw.trim() !== "" && focus === null;

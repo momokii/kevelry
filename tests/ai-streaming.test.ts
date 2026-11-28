@@ -157,11 +157,13 @@ function ledgerInto(recorded: AiUsage[]): AiUsageLedger {
         completionTokens: usage.completionTokens,
         reasoningTokens: usage.reasoningTokens,
         cacheReadTokens: usage.cacheReadTokens,
-        listCostUsd: usage.listCostUsd,
+        listCostUsd: usage.listCostUsd ?? 0,
+        unmeteredRequests: usage.listCostUsd === null ? 1 : 0,
         createdAt: "2026-01-01T00:00:00.000Z",
       };
     },
     dailyCost: () => 0,
+    dailyBudget: () => ({ exceeded: false, reason: null, unmeteredTurns: 0 }),
     dailyBudgetExceeded: () => false,
     sessionBudgetExceeded: () => false,
     readDay: () => null,
@@ -435,6 +437,31 @@ describe("streaming turn: usage, truncation and failures", () => {
     });
     expect(recorded).toHaveLength(1);
     expect(recorded[0]).toMatchObject({ promptTokens: 120, listCostUsd: 0.125 });
+  });
+
+  it("records a round that reported no cost as unmetered, not as a free turn", async () => {
+    // The gateway can drop `opencode.list_cost` without changing the status
+    // code. The turn still bills its tokens, and the ledger is told the cost was
+    // unknown — a 0 here would make the daily money cap unreachable.
+    const body = [
+      contentFrame("Four records."),
+      stopFrame("stop"),
+      frame({
+        choices: [],
+        usage: {
+          prompt_tokens: 120,
+          completion_tokens: 40,
+          reasoning_tokens: 17,
+          cache_read_tokens: 8,
+        },
+      }),
+      DONE,
+    ].join("");
+    const { events, recorded } = await runTurn(transportOfBody(body));
+
+    expect(events[events.length - 1]).toMatchObject({ type: "done" });
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ promptTokens: 120, listCostUsd: null });
   });
 
   it('maps finish_reason "length" to AI_TRUNCATED and bills the reported usage', async () => {

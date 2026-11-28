@@ -20,23 +20,28 @@
 // Nothing here interprets the text: screening for weaponisation is
 // `preScreen`'s job, in the route, so a body can be valid and still refused.
 
+import {
+  ASSISTANT_MAX_MESSAGE_CHARS,
+  ASSISTANT_MAX_MESSAGES,
+  ASSISTANT_MAX_TOTAL_CHARS,
+} from "../../../../src/lib/ai/limits";
+import { CVE_ID_RE } from "../../../../src/lib/cve-id";
+import { asRecord } from "../../../../src/lib/json";
 import type { ErrorCode } from "../../v1/_lib/errors";
+
+/**
+ * The history caps are the wire's, stated once in `src/lib/ai/limits.ts` and
+ * re-exported here so the route's schema and the desk's trim cannot disagree.
+ */
+export { ASSISTANT_MAX_MESSAGE_CHARS, ASSISTANT_MAX_MESSAGES, ASSISTANT_MAX_TOTAL_CHARS };
 
 /** Body envelope: 1.5 MB of image base64 plus room for 12 000 chars of text. */
 export const ASSISTANT_MAX_BODY_BYTES = 3 * 1024 * 1024;
-
-/** History bounds, matching the plan's `history ≤ 12 turns / 12 000 chars`. */
-export const ASSISTANT_MAX_MESSAGES = 12;
-export const ASSISTANT_MAX_MESSAGE_CHARS = 2000;
-export const ASSISTANT_MAX_TOTAL_CHARS = 12_000;
 
 /** One image, ≤ 1.5 MB decoded, and only these three formats. */
 export const ASSISTANT_MAX_IMAGES = 1;
 export const ASSISTANT_MAX_IMAGE_BYTES = 1_572_864;
 export const ASSISTANT_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
-
-/** `CVE-YYYY-NNNN` — the same shape the tools validate. */
-export const ASSISTANT_CVE_CONTEXT_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
 
 /** Data URL with a base64 payload and no whitespace or parameters. */
 const DATA_URL_PATTERN = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
@@ -69,12 +74,6 @@ export type BodyResult = { ok: true; body: AssistantTurnBody } | BodyFailure;
 export type ReadBodyResult =
   | { ok: true; value: unknown }
   | { ok: false; code: ErrorCode; message: string; details?: Record<string, unknown> };
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 /** A byte cap as the message states it: `3 MB`, `1.5 MB`, or exact bytes. */
 function formatByteLimit(bytes: number): string {
@@ -356,7 +355,7 @@ export function validateAssistantBody(raw: unknown): BodyResult {
   let cveContext: string | undefined;
   const rawContext = root["cveContext"];
   if (rawContext !== undefined) {
-    if (typeof rawContext !== "string" || !ASSISTANT_CVE_CONTEXT_PATTERN.test(rawContext)) {
+    if (typeof rawContext !== "string" || !CVE_ID_RE.test(rawContext)) {
       return {
         ok: false,
         code: "BAD_ID",

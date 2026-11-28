@@ -456,6 +456,11 @@ and it has no effect on an instance that does not set `AI_ENABLED=true`.
 - `975` unit tests passing with `3` skipped (the network-gated live smokes), and
   `152` Playwright browser tests passing. Lint, typecheck, build and
   `npm audit --omit=dev` (0 vulnerabilities) clean.
+  _(Corrected 2026-11-28: the release commit `feae3dd` actually ran **971
+  passed / 4 failed** — the four failures were wall-clock fixtures that assumed
+  a fixed clock, fixed later in `94a13ab`. The 975 figure was read from a run
+  taken after that fix, not from the tagged release. Left in place rather than
+  rewritten, because the entry is what was published.)_
 - Released as image `kelanach/kevelry:4.0.0` (`latest` points at it) and verified
   live: two real turns on `/assistant` against the gateway, the spend ledger
   written for the day, and `/api/v1/health` reporting schema 11 with four fresh

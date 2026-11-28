@@ -37,6 +37,7 @@
 // with no tool definitions at all, so a provider that keeps calling tools
 // cannot end the turn with an empty answer. See `answerOnlyRound` below.
 
+import { CVE_ID_RE } from "../cve-id";
 import type { CveDatabase } from "../db";
 import type {
   AiClient,
@@ -80,9 +81,6 @@ export const ASSISTANT_CITATION_CAP = 200;
  * the full set (up to the citation cap).
  */
 export const ASSISTANT_TOOL_ID_SAMPLE = 25;
-
-/** CVE id shape. The same pattern the tools validate against. */
-const CVE_ID_PATTERN = /^CVE-[0-9]{4}-[0-9]{4,}$/;
 
 /**
  * CVE ids as they appear in prose: case-insensitive, so a model that writes
@@ -204,7 +202,7 @@ export function collectRecordIds(value: unknown): string[] {
   const walk = (node: unknown, depth: number): void => {
     if (found.length >= ASSISTANT_CITATION_CAP || depth > 6) return;
     if (typeof node === "string") {
-      if (CVE_ID_PATTERN.test(node) && !seen.has(node)) {
+      if (CVE_ID_RE.test(node) && !seen.has(node)) {
         seen.add(node);
         found.push(node);
       }
@@ -303,6 +301,12 @@ export function buildConversation(input: AssistantTurnInput): ChatMessage[] {
 
 interface Totals extends AssistantUsageFrame {
   costUsd: number;
+  /**
+   * True once any round of this turn reported no cost. A turn is priced only if
+   * every round was: the sum of a known and an unknown cost is not a bill, and
+   * the ledger records the turn as unmetered instead of under-reporting it.
+   */
+  costUnmetered: boolean;
 }
 
 function addUsage(totals: Totals, usage: AiUsage | null): boolean {
@@ -311,7 +315,8 @@ function addUsage(totals: Totals, usage: AiUsage | null): boolean {
   totals.completion += usage.completionTokens;
   totals.reasoning += usage.reasoningTokens;
   totals.cacheRead += usage.cacheReadTokens;
-  totals.costUsd += usage.listCostUsd;
+  if (usage.listCostUsd === null) totals.costUnmetered = true;
+  else totals.costUsd += usage.listCostUsd;
   return true;
 }
 
@@ -487,7 +492,14 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   const startedAt = now().getTime();
   const turnTimeoutMs = input.turnTimeoutMs ?? input.config.requestTimeoutMs;
   const deadline = startedAt + Math.max(1, turnTimeoutMs);
-  const totals: Totals = { prompt: 0, completion: 0, reasoning: 0, cacheRead: 0, costUsd: 0 };
+  const totals: Totals = {
+    prompt: 0,
+    completion: 0,
+    reasoning: 0,
+    cacheRead: 0,
+    costUsd: 0,
+    costUnmetered: false,
+  };
   const citationIds = new Set<string>();
   // The prose exactly as the reader received it: every delta, in order. The
   // answer the model wrote in an earlier round that ended in tool calls is on
@@ -751,7 +763,8 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
             completionTokens: totals.completion,
             reasoningTokens: totals.reasoning,
             cacheReadTokens: totals.cacheRead,
-            listCostUsd: totals.costUsd,
+            // `null` is a fact the ledger records: this turn could not be priced.
+            listCostUsd: totals.costUnmetered ? null : totals.costUsd,
           },
           at: now(),
         });

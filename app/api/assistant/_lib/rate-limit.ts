@@ -88,9 +88,15 @@ function secondsUntil(resetAt: number, now: number): number {
 }
 
 /**
- * Consumes one request from both windows. A refused request spends neither the
- * other window nor a retry budget, so a throttled client recovers exactly when
- * the deciding window rolls over.
+ * Consumes one request from both windows, and reports the one that refused it.
+ *
+ * Both windows are consumed before either answer is read, so a request the
+ * minute window refuses has still spent an hour slot. That is deliberate: the
+ * hour window is the sustained budget, and a client retrying through a burst
+ * refusal is still asking for capacity — exempting refusals would let a retry
+ * loop hold an hour's allowance in reserve and then spend it the moment the
+ * minute window rolled over. No _retry_ budget is spent: there is none, and the
+ * wait a refusal reports is the deciding window's own reset.
  */
 export function checkAssistantRateLimit(key: string, now: number = nowMs()): AssistantRateState {
   let state = clients.get(key);

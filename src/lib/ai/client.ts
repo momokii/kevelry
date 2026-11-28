@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 
 import { AI_MAX_TOKENS_DEFAULT, AI_MAX_TOKENS_FLOOR, type AiConfig } from "./config";
 import { createGatewayStreamAccumulator } from "./gateway-stream";
+import { asRecord } from "../json";
 import { parseUsage, type AiUsage } from "./usage";
 
 /** The gateway rejects requests without this header (`400 MissingSessionID`). */
@@ -213,12 +214,6 @@ function excerpt(text: string, apiKey: string | null, limit = 300): string {
   return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 /** Applies the reasoning-model floor; a caller cannot ask for fewer tokens. */
 export function clampMaxTokens(maxTokens: number | undefined): number {
   if (maxTokens === undefined || !Number.isFinite(maxTokens)) return AI_MAX_TOKENS_DEFAULT;
@@ -399,9 +394,6 @@ function upstreamFailure(
     },
   );
 }
-
-/** Gap with no SSE bytes that means the provider stalled rather than thought. */
-export const AI_STREAM_IDLE_TIMEOUT_MS = 20_000;
 
 /**
  * Ordered hand-off between the socket reader and the turn loop. A push wakes

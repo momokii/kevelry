@@ -18,11 +18,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  AssistantDesk,
-  MAX_HISTORY_MESSAGES,
-  MAX_HISTORY_MESSAGE_CHARS,
-} from "../src/components/assistant/AssistantDesk";
+import { AssistantDesk } from "../src/components/assistant/AssistantDesk";
+import { ASSISTANT_MAX_MESSAGES, ASSISTANT_MAX_MESSAGE_CHARS } from "../src/lib/ai/limits";
 import { HISTORY_TRIMMED_NOTE } from "../src/components/assistant/assistant-state";
 
 /** A 1x1 PNG: real magic bytes, so the client sniffer accepts it. */
@@ -435,20 +432,21 @@ describe("a transcript that outgrew the caps", () => {
     // finished saying is worse than no history at all.
     expect(sent).toEqual([{ role: "user", content: "And which of those are on the KEV list?" }]);
     for (const message of sent) {
-      expect(message.content.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGE_CHARS);
+      expect(message.content.length).toBeLessThanOrEqual(ASSISTANT_MAX_MESSAGE_CHARS);
     }
   });
 
   it("keeps the newest turns and drops the oldest, never a gap in the middle", async () => {
-    for (let index = 1; index <= 6; index += 1) {
+    // Seven questions: six settled turns plus the new question is thirteen
+    // messages, one past what the route accepts, so the first turn goes.
+    for (let index = 1; index <= 7; index += 1) {
       await ask(`Question number ${String(index)}?`);
     }
 
-    const sent = bodies[5]?.messages as Array<{ role: string; content: string }>;
-    // Six questions is one turn past what the route accepts: the first goes.
-    expect(sent).toHaveLength(MAX_HISTORY_MESSAGES - 1);
+    const sent = bodies[6]?.messages as Array<{ role: string; content: string }>;
+    expect(sent).toHaveLength(ASSISTANT_MAX_MESSAGES - 1);
     expect(sent[0]).toEqual({ role: "user", content: "Question number 2?" });
-    expect(sent[sent.length - 1]).toEqual({ role: "user", content: "Question number 6?" });
+    expect(sent[sent.length - 1]).toEqual({ role: "user", content: "Question number 7?" });
     // Only the turn that was trimmed mentions it.
     expect(trimNotes()).toHaveLength(1);
     expect(trimNotes()[0]?.textContent).toBe(HISTORY_TRIMMED_NOTE);

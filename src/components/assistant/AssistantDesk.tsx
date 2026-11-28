@@ -36,10 +36,8 @@ import {
   type AssistantAttachment,
 } from "./assistant-image";
 import {
-  MAX_QUESTION_CHARS,
   faultFromCode,
   faultFromHttp,
-  faultFromStreamError,
   formatToolArgs,
   retryStage,
   toolActivity,
@@ -48,25 +46,14 @@ import {
   type AssistantToolLine,
   type AssistantTurn,
 } from "./assistant-state";
+import {
+  MAX_QUESTION_CHARS,
+  trimHistory,
+  type BuiltHistory,
+  type WireMessage,
+} from "../../lib/ai/limits";
 import type { AssistantSuggestion } from "@/lib/ai/suggestions";
 import type { AssistantEvent } from "@/lib/ai/turn";
-
-/**
- * The route's body caps, mirrored here so the client never builds a request the
- * server refuses.
- *
- * The numbers are the ones in `app/api/assistant/_lib/body.ts`; `buildHistory` is
- * the only place that decides how much of the transcript to send, so a cap that
- * drifts there would make every later turn a 400. Each stays strictly under the
- * route's limit: ten messages of twelve, 2 000 characters per message, and 11 000
- * of the 12 000 allowed — the margin is for the question the reader is typing,
- * which is already counted, and for anything the route adds later.
- *
- * `tests/assistant-state.test.ts` asserts these against the server's constants.
- */
-export const MAX_HISTORY_MESSAGES = 10;
-export const MAX_HISTORY_MESSAGE_CHARS = 2_000;
-export const MAX_HISTORY_CHARS = 11_000;
 
 export interface AssistantDeskProps {
   gate: AssistantGate;
@@ -93,9 +80,19 @@ interface FaultState {
  */
 type ImageConsent = "ask" | "send" | "skip";
 
-interface WireMessage {
-  role: "user" | "assistant";
-  content: string;
+/**
+ * The turns worth replaying. A refusal is the desk declining rather than an
+ * answer about the records, a failed turn is half an answer nobody finished, and
+ * an empty answer is nothing at all — none of them may be replayed as history.
+ *
+ * The caps and the trim are `src/lib/ai/limits.ts`, shared with the route's body
+ * schema. This function stays here because "settled" and "failed" are transcript
+ * state, which the wire does not have an opinion about.
+ */
+function replayableTurns(turns: readonly AssistantTurn[]): AssistantTurn[] {
+  return turns.filter(
+    (turn) => turn.settled && !turn.failed && turn.refusal !== true && turn.answer !== "",
+  );
 }
 
 /** The stateless server takes the history the client holds, so the client sends it. */
@@ -103,67 +100,19 @@ export function buildHistory(turns: readonly AssistantTurn[], question: string):
   return buildHistoryForTurn(turns, question).messages;
 }
 
-export interface BuiltHistory {
-  /** The body's `messages`: the newest question, plus the newest turns that fit. */
-  messages: WireMessage[];
-  /** How many settled turns were dropped to fit the caps; 0 means nothing was. */
-  droppedTurns: number;
-}
-
 /**
- * The history a turn sends, bounded before it is sent rather than after it fails.
+ * The history this turn sends: the replayable turns, bounded by the shared trim.
  *
- * Three rules, and the order between them is the whole design:
- *
- *  1. **The newest question is kept in full, always.** It is what the turn is
- *     answering; a request that trimmed it would answer a different question.
- *  2. **The oldest turns go first.** A contiguous suffix is the only shape a
- *     reader can reason about: "the last few exchanges, then this question".
- *  3. **A message is never split.** Half an answer, replayed as though the model
- *     had said it, is a claim nobody made — so a turn whose answer is longer than
- *     the per-message cap is dropped whole, taking the older turns with it.
- *
- * Rule 3 is the one that bit production. The caps were enforced on the total but
- * not per message, so an answer longer than 2 000 characters made every later
- * turn a `400` — the transcript kept re-sending the same oversized answer.
+ * Rule 3 of that trim is the one that bit production. The caps were enforced on
+ * the total but not per message, so an answer longer than 2 000 characters made
+ * every later turn a `400` — the transcript kept re-sending the same oversized
+ * answer.
  */
 export function buildHistoryForTurn(
   turns: readonly AssistantTurn[],
   question: string,
 ): BuiltHistory {
-  const settled = turns.filter(
-    (turn) => turn.settled && !turn.failed && turn.refusal !== true && turn.answer !== "",
-  );
-  const kept: WireMessage[][] = [];
-  let chars = question.length;
-  let messages = 1;
-  let droppedTurns = 0;
-  // Newest first, so what survives is the most recent end of the transcript: the
-  // loop adds pairs from the back and stops at the first one that does not fit.
-  for (const [offset, turn] of [...settled].reverse().entries()) {
-    const pair: WireMessage[] = [
-      { role: "user", content: turn.question },
-      { role: "assistant", content: turn.answer },
-    ];
-    const pairChars = turn.question.length + turn.answer.length;
-    const fits =
-      messages + pair.length <= MAX_HISTORY_MESSAGES &&
-      turn.question.length <= MAX_HISTORY_MESSAGE_CHARS &&
-      turn.answer.length <= MAX_HISTORY_MESSAGE_CHARS &&
-      chars + pairChars <= MAX_HISTORY_CHARS;
-    if (!fits) {
-      // Everything older is dropped too: a gap in the middle of a transcript is
-      // worse than a transcript that simply starts later.
-      droppedTurns = settled.length - offset;
-      break;
-    }
-    kept.unshift(pair);
-    chars += pairChars;
-    messages += pair.length;
-  }
-  const history = kept.flat();
-  history.push({ role: "user", content: question });
-  return { messages: history, droppedTurns };
+  return trimHistory(replayableTurns(turns), question);
 }
 
 function deadlineFor(fault: AssistantFault, nowMs: number): number | null {
@@ -352,7 +301,7 @@ export function AssistantDesk({
         return;
       }
       if (event.type === "error") {
-        setFaultState({ fault: faultFromStreamError(event.code), deadlineMs: null });
+        setFaultState({ fault: faultFromCode(event.code), deadlineMs: null });
         failTurn(id);
       }
     },

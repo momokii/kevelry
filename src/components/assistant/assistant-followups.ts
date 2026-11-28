@@ -10,6 +10,7 @@
 // trajectory, CWE mitigation. At most three render because at most three kinds
 // exist.
 
+import { CVE_ID_BODY, CVE_ID_RE } from "../../lib/cve-id";
 import type { AssistantTurn } from "./assistant-state";
 
 export type FollowUpKind = "kev" | "epss" | "cwe";
@@ -26,7 +27,9 @@ export interface AssistantFollowUp {
 
 type ToolLines = AssistantTurn["tools"];
 
-const CVE_ARG_PATTERN = /(?:^| · )id=(CVE-[0-9]{4}-[0-9]{4,})(?:$| · )/;
+// Built from the shared id body rather than restated: the argument line is the
+// same id shape with the ledger's separator on either side.
+const CVE_ARG_PATTERN = new RegExp(`(?:^| · )id=(${CVE_ID_BODY})(?:$| · )`);
 const CWE_ARG_PATTERN = /(?:^| · )cweId=(CWE-[0-9]+)(?:$| · )/i;
 
 function firstSuccessful(lines: ToolLines, name: string): AssistantTurn["tools"][number] | null {
@@ -55,7 +58,7 @@ export function buildFollowUps(turn: Pick<AssistantTurn, "tools">): AssistantFol
   const seen = new Set<string>();
 
   const kev = firstSuccessful(turn.tools, "kev_window");
-  const kevId = kev?.ids.find((id) => /^CVE-[0-9]{4}-[0-9]{4,}$/.test(id)) ?? null;
+  const kevId = kev?.ids.find((id) => CVE_ID_RE.test(id)) ?? null;
   if (kevId !== null) {
     chips.push({
       id: "followup-kev-due",
@@ -67,8 +70,7 @@ export function buildFollowUps(turn: Pick<AssistantTurn, "tools">): AssistantFol
   }
 
   const epss = firstSuccessful(turn.tools, "epss_history");
-  const epssId =
-    cveArg(epss) ?? epss?.ids.find((id) => /^CVE-[0-9]{4}-[0-9]{4,}$/.test(id)) ?? null;
+  const epssId = cveArg(epss) ?? epss?.ids.find((id) => CVE_ID_RE.test(id)) ?? null;
   if (epssId !== null && !seen.has(epssId)) {
     chips.push({
       id: "followup-epss-history",

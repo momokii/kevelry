@@ -13,11 +13,12 @@ Project-specific. Imported into every session; keep it short.
 - Product CSS: `app/ui.css`; tokens are documented in `DESIGN.md`. Legacy
   `app/globals.css` remains for the showcase and `ledger-*` aliases.
 - SQL belongs in `src/lib/**` or the API modules under `app/api/v1/_lib/**`:
-  `records.ts`, `coverage.ts`, `epss-history.ts`, `provenance.ts`,
-  `radar-api.ts`, `responses.ts`, `params.ts`, `db-handle.ts`. UI components
-  never build SQL. The former `app/api/v1/_lib/shared.ts` was split into those
-  modules. Fixed read-only fallback counters in the methodology page are the
-  known exception.
+  `records.ts`, `coverage.ts`, `provenance.ts`, `radar-api.ts`, `responses.ts`,
+  `params.ts`, `db-handle.ts`. `epss-history.ts` is not one of the API modules —
+  it lives in `src/lib/epss-history.ts`, where the assistant's `epss_history`
+  tool and the API both read it. UI components never build SQL. The former
+  `app/api/v1/_lib/shared.ts` was split into those modules. Fixed read-only
+  fallback counters in the methodology page are the known exception.
 
 ## Naming
 

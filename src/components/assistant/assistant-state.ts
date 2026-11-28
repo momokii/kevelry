@@ -16,11 +16,8 @@
 //     send the reset instant or the disabled reason, the desk says what it knows
 //     and stops there.
 
+import { asRecord } from "../../lib/json";
 import type { AssistantImageMime } from "./assistant-image";
-import type { AssistantStreamErrorCode } from "@/lib/ai/turn";
-
-/** Longest question the route accepts; the composer enforces the same number. */
-export const MAX_QUESTION_CHARS = 2000;
 
 /**
  * The counter appears only near the limit: a character count that is always on
@@ -32,7 +29,12 @@ export type AssistantFaultKind = "error" | "rate-limited" | "budget" | "disabled
 
 export type AssistantDisabledReason = "off" | "no-key" | "over-budget" | "invalid-config";
 
-export type AssistantBudgetReason = "daily" | "session";
+/**
+ * Which cap stopped the turn. `unmetered` is the fail-closed case: the gateway
+ * stopped reporting what a turn cost, so the money already spent today cannot be
+ * summed and the budget cannot be checked.
+ */
+export type AssistantBudgetReason = "daily" | "session" | "unmetered";
 
 export interface AssistantFault {
   kind: AssistantFaultKind;
@@ -295,6 +297,21 @@ export interface BudgetFaultInput {
  * token estimate. Both say which one ran out.
  */
 export function budgetFault(input: BudgetFaultInput): AssistantFault {
+  if (input.reason === "unmetered") {
+    // Fail closed, and say why: this is not "the budget is spent", it is "the
+    // budget cannot be read". The count of unpriced turns rides in `detail`,
+    // because it is the server's fact and the desk does not guess it.
+    return baseFault({
+      kind: "budget",
+      code: "AI_BUDGET_EXHAUSTED",
+      headline: "The assistant has paused because it cannot measure today's AI spend.",
+      next: "The gateway reported no cost for today's turns, so the daily budget cannot be checked. It resets at 00:00 UTC; an operator restores cost reporting or raises AI_DAILY_BUDGET_USD.",
+      retryable: false,
+      budgetReason: "unmetered",
+      envVar: "AI_DAILY_BUDGET_USD",
+      resetAt: input.resetAt,
+    });
+  }
   const daily = input.reason === "daily";
   return baseFault({
     kind: "budget",
@@ -351,25 +368,11 @@ export function faultFromCode(code: string, detail: string | null = null): Assis
   });
 }
 
-/**
- * Maps an in-stream `error` event. The event's own message is not used: it is
- * written for an operator, and the desk speaks in one voice.
- */
-export function faultFromStreamError(code: AssistantStreamErrorCode): AssistantFault {
-  return faultFromCode(code);
-}
-
 export interface HttpFaultInput {
   status: number;
   /** Parsed JSON error body, when there was one. */
   snapshot: unknown;
   retryAfterSeconds: number | null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function detailsOf(body: Record<string, unknown> | null): Record<string, unknown> | null {
@@ -404,10 +407,9 @@ export function faultFromHttp(input: HttpFaultInput): AssistantFault {
     return { ...disabledFault(disabledReason), detail: message };
   }
   if (code === "AI_BUDGET_EXHAUSTED") {
-    return budgetFault({
-      reason: reason === "session" ? "session" : "daily",
-      resetAt,
-    });
+    const budgetReason: AssistantBudgetReason =
+      reason === "session" || reason === "unmetered" ? reason : "daily";
+    return { ...budgetFault({ reason: budgetReason, resetAt }), detail: message ?? null };
   }
   if (code === "RATE_LIMITED") {
     return rateLimitedFault(Math.max(1, input.retryAfterSeconds ?? 1));

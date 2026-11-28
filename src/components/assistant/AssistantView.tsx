@@ -22,7 +22,6 @@ import { renderAnswer } from "./render-answer";
 import {
   ELAPSED_TICK_MS,
   HISTORY_TRIMMED_NOTE,
-  MAX_QUESTION_CHARS,
   counterVisible,
   disabledFault,
   formatCount,
@@ -37,6 +36,7 @@ import {
   type AssistantGate,
   type AssistantTurn,
 } from "./assistant-state";
+import { MAX_QUESTION_CHARS } from "../../lib/ai/limits";
 import type { AssistantSuggestion } from "@/lib/ai/suggestions";
 
 export type AssistantStatus = "idle" | "streaming";

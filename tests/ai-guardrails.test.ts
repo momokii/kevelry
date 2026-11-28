@@ -143,13 +143,13 @@ describe("redactForLog", () => {
   it("[CODE] strips emails, credentials in URLs, bearer tokens and key assignments", () => {
     const dirty =
       "contact admin@example.test see https://bob:hunter2@example.test/x " +
-      "Authorization: Bearer abcdefgh12345678 api_key=sk-live-abcdefghijklmnop " +
+      "Authorization: Bearer abcdefgh12345678 api_key=sk-fake-abcdefghijklmnop " +
       "token: 0123456789abcdef0123456789abcdef";
     const clean = redactForLog(dirty);
     expect(clean).not.toContain("admin@example.test");
     expect(clean).not.toContain("hunter2");
     expect(clean).not.toContain("abcdefgh12345678");
-    expect(clean).not.toContain("sk-live-abcdefghijklmnop");
+    expect(clean).not.toContain("sk-fake-abcdefghijklmnop");
     expect(clean).not.toContain("0123456789abcdef0123456789abcdef");
     expect(clean).toContain("[redacted-email]");
     expect(clean).toContain("[redacted-credential]");

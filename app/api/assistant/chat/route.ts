@@ -181,14 +181,27 @@ export async function POST(request: Request): Promise<Response> {
     },
   });
   const now = new Date();
-  if (ledger.dailyBudgetExceeded()) {
+  const daily = ledger.dailyBudget();
+  if (daily.exceeded) {
     release();
+    // Two different facts share the code: the money is spent, or the gateway
+    // stopped reporting cost and the money cannot be totalled. The second is
+    // not a smaller version of the first, so the details say which one it is.
+    const unmetered = daily.reason === "unmetered";
     return assistantErrorResponse(
       request,
       "AI_BUDGET_EXHAUSTED",
-      "The daily AI budget for this deployment is spent. It resets at 00:00 UTC.",
+      unmetered
+        ? `The gateway reported no cost for ${String(daily.unmeteredTurns)} AI turns today, so the daily budget cannot be measured. It resets at 00:00 UTC.`
+        : "The daily AI budget for this deployment is spent. It resets at 00:00 UTC.",
       db,
-      { reason: "daily", resetAt: nextUtcMidnight(now) },
+      unmetered
+        ? {
+            reason: "unmetered",
+            unmeteredTurns: daily.unmeteredTurns,
+            resetAt: nextUtcMidnight(now),
+          }
+        : { reason: "daily", resetAt: nextUtcMidnight(now) },
       rate,
     );
   }
