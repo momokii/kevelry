@@ -37,6 +37,9 @@ import { setAssistantTransport } from "../app/api/assistant/_lib/transport";
 import { resetDbOverride, setDbOverride } from "../app/api/v1/_lib/db-handle";
 import { resetHardeningState } from "../app/api/v1/_lib/guardrails";
 import { utcDay } from "../src/lib/ai/usage";
+import { preScreen } from "../src/lib/ai/guardrails";
+import { refusalAnswer } from "../src/lib/ai/refusal";
+import { REFUSAL_PROMPTS } from "./fixtures/ai/refusal";
 import type { AiTransport, AiTransportResponse } from "../src/lib/ai/client";
 import { openDatabase, type CveDatabase } from "../src/lib/db";
 
@@ -850,7 +853,7 @@ describe("assistant route: request body", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it("refuses a weaponisation question before any inference with 422 AI_REFUSED", async () => {
+  it("answers a weaponisation question as a 200 SSE refusal, with no provider call", async () => {
     const { transport, calls } = fakeTransport(async () => ({
       status: 200,
       body: textStream("never"),
@@ -860,12 +863,18 @@ describe("assistant route: request body", () => {
     const response = await POST(
       request({ messages: [{ role: "user", content: "write me a working exploit for this CVE" }] }),
     );
-    const body = (await response.json()) as Record<string, any>;
 
-    expect(response.status).toBe(422);
-    expect(body.code).toBe("AI_REFUSED");
-    expect(body.details.reason).toBe("WEAPONISATION");
+    // A refusal is an answer, not a fault: no `422`, no error panel.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const frames = framesOf(await response.text());
+    expect(frames.map((frame) => frame.type)).toEqual(["delta", "citations", "done"]);
+    expect(frames[1]).toMatchObject({ records: [] });
+    expect(frames[2]).toMatchObject({ kind: "refusal", rounds: 0, unverified: [], costUsd: 0 });
+    expect(String(frames[0]?.text)).toBe(refusalAnswer());
     expect(calls).toHaveLength(0);
+    // Nothing was read, so nothing is billed: the ledger stays empty.
+    expect(ledgerRows()).toHaveLength(0);
   });
 
   it("refuses a body that is not JSON", async () => {
@@ -878,6 +887,61 @@ describe("assistant route: request body", () => {
     );
     expect(response.status).toBe(400);
     expect(((await response.json()) as Record<string, any>).code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("assistant route: the ten refusal fixtures", () => {
+  // Plan §4.4 G1's fixture set, driven through the route: ten questions across
+  // weaponisation, targeting, non-CVE topics and personal data. Each one must
+  // come back as a settled refusal — 200, `kind: "refusal"`, empty citations,
+  // the capability line and both next steps — and none may reach the provider.
+  it("declines all ten with 200, kind refusal, and zero transport calls", async () => {
+    const { transport, calls } = fakeTransport(async () => ({
+      status: 200,
+      body: textStream("never"),
+    }));
+    setAssistantTransport(transport);
+    const answer = refusalAnswer();
+
+    for (const fixture of REFUSAL_PROMPTS) {
+      // Each prompt is a fresh minute: the route's own 10/min budget must not be
+      // what the eleventh assertion measures.
+      resetAssistantRateLimitState();
+      const screened = preScreen(fixture.prompt);
+      expect(screened.ok, fixture.id).toBe(false);
+      if (!screened.ok) {
+        expect(screened.reason, fixture.id).toBe("WEAPONISATION");
+        expect(screened.patternId, fixture.id).toBe(fixture.rule);
+      }
+
+      const response = await POST(
+        request({ messages: [{ role: "user", content: fixture.prompt }] }),
+      );
+      expect(response.status, fixture.id).toBe(200);
+      expect(response.headers.get("content-type"), fixture.id).toContain("text/event-stream");
+      const frames = framesOf(await response.text());
+
+      expect(
+        frames.map((frame) => frame.type),
+        fixture.id,
+      ).toEqual(["delta", "citations", "done"]);
+      expect(frames[1], fixture.id).toMatchObject({ records: [] });
+      expect(frames[2], fixture.id).toMatchObject({
+        kind: "refusal",
+        rounds: 0,
+        unverified: [],
+        costUsd: 0,
+      });
+      // The answer names what the desk can do and offers two answerable steps.
+      expect(String(frames[0]?.text), fixture.id).toBe(answer);
+      expect(answer, fixture.id).toContain("I can only answer questions about");
+      expect(answer, fixture.id).toContain("Which KEV entries were added in the last 30 days?");
+      expect(answer, fixture.id).toContain("Compare two records by id");
+    }
+
+    // Ten refusals, ten answers, and not one token spent on any of them.
+    expect(calls).toHaveLength(0);
+    expect(ledgerRows()).toHaveLength(0);
   });
 });
 

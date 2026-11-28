@@ -66,6 +66,14 @@ export interface AssistantToolLine {
   ok: boolean;
   /** Record ids the call returned (the server's display sample). */
   ids: string[];
+  /**
+   * The host a successful `fetch_authoritative` call read.
+   *
+   * Set by the server on the `tool` frame, because the URL that answered can
+   * differ from the one the model asked for when a single allow-listed redirect
+   * was followed. Absent (or null) for every other call.
+   */
+  web?: { url: string; host: string } | null;
 }
 
 /**
@@ -102,6 +110,14 @@ export interface AssistantTurn {
    */
   failed: boolean;
   /** Record ids from the server's `citations` event — never parsed from prose. */
+  /**
+   * True when the server declined the question as outside scope.
+   *
+   * A refusal is an answer: it is settled, not failed, it carries no fault
+   * panel, and it offers neither follow-ups nor an export — there is nothing to
+   * follow up and nothing to cite. Absent means an ordinary answer.
+   */
+  refusal?: boolean;
   citations: string[];
   /**
    * Ids the prose named that no tool returned. Reported by the server, never
@@ -165,19 +181,17 @@ const ERROR_COPY: Record<string, { headline: string; next: string; retryable: bo
     retryable: true,
   },
   AI_EMPTY_ANSWER: {
-    // The model spent every round of the turn on tools and never wrote prose.
-    // The turn is a fault, not a settled reply with nothing in it, so the
-    // desk says what went wrong and offers the one thing that can help: a
-    // smaller question.
+    // The model spent every round of the turn on tools and never wrote prose,
+    // or a round came back cleanly with nothing in it. The turn is a fault, not
+    // a settled reply with nothing in it, so the desk says what went wrong and
+    // offers the one thing that can help: a smaller question.
     headline: "The model used every round of the turn without writing an answer.",
     next: "Ask again, or narrow the question to one record so it needs fewer lookups.",
     retryable: true,
   },
-  AI_REFUSED: {
-    headline: "That question is outside what this desk answers.",
-    next: "Ask about a CVE record, a priority list, or the shape of this corpus.",
-    retryable: false,
-  },
+  // A refusal has no entry here on purpose: it is not a fault. The server sends
+  // it as a settled answer with `done.kind: "refusal"`, and the desk renders
+  // the quiet note beside the prose instead of an alert panel.
   BAD_QUERY: {
     headline: "The question could not be sent as written.",
     next: "Rephrase it as a question about a CVE record or this corpus.",
@@ -470,6 +484,16 @@ export function formatCount(count: number): string {
 }
 
 /**
+ * The quiet label on a refusal.
+ *
+ * Deliberately not a fault sentence: a refusal is the desk answering the only
+ * way it can, so the label says what the answer is not, states the reason in
+ * two words, and stops. The server sets `done.kind: "refusal"`; this is the one
+ * place the desk turns that into words.
+ */
+export const REFUSAL_LABEL = "Not answered — outside scope";
+
+/**
  * The stage line of the working row: what the turn is doing, never how long it
  * will take. The tool's own words win; otherwise the state of the answer does.
  */
@@ -478,6 +502,55 @@ export function workingStage(turn: AssistantTurn, activity: string | null): stri
   if (turn.answer !== "") return "writing…";
   if (turn.tools.length > 0) return "reading what the last call returned…";
   return "the model is deciding what to look up…";
+}
+
+/**
+ * The progress line for a round the server is re-running.
+ *
+ * A `retry` frame is not a fault: the turn is still working, and the reader is
+ * owed the one fact that explains the extra wait. The two codes are different
+ * facts — a round cut by its completion cap, and a round that came back clean
+ * with nothing in it — so each gets its own words rather than one guess.
+ */
+export const RETRY_STAGE = {
+  AI_EMPTY_ANSWER: "the first attempt came back empty — retrying",
+  AI_TRUNCATED: "the first attempt was cut off — retrying",
+} as const satisfies Record<"AI_TRUNCATED" | "AI_EMPTY_ANSWER", string>;
+
+export function retryStage(code: "AI_TRUNCATED" | "AI_EMPTY_ANSWER"): string {
+  return RETRY_STAGE[code];
+}
+
+/** Only an `https:` URL may become a link, whatever the ledger carries. */
+function isHttpsUrl(raw: string): boolean {
+  try {
+    return new URL(raw).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The web evidence a turn carries: one entry per distinct fetched URL.
+ *
+ * Derived from the ledger, never from the prose. The chip exists because a
+ * `fetch_authoritative` call actually answered, and it links the URL the server
+ * reported reading — not a URL the answer happened to mention. Three guards
+ * keep it honest: a failed call contributes nothing, only an `https:` URL
+ * becomes a link, and a repeated URL is one chip.
+ */
+export function webSources(
+  turn: Pick<AssistantTurn, "tools">,
+): Array<{ url: string; host: string }> {
+  const seen = new Set<string>();
+  const sources: Array<{ url: string; host: string }> = [];
+  for (const line of turn.tools) {
+    const web = line.web ?? null;
+    if (!line.ok || web === null || seen.has(web.url) || !isHttpsUrl(web.url)) continue;
+    seen.add(web.url);
+    sources.push({ url: web.url, host: web.host });
+  }
+  return sources;
 }
 
 /** How often the elapsed counter ticks. Four a second: tenths move visibly. */

@@ -29,7 +29,9 @@ import {
   formatElapsed,
   formatRemaining,
   formatResetInstant,
+  REFUSAL_LABEL,
   unverifiedNote,
+  webSources,
   workingStage,
   type AssistantFault,
   type AssistantGate,
@@ -214,9 +216,14 @@ function TurnBlock({
   const live = turn.settled;
   // Derived from the ledger, never from the prose: a chip that names an id the
   // turn never read would be a hallucination with a button on it. A failed turn
-  // is not finished, so it offers neither a follow-up nor an export.
-  const complete = turn.settled && !turn.stopped && !turn.failed;
+  // is not finished, and a refusal has nothing to finish, so neither offers a
+  // follow-up or an export — the refused question is not a citation to build on.
+  const complete = turn.settled && !turn.stopped && !turn.failed && turn.refusal !== true;
   const followUps = complete ? buildFollowUps(turn) : [];
+  // The one web source a turn may have read (the plan allows one fetch a turn),
+  // as a chip in the citation area: the host, plus the word `web` so the warning
+  // hue is never the only signal that this evidence is not the dataset.
+  const web = webSources(turn);
   return (
     <article className="assistant-turn" data-testid="assistant-turn">
       <p className="assistant-question-label">
@@ -312,6 +319,37 @@ function TurnBlock({
               because this dataset cannot confirm it.
             </HelpTip>
           </p>
+        ) : null}
+        {turn.refusal === true ? (
+          // A refusal is an answer: quiet, beside the prose it describes, and
+          // never an alert. The panel is for faults; nothing here failed.
+          <p className="assistant-turn-note" data-testid="assistant-refusal">
+            {REFUSAL_LABEL}
+          </p>
+        ) : null}
+        {web.length > 0 ? (
+          // Web evidence sits in the citation area, after the record chips: same
+          // shape, different provenance, and the only warning hue on this page.
+          <ul
+            className="assistant-chip-row assistant-web-sources"
+            aria-label="Web sources"
+            data-testid="assistant-web-sources"
+          >
+            {web.map((source) => (
+              <li key={source.url}>
+                <a
+                  className="assistant-chip assistant-chip-web"
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="assistant-web-chip"
+                >
+                  <span className="assistant-chip-web-mark">web</span>
+                  <span className="assistant-chip-id">{source.host}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
         ) : null}
         {turn.citations.length > 0 ? (
           // The turn's union, one line closed: the rail is already per call, so

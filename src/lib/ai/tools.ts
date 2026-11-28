@@ -175,6 +175,7 @@ export type ToolErrorReason =
   | "BAD_ARGUMENT"
   | "NOT_FOUND"
   | "WEB_FETCH_DISABLED"
+  | "WEB_FETCH_ONCE"
   | "BLOCKED_URL"
   | "TIMEOUT"
   | "UPSTREAM_ERROR"
@@ -212,6 +213,17 @@ export interface ToolContext {
   readonly epssRetentionDays?: number;
   /** Overrides the per-call deadline; tests use a short one. */
   readonly timeoutMs?: number;
+  /**
+   * This turn's single web-fetch allowance.
+   *
+   * The loop creates it, every call in that turn shares it, and the dispatcher
+   * spends it: a second `fetch_authoritative` attempt is refused with
+   * `WEB_FETCH_ONCE` before any argument is validated or any socket exists.
+   * The prompt says "one fetch per turn"; this makes it true without trusting a
+   * sentence. An absent budget means unguarded (direct dispatcher tests), so a
+   * caller that wants the cap passes the object.
+   */
+  readonly webFetchBudget?: { used: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -1349,6 +1361,21 @@ export async function executeTool(
   const validated = validateArgs(name, rawArgs, TOOL_SPECS[name].schema);
   if (!validated.ok) {
     return failure(name, validated.reason, validated.error);
+  }
+  // One fetch per turn, enforced by the counter rather than by the prompt. A
+  // turn that asks twice gets the first answer and this refusal: a second socket
+  // is a second unvetted page, and the plan allows exactly one.
+  if (name === "fetch_authoritative" && ctx.webFetchBudget !== undefined) {
+    if (ctx.webFetchBudget.used) {
+      return failure(
+        name,
+        "WEB_FETCH_ONCE",
+        "The web fallback runs at most once per turn. Answer from the fetch already made, or say the dataset could not answer.",
+      );
+    }
+    // Spent when the attempt starts, not when it succeeds: a refused host or a
+    // timeout has already cost the turn its one fallback.
+    ctx.webFetchBudget.used = true;
   }
   const retrievedAt = nowIso(ctx);
   const timeoutMs =

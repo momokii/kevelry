@@ -5848,6 +5848,28 @@ a.badge:hover {
   text-decoration: underline;
 }
 
+/* Web evidence: the one warning hue on this surface, paired with the word `web`
+   so colour is never the only signal. `--ui-untrusted` is `--ui-medium`; no
+   severity hue enters this page's chrome, and this chip is the single exception
+   because a fetched page is the one thing here that is not the dataset. */
+.assistant-web-sources {
+  margin-top: var(--ui-sp-3);
+}
+
+.assistant-chip-web {
+  border-color: var(--ui-untrusted);
+  background: transparent;
+  color: var(--ui-untrusted);
+}
+
+.assistant-chip-web-mark {
+  margin-right: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  opacity: 0.9;
+}
+
 .assistant-empty-lede {
   margin: 0;
   color: var(--ui-ink-2);

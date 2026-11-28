@@ -20,6 +20,7 @@ import {
   disabledFault,
   faultFromCode,
   rateLimitedFault,
+  type AssistantToolLine,
   type AssistantTurn,
 } from "../src/components/assistant/assistant-state";
 import type { AssistantSuggestion } from "../src/lib/ai/suggestions";
@@ -301,8 +302,86 @@ describe("state 3 — typed errors", () => {
 
   it("offers a retry only when asking again can work", () => {
     expect(render({ fault: faultFromCode("AI_TIMEOUT") })).toContain("Ask again");
-    // A refusal needs a different question, not the same one again.
-    expect(render({ fault: faultFromCode("AI_REFUSED") })).not.toContain("Ask again");
+    // A body the route could not parse is not fixed by sending it unchanged.
+    expect(render({ fault: faultFromCode("BAD_REQUEST") })).not.toContain("Ask again");
+  });
+});
+
+describe("a refusal is an answer, not a fault", () => {
+  const REFUSAL_ANSWER =
+    "I can't help with that. I can only answer questions about the vulnerability records " +
+    "in this deployment — for example, which KEV additions this month are also above 10% EPSS.";
+
+  it("prints the quiet note instead of the fault panel", () => {
+    const html = render({
+      turns: [turn({ answer: REFUSAL_ANSWER, refusal: true, citations: [], tools: [] })],
+    });
+    expect(html).toContain('data-testid="assistant-refusal"');
+    expect(html).toContain("Not answered — outside scope");
+    // The prose is an answer, so it renders like one, and nothing is an alert.
+    expect(html).toContain("questions about the vulnerability records");
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toContain('data-testid="assistant-fault"');
+  });
+
+  it("offers no brief and no follow-ups, even when the ledger had calls", () => {
+    // The default turn carries a successful `kev_window` call, which would
+    // normally produce a follow-up chip and a `Download brief` button. A refusal
+    // declines the question, so there is nothing to build on.
+    const html = render({ turns: [turn({ answer: REFUSAL_ANSWER, refusal: true })] });
+    expect(html).not.toContain('data-testid="assistant-followups"');
+    expect(html).not.toContain('data-testid="assistant-brief"');
+  });
+
+  it("still shows the note on an ordinary answer's turn only when it is a refusal", () => {
+    expect(render({ turns: [turn()] })).not.toContain('data-testid="assistant-refusal"');
+  });
+});
+
+describe("web evidence", () => {
+  const URL = "https://nvd.nist.gov/vuln/detail/CVE-2099-0001";
+
+  function fetchLine(overrides: Partial<AssistantToolLine> = {}): AssistantToolLine {
+    return {
+      id: "tool-web",
+      name: "fetch_authoritative",
+      args: `url=${URL}`,
+      rows: 1,
+      ok: true,
+      ids: [],
+      web: { url: URL, host: "nvd.nist.gov" },
+      ...overrides,
+    };
+  }
+
+  it("shows exactly one chip, named with the fetched host and marked web", () => {
+    const html = render({ turns: [turn({ citations: [], tools: [fetchLine()] })] });
+    expect(html.match(/data-testid="assistant-web-chip"/gu) ?? []).toHaveLength(1);
+    expect(html).toContain(">web</span>");
+    expect(html).toContain("nvd.nist.gov");
+    // A new tab, never a handle back to this page.
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain(`href="${URL}"`);
+  });
+
+  it("shows none when the turn made no fetch", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).not.toContain('data-testid="assistant-web-chip"');
+    expect(html).not.toContain("nvd.nist.gov");
+  });
+
+  it("shows none for a fetch that failed, and none for a non-https URL", () => {
+    const failed = render({ turns: [turn({ tools: [fetchLine({ ok: false })] })] });
+    expect(failed).not.toContain('data-testid="assistant-web-chip"');
+    const insecure = render({
+      turns: [
+        turn({
+          tools: [fetchLine({ web: { url: "http://nvd.nist.gov/x", host: "nvd.nist.gov" } })],
+        }),
+      ],
+    });
+    expect(insecure).not.toContain('data-testid="assistant-web-chip"');
   });
 });
 

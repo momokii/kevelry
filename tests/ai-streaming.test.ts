@@ -32,6 +32,7 @@ import {
   type GatewayStreamParse,
 } from "../src/lib/ai/gateway-stream";
 import { runAssistantTurn, type AssistantEvent } from "../src/lib/ai/turn";
+import type { ToolContext } from "../src/lib/ai/tools";
 import type { AiUsage, AiUsageLedger } from "../src/lib/ai/usage";
 import type { CveDatabase } from "../src/lib/db";
 
@@ -170,6 +171,7 @@ function ledgerInto(recorded: AiUsage[]): AiUsageLedger {
 async function runTurn(
   transport: AiTransport,
   overrides: Partial<AiConfig> = {},
+  toolContext: Partial<ToolContext> = {},
 ): Promise<TurnOutcome> {
   const config = makeConfig(overrides);
   const recorded: AiUsage[] = [];
@@ -180,6 +182,7 @@ async function runTurn(
     client: clientWith(transport, config),
     ledger: ledgerInto(recorded),
     messages: MESSAGES,
+    toolContext,
   });
   for await (const event of turn) events.push(event);
   return { events, recorded };
@@ -550,28 +553,103 @@ describe("streaming turn: usage, truncation and failures", () => {
 // 1024 because its completion is a call, and the round that writes the answer
 // gets `AI_MAX_ANSWER_TOKENS` (4096 by default). These tests assert the wire
 // body, because that is the only place a budget is real.
+/** Serves one canned SSE body per request, in order, recording each body sent. */
+function scripted(bodies: readonly string[]): {
+  transport: AiTransport;
+  sent: Record<string, unknown>[];
+} {
+  const sent: Record<string, unknown>[] = [];
+  let index = 0;
+  const transport: AiTransport = async (request) => {
+    sent.push(JSON.parse(request.body) as Record<string, unknown>);
+    const body = bodies[index] ?? "";
+    index += 1;
+    return { status: 200, body: "", stream: streamOf([new TextEncoder().encode(body)]) };
+  };
+  return { transport, sent };
+}
+
+function answerBody(text: string): string {
+  return [contentFrame(text), stopFrame("stop"), frame(USAGE_FRAME), DONE].join("");
+}
+
+describe("streaming turn: one web fetch per turn", () => {
+  /** One tool round asking to fetch `url`. */
+  function fetchCallBody(url: string): string {
+    return [
+      frame({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: `call_${String(url.length)}`,
+                  type: "function",
+                  function: { name: "fetch_authoritative" },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      frame({
+        choices: [
+          {
+            delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ url }) } }] },
+          },
+        ],
+      }),
+      stopFrame("tool_calls"),
+      frame(USAGE_FRAME),
+      DONE,
+    ].join("");
+  }
+
+  it("fetches once and refuses a second request without a second socket", async () => {
+    // The prompt says "one fetch per turn" and this is the guard underneath it:
+    // the second call is answered by the loop's counter, not by the model's
+    // obedience, and it never reaches the network.
+    const fetched: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      fetched.push(typeof input === "string" ? input : input.toString());
+      return new Response("Advisory body for CVE-2021-44228.", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+    }) as typeof fetch;
+    const first = "https://nvd.nist.gov/vuln/detail/CVE-2021-44228";
+    const second = "https://cve.org/CVERecord?id=CVE-2021-44228";
+    const { transport, sent } = scripted([
+      fetchCallBody(first),
+      fetchCallBody(second),
+      answerBody("One advisory was read."),
+    ]);
+
+    const { events } = await runTurn(transport, { webFetchEnabled: true }, { fetchImpl });
+
+    expect(fetched).toEqual([first]);
+    const toolFrames = events.flatMap((event) => (event.type === "tool" ? [event] : []));
+    expect(toolFrames).toHaveLength(2);
+    // The successful fetch carries the host the server actually read, which is
+    // what the citation area's web chip renders.
+    expect(toolFrames[0]).toMatchObject({
+      name: "fetch_authoritative",
+      ok: true,
+      web: { url: first, host: "nvd.nist.gov" },
+    });
+    expect(toolFrames[1]).toMatchObject({ name: "fetch_authoritative", ok: false, rows: 0 });
+    // No evidence, no chip: a refused fetch never reaches the citation area.
+    expect(toolFrames[1]).not.toHaveProperty("web");
+    // The model is told why, in the result it reads next round.
+    expect(JSON.stringify(sent[2] ?? {})).toContain("WEB_FETCH_ONCE");
+    // The turn still settles on the retried prose, not on the refusal.
+    expect(events.filter((event) => event.type === "done")).toHaveLength(1);
+  });
+});
+
 describe("streaming turn: completion budget per round", () => {
   const CUT = [stopFrame("length"), frame(USAGE_FRAME), DONE].join("");
-
-  /** Serves one canned SSE body per request, in order, recording each body sent. */
-  function scripted(bodies: readonly string[]): {
-    transport: AiTransport;
-    sent: Record<string, unknown>[];
-  } {
-    const sent: Record<string, unknown>[] = [];
-    let index = 0;
-    const transport: AiTransport = async (request) => {
-      sent.push(JSON.parse(request.body) as Record<string, unknown>);
-      const body = bodies[index] ?? "";
-      index += 1;
-      return { status: 200, body: "", stream: streamOf([new TextEncoder().encode(body)]) };
-    };
-    return { transport, sent };
-  }
-
-  function answerBody(text: string): string {
-    return [contentFrame(text), stopFrame("stop"), frame(USAGE_FRAME), DONE].join("");
-  }
 
   /** One tool round: a call the loop can execute (and fail) without a database. */
   function toolCallBody(): string {
@@ -677,7 +755,9 @@ describe("streaming turn: completion budget per round", () => {
     expect(events.map((event) => event.type)).toEqual(["retry", "delta", "citations", "done"]);
     const retries = events.filter((event) => event.type === "retry");
     expect(retries).toHaveLength(1);
-    expect(retries[0]).toMatchObject({ code: "AI_TRUNCATED", maxTokens: 4096 });
+    // Nothing was cut — the round ended cleanly with nothing in it — so the
+    // retry says `AI_EMPTY_ANSWER`, the code the union reserves for exactly this.
+    expect(retries[0]).toMatchObject({ code: "AI_EMPTY_ANSWER", maxTokens: 4096 });
   });
 
   it("reports a second empty round as an error instead of settling empty", async () => {

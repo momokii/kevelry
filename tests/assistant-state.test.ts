@@ -23,8 +23,10 @@ import {
   formatResetInstant,
   formatToolArgs,
   rateLimitedFault,
+  retryStage,
   secondsUntil,
   toolActivity,
+  webSources,
   workingStage,
 } from "../src/components/assistant/assistant-state";
 import {
@@ -225,6 +227,18 @@ describe("wording helpers", () => {
     expect(formatCount(12045)).toBe("12,045");
   });
 
+  it("names which re-run the turn is on, and lets it win the progress line", () => {
+    // Two different facts, two sentences: a round cut by its cap, and a round
+    // that came back clean with nothing in it.
+    expect(retryStage("AI_EMPTY_ANSWER")).toBe("the first attempt came back empty — retrying");
+    expect(retryStage("AI_TRUNCATED")).toBe("the first attempt was cut off — retrying");
+    // While the retry is running the stage is the retry's own words, not the
+    // derived sentence about what the model is deciding.
+    expect(workingStage(turn({ answer: "", tools: [] }), retryStage("AI_EMPTY_ANSWER"))).toBe(
+      "the first attempt came back empty — retrying",
+    );
+  });
+
   it("states the stage from the tool, then from the answer, then from the wait", () => {
     // The server's own words win while a call is running.
     expect(workingStage(turn({ answer: "", tools: [] }), "reading the record · 1 record…")).toBe(
@@ -271,6 +285,46 @@ describe("wording helpers", () => {
   });
 });
 
+describe("web evidence", () => {
+  const URL = "https://nvd.nist.gov/vuln/detail/CVE-2099-0001";
+
+  function fetched(overrides: Partial<AssistantTurn["tools"][number]> = {}): AssistantTurn {
+    return turn({
+      citations: [],
+      tools: [
+        {
+          id: "tool-web",
+          name: "fetch_authoritative",
+          args: `url=${URL}`,
+          rows: 1,
+          ok: true,
+          ids: [],
+          web: { url: URL, host: "nvd.nist.gov" },
+          ...overrides,
+        },
+      ],
+    });
+  }
+
+  it("keeps the one host a successful fetch read", () => {
+    expect(webSources(fetched())).toEqual([{ url: URL, host: "nvd.nist.gov" }]);
+  });
+
+  it("contributes nothing from a failed call, a plain tool or a non-https URL", () => {
+    expect(webSources(fetched({ ok: false }))).toEqual([]);
+    expect(webSources(turn())).toEqual([]);
+    expect(
+      webSources(fetched({ web: { url: "http://nvd.nist.gov/x", host: "nvd.nist.gov" } })),
+    ).toEqual([]);
+    expect(webSources(fetched({ web: null }))).toEqual([]);
+  });
+
+  it("collapses a repeated URL to one chip", () => {
+    const twice = turn({ tools: [...fetched().tools, ...fetched({ id: "tool-web-2" }).tools] });
+    expect(webSources(twice)).toHaveLength(1);
+  });
+});
+
 describe("request history", () => {
   it("sends settled turns plus the new question, and skips an empty answer", () => {
     const messages = buildHistory(
@@ -295,6 +349,17 @@ describe("request history", () => {
     const messages = buildHistory(many, "last");
     expect(messages.length).toBeLessThanOrEqual(10);
     expect(messages[messages.length - 1]).toEqual({ role: "user", content: "last" });
+  });
+
+  it("never replays a refusal as something the model answered", () => {
+    // The refusal sentence is the desk declining, not an answer about the
+    // records. Sending it back as assistant history would put a canned line in
+    // the model's mouth and invite it to continue from it.
+    const messages = buildHistory(
+      [turn({ refusal: true, answer: "I can't help with that." })],
+      "Which are listed?",
+    );
+    expect(messages).toEqual([{ role: "user", content: "Which are listed?" }]);
   });
 
   it("never replays a failed turn as a claim the answer made", () => {

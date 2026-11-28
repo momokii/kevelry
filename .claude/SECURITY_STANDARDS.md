@@ -189,9 +189,11 @@ and **not** part of the v1 public contract (v1 stays GET-only and read-only).
   logged; the only write is one aggregate `ai_usage` row per UTC day (tokens and
   `list_cost`). Errors to the client are typed codes with sanitized messages.
 - **Fails closed:** disabled, keyless, misconfigured, over-budget or unsafe input is a
-  pre-stream typed error (`AI_DISABLED`, `AI_BUDGET_EXHAUSTED`, `AI_REFUSED`, …), and no
+  pre-stream typed error (`AI_DISABLED`, `AI_BUDGET_EXHAUSTED`, `BAD_IMAGE`, …), and no
   provider call happens. Once streaming starts there is no second HTTP status; failures
-  are redacted SSE `error` events.
+  are redacted SSE `error` events. A **refused question is not a fault**: it is a `200`
+  whose `done` frame says `kind: "refusal"`, so the desk can print a quiet note instead
+  of an alert, and it spends no tokens.
 - **Bounded input:** 12 messages / 2 000 chars each / 12 000 total, one 1.5 MB image
   (PNG, JPEG or WebP) whose declared type must match its magic bytes, `cveContext` and
   every tool argument shape-validated, and at most four tool rounds per turn.

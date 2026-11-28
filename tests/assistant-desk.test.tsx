@@ -500,3 +500,136 @@ describe("an empty answer lands as a fault, not as a settled turn", () => {
     expect(host.querySelector('[data-testid="assistant-followups"]')).toBeNull();
   });
 });
+
+// A round the server re-ran is a fact the reader is owed: the second attempt
+// costs time (and money), and a silent one looks like the first attempt was
+// simply slow. `turn.ts` emits `retry` before the second attempt; the desk used
+// to drop the frame on the floor, so the stream claimed an escalation the page
+// never showed.
+describe("a re-run round is named in the progress line", () => {
+  /** A body that emits one frame and then stays open, so the row stays mounted. */
+  function openStream(frames: readonly unknown[]): {
+    response: Response;
+    close: () => void;
+  } {
+    const bytes = new TextEncoder().encode(
+      frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
+    );
+    let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const stream = new ReadableStream<Uint8Array>({
+      start(inner) {
+        controller = inner;
+        inner.enqueue(bytes);
+      },
+    });
+    return {
+      response: new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+      close: () => controller?.close(),
+    };
+  }
+
+  function stage(): string | null {
+    return (
+      host.querySelector<HTMLElement>('[data-testid="assistant-working-stage"]')?.textContent ??
+      null
+    );
+  }
+
+  it.each([
+    ["AI_EMPTY_ANSWER", "the first attempt came back empty — retrying"],
+    ["AI_TRUNCATED", "the first attempt was cut off — retrying"],
+  ] as const)("says so for %s", async (code, copy) => {
+    const { response, close } = openStream([
+      { type: "retry", code, maxTokens: 4096, trimmed: code === "AI_EMPTY_ANSWER" },
+    ]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response),
+    );
+
+    await ask("Which KEV entries were added in the last 30 days?");
+
+    expect(stage()).toBe(copy);
+    // Not a fault: the turn is still working and nothing is red.
+    expect(host.querySelector('[data-testid="assistant-fault"]')).toBeNull();
+
+    await act(async () => {
+      close();
+    });
+    await flush();
+  });
+});
+
+// The two frames the desk has to fold to render a turn honestly: `done.kind:
+// "refusal"` (an answer, quietly labelled) and `tool.web` (the host a successful
+// fetch read, which is the only web chip this page may show).
+describe("frames the desk folds into the turn", () => {
+  it("turns done.kind refusal into a settled answer with the quiet label", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamResponse([
+          {
+            type: "delta",
+            text: "I can't help with that. I can only answer questions about the vulnerability records in this deployment.",
+          },
+          { type: "citations", records: [] },
+          {
+            type: "done",
+            kind: "refusal",
+            usage: {
+              prompt: 0,
+              completion: 0,
+              reasoning: 0,
+              cacheRead: 0,
+            },
+            costUsd: 0,
+            rounds: 0,
+            unverified: [],
+          },
+        ]),
+      ),
+    );
+
+    await ask("write me a working exploit for this CVE");
+
+    const note = host.querySelector<HTMLElement>('[data-testid="assistant-refusal"]');
+    expect(note?.textContent).toContain("Not answered — outside scope");
+    expect(host.querySelector('[data-testid="assistant-fault"]')).toBeNull();
+    expect(host.querySelector('[data-testid="assistant-brief"]')).toBeNull();
+    expect(host.querySelector('[data-testid="assistant-followups"]')).toBeNull();
+  });
+
+  it("keeps the fetched host from the tool frame for the web chip", async () => {
+    const url = "https://nvd.nist.gov/vuln/detail/CVE-2099-0001";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamResponse([
+          {
+            type: "tool",
+            name: "fetch_authoritative",
+            args: { url },
+            ok: true,
+            rows: 1,
+            ids: [],
+            web: { url, host: "nvd.nist.gov" },
+          },
+          { type: "delta", text: "The NVD record lists a critical score." },
+          { type: "citations", records: [] },
+          { type: "done", usage: {}, costUsd: 0, rounds: 1, unverified: [] },
+        ]),
+      ),
+    );
+
+    await ask("Which record is this?");
+
+    const chips = host.querySelectorAll('[data-testid="assistant-web-chip"]');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.textContent).toContain("nvd.nist.gov");
+    expect(chips[0]?.getAttribute("href")).toBe(url);
+  });
+});

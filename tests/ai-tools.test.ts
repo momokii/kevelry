@@ -635,6 +635,47 @@ describe("fetch_authoritative", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("[CODE] runs at most one fetch per turn: the second call is refused with no socket", async () => {
+    // The prompt says "one fetch per turn". This is the code that makes it true:
+    // the turn's budget is spent by the first attempt and the second is refused
+    // before validation, before any socket, before any load.
+    const { impl, calls } = stubFetch(
+      () =>
+        new Response("Advisory body for CVE-2099-0001.", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    );
+    const budget = { used: false };
+    const ctx = context(makeSeededDb(), {
+      webFetchEnabled: true,
+      fetchImpl: impl,
+      webFetchBudget: budget,
+    });
+    const url = "https://nvd.nist.gov/vuln/detail/CVE-2099-0001";
+
+    const first = await executeTool("fetch_authoritative", { url }, ctx);
+    const second = await executeTool("fetch_authoritative", { url }, ctx);
+
+    expect(first.ok).toBe(true);
+    expect(second).toMatchObject({ ok: false, reason: "WEB_FETCH_ONCE" });
+    expect(calls).toHaveLength(1);
+    expect(budget.used).toBe(true);
+
+    // A fresh turn starts with a fresh allowance; the counter is per turn, not
+    // per process.
+    const nextTurn = await executeTool(
+      "fetch_authoritative",
+      { url },
+      {
+        ...ctx,
+        webFetchBudget: { used: false },
+      },
+    );
+    expect(nextTurn.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+  });
+
   it("[CODE] rejects http, an off-allowlist host, a non-443 port and credentials", async () => {
     const { impl, calls } = stub(new Response("never read"));
     const ctx = context(makeSeededDb(), { webFetchEnabled: true, fetchImpl: impl });

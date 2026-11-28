@@ -41,6 +41,7 @@ import {
   faultFromHttp,
   faultFromStreamError,
   formatToolArgs,
+  retryStage,
   toolActivity,
   type AssistantFault,
   type AssistantGate,
@@ -130,7 +131,9 @@ export function buildHistoryForTurn(
   turns: readonly AssistantTurn[],
   question: string,
 ): BuiltHistory {
-  const settled = turns.filter((turn) => turn.settled && !turn.failed && turn.answer !== "");
+  const settled = turns.filter(
+    (turn) => turn.settled && !turn.failed && turn.refusal !== true && turn.answer !== "",
+  );
   const kept: WireMessage[][] = [];
   let chars = question.length;
   let messages = 1;
@@ -303,6 +306,9 @@ export function AssistantDesk({
           rows: event.rows,
           ok: event.ok,
           ids: Array.isArray(event.ids) ? event.ids : [],
+          // The host a successful fetch read, straight from the server. A failed
+          // call never carries one, so a refused URL cannot become a chip.
+          web: event.web ?? null,
         };
         setActivity(toolActivity(event.name, event.rows));
         updateTurn(id, (turn) => ({ ...turn, tools: [...turn.tools, line] }));
@@ -314,10 +320,12 @@ export function AssistantDesk({
         return;
       }
       if (event.type === "retry") {
-        // The server re-ran a round that hit its completion cap with nothing to
-        // show. That is not a fault and needs no copy: the retried round's own
-        // deltas or error arrive next, and inventing a "retrying…" line would
-        // narrate plumbing the reader did not ask about.
+        // The server re-ran a round that hit its completion cap or came back
+        // with nothing in it. That is not a fault — the turn is still working —
+        // but a silent second round bills the reader for a wait they cannot
+        // explain, so the progress line says which re-run this is. The retried
+        // round's own deltas replace it as soon as prose arrives.
+        setActivity(retryStage(event.code));
         return;
       }
       if (event.type === "citations") {
@@ -333,14 +341,14 @@ export function AssistantDesk({
       if (event.type === "done") {
         // `done` also carries usage, which the desk does not display: the ledger
         // is about evidence, and a token count in the reader's face is not
-        // evidence. Its `unverified` list is the one field kept: the event above
-        // is the live path, and this fills the gap if that frame was lost.
-        if (Array.isArray(event.unverified)) {
-          const ids = event.unverified;
-          updateTurn(id, (turn) =>
-            turn.unverified.length > 0 ? turn : { ...turn, unverified: ids },
-          );
-        }
+        // evidence. Two fields are kept: `kind` says the turn was a refusal (a
+        // settled answer with no evidence to offer), and `unverified` fills the
+        // gap if the dedicated frame above was lost.
+        updateTurn(id, (turn) => {
+          const next = event.kind === "refusal" ? { ...turn, refusal: true } : turn;
+          if (!Array.isArray(event.unverified) || next.unverified.length > 0) return next;
+          return { ...next, unverified: event.unverified };
+        });
         return;
       }
       if (event.type === "error") {

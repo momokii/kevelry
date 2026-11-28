@@ -29,6 +29,7 @@ import {
 } from "../../../../src/lib/ai/config";
 import { createAiClient } from "../../../../src/lib/ai/client";
 import { preScreen } from "../../../../src/lib/ai/guardrails";
+import { runRefusalTurn } from "../../../../src/lib/ai/refusal";
 import { runAssistantTurn } from "../../../../src/lib/ai/turn";
 import { createAiUsageLedger } from "../../../../src/lib/ai/usage";
 import type { CveDatabase } from "../../../../src/lib/db";
@@ -153,17 +154,20 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 6. The cheap pre-inference filter. A refusal is not a fault: it names what
-  //    the assistant can do and costs no tokens.
+  // 6. The cheap pre-inference filter. A refusal is an answer, not a fault: it
+  //    is a `200` whose `done` frame says `kind: "refusal"`, the sentence streams
+  //    as prose, and it costs no tokens — no provider call, no ledger row. A
+  //    malformed question (empty, oversized) stays a `400`, because that one the
+  //    desk could not read at all.
   const lastUser = body.messages[body.messages.length - 1];
   const screened = preScreen(lastUser?.content ?? "", { maxChars: config.maxInputChars });
   if (!screened.ok) {
+    if (screened.reason === "WEAPONISATION") {
+      return assistantSseResponse(request, runRefusalTurn(), { onClose: release });
+    }
     release();
     const details: Record<string, unknown> = { reason: screened.reason };
     if (screened.patternId !== undefined) details.patternId = screened.patternId;
-    if (screened.reason === "WEAPONISATION") {
-      return assistantErrorResponse(request, "AI_REFUSED", screened.message, db, details, rate);
-    }
     return assistantErrorResponse(request, "BAD_QUERY", screened.message, db, details, rate);
   }
 

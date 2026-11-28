@@ -20,7 +20,6 @@ export type ErrorCode =
   | "AI_TIMEOUT"
   | "AI_UPSTREAM_ERROR"
   | "AI_TRUNCATED"
-  | "AI_REFUSED"
   | "BAD_IMAGE"
   /**
    * The envelope, not the schema: a body over the read cap. Its own code
@@ -61,9 +60,10 @@ export function errorStatus(code: ErrorCode): number {
     case "AI_TRUNCATED":
       return 502;
     // `422` is semantic refusal: the request was well-formed and understood,
-    // and what it carried is what cannot be accepted — a refused question, or
-    // an image that is a second one, too large, or not one of the three types.
-    case "AI_REFUSED":
+    // and what it carried is what cannot be accepted — an image that is a
+    // second one, too large, or not one of the three types. A refused question
+    // is not here: it is a `200` with `done.kind: "refusal"`, because the desk
+    // answered it.
     case "BAD_IMAGE":
       return 422;
     case "PAYLOAD_TOO_LARGE":

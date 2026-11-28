@@ -120,6 +120,13 @@ export type AssistantEvent =
       rows: number;
       /** First ids the call returned, for the ledger's chips. Display sample only. */
       ids: string[];
+      /**
+       * The host a successful `fetch_authoritative` call read, for the citation
+       * area's web chip. Absent for every other call and for a failed fetch:
+       * a chip that named a host nobody read would be web evidence with no
+       * evidence behind it.
+       */
+      web?: { url: string; host: string };
     }
   | { type: "delta"; text: string }
   | {
@@ -144,6 +151,13 @@ export type AssistantEvent =
   | { type: "unverified"; ids: string[] }
   | {
       type: "done";
+      /**
+       * What kind of answer this was. `refusal` is set by the pre-inference
+       * scope filter: the desk prints a quiet label and offers no brief or
+       * follow-ups, because the question was declined, not answered and not
+       * failed. Absent means an ordinary answer.
+       */
+      kind?: "refusal";
       usage: AssistantUsageFrame;
       costUsd: number;
       rounds: number;
@@ -314,6 +328,23 @@ function malformedArguments(name: string): ToolOutcome {
   };
 }
 
+/**
+ * The host a successful web fetch read, for the citation area's chip.
+ *
+ * The server, not the client, is the authority on which host answered: the URL
+ * the model asked for can differ from the one that was read when a single
+ * allow-listed redirect was followed. Anything but a successful fetch yields
+ * nothing, so a refused URL never becomes a chip.
+ */
+function webEvidence(name: string, outcome: ToolOutcome): { url: string; host: string } | null {
+  if (name !== "fetch_authoritative" || !outcome.ok) return null;
+  const data: unknown = outcome.data;
+  if (typeof data !== "object" || data === null) return null;
+  const { url, host } = data as { url?: unknown; host?: unknown };
+  if (typeof url !== "string" || typeof host !== "string") return null;
+  return { url, host };
+}
+
 function toolMessage(call: ChatToolCall, outcome: ToolOutcome): ChatMessage {
   return {
     role: "tool",
@@ -469,11 +500,16 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   let retriedEmptyRound = false;
   let activeStream: ChatStreamReader | null = null;
 
+  // The turn's single web-fetch allowance. Created here, spent by the tool
+  // dispatcher: the prompt says one fetch per turn, and this makes a second one
+  // impossible without trusting the model to obey a sentence.
+  const webFetchBudget = { used: false };
   const toolCtx: ToolContext = {
     db: input.db,
     webFetchEnabled: input.config.webFetchEnabled,
     now,
     ...input.toolContext,
+    webFetchBudget,
   };
   const tools = toolDefinitions(input.config.webFetchEnabled);
   let conversation = buildConversation(input);
@@ -638,7 +674,15 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // an answer" — true, but silent about a retry that would have worked.
         if (!retriedEmptyRound && roundMaxTokens < answerMaxTokens) {
           retriedEmptyRound = true;
-          yield { type: "retry", code: "AI_TRUNCATED", maxTokens: answerMaxTokens, trimmed: false };
+          // Nothing was cut — the round ended cleanly with nothing in it — so
+          // this is `AI_EMPTY_ANSWER`, the code the retry union reserves for a
+          // round that came back with nothing to show.
+          yield {
+            type: "retry",
+            code: "AI_EMPTY_ANSWER",
+            maxTokens: answerMaxTokens,
+            trimmed: false,
+          };
           continue;
         }
         yield {
@@ -676,6 +720,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
           rows: outcome.ok ? outcome.rows : 0,
           ids: returnedIds,
         });
+        const web = webEvidence(call.function.name, outcome);
         yield {
           type: "tool",
           name: call.function.name,
@@ -683,6 +728,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
           ok: outcome.ok,
           rows: outcome.ok ? outcome.rows : 0,
           ids: returnedIds.slice(0, ASSISTANT_TOOL_ID_SAMPLE),
+          ...(web === null ? {} : { web }),
         };
         conversation.push(toolMessage(call, outcome));
       }
