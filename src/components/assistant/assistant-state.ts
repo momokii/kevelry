@@ -429,6 +429,7 @@ export function faultFromHttp(input: HttpFaultInput): AssistantFault {
 const TOOL_VERBS: Record<string, string> = {
   search_cves: "searching the corpus",
   get_cve: "reading the record",
+  get_cves: "reading the records",
   epss_history: "reading the EPSS history",
   kev_window: "checking the KEV window",
   coverage_stats: "reading corpus coverage",

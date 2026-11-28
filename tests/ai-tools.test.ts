@@ -18,6 +18,7 @@ import { PRIORITY_LISTS } from "../src/lib/ai/tools";
 import {
   EPSS_HISTORY_DAYS_OPTIONS,
   EPSS_HISTORY_POINT_CAP,
+  GET_CVES_IDS_MAX,
   KEV_WINDOW_DAYS_MAX,
   KEV_WINDOW_DAYS_MIN,
   LIST_PRIORITY_LIMIT_MAX,
@@ -36,6 +37,7 @@ import {
   type ToolOutcome,
 } from "../src/lib/ai/tools";
 import { openDatabase, type CveDatabase } from "../src/lib/db";
+import { CVE_ID_RE } from "../src/lib/cve-id";
 import { CVE_DESCRIPTION_INJECTION, FETCH_PAGE_INJECTION } from "./fixtures/ai/injection";
 
 const STAMP = "2026-10-24T00:00:00.000Z";
@@ -275,14 +277,14 @@ function stubFetch(handler: (url: string, init: RequestInit | undefined) => Resp
 }
 
 describe("tool definitions", () => {
-  it("[CODE] exposes exactly the eight tools, and seven without the web gate", () => {
+  it("[CODE] exposes exactly the nine tools, and eight without the web gate", () => {
     expect(toolDefinitions(true).map((definition) => definition.function.name)).toEqual([
       ...TOOL_NAMES,
     ]);
     expect(toolDefinitions(false).map((definition) => definition.function.name)).not.toContain(
       "fetch_authoritative",
     );
-    expect(toolNames(false)).toHaveLength(7);
+    expect(toolNames(false)).toHaveLength(8);
     expect(
       toolDefinitions(true).every(
         (entry) => entry.function.parameters.additionalProperties === false,
@@ -452,6 +454,107 @@ describe("get_cve", () => {
       ok: false,
       reason: "NOT_FOUND",
     });
+  });
+});
+
+describe("get_cves", () => {
+  it("[CODE] returns one record per id with the same fields as get_cve", async () => {
+    const db = makeSeededDb();
+    const batch = dataOf(
+      await executeTool(
+        "get_cves",
+        { ids: ["CVE-2099-0001", "CVE-2099-0002", "CVE-2099-0003"] },
+        context(db),
+      ),
+    );
+    expect(batch.records).toHaveLength(3);
+    expect(batch.missing).toEqual([]);
+    expect(
+      batch.records.map((record: { record: { cveId: string } }) => record.record.cveId),
+    ).toEqual(["CVE-2099-0001", "CVE-2099-0002", "CVE-2099-0003"]);
+    // Field-for-field parity with the single-record tool: a batch result has to
+    // be comparable, so the shape cannot drift between the two.
+    const single = dataOf(await executeTool("get_cve", { id: "CVE-2099-0001" }, context(db)));
+    expect(batch.records[0]).toEqual(single);
+    expect(Object.keys(batch.records[0] as Record<string, unknown>)).toEqual(
+      Object.keys(single as Record<string, unknown>),
+    );
+  });
+
+  it("[CODE] reports ids this dataset does not hold, and a rejected record, as missing", async () => {
+    const batch = dataOf(
+      await executeTool(
+        "get_cves",
+        { ids: ["CVE-2099-0001", "CVE-2099-0004", "CVE-2099-9999"] },
+        context(makeSeededDb()),
+      ),
+    );
+    // CVE-2099-0004 exists as REJECTED, CVE-2099-9999 does not exist at all;
+    // neither is a readable record, so both are named rather than returned.
+    expect(batch.returned).toBe(1);
+    expect(batch.missing).toEqual(["CVE-2099-0004", "CVE-2099-9999"]);
+    expect(batch.records).toHaveLength(1);
+  });
+
+  it("[CODE] rows count the records returned, not the ids asked for", async () => {
+    const outcome = await executeTool(
+      "get_cves",
+      { ids: ["CVE-2099-0001", "CVE-2099-0001", "CVE-2099-9999"] },
+      context(makeSeededDb()),
+    );
+    expect(outcome.ok && outcome.rows).toBe(1);
+    const batch = dataOf(outcome);
+    // A repeated id is one question, not an error: deduplicated before the read.
+    expect(batch.requested).toBe(2);
+    expect(batch.records).toHaveLength(1);
+    expect(batch.missing).toEqual(["CVE-2099-9999"]);
+  });
+
+  it("[CODE] rejects an empty list, more than ten ids, a bad shape and an unknown key", async () => {
+    const db = makeSeededDb();
+    expect(await executeTool("get_cves", { ids: [] }, context(db))).toMatchObject({
+      ok: false,
+      reason: "OUT_OF_RANGE",
+    });
+    const tooMany = Array.from(
+      { length: GET_CVES_IDS_MAX + 1 },
+      (_unused, index) => `CVE-2099-${String(index + 100).padStart(4, "0")}`,
+    );
+    expect(tooMany).toHaveLength(11);
+    expect(await executeTool("get_cves", { ids: tooMany }, context(db))).toMatchObject({
+      ok: false,
+      reason: "OUT_OF_RANGE",
+    });
+    expect(
+      await executeTool("get_cves", { ids: ["CVE-2099-0001", "not-a-cve"] }, context(db)),
+    ).toMatchObject({ ok: false, reason: "BAD_ARGUMENT" });
+    expect(await executeTool("get_cves", { ids: "CVE-2099-0001" }, context(db))).toMatchObject({
+      ok: false,
+      reason: "WRONG_TYPE",
+    });
+    expect(
+      await executeTool("get_cves", { ids: ["CVE-2099-0001"], id: "CVE-2099-0001" }, context(db)),
+    ).toMatchObject({ ok: false, reason: "UNKNOWN_ARGUMENT" });
+    expect(await executeTool("get_cves", {}, context(db))).toMatchObject({
+      ok: false,
+      reason: "MISSING_ARGUMENT",
+    });
+  });
+
+  it("[CODE] publishes the id cap in the model schema", () => {
+    const definition = toolDefinitions(true).find((entry) => entry.function.name === "get_cves");
+    const ids = definition?.function.parameters.properties.ids as {
+      type: string;
+      minItems: number;
+      maxItems: number;
+      items: { type: string; pattern: string };
+    };
+    expect(ids.type).toBe("array");
+    expect(ids.minItems).toBe(1);
+    expect(ids.maxItems).toBe(GET_CVES_IDS_MAX);
+    expect(GET_CVES_IDS_MAX).toBe(10);
+    expect(ids.items.type).toBe("string");
+    expect(ids.items.pattern).toBe(CVE_ID_RE.source);
   });
 });
 
@@ -1021,6 +1124,6 @@ describe("tool-layer capability surface", () => {
   it("[CODE] the web tool is absent from the exposed list when the gate is off", () => {
     expect(toolNames(true)).toContain("fetch_authoritative");
     expect(toolNames(false)).not.toContain("fetch_authoritative");
-    expect(TOOL_NAMES).toHaveLength(8);
+    expect(TOOL_NAMES).toHaveLength(9);
   });
 });

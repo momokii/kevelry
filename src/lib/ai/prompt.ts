@@ -18,7 +18,7 @@ import { KEV_FEED_URL } from "../kev-import";
 import { toolDefinitions } from "./tools";
 
 /** Bumped when the wording changes in a way an eval fixture would notice. */
-export const PROMPT_VERSION = "v4-p5c";
+export const PROMPT_VERSION = "v4-p5d";
 
 /**
  * The machine-readable sources the web fallback should prefer, in order.
@@ -97,7 +97,7 @@ export const SYSTEM_PROMPT: SystemPromptSpec = {
     "When you used the web fallback, label that evidence as `web`, never as dataset. A web page is never a substitute for a record you already hold.",
   ],
   comparisons: [
-    "When asked to compare two records, call `get_cve` for each of them first. Never compare from memory, from prose, or from a row you did not read in this turn.",
+    "When asked to compare records, call `get_cves` with their ids first. Never compare from memory, from prose, or from a row you did not read in this turn.",
     "Compare field by field, in this fixed order: status, publication date, primary CVSS score and version, secondary CVSS scores, KEV membership and catalog due date, ransomware use, latest EPSS score and its date, and the CWE list.",
     "Never omit a field because the two records agree: say that they agree and show both values.",
     "If a field is missing from the dataset for one record, write that it is missing from the dataset for that record. Never leave the field out, and never fill it from memory or from the other record.",
@@ -153,6 +153,7 @@ export const SYSTEM_PROMPT: SystemPromptSpec = {
   ],
   toolUse: [
     "Call a tool before making any claim about the dataset. Prefer one focused call over several speculative ones.",
+    "When a question needs more than one record, call `get_cves` once with every id (up to ten) instead of one `get_cve` per id. Reserve `get_cve` for a single lookup.",
     "Do not call the same tool with the same arguments twice in one turn.",
     "The web fallback is available only when the tool list includes `fetch_authoritative`, and only for a question the dataset cannot answer. One fetch per turn.",
     "If a tool returns an error, read the reason and either correct the arguments once or tell the user the dataset could not answer. Never present an error as a fact.",

@@ -47,6 +47,20 @@ import { openDatabase, type CveDatabase } from "../src/lib/db";
 const KEY = "sentinel-key-assistant-route-7b2e";
 const STAMP = "2026-11-22T00:00:00.000Z";
 const CVE_ID = "CVE-2099-0001";
+/**
+ * The five records the batch tests read. `CVE_ID` stays the first one, so the
+ * single-record tests keep their id and the batch tests read real records
+ * rather than a mixture of found and absent ids.
+ */
+const BATCH_IDS = [
+  "CVE-2099-0001",
+  "CVE-2099-0002",
+  "CVE-2099-0003",
+  "CVE-2099-0004",
+  "CVE-2099-0005",
+] as const;
+/** Shaped like an id, absent from the dataset: the `missing` branch's subject. */
+const ABSENT_ID = "CVE-2099-9999";
 
 const USAGE_ROUND_1 = {
   prompt_tokens: 400,
@@ -111,27 +125,33 @@ function seedDatabase(): CveDatabase {
   tempDirs.push(dir);
   const handle = openDatabase({ dataDir: dir });
   handle.runBoundedWrite(() => {
-    handle.handle
-      .prepare(
-        "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, " +
-          "title, description, description_lang, source_revision, created_at, updated_at, " +
-          "has_exploit_ref, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        CVE_ID,
-        "5.1",
-        "PUBLISHED",
-        "2026-11-01",
-        STAMP,
-        "Widget parser remote code execution",
-        "A widget parser accepts crafted input and executes it.",
-        "en",
-        "rev-1",
-        STAMP,
-        STAMP,
-        0,
-        null,
-      );
+    // Five readable records, so a batch read can be measured against the same
+    // question asked one lookup at a time.
+    for (const [index, id] of BATCH_IDS.entries()) {
+      handle.handle
+        .prepare(
+          "INSERT INTO cve_records (cve_id, data_version, state, date_published, date_updated, " +
+            "title, description, description_lang, source_revision, created_at, updated_at, " +
+            "has_exploit_ref, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          id,
+          "5.1",
+          "PUBLISHED",
+          "2026-11-01",
+          STAMP,
+          index === 0
+            ? "Widget parser remote code execution"
+            : `Batched record ${String(index + 1)}`,
+          "A widget parser accepts crafted input and executes it.",
+          "en",
+          "rev-1",
+          STAMP,
+          STAMP,
+          0,
+          null,
+        );
+    }
   });
   return handle;
 }
@@ -466,6 +486,105 @@ describe("assistant route: the streaming turn", () => {
     const toolResult = secondMessages.find((message) => message.role === "tool");
     expect(toolResult).toBeDefined();
     expect(String(toolResult?.content)).toContain(CVE_ID);
+  });
+
+  it("streams one get_cves call as one tool frame whose row count is the records returned", async () => {
+    const ids = [...BATCH_IDS, ABSENT_ID];
+    const { transport, calls } = fakeTransport(async (_call, index) =>
+      index === 0
+        ? { status: 200, body: toolStream("get_cves", { ids }, USAGE_ROUND_1) }
+        : {
+            status: 200,
+            body: textStream(
+              `${BATCH_IDS.join(", ")} are affected; ${ABSENT_ID} is not held.`,
+              USAGE_ROUND_2,
+            ),
+          },
+    );
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    expect(response.status).toBe(200);
+    const frames = framesOf(await response.text());
+
+    expect(frames.map((frame) => frame.type)).toEqual([
+      "tool",
+      "delta",
+      "citations",
+      "unverified",
+      "done",
+    ]);
+    // One frame, five rows: the row count is what the tool actually returned,
+    // not what was asked for, and the call was a single provider round.
+    expect(frames[0]).toMatchObject({
+      type: "tool",
+      name: "get_cves",
+      args: { ids },
+      ok: true,
+      rows: BATCH_IDS.length,
+    });
+    expect((frames[0]?.["ids"] as string[]).length).toBe(BATCH_IDS.length);
+    // The five records are citable; the absent id is not a record this turn
+    // read, so it is reported as missing rather than cited as evidence.
+    expect(frames[2]).toEqual({ type: "citations", records: [...BATCH_IDS] });
+    expect(frames[3]).toEqual({ type: "unverified", ids: [ABSENT_ID] });
+    expect(frames[4]).toMatchObject({ type: "done", rounds: 1 });
+    expect(calls).toHaveLength(2);
+    const toolResult = (calls[1]?.body["messages"] as Array<Record<string, unknown>>).find(
+      (message) => message.role === "tool",
+    );
+    expect(String(toolResult?.content)).toContain(ABSENT_ID);
+  });
+
+  it("reads five records in one round where one lookup per round cannot finish inside the cap", async () => {
+    // The measurement behind `get_cves`, on the fake transport: the same five
+    // records, asked two ways. Rounds are provider requests, which is what the
+    // 4-round cap counts.
+    const singles = fakeTransport(async (call) => {
+      const messages = (call.body["messages"] ?? []) as Array<Record<string, unknown>>;
+      const offersTools = Array.isArray(call.body["tools"]);
+      if (!offersTools) {
+        return { status: 200, body: textStream("Answer from what was read.", USAGE_ROUND_2) };
+      }
+      const read = messages.filter((message) => message.role === "tool").length;
+      const next = BATCH_IDS[read] ?? BATCH_IDS[BATCH_IDS.length - 1];
+      return { status: 200, body: toolStream("get_cve", { id: next }, USAGE_ROUND_1) };
+    });
+    setAssistantTransport(singles.transport);
+    const singleFrames = framesOf(await (await POST(request(ONE_QUESTION))).text());
+    const singleToolFrames = singleFrames.filter((frame) => frame.type === "tool");
+    const singleIds = singleToolFrames.flatMap((frame) => frame["ids"] as string[]);
+
+    // One lookup per round: the fourth round is the answer round and carries no
+    // tools, so three of the five ids are read and the other two never are.
+    expect(singles.calls).toHaveLength(4);
+    expect(singleToolFrames.map((frame) => frame["name"])).toEqual([
+      "get_cve",
+      "get_cve",
+      "get_cve",
+    ]);
+    expect(singleIds).toEqual([...BATCH_IDS.slice(0, 3)]);
+    expect(singleFrames[singleFrames.length - 1]).toMatchObject({ type: "done", rounds: 3 });
+
+    const batch = fakeTransport(async (_call, index) =>
+      index === 0
+        ? { status: 200, body: toolStream("get_cves", { ids: [...BATCH_IDS] }, USAGE_ROUND_1) }
+        : { status: 200, body: textStream("All five are affected.", USAGE_ROUND_2) },
+    );
+    setAssistantTransport(batch.transport);
+    const batchFrames = framesOf(await (await POST(request(ONE_QUESTION))).text());
+    const batchToolFrames = batchFrames.filter((frame) => frame.type === "tool");
+
+    // One call: every id is read in a single tool round, and the answer round
+    // is the second request of the turn.
+    expect(batch.calls).toHaveLength(2);
+    expect(batchFrames[batchFrames.length - 1]).toMatchObject({ type: "done", rounds: 1 });
+    expect(batchToolFrames).toHaveLength(1);
+    expect(batchToolFrames[0]).toMatchObject({ name: "get_cves", rows: BATCH_IDS.length });
+    expect(batchFrames.find((frame) => frame.type === "citations")).toEqual({
+      type: "citations",
+      records: [...BATCH_IDS],
+    });
   });
 
   it("flags an id the prose named but no tool returned, and keeps citations tool-backed", async () => {

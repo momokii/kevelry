@@ -199,13 +199,21 @@ export function encodeAssistantEvent(event: AssistantEvent): string {
 }
 
 /**
+ * Payload keys whose ids are not evidence: `get_cves` reports the ids this
+ * dataset holds no record for in `missing`, and an id that was asked for and
+ * not found must never be cited as a record the turn read.
+ */
+const NON_EVIDENCE_KEYS = new Set(["missing"]);
+
+/**
  * Ids the server actually read, from any tool payload shape.
  *
  * Deliberately generic: every tool nests ids differently (`items[].cveId`,
  * `record.cveId`, `points[]` for history), and a per-tool extractor would be a
  * second place to forget when a tool is added. Only strings matching the id
  * shape are collected, depth- and count-bounded so a hostile payload cannot
- * turn this into a walk of a huge object graph.
+ * turn this into a walk of a huge object graph. A key named `missing` is
+ * skipped whole: an id that was asked for and not found is not a citation.
  */
 export function collectRecordIds(value: unknown): string[] {
   const found: string[] = [];
@@ -224,7 +232,10 @@ export function collectRecordIds(value: unknown): string[] {
       return;
     }
     if (typeof node === "object" && node !== null) {
-      for (const entry of Object.values(node)) walk(entry, depth + 1);
+      for (const [key, entry] of Object.entries(node)) {
+        if (NON_EVIDENCE_KEYS.has(key)) continue;
+        walk(entry, depth + 1);
+      }
     }
   };
   walk(value, 0);

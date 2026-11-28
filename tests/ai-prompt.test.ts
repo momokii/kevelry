@@ -65,8 +65,14 @@ describe("renderSystemPrompt grounding rules", () => {
 describe("renderSystemPrompt comparison rule", () => {
   it("[PROMPT] requires both records to be read before they are compared", () => {
     expect(PROMPT).toContain("## Comparisons");
-    expect(PROMPT).toContain("call `get_cve` for each of them first");
+    expect(PROMPT).toContain("call `get_cves` with their ids first");
     expect(PROMPT).toContain("Never compare from memory");
+  });
+
+  it("[PROMPT] prefers one batch read over one lookup per record", () => {
+    expect(PROMPT).toContain("## Tool use");
+    expect(PROMPT).toContain("call `get_cves` once with every id (up to ten)");
+    expect(PROMPT).toContain("Reserve `get_cve` for a single lookup");
   });
 
   it("[PROMPT] fixes the comparison fields and forbids omitting one that agrees", () => {
@@ -206,8 +212,8 @@ describe("renderSystemPrompt tool list", () => {
     expect(PROMPT).toContain("a row cap means the list is partial");
     expect(PROMPT).toContain("first 25 of 1,204");
     expect(PROMPT).toContain(PROMPT_VERSION);
-    expect(toolDefinitions(true)).toHaveLength(8);
-    expect(toolDefinitions(false)).toHaveLength(7);
+    expect(toolDefinitions(true)).toHaveLength(9);
+    expect(toolDefinitions(false)).toHaveLength(8);
     for (const host of WEB_FETCH_ALLOWLIST) {
       expect(renderSystemPrompt({ webFetchEnabled: true })).toContain("fetch_authoritative");
       expect(host.length).toBeGreaterThan(0);

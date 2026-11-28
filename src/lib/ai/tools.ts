@@ -38,7 +38,7 @@ import {
   getSsvcActive,
   type PriorityItem,
 } from "../priority";
-import { loadFullRecords } from "../record-read";
+import { loadFullRecords, type FullRecord } from "../record-read";
 import { SECONDARY_LABEL } from "../cvss-projection";
 import {
   DESCRIPTION_MISSING_LABEL,
@@ -53,6 +53,9 @@ import { UNTRUSTED_MAX_CHARS, truncateProse, wrapUntrusted } from "./guardrails"
 /** `search_cves` default and hard cap. Over the cap is rejected, never clamped. */
 export const SEARCH_CVES_LIMIT_DEFAULT = 10;
 export const SEARCH_CVES_LIMIT_MAX = 25;
+
+/** `get_cves` hard cap: one call may name at most this many ids. */
+export const GET_CVES_IDS_MAX = 10;
 
 /** `list_priority` default and hard cap. */
 export const LIST_PRIORITY_LIMIT_DEFAULT = 10;
@@ -157,6 +160,7 @@ export const CWE_TEXT_CAP = 600;
 export const TOOL_NAMES = [
   "search_cves",
   "get_cve",
+  "get_cves",
   "epss_history",
   "kev_window",
   "coverage_stats",
@@ -251,13 +255,27 @@ interface IntegerArg extends CommonArg {
   values?: readonly number[];
 }
 
+/**
+ * A list of strings with one shape. Added for `get_cves`, which is the first
+ * tool whose argument is a collection: entries are checked one by one against
+ * `pattern`, the count is bounded, and repeats are read once rather than
+ * rejected — asking for the same id twice is not an error, it is the same
+ * question.
+ */
+interface StringArrayArg extends CommonArg {
+  type: "string[]";
+  minItems?: number;
+  maxItems?: number;
+  pattern?: RegExp;
+}
+
 interface NumberArg extends CommonArg {
   type: "number";
   min?: number;
   max?: number;
 }
 
-type ArgSpec = StringArg | IntegerArg | NumberArg;
+type ArgSpec = StringArg | StringArrayArg | IntegerArg | NumberArg;
 type ToolSchema = Record<string, ArgSpec>;
 
 interface ValidatedArgs {
@@ -322,6 +340,35 @@ function validateArgs(tool: ToolName, raw: unknown, schema: ToolSchema): ArgVali
         return argsFailure("BAD_ARGUMENT", `"${key}" has an invalid shape.`);
       }
       value[key] = provided;
+      continue;
+    }
+    if (spec.type === "string[]") {
+      if (!Array.isArray(provided)) {
+        return argsFailure("WRONG_TYPE", `"${key}" must be an array of strings.`);
+      }
+      if (spec.minItems !== undefined && provided.length < spec.minItems) {
+        return argsFailure(
+          "OUT_OF_RANGE",
+          `"${key}" must have at least ${String(spec.minItems)} entries (got ${String(provided.length)}).`,
+        );
+      }
+      if (spec.maxItems !== undefined && provided.length > spec.maxItems) {
+        return argsFailure(
+          "OUT_OF_RANGE",
+          `"${key}" must have at most ${String(spec.maxItems)} entries (got ${String(provided.length)}); split the question into two calls.`,
+        );
+      }
+      const unique: string[] = [];
+      for (const entry of provided as unknown[]) {
+        if (typeof entry !== "string") {
+          return argsFailure("WRONG_TYPE", `Every entry of "${key}" must be a string.`);
+        }
+        if (spec.pattern !== undefined && !spec.pattern.test(entry)) {
+          return argsFailure("BAD_ARGUMENT", `"${key}" has an entry with an invalid shape.`);
+        }
+        if (!unique.includes(entry)) unique.push(entry);
+      }
+      value[key] = unique;
       continue;
     }
     if (spec.type === "integer") {
@@ -446,6 +493,19 @@ const TOOL_SPECS: Record<ToolName, ToolSpec> = {
       },
     },
   },
+  get_cves: {
+    description: `Read up to ${String(GET_CVES_IDS_MAX)} published records in one call. Every record carries the same fields as \`get_cve\`, in the same order, so several records can be compared from one result; \`missing\` names the ids this dataset holds no current PUBLISHED record for. Use this whenever a question needs more than one record, and \`get_cve\` for a single lookup.`,
+    schema: {
+      ids: {
+        type: "string[]",
+        required: true,
+        minItems: 1,
+        maxItems: GET_CVES_IDS_MAX,
+        pattern: CVE_ID_RE,
+        description: `1-${String(GET_CVES_IDS_MAX)} CVE ids, CVE-YYYY-NNNN. A repeated id is read once.`,
+      },
+    },
+  },
   epss_history: {
     description:
       "The dated EPSS series retained for one record, oldest first. Gaps stay gaps: a missing date is absent, never zero.",
@@ -548,6 +608,15 @@ function jsonSchemaForArg(spec: ArgSpec): Record<string, unknown> {
     if (spec.maxLength !== undefined) out.maxLength = spec.maxLength;
     if (spec.values !== undefined) out.enum = [...spec.values];
     if (spec.pattern !== undefined) out.pattern = spec.pattern.source;
+    return out;
+  }
+  if (spec.type === "string[]") {
+    const items: Record<string, unknown> = { type: "string" };
+    if (spec.pattern !== undefined) items.pattern = spec.pattern.source;
+    out.type = "array";
+    out.items = items;
+    if (spec.minItems !== undefined) out.minItems = spec.minItems;
+    if (spec.maxItems !== undefined) out.maxItems = spec.maxItems;
     return out;
   }
   out.type = spec.type;
@@ -769,6 +838,54 @@ async function runGetCve(
       `No current PUBLISHED record for ${id} in this dataset.`,
     );
   }
+  return success("get_cve", recordPayload(ctx, record), 1, retrievedAt);
+}
+
+/**
+ * Read several records in one call.
+ *
+ * The measured turn that needed fourteen to seventeen single lookups spent 38.8 s
+ * and, on two of eight runs, every round on tool calls and none on prose. This
+ * tool is the same read as `get_cve` for a list: `loadFullRecords` already takes
+ * the ids in one walk, so the cost of ten records is one set of queries rather
+ * than ten. A record's absence is reported in `missing` instead of failing the
+ * call, because an answer that says which id this dataset does not hold is the
+ * honest one.
+ *
+ * What stays bounded: the id count (`GET_CVES_IDS_MAX`, rejected not clamped),
+ * one payload per record with the same caps as `get_cve` (the CWE mitigation
+ * text is already truncated at `CWE_TEXT_CAP` by `cwePayload`), and one row per
+ * returned record in the tool result's `rows`.
+ */
+async function runGetCves(
+  ctx: ToolContext,
+  args: Record<string, unknown>,
+  retrievedAt: string,
+): Promise<ToolOutcome> {
+  // Already validated: 1..GET_CVES_IDS_MAX CVE-shaped strings, repeats removed,
+  // input order preserved.
+  const ids = args.ids as string[];
+  // `loadFullRecords` keeps the input order and skips gaps; a REJECTED record
+  // comes back but is not readable, exactly as `get_cve` treats it.
+  const records = loadFullRecords(ctx.db, ids).filter((record) => record.state === "PUBLISHED");
+  const found = new Set(records.map((record) => record.cveId));
+  const missing = ids.filter((id) => !found.has(id));
+  const data = {
+    requested: ids.length,
+    returned: records.length,
+    missing,
+    records: records.map((record) => recordPayload(ctx, record)),
+  };
+  return success("get_cves", data, records.length, retrievedAt);
+}
+
+/**
+ * One record, shaped for the model. `get_cve` returns this object as its whole
+ * payload and `get_cves` returns one per id, so the two tools cannot describe
+ * the same record differently and a batch result compares field for field.
+ */
+function recordPayload(ctx: ToolContext, record: FullRecord): Record<string, unknown> {
+  const id = record.cveId;
   const shaped = excerptDescription(record.description, record.descriptionLang);
   const excerpt =
     shaped.excerpt === DESCRIPTION_MISSING_LABEL
@@ -847,7 +964,7 @@ async function runGetCve(
     exploitReferenceStatus: record.exploitReferences.length > 0 ? "tagged" : "none",
     exploitReferenceCount: record.exploitReferences.length,
   };
-  return success("get_cve", data, 1, retrievedAt);
+  return data;
 }
 
 async function runEpssHistory(
@@ -1323,6 +1440,7 @@ type Executor = (
 const EXECUTORS: Record<ToolName, Executor> = {
   search_cves: runSearchCves,
   get_cve: runGetCve,
+  get_cves: runGetCves,
   epss_history: runEpssHistory,
   kev_window: runKevWindow,
   coverage_stats: runCoverageStats,
