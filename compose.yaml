@@ -1,9 +1,11 @@
 # cve-change-radar — production-safe Compose default (todo 27).
 #
 # Normal launch: `docker compose up -d`
-# One image, one container, one named volume. Debug off, no source bind
-# mounts, no admin/debug ports. The published web port binds to loopback only;
-# public exposure needs explicit binding + HTTPS setup (see README).
+# Two containers: the app (no published port) and a Caddy edge proxy that is
+# the only HTTP surface. Debug off, no source bind mounts, no admin/debug
+# ports. The proxy publishes exactly two bindings — loopback for the
+# Cloudflare Tunnel origin and the host's Tailscale address for the owner's
+# existing URL — and never 0.0.0.0.
 #
 # Image contract: built from the repo Dockerfile as `cve-change-radar:local`.
 # Plain `up -d` never rebuilds a stale image — see README for the exact
@@ -32,6 +34,13 @@ services:
       # feed then falls back to the proxy headers (or omits the links rather
       # than advertising the 0.0.0.0 bind address).
       SITE_URL: ${SITE_URL:-}
+      # Client-IP trust for rate limiting. Set true only when every request
+      # arrives through a proxy that overwrites the forwarding headers (the
+      # `proxy` service below). With it on, the app keys on cf-connecting-ip,
+      # then x-real-ip, then the first x-forwarded-for entry; with it off it
+      # keeps the last-entry rule for a directly reachable app.
+      # See app/api/v1/_lib/guardrails.ts and docs/deployment/cloudflare-tunnel.md.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       DATA_DIR: /data
       # Ingestion schedule: true (default) runs the worker's initial import
       # immediately on boot and keeps refreshing on the scheduler intervals.
@@ -59,11 +68,10 @@ services:
       AI_WEB_FETCH_ENABLED: ${AI_WEB_FETCH_ENABLED:-false}
       AI_DAILY_BUDGET_USD: ${AI_DAILY_BUDGET_USD:-5}
       AI_SESSION_BUDGET_TOKENS: ${AI_SESSION_BUDGET_TOKENS:-60000}
-    ports:
-      # Loopback-bound by default. Host side honors $BIND_ADDR (default
-      # 127.0.0.1) and $PORT (default 3000); the container always listens
-      # on 3000 (see Dockerfile PORT/HOSTNAME).
-      - "${BIND_ADDR:-127.0.0.1}:${PORT:-3000}:3000"
+    # No published host port: the proxy below is the only HTTP entry point.
+    # `expose` documents the in-network port without binding the host.
+    expose:
+      - "3000"
     volumes:
       - cve-data:/data
     # The container log is capped. Docker's `json-file` driver has no default
@@ -86,6 +94,54 @@ services:
           cpus: "4.0"
           memory: 4G
 
+  # The only HTTP surface. Terminates nothing (Cloudflare owns TLS); forwards
+  # to app:3000 with SSE-safe streaming, a single rewritten client identity,
+  # and the security/caching headers in docker/Caddyfile. The app container
+  # stays unreachable from the host, the tailnet, and the public internet.
+  proxy:
+    image: caddy:2-alpine
+    init: true
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      # Exactly two bindings, never 0.0.0.0:
+      #   127.0.0.1:18080 — Cloudflare Tunnel origin (cloudflared is host-network)
+      #   <tailnet>:3100  — the Tailscale URL the owner already uses
+      # 8080 on this host belongs to cadvisor, which listens on 0.0.0.0:8080,
+      # so the tunnel origin uses 18080; the Caddyfile still listens on :8080
+      # inside the container.
+      - "${PROXY_BIND_ADDR:-127.0.0.1}:${PROXY_PORT:-18080}:8080"
+      - "${PROXY_TAILSCALE_ADDR:-127.0.0.1}:${PROXY_TAILSCALE_PORT:-3100}:8080"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      # /api/v1/health through the proxy: proves the whole chain, not just
+      # that Caddy is running. busybox wget ships in the alpine image.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
 volumes:
   cve-data:
     name: cve-change-radar-data
+  # Caddy's own state (autosaved config, locks). Not the app's data.
+  caddy-data:
+    name: cve-change-radar-caddy-data
+  caddy-config:
+    name: cve-change-radar-caddy-config

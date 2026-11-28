@@ -1,0 +1,102 @@
+# cve-change-radar — production edge proxy.
+#
+# TLS is terminated at Cloudflare, not here: cloudflared reaches this proxy as
+# http://127.0.0.1:18080 (compose publishes it on loopback) and the Tailscale
+# binding reaches the same listener. There is deliberately no hostname site
+# block and no ACME, because this process owns no certificate.
+#
+# Why a proxy rather than publishing the app port:
+#   - SSE on POST /api/assistant/chat must stream chunk by chunk, so the proxy
+#     disables response buffering and never compresses event streams;
+#   - one place to OVERWRITE (never append) the forwarded client identity, so
+#     the rate limiter cannot be keyed on a client-chosen value;
+#   - security and cache headers on every response, including static assets
+#     that next.config.ts does not cover.
+#
+# Render gate: `docker compose build` does not parse this file. Validate with
+#   docker compose exec proxy caddy validate --config /etc/caddy/Caddyfile
+# before trusting a change.
+{
+	# No admin API: nothing on this host reconfigures Caddy at runtime.
+	admin off
+	# HTTP only behind Cloudflare; no certificate management in this process.
+	auto_https off
+
+	servers {
+		timeouts {
+			# Slow uploads get bounded, not queued forever.
+			read_header 20s
+			read_body 120s
+			# Must clear the app's AI_REQUEST_TIMEOUT_MS (45s) with room for the
+			# SSE tail and normal page responses.
+			write 300s
+			idle 300s
+		}
+	}
+}
+
+:8080 {
+	# The app caps request bodies at 3 MiB itself and answers a structured 413;
+	# 4 MiB leaves multipart/SSE headroom so that app error path still runs.
+	request_body {
+		max_size 4MB
+	}
+
+	# Real client identity, resolved once:
+	#   1. CF-Connecting-IP (Cloudflare's edge writes it and strips a
+	#      client-supplied value) — the tunnel path;
+	#   2. the incoming X-Forwarded-For — a caller that already went through a
+	#      trusted hop (host-local tooling);
+	#   3. the observed peer — direct tailnet/bridge callers.
+	# The app only reads these when TRUST_PROXY=true.
+	map {http.request.header.Cf-Connecting-Ip} {my.forwarded_for} {
+		"" {http.request.header.X-Forwarded-For}
+		default {http.request.header.Cf-Connecting-Ip}
+	}
+	map {my.forwarded_for} {my.client_ip} {
+		"" {http.request.remote.host}
+		default {my.forwarded_for}
+	}
+
+	reverse_proxy app:3000 {
+		# SSE-safe: stream every chunk immediately instead of buffering the
+		# response. This is the setting that keeps POST /api/assistant/chat
+		# live; `encode` is intentionally absent because compression buffers
+		# too (Cloudflare compresses at the edge instead).
+		flush_interval -1
+
+		# Overwrite, never append: a client-supplied XFF cannot survive this.
+		header_up X-Forwarded-For {my.client_ip}
+		header_up X-Real-IP {my.client_ip}
+		# Cloudflare terminates TLS, so the app's HTTPS-only logic (HSTS,
+		# absolute links) must see https even though this hop is plain HTTP.
+		header_up X-Forwarded-Proto https
+		# Preserve the public host for canonical/sitemap fallbacks.
+		header_up Host {http.request.host}
+	}
+
+	# Response headers. Caddy replaces an upstream header of the same name, so
+	# the app's own HSTS value (it fires because X-Forwarded-Proto is https) is
+	# normalised here to the shorter edge policy: one month, no subdomains, no
+	# preload. Raise it only after the public URL has proven stable.
+	header {
+		Strict-Transport-Security "max-age=2592000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Immutable hashed build assets. `defer` replaces the upstream value instead
+	# of appending a second Cache-Control next to it.
+	header /_next/static/* {
+		Cache-Control "public, max-age=31536000, immutable"
+		defer
+	}
+
+	# Everything else (HTML, /api/*) is no-store, but only when the app did not
+	# already send its own Cache-Control: `?` never weakens a directive the app
+	# chose (successful API GETs carry a short public max-age by design).
+	header ?Cache-Control "no-store"
+}

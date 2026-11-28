@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = (process.env.SITE_URL ?? "").trim().replace(/\/+$/, "") || "http://localhost:3000";
+// Request-time: the origin must come from the container's runtime environment.
+// A prerendered sitemap bakes whatever SITE_URL the image was built with — on
+// the published image that is unset — and would keep advertising localhost
+// after deployment. A blank SITE_URL keeps the localhost fallback for private
+// development use.
+export const dynamic = "force-dynamic";
 
 const ROUTES: Array<{ path: string; priority: number }> = [
   { path: "/", priority: 1 },
@@ -15,8 +20,10 @@ const ROUTES: Array<{ path: string; priority: number }> = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  const siteUrl =
+    (process.env.SITE_URL ?? "").trim().replace(/\/+$/, "") || "http://localhost:3000";
   return ROUTES.map((route) => ({
-    url: `${SITE_URL}${route.path}`,
+    url: `${siteUrl}${route.path}`,
     changeFrequency: "weekly",
     priority: route.priority,
   }));

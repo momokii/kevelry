@@ -366,42 +366,46 @@ and are printed by `/methodology` and `/api/v1/overview`, not repeated here.
 the app reads is listed there, including the three test/bench-only switches
 (`LIVE_CLONE`, `EPSS_LIVE_TEST`, `BENCH_WRITE_EVIDENCE`).
 
-| Variable                  | Required | Default                        | Meaning                                                                                                                                     |
-| ------------------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                 | yes      | `production`                   | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                                       |
-| `NODE_ENV`                | no       | `production`                   | Node profile, kept in step with `APP_ENV`                                                                                                   |
-| `DATA_DIR`                | yes      | `/data`                        | Database and snapshot directory inside the container                                                                                        |
-| `SCHEDULE_ENABLED`        | yes      | `true`                         | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                                         |
-| `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                                             |
-| `BIND_ADDR`               | no       | `127.0.0.1`                    | Host address the web port binds to (Compose only)                                                                                           |
-| `PORT`                    | yes      | `3000`                         | Host-side web port (container always listens on 3000; serverless platforms inject their own)                                                |
-| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; feeds use it for absolute links, else proxy headers, and omit links when the host is unusable |
-| `HSTS_ENABLED`            | no       | `false`                        | Send `Strict-Transport-Security` on plain HTTP too; HTTPS requests always get it                                                            |
-| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                                    |
-| `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                                          |
-| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB)                   |
-| `CVE_REPO_CACHE_RESET`    | no       | `false`                        | `true` wipes the cache and re-clones clean on the next cycle                                                                                |
-| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`                     | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                                     |
-| `CHECKPOINT_TOP_N`        | no       | `500`                          | Entries kept per view in each daily Change Radar checkpoint                                                                                 |
-| `PRIORITY_PAGE_LIMIT`     | no       | `100`                          | QA-only display cap for priority views (1–1000)                                                                                             |
-| `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                                                 |
-| `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                                              |
-| `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                                                |
-| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                                  |
-| `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                                                |
-| `WARM_AGGREGATES_ONCE`    | no       | `false`                        | Boot warm used by the entrypoint: refresh only when the cache is not current, then serve                                                    |
-| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft                             |
-| `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                            |
-| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                     |
-| `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                                      |
-| `RUN_VERIFY_ONCE`         | no       | `false`                        | One-off `verifyBackup()` of `VERIFY_DIR` (hash + schema + row counts), then exit                                                            |
-| `VERIFY_DIR`              | no\*     | unset                          | Backup directory to verify (needs `cve-backup.db` + `manifest.json`); required when `RUN_VERIFY_ONCE=true`                                  |
-| `BACKUP_DIR`              | no\*     | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                                    |
-| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it                   |
-| `RESTORE_DIR`             | no\*     | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything                  |
-| `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                                     |
-| `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                                       |
-| `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                                                |
+| Variable                  | Required | Default                        | Meaning                                                                                                                                             |
+| ------------------------- | -------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                 | yes      | `production`                   | Runtime profile: `development`, `staging`, `production`; missing/unknown fails closed                                                               |
+| `NODE_ENV`                | no       | `production`                   | Node profile, kept in step with `APP_ENV`                                                                                                           |
+| `DATA_DIR`                | yes      | `/data`                        | Database and snapshot directory inside the container                                                                                                |
+| `SCHEDULE_ENABLED`        | yes      | `true`                         | `true` imports on boot then refreshes on schedule; `false` imports once, then idles                                                                 |
+| `INGEST_ON_START`         | no       | `true`                         | `false` skips even the first import cycle (worker logs `worker-idle` and parks)                                                                     |
+| `PORT`                    | yes      | `3000`                         | Container listen port (Compose pins `3000`; serverless platforms inject their own)                                                                  |
+| `PROXY_BIND_ADDR`         | no       | `127.0.0.1`                    | Host address for the proxy's Cloudflare Tunnel port (Compose only)                                                                                  |
+| `PROXY_PORT`              | no       | `18080`                        | Host port for the tunnel origin (`cloudflared` dials `127.0.0.1:18080`; 8080 is taken by cadvisor)                                                  |
+| `PROXY_TAILSCALE_ADDR`    | no       | `127.0.0.1`                    | Host address for the tailnet-facing proxy port; set to the host's Tailscale IP                                                                      |
+| `PROXY_TAILSCALE_PORT`    | no       | `3100`                         | Host-side port for the Tailscale URL                                                                                                                |
+| `SITE_URL`                | no       | unset                          | Public origin for sitemap/canonical metadata; feeds use it for absolute links, else proxy headers, and omit links when the host is unusable         |
+| `TRUST_PROXY`             | no       | `false`                        | Trust proxy headers for the rate-limit identity: `cf-connecting-ip`, then `x-real-ip`, then the first `x-forwarded-for`; false keeps the last entry |
+| `HSTS_ENABLED`            | no       | `false`                        | Send `Strict-Transport-Security` on plain HTTP too; HTTPS requests always get it                                                                    |
+| `CVE_GIT_TIMEOUT_MS`      | no       | `3600000`                      | CVE List V5 clone timeout in ms (1 hour)                                                                                                            |
+| `CVE_CLONE_DEPTH`         | no       | `1`                            | `1` is shallow `--depth 1`; `0` means full history                                                                                                  |
+| `CVE_REPO_DIR`            | no       | `<DATA_DIR>/cve-repo`          | Persistent CVE checkout cache; first run clones shallow here, refreshes fetch incrementally, never auto-deleted (~5-6 GB)                           |
+| `CVE_REPO_CACHE_RESET`    | no       | `false`                        | `true` wipes the cache and re-clones clean on the next cycle                                                                                        |
+| `CVE_MAX_RECORD_BYTES`    | no       | `16777216`                     | Per-record size cap in bytes (16 MiB); oversize records are quarantined                                                                             |
+| `CHECKPOINT_TOP_N`        | no       | `500`                          | Entries kept per view in each daily Change Radar checkpoint                                                                                         |
+| `PRIORITY_PAGE_LIMIT`     | no       | `100`                          | QA-only display cap for priority views (1–1000)                                                                                                     |
+| `CVE_REPO_URL`            | no       | official repository            | Optional CVE source override (mirror/tests)                                                                                                         |
+| `CVE_REVISION`            | no       | `main`                         | Optional CVE revision override                                                                                                                      |
+| `SSVC_REPO_DIR`           | no       | `<DATA_DIR>/vulnrichment-repo` | CISA Vulnrichment checkout used for SSVC enrichment (KEV cohort only, daily)                                                                        |
+| `EPSS_RETENTION_DAYS`     | no       | `45`                           | Days of daily EPSS history kept (30-3650, ~40 MB/day); the only table that grows with time                                                          |
+| `REFRESH_AGGREGATES_ONCE` | no       | `false`                        | One-off aggregate-cache refresh, then exit (no import cycle)                                                                                        |
+| `WARM_AGGREGATES_ONCE`    | no       | `false`                        | Boot warm used by the entrypoint: refresh only when the cache is not current, then serve                                                            |
+| `CWE_CSV_URL`             | no       | MITRE view 1000 `CSV.zip`      | Pinned CWE pack url; blank uses that default, and any override must be absolute https or the refresh fails soft                                     |
+| `CWE_REFRESH_ENABLED`     | no       | `true`                         | CWE refresh once/24h (one conditional request); flag is fail-closed, a failed fetch is fail-soft                                                    |
+| `REFRESH_CWE_ONCE`        | no       | `false`                        | One-off CWE catalog refresh, then exit (non-zero if the attempt failed)                                                                             |
+| `RUN_BACKUP_ONCE`         | no       | `false`                        | One-off verified backup into `BACKUP_DIR`, then exit (no import cycle)                                                                              |
+| `RUN_VERIFY_ONCE`         | no       | `false`                        | One-off `verifyBackup()` of `VERIFY_DIR` (hash + schema + row counts), then exit                                                                    |
+| `VERIFY_DIR`              | no\*     | unset                          | Backup directory to verify (needs `cve-backup.db` + `manifest.json`); required when `RUN_VERIFY_ONCE=true`                                          |
+| `BACKUP_DIR`              | no\*     | unset                          | Destination for the one-off backup; required when `RUN_BACKUP_ONCE=true`                                                                            |
+| `RUN_RESTORE_ONCE`        | no       | `false`                        | One-off restore drill from `RESTORE_DIR` into `DATA_DIR`, then report row counts; only the exact string `true` enables it                           |
+| `RESTORE_DIR`             | no\*     | unset                          | Backup directory to restore; required when `RUN_RESTORE_ONCE=true`, and unset/blank refuses rather than restoring anything                          |
+| `CVE_DB_FILE`             | no       | unset                          | Backfill script: explicit database path                                                                                                             |
+| `BACKFILL_CHUNK`          | no       | `2000`                         | Backfill script: rows per transaction                                                                                                               |
+| `BETTER_SQLITE3_PATH`     | no       | unset                          | Backfill script: explicit native module path                                                                                                        |
 
 `.env.example` is a local-development template (`APP_ENV=development`,
 `DATA_DIR=./data`); Compose and the image default to production
@@ -581,17 +585,19 @@ trackers. Competitor overlap (closest verified: o2CVE) is in
 
 ### Local
 
-Default binding stays on loopback: `http://127.0.0.1:3000`, health at
-`/api/v1/health`.
+Default binding stays on loopback: `http://127.0.0.1:18080` through the edge
+proxy, health at `/api/v1/health`. The app's own port is not published.
 
 ### Tailscale
 
-This host's Tailscale IP is `100.124.184.116`. To serve the Mac on the tailnet,
-put these lines in `.env` (replace the IP if `tailscale ip -4` reports a new one):
+This host's Tailscale IP is `100.124.184.116`. The app container publishes no
+host port; the Caddy edge proxy does, so the existing tailnet URL keeps working
+with the same address and port. Put these lines in `.env` (replace the IP if
+`tailscale ip -4` reports a new one):
 
 ```bash
-BIND_ADDR=100.124.184.116
-PORT=3100
+PROXY_TAILSCALE_ADDR=100.124.184.116
+PROXY_TAILSCALE_PORT=3100
 ```
 
 Then restart and check from the Mac:
@@ -601,7 +607,9 @@ docker compose up -d
 curl http://100.124.184.116:3100/api/v1/health
 ```
 
-Open `http://100.124.184.116:3100` in the browser.
+Open `http://100.124.184.116:3100` in the browser. The old `BIND_ADDR`/`PORT`
+pair is gone: those bound the app's own port, which is now internal to the
+Compose network only.
 
 ### Public deployment
 
@@ -648,37 +656,40 @@ How the database works here, and the rules that follow from it:
   The honest cost comparison is one always-on instance versus one small VM — the
   VM is usually cheaper for this always-warm, stateful shape.
 
-**B. Recommended VM deployment (Compose + Caddy for TLS).**
+**B. Recommended VM deployment (Compose edge proxy + Cloudflare Tunnel).**
 
-Keep the app on loopback and terminate TLS in Caddy (automatic certificates). An
-example proxy file ships as `docker/Caddyfile.example`:
+`docker compose up -d` starts the app plus a Caddy proxy. The app publishes **no**
+host port; the proxy publishes exactly two — `127.0.0.1:18080` for the Cloudflare
+Tunnel origin and the host's Tailscale address for the private URL. TLS terminates
+at Cloudflare. The full runbook, including the dashboard steps and rollback, is
+`docs/deployment/cloudflare-tunnel.md`.
 
-```bash
-docker compose up -d --build
-sudo caddy run --config docker/Caddyfile.example --adapter caddyfile
-```
+Proxy rules that matter (`docker/Caddyfile`):
 
-Proxy rules that matter (already in the example):
-
-- Caddy sets `X-Forwarded-For {http.request.remote.host}` (**overwrite**, never
-  append): the API rate limit keys on the last forwarded address, so a spoofable
-  leftmost value must never survive at the edge.
-- Firewall the app port off the public internet; expose only 80/443. Never bind
-  `0.0.0.0` casually; `APP_ENV` stays `production`.
+- Cloudflare's `CF-Connecting-IP` becomes the client identity (also written to
+  `X-Real-IP` and `X-Forwarded-For`, **overwritten**, never appended). The app
+  reads it only with `TRUST_PROXY=true`; without that flag it keeps the last
+  forwarded entry rule for a directly reachable instance.
+- `POST /api/assistant/chat` streams without buffering (`flush_interval -1`) and
+  compression is off, so SSE frames are never held back.
+- Security and cache headers are set once, at the edge (`/_next/static` is
+  immutable; HTML and `/api/*` are `no-store` unless the app already decided).
+- Never bind `0.0.0.0`: the tunnel and the tailnet are the only listeners, and
+  `APP_ENV` stays `production`.
 - Point a cron or timer at the backup runbook (`docs/backup-runbook.md`) and an
   external uptime check at `GET /api/v1/health` before announcing the URL.
 
 ## Verify it works
 
-Run these against your base URL (`http://127.0.0.1:3000` locally,
-`http://100.124.184.116:3100` over Tailscale):
+Run these against your base URL (`http://127.0.0.1:18080` locally through the
+proxy, `http://100.124.184.116:3100` over Tailscale):
 
 ```bash
-curl -s http://127.0.0.1:3000/api/v1/health | head -c 300; echo
-curl -s http://127.0.0.1:3000/api/v1/overview | head -c 300; echo
-curl -s "http://127.0.0.1:3000/api/v1/priority/known-exploited?limit=2" | head -c 300; echo
-curl -s "http://127.0.0.1:3000/api/v1/search?q=openssl&limit=2" | head -c 300; echo
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
+curl -s http://127.0.0.1:18080/api/v1/health | head -c 300; echo
+curl -s http://127.0.0.1:18080/api/v1/overview | head -c 300; echo
+curl -s "http://127.0.0.1:18080/api/v1/priority/known-exploited?limit=2" | head -c 300; echo
+curl -s "http://127.0.0.1:18080/api/v1/search?q=openssl&limit=2" | head -c 300; echo
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:18080/
 ```
 
 Expect: health 200 with an ok/degraded state; overview has non-empty buckets plus a

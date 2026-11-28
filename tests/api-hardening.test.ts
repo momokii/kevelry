@@ -210,6 +210,67 @@ describe("client identity for rate limiting", () => {
     );
     expect(clientKeyFor(keyRequest({ "x-real-ip": "203.0.113.8" }))).toBe("203.0.113.8");
   });
+
+  it("prefers cf-connecting-ip behind a trusted edge", () => {
+    // Cloudflare writes CF-Connecting-IP at the edge (a client-supplied value
+    // is stripped) and Caddy rewrites X-Real-IP / X-Forwarded-For from it, so
+    // all three agree; the most specific header wins.
+    expect(
+      clientKeyFor(
+        keyRequest({
+          "cf-connecting-ip": "198.51.100.7",
+          "x-real-ip": "198.51.100.7",
+          "x-forwarded-for": "198.51.100.7",
+        }),
+        { TRUST_PROXY: "true" },
+      ),
+    ).toBe("198.51.100.7");
+    expect(
+      clientKeyFor(keyRequest({ "cf-connecting-ip": "198.51.100.7", "x-real-ip": "203.0.113.8" }), {
+        TRUST_PROXY: "true",
+      }),
+    ).toBe("198.51.100.7");
+  });
+
+  it("uses the first X-Forwarded-For entry when the edge did not set cf-connecting-ip", () => {
+    expect(
+      clientKeyFor(keyRequest({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }), {
+        TRUST_PROXY: "true",
+      }),
+    ).toBe("198.51.100.9");
+    // x-real-ip is the proxy's rewrite and outranks the list.
+    expect(
+      clientKeyFor(keyRequest({ "x-real-ip": "203.0.113.8", "x-forwarded-for": "198.51.100.9" }), {
+        TRUST_PROXY: "true",
+      }),
+    ).toBe("203.0.113.8");
+  });
+
+  it("ignores the trusted-edge headers when TRUST_PROXY is off, absent, or malformed", () => {
+    // Fail-closed: a client can send CF-Connecting-IP itself, so without the
+    // opt-in it is ignored entirely and today's last-entry rule applies.
+    for (const env of [{}, { TRUST_PROXY: "false" }, { TRUST_PROXY: "1" }]) {
+      expect(
+        clientKeyFor(keyRequest({ "cf-connecting-ip": "198.51.100.7" }), env),
+        JSON.stringify(env),
+      ).toBe("local");
+      expect(
+        clientKeyFor(
+          keyRequest({
+            "cf-connecting-ip": "198.51.100.7",
+            "x-forwarded-for": "198.51.100.9, 203.0.113.7",
+          }),
+          env,
+        ),
+        JSON.stringify(env),
+      ).toBe("203.0.113.7");
+    }
+  });
+
+  it("falls back to local when no forwarding header is present in either mode", () => {
+    expect(clientKeyFor(keyRequest({}), { TRUST_PROXY: "true" })).toBe("local");
+    expect(clientKeyFor(keyRequest({}), {})).toBe("local");
+  });
 });
 
 describe("rate budget", () => {

@@ -74,14 +74,57 @@ export function rateExpiryQueueDepth(): number {
   return rateBucketExpiries.size;
 }
 
-export function clientKeyFor(request: Request): string {
-  // Proxies append the observed peer address; the client-supplied leftmost
-  // entries are spoofable, so the rate-limit identity is the LAST entry —
-  // the one added by our own edge proxy. Deployments must put a proxy in
-  // front that overwrites (never blindly trusts) these headers, and must
-  // never expose the app port directly. See README deployment notes.
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded !== null && forwarded.trim() !== "") {
+function nonEmptyHeader(request: Request, name: string): string | null {
+  const value = request.headers.get(name);
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Explicit opt-in for proxy headers, fail-closed: only `true` (trimmed, any
+ * case) enables the trusted-edge rules. `1`, `yes`, a typo or an empty string
+ * leaves today's untrusted behaviour in place, so a malformed environment
+ * never lets a client choose its own rate-limit identity through a header it
+ * controls.
+ */
+export function trustProxyEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.TRUST_PROXY?.trim().toLowerCase() === "true";
+}
+
+/**
+ * Rate-limit identity for one request.
+ *
+ * Behind the production edge (Cloudflare Tunnel -> Caddy -> app) set
+ * `TRUST_PROXY=true`: then the order is `cf-connecting-ip` (written by
+ * Cloudflare's edge, which strips a client-supplied value), then `x-real-ip`
+ * (rewritten by the proxy), then the FIRST `x-forwarded-for` entry (the
+ * original client; the proxy overwrites the header with a single value).
+ *
+ * Without that opt-in, today's rule is kept: a proxy APPENDS the peer address,
+ * so the LAST `x-forwarded-for` entry is the only one a client cannot prepend,
+ * then `x-real-ip`, then `"local"`. A directly reachable app is therefore
+ * never keyed on a spoofable leftmost value.
+ */
+export function clientKeyFor(
+  request: Request,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (trustProxyEnabled(env)) {
+    const cfConnectingIp = nonEmptyHeader(request, "cf-connecting-ip");
+    if (cfConnectingIp !== null) return cfConnectingIp;
+    const trustedRealIp = nonEmptyHeader(request, "x-real-ip");
+    if (trustedRealIp !== null) return trustedRealIp;
+    const trustedForwarded = nonEmptyHeader(request, "x-forwarded-for");
+    if (trustedForwarded !== null) {
+      const first = trustedForwarded.split(",")[0]?.trim();
+      if (first !== undefined && first !== "") return first;
+    }
+    return "local";
+  }
+
+  const forwarded = nonEmptyHeader(request, "x-forwarded-for");
+  if (forwarded !== null) {
     const entries = forwarded
       .split(",")
       .map((entry) => entry.trim())
@@ -89,8 +132,8 @@ export function clientKeyFor(request: Request): string {
     const last = entries[entries.length - 1];
     if (last !== undefined && last !== "") return last;
   }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp !== null && realIp.trim() !== "") return realIp.trim();
+  const realIp = nonEmptyHeader(request, "x-real-ip");
+  if (realIp !== null) return realIp;
   return "local";
 }
 
