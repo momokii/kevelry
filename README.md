@@ -17,12 +17,23 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.8` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.7`, `4.0.6`, `4.0.5`, `4.0.4`, `4.0.3`, `4.0.2`,
+> **Status:** `4.0.9` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.8`, `4.0.7`, `4.0.6`, `4.0.5`, `4.0.4`, `4.0.3`, `4.0.2`,
 > `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.8` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the empty-answer fix: a plain question could end with no answer at all —
+> available as previous releases. The `4.0.9` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the assistant-honesty release: a refusal is a `200` answer with
+> `kind: "refusal"` and two record-backed next steps, written with no provider
+> call, instead of a fault in the error panel; "one web fetch per turn" is
+> enforced by a counter in the tool loop rather than by the prompt, and a
+> successful fetch cites a chip named by its host and marked `web`; a missing
+> gateway `list_cost` no longer records 0 — an unpriced turn records nothing and
+> the daily money cap fails closed after 10 in one UTC day, with an honest
+> message; and the request-body caps live in one module, because the desk was
+> silently stricter than the route (10 messages / 11,000 characters against 12 /
+> 12,000). **Schema 12** (migration 012, `ai_usage.unmetered_requests`) applies
+> automatically on boot; no config change and no API change. From
+> 4.0.8: the empty-answer fix: a plain question could end with no answer at all —
 > measured **2 of 8** runs, and 3 of 6 attempts while recording the demo —
 > because the tool-round cap (4) ended the turn as soon as it was reached and the
 > turn settled successfully with no text written. The last permitted round is now
@@ -72,8 +83,8 @@ to stay within limits.` when it did; and a round that produced neither text nor
 > v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
 > automatically on boot against an existing volume, no manual step, and no
 > `/api/v1` route or response shape changed. The assistant is off on this image
-> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.0.8
-> needs no migration and no config change.
+> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.0.9
+> needs migration 012 and no config change.
 
 ## What v4 adds
 
@@ -186,7 +197,7 @@ line is one server-side lookup, `Rows` is how many records it returned, the
 chips are what the answer can cite — then names the one tool call behind the
 answer, `kev_window` with `days=30` and `12 rows`, and shows six of its ids plus
 a `+6 more` disclosure: density is a hierarchy of calls and records, never an
-inner scrollbar. The frame is a local 4.0.8 e2e server driven through the
+inner scrollbar. The frame is a local 4.0.9 e2e server driven through the
 browser suite's offline **fake transport** (`AI_FAKE_TRANSPORT=1`) against the
 suite's dense twelve-record fixture, so the prose is canned and says so; the
 attachment, the tool call, its row count and the citations are real.
@@ -242,7 +253,7 @@ corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations
 not the live instance, so the numbers in the frames are reproducible rather than
 current. For the deployment's own figures, read `/methodology`, which counts the
 accepted snapshot. The three assistant captures live under
-[What v4 adds](#what-v4-adds); they are a local 4.0.8 e2e server driven through
+[What v4 adds](#what-v4-adds); they are a local 4.0.9 e2e server driven through
 the browser suite's offline transport against its dense twelve-record fixture,
 which their captions state.
 
@@ -303,7 +314,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.8
+  docker.io/kelanach/kevelry:4.0.9
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -585,7 +596,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.8 \
+  --image docker.io/kelanach/kevelry:4.0.9 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -794,7 +805,7 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1146 passing, 3 skipped (network-gated)
+npm test                # vitest: 1205 passing, 3 skipped (network-gated)
 npx playwright test     # browser suite: 165 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```

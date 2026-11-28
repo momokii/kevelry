@@ -78,6 +78,14 @@ cookies or auth headers. One call per turn; the text is returned as
 a chip labelled with its host and marked `web`, never `dataset`. `AI_WEB_FETCH_ENABLED` is
 `false` by default; when off the tool is **absent from the tool list**.
 
+**Shipped in 4.0.9** (`986b230`): "one call per turn" was prompt-only until now. The turn
+creates one `webFetchBudget` and the dispatcher spends it, so a second
+`fetch_authoritative` in the same turn is refused with `WEB_FETCH_ONCE` before any argument is
+validated or any socket exists — spent when the attempt starts, because a refused host has already
+cost the turn its fallback. The server, not the client, names the host: a successful fetch's
+`tool` event carries `web: { url, host }`, so a followed allow-listed redirect cites the URL that
+was actually read, and a refused URL never becomes a chip. A test pins the refusal.
+
 ### 4.4 Guardrails, stated so they are testable
 
 | #   | Rule                                                                                                                                                                        | Enforced by                                                                                                                                                                                  |
@@ -103,6 +111,16 @@ a chip labelled with its host and marked `web`, never `dataset`. `AI_WEB_FETCH_E
 
 **The honest limit:** G1 and G2 are prompt-level and can only be tested, never proven.
 Everything mechanical — destinations, argument shape, record ids, budgets, secrets — is code.
+
+**Shipped in 4.0.9** (`986b230`, `74a2fd3`): two of these rows became more true. **G1** — a scope
+refusal is a `200` SSE turn whose `done` carries `kind: "refusal"`, with two concrete next steps
+the eight record tools can answer, and no provider call at all; the 10-prompt fixture asserts
+zero transport calls, so the cheap half of G1 is now code plus a test rather than a fixture
+observing a model. **G3** — the caps had drifted: the desk kept 10 messages / 11,000 characters
+while the route accepted 12 / 12,000, invisible only because the client was the stricter end.
+Both ends now read `src/lib/ai/limits.ts`, `MAX_QUESTION_CHARS` is the per-message cap rather
+than a fourth number, and the route keeps its strict validation: at the cap a body is a `200`,
+one character over is a `400` that names the limit.
 
 ### 4.5 Beyond plain chat
 

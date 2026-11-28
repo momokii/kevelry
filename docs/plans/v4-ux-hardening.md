@@ -152,6 +152,13 @@ image answers **`422`** (`BAD_IMAGE` → `422`); an image over 1.5 MiB answers *
 check runs **before** any upstream call: extend the existing `AI_BUDGET_EXHAUSTED` tests to assert the
 transport spy's `calls` is empty on both the daily and the session branch.
 
+**Shipped in 4.0.9** (`74a2fd3`): the caps live in one module now. `src/lib/ai/limits.ts` holds
+`ASSISTANT_MAX_MESSAGES` (12), `ASSISTANT_MAX_MESSAGE_CHARS` (2,000) and
+`ASSISTANT_MAX_TOTAL_CHARS` (12,000) plus the trim, and the route's body schema imports them — the
+desk had its own literals (10 / 11,000) and was silently stricter than the server. `AI_MAX_TURNS`
+stays deleted. The budget side of §4 was fixed too: a missing `list_cost` no longer records 0 (an
+unpriced turn records nothing and the daily cap fails closed after 10 in a UTC day).
+
 ## 5. Web fallback (E)
 
 **Behaviour, confirmed in code.** `fetch_authoritative` enters the tool list only when
@@ -169,6 +176,13 @@ chip marked `web`, and no second call carries `source: "web"`. (b) A unit test a
 `fetch_authoritative` is refused with `WEB_FETCH_DISABLED` when `AI_WEB_FETCH_ENABLED=false`, even
 when asked for by name. (c) A test asserts the fallback fires **at most once per turn**, so "one per
 turn" is code, not prompt hope.
+
+**Shipped in 4.0.9** (`986b230`): (a) and (c) are now true rather than hoped. "One fetch per turn"
+was still a prompt sentence after 4.0.3; the turn now passes one `webFetchBudget` to the dispatcher
+and a second call is refused with `WEB_FETCH_ONCE` before argument validation, with a test pinning
+it. The `web` chip is server-named: a successful fetch's `tool` event carries `web: { url, host }`,
+so the citation shows the host that actually answered (after a followed allow-listed redirect) and a
+refused URL never becomes a chip.
 
 ## 6. Phases (F)
 

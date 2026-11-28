@@ -3,6 +3,46 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.0.9 — 2026-11-28
+
+A refusal that arrived as an error, a "one web fetch per turn" rule that lived only in the prompt,
+a money cap that could not trip, and two ends of the wire that disagreed about the caps it enforces.
+
+### Fixed
+
+- **A refusal is an answer, not a fault.** A weaponisation prompt now comes back as a `200` SSE turn
+  whose `done` carries `kind: "refusal"`, with two concrete next steps the eight record tools can
+  actually answer, and **no provider call** — the 10-prompt fixture asserts zero transport calls. It
+  used to render in the error panel, which is where the reader is told something broke: nothing had.
+  The copy opens with the same `REFUSAL_TEMPLATE` the prompt gives the model, so a refusal written by
+  code and one written by the model read in one voice; a refusal writes no ledger row because it
+  costs nothing.
+- **"One web fetch per turn" is enforced in code.** It was prompt-only. The tool loop now keeps a
+  counter for the turn and refuses a second `fetch_authoritative` call, with a test pinning the
+  refusal, so the rule no longer depends on the model remembering it. A successful fetch's citation
+  renders as a chip labelled with its host and marked `web`, never `dataset`.
+- **A missing gateway `list_cost` no longer records 0.** It did, and a zero is indistinguishable from
+  a genuinely free turn, so a gateway that stopped reporting cost made the daily money cap
+  unreachable while the provider billed every request. An unpriced turn now records no spend and
+  increments `ai_usage.unmetered_requests` (migration 012); after 10 unpriced turns in one UTC day
+  the budget fails closed with the honest message — today's AI spend cannot be measured — instead of
+  claiming the budget is spent.
+
+### Changed
+
+- **The request-body caps live in one module.** The desk was silently stricter than the server —
+  10 messages / 11,000 characters against the route's 12 / 12,000 — so the client trimmed turns the
+  server would have accepted, while a client that cannot tell what its server accepts eventually
+  builds a body it refuses. Both ends now read `src/lib/ai/limits.ts`, the route keeps its strict
+  validation, and the question cap is the per-message cap rather than a fourth number.
+- **Duplicate helpers removed.** One `asRecord` (`src/lib/json.ts`), one CVE-id pattern
+  (`src/lib/cve-id.ts`), one question cap; two dead exports and two pass-through helpers deleted.
+
+**Upgrade notes:** **migration 012** (`ai_usage.unmetered_requests`) is additive — one column,
+default 0, no backfill — and runs automatically on boot against an existing volume. No config change
+and no API change: the wire contract at `/api/v1` and the assistant's request body are unchanged, and
+a refusal is a `200` the desk labels rather than an error status a client must special-case.
+
 ## 4.0.8 — 2026-11-27
 
 A plain question could end with no answer at all: measured **2 of 8** runs of
