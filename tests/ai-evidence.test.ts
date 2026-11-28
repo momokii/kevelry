@@ -131,6 +131,13 @@ describe("evidence: figures are checked against the payload, never against prose
     });
   });
 
+  it("counts the metadata a tool stated about the read, not only its data", () => {
+    // The regression this pass grew a metadata list for: a tool's `retrievedAt`
+    // is a fact the answer may quote, and quoting it is not a fabrication.
+    const calls = [success("get_cve", { record: { cveId: "CVE-2021-44228" } })];
+    expect(evidence(calls, "I read 2026-01-01.")).toMatchObject({ unverifiedNumbers: [] });
+  });
+
   it("accuses nothing on a turn that read nothing: nothing to compare against", () => {
     // A count and a percentage with no payload behind them are unchecked, not
     // doubtful; the same call is why a refusal carries no numbers at all.

@@ -13,7 +13,11 @@
 //   unverifiedNumbers  figures the prose printed that no payload supports, as
 //                      printed. Empty when the turn read nothing, because with
 //                      nothing to compare against a figure is unchecked, not
-//                      doubtful.
+//                      doubtful. "Payload" here is the tool outcome whole: its
+//                      `data` and the metadata an answer may cite — the day it
+//                      was read, the snapshot and version behind it, the window
+//                      it covers. A true sentence that quotes a tool's own
+//                      `retrievedAt` must not be accused.
 //   webSources         hosts a successful fetch actually read, one per distinct
 //                      URL. The server is the authority on which host answered.
 //
@@ -135,6 +139,89 @@ export function webEvidence(name: string, outcome: ToolOutcome): WebSource | nul
 }
 
 /**
+ * Outcome keys outside `data` whose values an answer may legitimately cite.
+ *
+ * A list, not "every key but `data`": `rows`, `tool` and a call's bookkeeping
+ * describe the call, not the corpus, and a haystack that swallowed them would
+ * let an incidental number excuse a figure the prose invented. These are the
+ * keys a reader would accept as provenance for what the answer prints — when it
+ * was read, which snapshot or model produced it, and the window it covers.
+ *
+ * Every entry answers a specific way an honest answer was accused: a model that
+ * wrote "read 2026-11-28" was quoting a tool's `retrievedAt`, which only `data`
+ * never carried. It is spelled out so adding a tool means reading this list, not
+ * hoping a generic walk happens to find the value.
+ *
+ * The list accepts a false negative to remove a false positive: `retrievedAt` is
+ * "now", so a fabricated day that happens to be today would verify, and a window
+ * makes every day inside it citable. That is the cheaper error — a caution that
+ * fires on a true sentence teaches the reader to ignore the caution entirely.
+ */
+const CITABLE_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "retrievedAt",
+  "generatedAt",
+  "computedAt",
+  "fetchedAt",
+  "asOf",
+  "asOfDate",
+  "version",
+  "modelVersion",
+  "catalogVersion",
+  "datasetVersion",
+  "kevVersion",
+  "window",
+  "dateRange",
+  "windowStart",
+  "windowEnd",
+]);
+
+/** Upper bound on metadata scalars one turn may add, for a wide date window. */
+const CITABLE_METADATA_CAP = 256;
+
+/** Strings and numbers under one metadata value, at any depth, count-bounded. */
+function collectMetadataScalars(node: unknown, into: unknown[], depth: number): void {
+  if (into.length >= CITABLE_METADATA_CAP || depth > 6) return;
+  if (typeof node === "string" || typeof node === "number") {
+    into.push(node);
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const entry of node) collectMetadataScalars(entry, into, depth + 1);
+    return;
+  }
+  if (typeof node === "object" && node !== null) {
+    for (const entry of Object.values(node)) collectMetadataScalars(entry, into, depth + 1);
+  }
+}
+
+/**
+ * The metadata scalars one successful outcome lets an answer cite.
+ *
+ * Only the keys above, matched at any depth (`retrievedAt`, or
+ * `meta.asOf.date`), and only strings and numbers, because those are the shapes
+ * a figure can be printed from. `data` is not descended into: it is handed to
+ * the haystack whole, so walking it again would only spend the cap.
+ */
+export function collectCitableMetadata(outcome: unknown): unknown[] {
+  const found: unknown[] = [];
+  const walk = (node: unknown, depth: number): void => {
+    if (found.length >= CITABLE_METADATA_CAP || depth > 6) return;
+    if (Array.isArray(node)) {
+      for (const entry of node) walk(entry, depth + 1);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    for (const [key, entry] of Object.entries(node)) {
+      if (key === "data") continue;
+      if (CITABLE_METADATA_KEYS.has(key)) collectMetadataScalars(entry, found, depth + 1);
+      else walk(entry, depth + 1);
+    }
+  };
+  walk(outcome, 0);
+  return found;
+}
+
+/**
  * One tool call the turn executed, as evidence reads it.
  *
  * The name is what the model asked for and the outcome is what the dispatcher
@@ -174,9 +261,10 @@ export interface EvidenceInput {
  *
  * One pass over the calls: each successful result contributes its ids and its
  * payload — the payload whole, because a figure has to be compared with the
- * value the tool returned, not with a summary of it — and each successful fetch
- * contributes its host, deduplicated by URL. Order is the turn's own: first
- * appearance across the calls, which is the order the reader watched them run.
+ * value the tool returned, not with a summary of it — plus the metadata scalars
+ * `collectCitableMetadata` names, and each successful fetch contributes its
+ * host, deduplicated by URL. Order is the turn's own: first appearance across
+ * the calls, which is the order the reader watched them run.
  *
  * A failed call contributes nothing but its name: only a successful result is
  * evidence.
@@ -190,7 +278,7 @@ export function collectEvidence({ toolCalls, answerText, webBudget }: EvidenceIn
   for (const { name, outcome } of toolCalls) {
     if (outcome.ok) {
       for (const id of collectRecordIds(outcome.data)) verified.add(id);
-      payloads.push(outcome.data);
+      payloads.push(outcome.data, ...collectCitableMetadata(outcome));
     }
     const web = webEvidence(name, outcome);
     if (web === null || seenUrls.has(web.url)) continue;

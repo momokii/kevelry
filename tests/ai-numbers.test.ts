@@ -12,9 +12,15 @@
 //
 // What this file does not prove: that a real model writes these shapes. The
 // route test drives one through the production turn loop; this is the rule.
+//
+// The metadata cases are the exception: they go through `collectEvidence`, the
+// only place the haystack is assembled, because "which parts of a tool outcome
+// count as a payload" is a decision made there. A rule tested against a haystack
+// the test builds itself cannot catch the wiring that omitted the metadata.
 
 import { describe, expect, it } from "vitest";
 
+import { collectEvidence, type ToolReading } from "../src/lib/ai/evidence";
 import { extractAnswerNumbers, unverifiedAnswerNumbers } from "../src/lib/ai/numbers";
 import { runRefusalTurn } from "../src/lib/ai/refusal";
 import type { AssistantEvent } from "../src/lib/ai/turn";
@@ -22,6 +28,26 @@ import type { AssistantEvent } from "../src/lib/ai/turn";
 /** A payload shaped like a real tool result, so the walk is not a toy. */
 function payload(data: Record<string, unknown>): Array<Record<string, unknown>> {
   return [{ source: "dataset", tool: "get_cve", args: {}, rows: 1, data }];
+}
+
+/** One successful call, as the dispatcher builds it: `data` plus its metadata. */
+function call(metadata: Record<string, unknown>, data: Record<string, unknown> = {}): ToolReading {
+  return {
+    name: "get_cve",
+    outcome: {
+      ok: true,
+      tool: "get_cve",
+      rows: 1,
+      retrievedAt: "2026-11-28T09:41:22.000Z",
+      data,
+      ...metadata,
+    },
+  };
+}
+
+/** The figures this prose is accused of, through the turn's real evidence pass. */
+function doubtful(text: string, calls: readonly ToolReading[]): string[] {
+  return collectEvidence({ toolCalls: calls, answerText: text }).unverifiedNumbers;
 }
 
 describe("numbers: a percentage against the probability a payload stores", () => {
@@ -83,6 +109,58 @@ describe("numbers: ISO dates are exact", () => {
 
   it("reports a date one day off", () => {
     expect(unverifiedAnswerNumbers("Published 2026-11-21.", haystack)).toEqual(["2026-11-21"]);
+  });
+});
+
+describe("numbers: metadata a tool stated about the read", () => {
+  const read = [call({ retrievedAt: "2026-11-28T09:41:22.000Z" }, { total: 4110 })];
+
+  it("verifies a date the tool only stated as its own retrievedAt", () => {
+    // Live regression, 4.1.0: the model wrote "read 2026-11-28", which was the
+    // tool's `retrievedAt`. The sentence was true and was reported unverified
+    // because the haystack held `data` alone.
+    expect(doubtful("I read 2026-11-28; 4,110 records match.", read)).toEqual([]);
+  });
+
+  it("still reports a date nothing in the outcome stated", () => {
+    expect(doubtful("I read 2026-11-27.", read)).toEqual(["2026-11-27"]);
+  });
+
+  it("verifies a version string and the window it covers", () => {
+    const prose = "Catalog v2026.06.15 covers 2026-06-01 to 2026-06-15.";
+    const versioned = [call({ catalogVersion: "v2026.06.15", modelVersion: "v2026.06.15" })];
+    const windowed = [
+      call({
+        catalogVersion: "v2026.06.15",
+        modelVersion: "v2026.06.15",
+        window: { start: "2026-06-01", end: "2026-06-15" },
+      }),
+    ];
+    // A dotted version is not a figure at all — no integer of 1000, no
+    // three-digit fraction — so the days in that sentence are what is checked.
+    expect(extractAnswerNumbers("Catalog v2026.06.15, model v2026.06.15.")).toEqual([]);
+    expect(doubtful(prose, windowed)).toEqual([]);
+    // The version alone does not excuse those days; the window does.
+    expect(doubtful(prose, versioned)).toEqual(["2026-06-01", "2026-06-15"]);
+  });
+
+  it("does not widen the haystack to keys the list omits", () => {
+    // `durationMs` and `rows` are bookkeeping about the call, not provenance for
+    // the corpus: a figure that lives only there stays unverified, because an
+    // incidental lambda must not excuse a fabricated one.
+    const timed = [call({ retrievedAt: "2026-11-28", durationMs: 1234, rows: 4410 })];
+    expect(doubtful("The read took 1,234 ms and returned 4,411 rows.", timed)).toEqual([
+      "1,234",
+      "4,411",
+    ]);
+  });
+
+  it("still reports a figure the prose misstates while metadata states another", () => {
+    const windowed = [
+      call({ retrievedAt: "2026-11-28", dateRange: { days: 4410 } }, { total: 4110 }),
+    ];
+    expect(doubtful("4,410 days and 4,111 records.", windowed)).toEqual(["4,111"]);
+    expect(doubtful("4,410 days.", windowed)).toEqual([]);
   });
 });
 

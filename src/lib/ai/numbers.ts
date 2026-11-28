@@ -3,10 +3,11 @@
 // The prompt forbids every figure that is not in a tool result. Until now only
 // ids were checked, so a model could write "99.2%" and the desk printed it as
 // though a tool had said it. This is the check for numbers: the prose is scanned
-// for the shapes a reader would act on, the turn's tool payloads are scanned for
-// every value they contain, and anything the prose printed that the payloads
-// cannot support is reported — never edited out, because the reader is owed the
-// sentence and the doubt.
+// for the shapes a reader would act on, the turn's tool results are scanned for
+// every value they expose — the payload and the metadata an answer may cite, so
+// a tool's own `retrievedAt` verifies in a sentence that quotes it — and
+// anything the prose printed that those results cannot support is reported,
+// never edited out, because the reader is owed the sentence and the doubt.
 //
 // It is deliberately conservative, because a checker that accuses an honest
 // answer is worse than no checker at all:
@@ -155,7 +156,7 @@ export interface PayloadNumbers {
 }
 
 /**
- * Everything a turn's tool results contain, flattened.
+ * Everything a turn's tool results expose, flattened.
  *
  * Walks values rather than the serialised JSON, so a number stays a number:
  * comparing `0.99999` to `"0.99999"` as text is how an exact match gets missed.
@@ -163,6 +164,10 @@ export interface PayloadNumbers {
  * as text. Depth and count are bounded: a hostile or merely enormous payload
  * (`fetch_authoritative` returns 256 KB) must not turn this into a walk of a
  * huge object graph.
+ *
+ * The caller decides what counts as a result; `collectEvidence` hands in each
+ * payload plus its citable metadata, which is why a date the tool only stated
+ * about itself is supported here at all.
  */
 export function collectPayloadNumbers(payloads: readonly unknown[]): PayloadNumbers {
   const haystack: PayloadNumbers = {
@@ -278,10 +283,11 @@ function verifies(token: AnswerNumber, haystack: PayloadNumbers): boolean {
 /**
  * The figures the prose printed that this turn's tool results cannot support.
  *
- * `payloads` is every successful tool result of the turn. An empty list is not
- * evidence of a wrong number — there is nothing to compare against — so nothing
- * is reported: a page with no evidence must not be accused. A refusal never
- * reaches this function at all.
+ * `payloads` is everything the turn's successful tool results expose: each
+ * payload, plus the metadata an answer may cite (see `collectCitableMetadata`).
+ * An empty list is not evidence of a wrong number — there is nothing to compare
+ * against — so nothing is reported: a page with no evidence must not be accused.
+ * A refusal never reaches this function at all.
  */
 export function unverifiedAnswerNumbers(text: string, payloads: readonly unknown[]): string[] {
   if (payloads.length === 0) return [];
