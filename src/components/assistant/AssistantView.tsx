@@ -30,6 +30,7 @@ import {
   formatResetInstant,
   REFUSAL_LABEL,
   unverifiedNote,
+  unverifiedNumbersNote,
   webSources,
   workingStage,
   type AssistantFault,
@@ -318,6 +319,20 @@ function TurnBlock({
               An id the answer named that the records did not contain. It is text, not a link,
               because this dataset cannot confirm it.
             </HelpTip>
+          </p>
+        ) : null}
+        {turn.unverifiedNumbers.length > 0 ? (
+          // The numeric sibling of the id caution above, in the same voice and
+          // the same quiet styling: a figure with no tool behind it is never
+          // allowed to look sourced, and the reader is told which one to
+          // re-check. It sits under the prose, so it qualifies the answer
+          // without blocking it.
+          <p
+            className="assistant-unverified"
+            data-testid="assistant-unverified-numbers"
+            data-count={String(turn.unverifiedNumbers.length)}
+          >
+            {unverifiedNumbersNote(turn.unverifiedNumbers)}
           </p>
         ) : null}
         {turn.refusal === true ? (

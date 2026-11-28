@@ -290,13 +290,19 @@ export function AssistantDesk({
       if (event.type === "done") {
         // `done` also carries usage, which the desk does not display: the ledger
         // is about evidence, and a token count in the reader's face is not
-        // evidence. Two fields are kept: `kind` says the turn was a refusal (a
-        // settled answer with no evidence to offer), and `unverified` fills the
-        // gap if the dedicated frame above was lost.
+        // evidence. Three fields are kept: `kind` says the turn was a refusal (a
+        // settled answer with no evidence to offer), `unverified` fills the gap
+        // if the dedicated frame above was lost, and `unverifiedNumbers` is the
+        // numeric caution — omitted by the server when there is nothing to say,
+        // which is why it is read as an absence rather than an empty list.
         updateTurn(id, (turn) => {
           const next = event.kind === "refusal" ? { ...turn, refusal: true } : turn;
-          if (!Array.isArray(event.unverified) || next.unverified.length > 0) return next;
-          return { ...next, unverified: event.unverified };
+          const numbers = Array.isArray(event.unverifiedNumbers) ? event.unverifiedNumbers : [];
+          const withNumbers = numbers.length > 0 ? { ...next, unverifiedNumbers: numbers } : next;
+          if (!Array.isArray(event.unverified) || withNumbers.unverified.length > 0) {
+            return withNumbers;
+          }
+          return { ...withNumbers, unverified: event.unverified };
         });
         return;
       }
@@ -348,6 +354,7 @@ export function AssistantDesk({
         failed: false,
         citations: [],
         unverified: [],
+        unverifiedNumbers: [],
         tools: [],
         aboutCve: scoped,
         sendImage,

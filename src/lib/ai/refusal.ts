@@ -65,5 +65,7 @@ export async function* runRefusalTurn(): AsyncGenerator<AssistantEvent> {
     costUsd: 0,
     rounds: 0,
     unverified: [],
+    // `unverifiedNumbers` is absent, not empty: nothing was read, so there is
+    // no evidence to compare a figure against and nothing to accuse.
   };
 }

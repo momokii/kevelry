@@ -23,8 +23,11 @@
 //   unverified ids the *prose* named that no tool payload contained. Emitted
 //              only when the list is non-empty, and never used to edit the
 //              answer: the reader sees the doubt instead of losing the sentence.
-//   done       token totals, cost, how many tool rounds the turn spent, and the
-//              unverified list again so a downloaded brief can carry it.
+//   done       token totals, cost, how many tool rounds the turn spent, the
+//              unverified list again so a downloaded brief can carry it, and the
+//              figures the prose printed that no payload supports. Numbers have
+//              no frame of their own: they are one line in a caution, not a
+//              step in the transcript, and `done` is already the brief's payload.
 //   error      a typed, redacted failure. Once the stream is open there is no
 //              second HTTP status; this event is the status.
 //
@@ -47,6 +50,7 @@ import type {
   ChatToolCall,
 } from "./client";
 import { AI_MAX_TOKENS_DEFAULT, type AiConfig } from "./config";
+import { unverifiedAnswerNumbers } from "./numbers";
 import {
   renderAnswerRoundInstruction,
   renderRecordContext,
@@ -161,6 +165,13 @@ export type AssistantEvent =
       rounds: number;
       /** Ids the prose named without a tool behind them; empty when none. */
       unverified: string[];
+      /**
+       * Figures the prose printed that no tool payload in this turn supports,
+       * as printed. Omitted when the list is empty, and omitted entirely on a
+       * turn that collected no payload: with nothing to compare against, a
+       * number is not doubtful, it is unchecked.
+       */
+      unverifiedNumbers?: string[];
     }
   | { type: "error"; code: AssistantStreamErrorCode; message: string };
 
@@ -501,6 +512,10 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
     costUnmetered: false,
   };
   const citationIds = new Set<string>();
+  // Every successful tool result this turn, kept whole for the numeric check:
+  // the id pass only needs the ids, but a figure has to be compared with the
+  // payload's own value and precision, not with a summary of it.
+  const toolPayloads: unknown[] = [];
   // The prose exactly as the reader received it: every delta, in order. The
   // answer the model wrote in an earlier round that ended in tool calls is on
   // screen too, so it is classified too.
@@ -533,7 +548,9 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
   /**
    * The terminal frames. `citations` stays the tool-backed set, unchanged; the
    * `unverified` frame exists only when the prose named something that set does
-   * not hold, and `done` carries the same list for the brief's export.
+   * not hold, and `done` carries the same list for the brief's export. The
+   * numeric check rides along in `done` only — it is a caution line, not a step
+   * in the transcript — and only when a payload existed to compare against.
    *
    * A turn with no prose is a failure, never a settled turn. `done` with an empty
    * answer is what told the reader "the turn ended before it wrote an answer"
@@ -550,6 +567,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       return false;
     }
     const unverified = unverifiedAnswerIds(answerText, citationIds);
+    const unverifiedNumbers = unverifiedAnswerNumbers(answerText, toolPayloads);
     yield { type: "citations", records: [...citationIds] };
     if (unverified.length > 0) yield { type: "unverified", ids: unverified };
     yield {
@@ -558,6 +576,7 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
       costUsd: totals.costUsd,
       rounds,
       unverified,
+      ...(unverifiedNumbers.length === 0 ? {} : { unverifiedNumbers }),
     };
     return true;
   }
@@ -725,6 +744,9 @@ export async function* runAssistantTurn(input: AssistantTurnInput): AsyncGenerat
         // its row count while the model is still reading.
         const returnedIds = outcome.ok ? collectRecordIds(outcome.data) : [];
         for (const id of returnedIds) citationIds.add(id);
+        // Only a successful result is evidence. A failure's reason names no
+        // figure, so it is not offered to the numeric check as a haystack.
+        if (outcome.ok) toolPayloads.push(outcome.data);
         gathered.push({
           name: call.function.name,
           args: compactJson(args.ok ? args.value : null, SUMMARY_ARGS_CHARS),

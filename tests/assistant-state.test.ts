@@ -54,6 +54,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     failed: false,
     citations: [],
     unverified: [],
+    unverifiedNumbers: [],
     tools: [],
     aboutCve: null,
     sendImage: false,

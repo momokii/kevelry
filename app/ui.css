@@ -5771,10 +5771,10 @@ a.badge:hover {
   color: var(--ui-ink-3);
 }
 
-/* An id the prose named that no tool returned. A quiet caution, not an alert:
-   the answer stays readable, the doubt stays attached to the ids, and no icon
-   carries the meaning on its own. The rule is the only colour; the words are
-   ink so the line meets contrast in both themes. */
+/* An id or a figure the prose named that no tool returned. A quiet caution, not
+   an alert: the answer stays readable, the doubt stays attached to what it names,
+   and no icon carries the meaning on its own. The rule is the only colour; the
+   words are ink so the line meets contrast in both themes. */
 .assistant-unverified {
   margin: var(--ui-sp-3) 0 0;
   padding-left: 10px;

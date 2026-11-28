@@ -50,6 +50,7 @@ function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     failed: false,
     citations: ["CVE-2099-0001", "CVE-2099-0002"],
     unverified: [],
+    unverifiedNumbers: [],
     tools: [
       {
         id: "tool-1",
@@ -482,6 +483,45 @@ describe("unverified ids", () => {
     expect(html).not.toContain('data-testid="assistant-unverified"');
     // The supported citations are untouched by the absence of the caution.
     expect(html).toContain('data-testid="assistant-citation"');
+  });
+});
+
+describe("unverified numbers", () => {
+  it("renders one quiet caution with the count and the figure the payloads lacked", () => {
+    const html = render({ turns: [turn({ unverifiedNumbers: ["99.2%"] })] });
+    expect(html).toContain('data-testid="assistant-unverified-numbers"');
+    expect(html).toContain('data-count="1"');
+    expect(html).toContain("1 number in this answer was not found in the tool results: 99.2%.");
+    expect(html).toContain("It may be rounded or from memory.");
+  });
+
+  it("counts in the plural and still spells the figures out", () => {
+    const html = render({ turns: [turn({ unverifiedNumbers: ["99.2%", "4,111"] })] });
+    expect(html).toContain('data-count="2"');
+    expect(html).toContain("2 numbers in this answer were not found in the tool results");
+    expect(html).toContain("99.2%, 4,111");
+    expect(html).toContain("They may be rounded or from memory.");
+  });
+
+  it("sits under the prose it qualifies and never blocks it", () => {
+    const html = render({ turns: [turn({ unverifiedNumbers: ["99.2%"] })] });
+    // The answer is still the answer: the caution is a sentence below it, not a
+    // gate, and it is plain text a keyboard or a screen reader reaches.
+    expect(html).toContain('data-testid="assistant-answer"');
+    expect(html.indexOf('data-testid="assistant-answer"')).toBeLessThan(
+      html.indexOf('data-testid="assistant-unverified-numbers"'),
+    );
+    expect(html.indexOf('data-testid="assistant-unverified-numbers"')).toBeLessThan(
+      html.indexOf('class="assistant-citations"'),
+    );
+    expect(html).not.toMatch(/aria-hidden="true"[^>]*assistant-unverified-numbers/);
+  });
+
+  it("renders nothing when the server reported no unverified number", () => {
+    const html = render({ turns: [turn()] });
+    expect(html).not.toContain('data-testid="assistant-unverified-numbers"');
+    // The id caution is untouched by the sibling's absence.
+    expect(html).not.toContain('data-testid="assistant-unverified"');
   });
 });
 

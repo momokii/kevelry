@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   BRIEF_DISCLAIMER,
   BRIEF_UNVERIFIED_NOTE,
+  BRIEF_UNVERIFIED_NUMBERS_NOTE,
   briefFileName,
   buildBriefMarkdown,
   type BriefInput,
@@ -26,6 +27,7 @@ function input(overrides: Partial<BriefInput> = {}): BriefInput {
       answer: "Forty-one records entered the catalog. CVE-2026-41077 is one of them.",
       citations: ["CVE-2026-41077", "CVE-2026-41820"],
       unverified: [],
+      unverifiedNumbers: [],
       tools: [
         {
           id: "tool-1",
@@ -120,6 +122,28 @@ describe("brief Markdown", () => {
     expect(flagged).toContain(BRIEF_UNVERIFIED_NOTE);
     // The footer's main claim is still there and still true of the evidence.
     expect(flagged).toContain(BRIEF_DISCLAIMER);
+  });
+
+  it("[CODE] includes an Unverified numbers section only when a figure was flagged", () => {
+    const clean = buildBriefMarkdown(input());
+    expect(clean).not.toContain("## Unverified numbers");
+    expect(clean).not.toContain(BRIEF_UNVERIFIED_NUMBERS_NOTE);
+
+    const flagged = buildBriefMarkdown(
+      input({ turn: { ...input().turn, unverifiedNumbers: ["99.2%", "4,111"] } }),
+    );
+    expect(flagged).toContain("## Unverified numbers");
+    expect(flagged).toContain(
+      "The answer printed 2 numbers that no tool result this turn contained.",
+    );
+    // As printed in the answer, one per line, so the prose can be searched for
+    // each one. Not links: a figure has no record to open.
+    expect(flagged).toContain("- `99.2%`");
+    expect(flagged).toContain("- `4,111`");
+    expect(flagged).toContain(BRIEF_UNVERIFIED_NUMBERS_NOTE);
+    // The disclaimer is still printed, and the section is what qualifies it.
+    expect(flagged).toContain(BRIEF_DISCLAIMER);
+    expect(flagged.indexOf("## Unverified numbers")).toBeLessThan(flagged.indexOf("## Evidence"));
   });
 
   it("[CODE] dates the file name and keeps it a .md", () => {

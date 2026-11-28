@@ -126,6 +126,11 @@ export interface AssistantTurn {
    * derived from the answer in the browser: the verified set lives server-side.
    */
   unverified: string[];
+  /**
+   * Figures the prose printed that no tool result supported, as printed. Same
+   * contract as `unverified`: the server decides, the browser only displays.
+   */
+  unverifiedNumbers: string[];
   tools: AssistantToolLine[];
   /** The pinned record this question was asked about. */
   aboutCve: string | null;
@@ -479,6 +484,26 @@ export function unverifiedNote(ids: readonly string[]): string {
       ? "It may be a typo or a record this deployment does not hold."
       : "They may be typos or records this deployment does not hold.";
   return `${lead}: ${ids.join(", ")}. ${tail}`;
+}
+
+/**
+ * The caution line for figures the tool results did not contain.
+ *
+ * The sibling of `unverifiedNote`, and it says a different thing on purpose: a
+ * number is rarely a typo, it is a rounding or a recollection, so the sentence
+ * offers those two explanations instead of accusing the model of inventing a
+ * record. The figures are spelled out because "1 number" alone cannot be acted
+ * on — the reader has to see which one to check.
+ */
+export function unverifiedNumbersNote(numbers: readonly string[]): string {
+  const count = numbers.length;
+  const lead =
+    count === 1
+      ? "1 number in this answer was not found in the tool results"
+      : `${formatCount(count)} numbers in this answer were not found in the tool results`;
+  const tail =
+    count === 1 ? "It may be rounded or from memory." : "They may be rounded or from memory.";
+  return `${lead}: ${numbers.join(", ")}. ${tail}`;
 }
 
 export function formatCount(count: number): string {

@@ -13,7 +13,10 @@
 import type { AssistantToolLine, AssistantTurn } from "./assistant-state";
 
 export interface BriefInput {
-  turn: Pick<AssistantTurn, "id" | "question" | "answer" | "citations" | "unverified" | "tools">;
+  turn: Pick<
+    AssistantTurn,
+    "id" | "question" | "answer" | "citations" | "unverified" | "unverifiedNumbers" | "tools"
+  >;
   /** The model the deployment is configured with; printed, never guessed. */
   modelId: string;
   /** `window.location.origin`, so citation links resolve outside this tab. */
@@ -32,6 +35,14 @@ export const BRIEF_DISCLAIMER =
  */
 export const BRIEF_UNVERIFIED_NOTE =
   "The ids under Unverified ids are the model's own words: no tool returned them, so this brief does not vouch for them.";
+
+/**
+ * Appended only when the answer printed a figure the tool results did not
+ * contain. Same reason as the note above: the footer claims every figure comes
+ * from the dataset, and this section is the exception that claim has to name.
+ */
+export const BRIEF_UNVERIFIED_NUMBERS_NOTE =
+  "The figures under Unverified numbers were not found in this turn's tool results: they may be rounded, or written from memory.";
 
 /** `kevelry-brief-2026-11-22.md`: dated, so two downloads never collide by name. */
 export function briefFileName(now: Date = new Date()): string {
@@ -98,6 +109,22 @@ export function buildBriefMarkdown(input: BriefInput): string {
     parts.push("");
   }
 
+  if (turn.unverifiedNumbers.length > 0) {
+    // Not links either: a figure has no record to open. One sentence, then the
+    // figures exactly as the answer printed them, so the reader can grep the
+    // prose for each one.
+    parts.push("## Unverified numbers");
+    parts.push("");
+    parts.push(
+      turn.unverifiedNumbers.length === 1
+        ? "The answer printed one number that no tool result this turn contained."
+        : `The answer printed ${String(turn.unverifiedNumbers.length)} numbers that no tool result this turn contained.`,
+    );
+    parts.push("");
+    for (const number of turn.unverifiedNumbers) parts.push(`- \`${number}\``);
+    parts.push("");
+  }
+
   parts.push("## Evidence");
   parts.push("");
   if (turn.tools.length === 0) {
@@ -115,6 +142,10 @@ export function buildBriefMarkdown(input: BriefInput): string {
   parts.push("");
   if (turn.unverified.length > 0) {
     parts.push(BRIEF_UNVERIFIED_NOTE);
+    parts.push("");
+  }
+  if (turn.unverifiedNumbers.length > 0) {
+    parts.push(BRIEF_UNVERIFIED_NUMBERS_NOTE);
     parts.push("");
   }
 

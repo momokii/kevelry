@@ -508,6 +508,7 @@ describe("briefs keep the raw answer", () => {
         answer: `${TABLE}\n\n**Bold** stays raw.`,
         citations: [],
         unverified: [],
+        unverifiedNumbers: [],
         tools: [],
       },
       modelId: "test-model",

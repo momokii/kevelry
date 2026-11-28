@@ -502,6 +502,53 @@ describe("assistant route: the streaming turn", () => {
     });
   });
 
+  it("flags a figure the tool results did not contain, and leaves the supported ones quiet", async () => {
+    // The payload carries the publication date and no count of 4,110. The date
+    // verifies, the count does not, and neither the answer nor the chips are
+    // touched: the reader gets the sentence plus the one number to re-check.
+    const { transport } = fakeTransport(async (_call, index) =>
+      index === 0
+        ? { status: 200, body: toolStream("get_cve", { id: CVE_ID }, USAGE_ROUND_1) }
+        : {
+            status: 200,
+            body: textStream(
+              `${CVE_ID} was published on 2026-11-01; 4,110 records match that shape.`,
+              USAGE_ROUND_2,
+            ),
+          },
+    );
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    const frames = framesOf(await response.text());
+
+    expect(frames.map((frame) => frame.type)).toEqual(["tool", "delta", "citations", "done"]);
+    expect(frames[3]).toMatchObject({ type: "done", unverifiedNumbers: ["4,110"] });
+    // No id was doubted, so the id caution keeps its own contract.
+    expect(frames[3]).toMatchObject({ unverified: [] });
+    expect(frames[1]).toMatchObject({ type: "delta" });
+    expect(String(frames[1]?.["text"])).toContain("4,110 records match");
+  });
+
+  it("reports no figure on a turn that read nothing", async () => {
+    // No tool call, so no payload: a figure is then unchecked, not doubtful.
+    // Accusing an answer with nothing to compare against is the failure this
+    // guard exists to prevent.
+    const { transport } = fakeTransport(async () => ({
+      status: 200,
+      body: textStream("4,110 records match, which is 99.2% of the corpus.", USAGE_ROUND_1),
+    }));
+    setAssistantTransport(transport);
+
+    const response = await POST(request(ONE_QUESTION));
+    const frames = framesOf(await response.text());
+    const done = frames[frames.length - 1];
+
+    expect(frames.map((frame) => frame.type)).toEqual(["delta", "citations", "done"]);
+    expect(done).toMatchObject({ type: "done" });
+    expect(done).not.toHaveProperty("unverifiedNumbers");
+  });
+
   it("streams each provider chunk as its own delta before the round ends", async () => {
     const encoder = new TextEncoder();
     let release: () => void = () => undefined;
@@ -988,6 +1035,7 @@ describe("assistant route: a transcript the desk built", () => {
       failed: false,
       citations: [],
       unverified: [],
+      unverifiedNumbers: [],
       tools: [],
       aboutCve: null,
       sendImage: false,

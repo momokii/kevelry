@@ -76,6 +76,7 @@ function turn(tools: AssistantToolLine[], overrides: Partial<AssistantTurn> = {}
     failed: false,
     citations: tools.flatMap((tool) => tool.ids),
     unverified: [],
+    unverifiedNumbers: [],
     tools,
     aboutCve: null,
     sendImage: false,

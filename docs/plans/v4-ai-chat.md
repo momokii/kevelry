@@ -67,6 +67,21 @@ choose a query language, a path, a host or a shell — those capabilities do not
 4. **No fusion, no unbounded list:** KEV/EPSS/CVSS stay separate, and every list states its
    total, its returned count and its limit ("first 25 of 1,204").
 
+**Number verification** (`numbers.ts`, called from `turn.ts`): item 1 used to be prompt-only, so a
+figure the tool results did not contain was printed as though one had. The pass checks four shapes
+in the prose — percentages, decimals with ≥3 fractional digits, integers ≥1000, ISO dates — against
+every value in the turn's tool payloads, and `done.unverifiedNumbers` carries what it could not
+support (omitted when empty, and omitted on a turn that collected no payload, because nothing to
+compare against is unchecked, not doubtful). Matching is tolerance, not string equality: a
+percentage verifies within ±0.01 points or one unit of its printed last digit, a decimal within one
+unit of its printed last digit (`0.9999` verifies a payload's `0.99999`), and a percentage is read
+in both the point form and the probability form, so `0.99999` supports `99.999%` but not `99.2%`.
+Integers are exact after stripping separators; dates are exact strings. Ignored, deliberately: small
+integers 0–999 (list numbering, "two records"), bare years 1990–2035, and any record id's digits
+(`CVE-2021-44228` would otherwise accuse `44228` on every answer that names a record). The desk
+prints the doubt as one quiet line under the answer — never an edited sentence — and the brief gains
+`## Unverified numbers`; a refusal and a turn with no successful tool call report nothing.
+
 ### 4.3 Web fallback
 
 Only when the dataset cannot answer, through `fetch_authoritative({ url })`: GET only, `https:`
