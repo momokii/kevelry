@@ -3,6 +3,44 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.1.0 — 2026-11-28
+
+Five records asked for one at a time could not finish inside the round cap — three of five read,
+the rest silently missing — and a percentage no payload supported printed as though a tool had said
+it. A batch lookup, and a numeric check for the figures an answer prints.
+
+### Added
+
+- **`get_cves` reads one to ten ids in a single call.** `get_cve` is one lookup per round, and a round
+  is a provider request that the 4-round cap counts. Measured with the fake transport, the same five
+  records asked one at a time need 6 rounds — two over the cap — so the turn silently read **3 of 5**
+  records and answered from those; one `get_cves` call reads **5 of 5** in a single round. The tool
+  returns one entry per id, names ids the dataset does not hold in `missing` (never cited as read),
+  and the prompt asks for one batch call when a question needs more than one record. The row-count
+  label, per-call citation chips and the tool descriptions follow the same caps the validator
+  enforces.
+- **Numbers are verified against tool results the way ids are.** The prompt already forbade a figure
+  that was not in a tool result, but only ids were checked, so a model could print `99.2%` and the
+  desk showed it as though a tool had said it. The prose is now scanned for the shapes a reader would
+  act on — percentages, decimals with at least three fractional digits, integers of 1000 or more, and
+  ISO dates — and every figure a payload cannot support is reported as printed. A payload's
+  `0.99999` verifies `99.999%` but not `99.2%`; ordinals, small counts and bare years are ignored, and
+  a turn with no payloads accuses nothing, because with nothing to compare against a figure is
+  unchecked rather than doubtful. Unverified figures appear as a quiet caution and in the brief; the
+  answer itself is never edited, because the reader is owed the sentence and the doubt.
+
+### Changed (internal)
+
+- **Citations, number checks and web sources live in one pure evidence module.** They were closures
+  mutated inside a generator; `src/lib/ai/evidence.ts` now reads a turn's tool outcomes and the prose
+  it produced and returns the four lists (cited ids, unverified ids, unverified numbers, web sources)
+  with no I/O, no clock and no SSE. The turn module dropped from **819 to 696 lines**, and the rules
+  are tested directly instead of only through a provider stream. No behaviour change: zero existing
+  tests edited.
+
+**Upgrade notes:** no migration; no API change; no config change. The wire contract at `/api/v1` and
+the assistant's request body are unchanged.
+
 ## 4.0.9 — 2026-11-28
 
 A refusal that arrived as an error, a "one web fetch per turn" rule that lived only in the prompt,

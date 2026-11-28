@@ -17,12 +17,23 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.0.9` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.8`, `4.0.7`, `4.0.6`, `4.0.5`, `4.0.4`, `4.0.3`, `4.0.2`,
-> `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
+> **Status:** `4.1.0` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.0.9`, `4.0.8`, `4.0.7`, `4.0.6`, `4.0.5`, `4.0.4`, `4.0.3`,
+> `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.0.9` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the assistant-honesty release: a refusal is a `200` answer with
+> available as previous releases. The `4.1.0` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the batch-and-numbers release: `get_cves` reads one to ten ids in a single
+> call — on the fake transport, five single lookups need 6 rounds against the
+> 4-round cap, so the turn silently read **3 of 5** records, while one batch call
+> reads 5 of 5 in one round — and numbers are verified against tool results the
+> way ids already were: percentages, decimals of three or more fractional digits,
+> integers ≥1000 and ISO dates, where a payload's `0.99999` verifies `99.999%`
+> but not `99.2%`, ordinals, small counts and bare years are ignored, and a turn
+> that read nothing accuses nothing. Unverified figures appear as a quiet caution
+> and in the brief. Citations, number checks and web sources now live in one pure
+> evidence module, and the turn module dropped from 819 to 696 lines with no
+> behaviour change (zero existing tests edited). From 4.0.9: the assistant-honesty
+> release — a refusal is a `200` answer with
 > `kind: "refusal"` and two record-backed next steps, written with no provider
 > call, instead of a fault in the error panel; "one web fetch per turn" is
 > enforced by a counter in the tool loop rather than by the prompt, and a
@@ -83,8 +94,8 @@ to stay within limits.` when it did; and a round that produced neither text nor
 > v4 assistant and its upgrade notes — **migration 011** (`ai_usage`) runs
 > automatically on boot against an existing volume, no manual step, and no
 > `/api/v1` route or response shape changed. The assistant is off on this image
-> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.0.9
-> needs migration 012 and no config change.
+> unless the operator sets `AI_ENABLED=true` and supplies a gateway key. 4.1.0
+> needs no migration, no API change and no config change.
 
 ## What v4 adds
 
@@ -144,10 +155,14 @@ written to browser storage.
 
 The id rule is enforced in code, not only asked for in the prompt. Every citation
 is an id a tool returned, and the turn scans the prose for ids that no tool
-payload contained; a non-empty list is sent as an `unverified` event, shown above
-the citations as a quiet caution, and carried into the downloaded brief under its
-own heading. The answer is not blocked or rewritten — the reader sees which id is
-doubtful and can treat it as a typo or a record this deployment does not hold.
+payload contained. Numbers get the same pass: percentages, decimals of three or
+more fractional digits, integers ≥1000 and ISO dates are checked against the
+turn's tool results (`0.99999` verifies `99.999%`, not `99.2%`), while ordinals,
+small counts and bare years are left alone. A non-empty list is sent as an
+`unverified` event, shown above the citations as a quiet caution, and carried
+into the downloaded brief under its own heading. The answer is not blocked or
+rewritten — the reader sees which id or figure is doubtful and can treat it as a
+typo or a record this deployment does not hold.
 
 ### What it will not do
 
@@ -197,7 +212,7 @@ line is one server-side lookup, `Rows` is how many records it returned, the
 chips are what the answer can cite — then names the one tool call behind the
 answer, `kev_window` with `days=30` and `12 rows`, and shows six of its ids plus
 a `+6 more` disclosure: density is a hierarchy of calls and records, never an
-inner scrollbar. The frame is a local 4.0.9 e2e server driven through the
+inner scrollbar. The frame is a local 4.1.0 e2e server driven through the
 browser suite's offline **fake transport** (`AI_FAKE_TRANSPORT=1`) against the
 suite's dense twelve-record fixture, so the prose is canned and says so; the
 attachment, the tool call, its row count and the citations are real.
@@ -253,7 +268,7 @@ corpus** — 1,640 published records, 78 KEV entries, 30 daily EPSS observations
 not the live instance, so the numbers in the frames are reproducible rather than
 current. For the deployment's own figures, read `/methodology`, which counts the
 accepted snapshot. The three assistant captures live under
-[What v4 adds](#what-v4-adds); they are a local 4.0.9 e2e server driven through
+[What v4 adds](#what-v4-adds); they are a local 4.1.0 e2e server driven through
 the browser suite's offline transport against its dense twelve-record fixture,
 which their captions state.
 
@@ -314,7 +329,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.0.9
+  docker.io/kelanach/kevelry:4.1.0
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -596,7 +611,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.0.9 \
+  --image docker.io/kelanach/kevelry:4.1.0 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -805,7 +820,7 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1205 passing, 3 skipped (network-gated)
+npm test                # vitest: 1253 passing, 3 skipped (network-gated)
 npx playwright test     # browser suite: 165 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
