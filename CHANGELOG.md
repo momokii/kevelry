@@ -3,6 +3,28 @@
 All notable changes to Kevelry (package/image `cve-change-radar`). The public API
 is versioned separately at `/api/v1`; every API change in 2.0.0 is additive.
 
+## 4.1.1 — 2026-11-28
+
+An honest answer was accused of inventing a date: the model wrote the day a tool said it read the
+records, and the number check called it fabricated.
+
+### Fixed
+
+- **Tool metadata is part of the numbers haystack.** The check scanned only `outcome.data`, so a
+  sentence quoting a tool's own `retrievedAt` — a date the model had legitimately read — was reported
+  as an unverified figure. The haystack now includes the metadata an answer may cite, from an
+  explicit 15-key list (`retrievedAt`, `generatedAt`, `computedAt`, `fetchedAt`, `asOf`, `asOfDate`,
+  `version`, `modelVersion`, `catalogVersion`, `datasetVersion`, `kevVersion`, `window`, `dateRange`,
+  `windowStart`, `windowEnd`), so a tool's own provenance verifies while a fabricated figure is still
+  flagged. The list is explicit rather than "every key but `data`" because keys like `rows` and `tool`
+  describe the call, not the corpus, and an incidental number there would excuse a figure the prose
+  invented. **Accepted trade-off:** `retrievedAt` is "now", so a fabricated date equal to today
+  verifies, and a window makes every day inside it citable. That is a false negative chosen over a
+  false positive, because a caution that fires on a true sentence teaches the reader to ignore the
+  caution entirely.
+
+**Upgrade notes:** no migration; no config change.
+
 ## 4.1.0 — 2026-11-28
 
 Five records asked for one at a time could not finish inside the round cap — three of five read,

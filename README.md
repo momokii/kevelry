@@ -17,12 +17,18 @@ that snapshot. It runs as **one Docker image, one container, one volume**, with
 no account system, no external service in the request path, and no composite
 risk score.
 
-> **Status:** `4.1.0` is the newest published image (`kelanach/kevelry`), and
-> `latest` resolves to it; `4.0.9`, `4.0.8`, `4.0.7`, `4.0.6`, `4.0.5`, `4.0.4`, `4.0.3`,
+> **Status:** `4.1.1` is the newest published image (`kelanach/kevelry`), and
+> `latest` resolves to it; `4.1.0`, `4.0.9`, `4.0.8`, `4.0.7`, `4.0.6`, `4.0.5`, `4.0.4`, `4.0.3`,
 > `4.0.2`, `4.0.1`, `4.0.0`, `3.2.3`, `3.2.2` (2026-11-22), `3.2.1` (2026-11-22),
 > `3.2.0` (2026-11-21), `3.1.0` (2026-11-20) and `3.0.2` (2026-11-17) remain
-> available as previous releases. The `4.1.0` entry in [CHANGELOG.md](CHANGELOG.md)
-> is the batch-and-numbers release: `get_cves` reads one to ten ids in a single
+> available as previous releases. The `4.1.1` entry in [CHANGELOG.md](CHANGELOG.md)
+> is the metadata-haystack fix: the number check scanned only `outcome.data`, so
+> an answer quoting a tool's own `retrievedAt` — a date the model had legitimately
+> read — was reported as a fabricated figure. The haystack now includes the
+> metadata an answer may cite, from an explicit 15-key list, with a fabricated
+> figure still flagged; the accepted trade-off — a date equal to today verifies,
+> because a false accusation is worse — is recorded in the entry. From 4.1.0: the
+> batch-and-numbers release — `get_cves` reads one to ten ids in a single
 > call — on the fake transport, five single lookups need 6 rounds against the
 > 4-round cap, so the turn silently read **3 of 5** records, while one batch call
 > reads 5 of 5 in one round — and numbers are verified against tool results the
@@ -329,7 +335,7 @@ docker run -d --name kevelry -p 127.0.0.1:3000:3000 \
   -v kevelry-data:/data \
   -e APP_ENV=production -e DATA_DIR=/data -e PORT=3000 \
   -e SITE_URL=https://cve.example.com \
-  docker.io/kelanach/kevelry:4.1.0
+  docker.io/kelanach/kevelry:4.1.1
 ```
 
 `SITE_URL` only matters once the instance is public: the sitemap, canonical/social
@@ -611,7 +617,7 @@ Two supported shapes:
 
 ```bash
 gcloud run deploy kevelry \
-  --image docker.io/kelanach/kevelry:4.1.0 \
+  --image docker.io/kelanach/kevelry:4.1.1 \
   --memory 8Gi --cpu 4 --min-instances 1 --max-instances 1 \
   --no-cpu-throttling \
   --set-env-vars APP_ENV=production,INGEST_ON_START=true,SCHEDULE_ENABLED=true,SITE_URL=https://kevelry-xxx.a.run.app
@@ -820,7 +826,7 @@ npm ci                  # install dependencies
 npm run dev             # local dev server
 npm run lint            # eslint
 npm run typecheck       # tsc --noEmit
-npm test                # vitest: 1253 passing, 3 skipped (network-gated)
+npm test                # vitest: 1259 passing, 3 skipped (network-gated)
 npx playwright test     # browser suite: 165 passing, 0 skipped
 npx prettier --write <paths>  # format touched files
 ```
